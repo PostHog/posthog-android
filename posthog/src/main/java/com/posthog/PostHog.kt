@@ -52,7 +52,7 @@ private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 // after a cold start while the host's JS/Dart handlers register. The window stays finite because a
 // workflow that loops back to a push step re-sends the same `invocation_id`/`action_id` pair as a new
 // notification, and that later open must still count.
-private const val PUSH_OPEN_DEDUPE_WINDOW_NANOS = 5 * 60 * 1_000_000_000L
+private const val PUSH_OPEN_DEDUPE_WINDOW_MILLIS = 5 * 60 * 1000L
 
 // Only needs the opens of the last few minutes; the cap bounds memory for hosts that call this in bulk.
 private const val MAX_RECENT_PUSH_OPENS = 20
@@ -126,7 +126,7 @@ public class PostHog private constructor(
     private var logsRateCapWindowStartMillis: Long = 0
     private var logsRateCapWindowCount: Int = 0
 
-    // Captured PostHog push opens, by `invocation_id/action_id`, to the dateProvider nanoTime of capture.
+    // Captured PostHog push opens, by `invocation_id/action_id`, to the dateProvider millis of capture.
     private val recentPushOpens = LinkedHashMap<String, Long>()
 
     private val remoteConfig: PostHogRemoteConfig?
@@ -2141,23 +2141,19 @@ public class PostHog private constructor(
         capture(PUSH_NOTIFICATION_OPENED_EVENT, properties = props)
     }
 
-    /**
-     * Records the open of a PostHog-sent push and returns false if the same notification was already
-     * captured within [PUSH_OPEN_DEDUPE_WINDOW_NANOS]. The key is `invocation_id` plus `action_id`,
-     * since every step of one workflow run shares the run's `invocation_id`. A payload without an
-     * `invocation_id` has no key and is always captured.
-     */
     private fun recordPushOpen(posthogPayload: Map<String, Any?>?): Boolean {
         val invocationId = posthogPayload?.get("invocation_id") as? String
         if (posthogPayload == null || invocationId.isNullOrEmpty()) {
             return true
         }
+        // Every step of one workflow run shares the run's invocation_id, so action_id tells the steps apart.
         val key = "$invocationId/${posthogPayload["action_id"] as? String ?: ""}"
-        val now = config?.dateProvider?.nanoTime() ?: return true
+        val now = config?.dateProvider?.currentTimeMillis() ?: return true
 
         synchronized(recentPushOpens) {
             val capturedAt = recentPushOpens[key]
-            if (capturedAt != null && now - capturedAt < PUSH_OPEN_DEDUPE_WINDOW_NANOS) {
+            // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
+            if (capturedAt != null && now - capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS) {
                 config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
                 return false
             }

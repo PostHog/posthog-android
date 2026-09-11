@@ -4845,16 +4845,16 @@ internal class PostHogTest {
     @Test
     fun `capturePushNotificationOpened captures a repeat once the dedupe window has passed`() {
         val sut = getPushOpenSut()
-        var nanos = 0L
+        var millis = 0L
         config.dateProvider =
             object : PostHogDateProvider by PostHogDeviceDateProvider() {
-                override fun nanoTime(): Long = nanos
+                override fun currentTimeMillis(): Long = millis
             }
 
         sut.captureAutomaticPushOpen(stepOne)
-        nanos = TimeUnit.MINUTES.toNanos(5) - 1
+        millis = TimeUnit.MINUTES.toMillis(5) - 1
         sut.captureManualPushOpen(stepOne)
-        nanos = TimeUnit.MINUTES.toNanos(5)
+        millis = TimeUnit.MINUTES.toMillis(5)
         sut.captureManualPushOpen(stepOne)
         sut.captureAutomaticPushOpen(stepOne)
         queueExecutor.shutdownAndAwaitTermination()
