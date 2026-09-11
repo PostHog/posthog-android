@@ -29,6 +29,7 @@ import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
@@ -124,6 +125,7 @@ internal class PostHogTest {
 
     @AfterTest
     fun `set down`() {
+        pushOpenHttp?.shutdown()
         tmpDir.root.deleteRecursively()
     }
 
@@ -4734,10 +4736,11 @@ internal class PostHogTest {
     private val stepOne = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-1"}"""
     private val stepTwo = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-2"}"""
     private val pushOpens = CopyOnWriteArrayList<PostHogEvent>()
+    private var pushOpenHttp: MockWebServer? = null
 
     private fun getPushOpenSut(optOut: Boolean = false): PostHogInterface =
         getSut(
-            mockHttp().url("/").toString(),
+            mockHttp().also { pushOpenHttp = it }.url("/").toString(),
             optOut = optOut,
             preloadFeatureFlags = false,
             reloadFeatureFlags = false,
