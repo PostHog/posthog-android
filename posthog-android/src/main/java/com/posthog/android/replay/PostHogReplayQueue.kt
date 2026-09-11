@@ -54,6 +54,9 @@ internal class PostHogReplayQueue internal constructor(
     internal val depth: Int
         get() = replayDir?.listFiles()?.size ?: 0
 
+    override val size: Int
+        get() = innerQueue.size
+
     override fun add(record: PostHogEvent) {
         if (bufferDelegate?.isBuffering != true) {
             if (shouldPersist()) {

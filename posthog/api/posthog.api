@@ -959,6 +959,7 @@ public final class com/posthog/internal/PostHogQueue : com/posthog/internal/Post
 	public fun flush ()V
 	public fun flushForShutdown ()V
 	public final fun getQueueDirectory ()Ljava/io/File;
+	public fun getSize ()I
 	public final fun reloadFromDisk ()V
 	public fun start ()V
 	public fun stop ()V
@@ -969,6 +970,7 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 	public abstract fun clear ()V
 	public abstract fun flush ()V
 	public abstract fun flushForShutdown ()V
+	public abstract fun getSize ()I
 	public abstract fun start ()V
 	public abstract fun stop ()V
 }
@@ -1017,9 +1019,23 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V
 	public static synthetic fun resetGroupPropertiesForFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun resetPersonPropertiesForFlags ()V
+	public final fun sessionReplayLinkedFlagSnapshot ()Lcom/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot;
 	public final fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;)V
 	public final fun setPersonPropertiesForFlags (Ljava/util/Map;)V
 	public fun shutDown ()V
+}
+
+public final class com/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot {
+	public fun <init> (ZZ)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun copy (ZZ)Lcom/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot;
+	public static synthetic fun copy$default (Lcom/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot;ZZILjava/lang/Object;)Lcom/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActivated ()Z
+	public final fun getConfigured ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public class com/posthog/internal/PostHogRemoteConfigResponse {
@@ -1196,6 +1212,7 @@ public final class com/posthog/internal/errortracking/ThrowableCoercer {
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
+	public abstract fun debugProperties ()Ljava/util/Map;
 	public abstract fun isActive ()Z
 	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSessionIdChanged ()V

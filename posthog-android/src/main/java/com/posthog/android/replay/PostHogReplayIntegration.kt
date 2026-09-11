@@ -205,7 +205,12 @@ public class PostHogReplayIntegration(
     private val isNativeSdk: Boolean
         get() = (config.sdkName != "posthog-flutter")
 
+    private val isScreenshotCapable: Boolean
+        get() = config.sessionReplayConfig.screenshot || !isNativeSdk
+
     private var postHog: PostHogInterface? = null
+
+    @Volatile
     private var replayQueue: PostHogReplayQueue? = null
     private var ownsInstallation = false
 
@@ -261,9 +266,8 @@ public class PostHogReplayIntegration(
             !shouldVerifyMaskAlignment(view, drawState) ||
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
-            val screenshotCapable = config.sessionReplayConfig.screenshot || !isNativeSdk
             val isOnlyAnimationRedraw =
-                screenshotCapable &&
+                isScreenshotCapable &&
                     !drawState.didLayoutSinceReset &&
                     (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
                     !view.isAnimationRunning()
@@ -2540,6 +2544,71 @@ public class PostHogReplayIntegration(
         return isSessionReplayActive
     }
 
+    override fun debugProperties(): Map<String, Any> {
+        val props = mutableMapOf<String, Any>()
+
+        val bufferingSnapshot = bufferingSnapshot()
+        val active = bufferingSnapshot.active
+        val buffering = active && bufferingSnapshot.buffering
+        props["\$recording_status"] =
+            when {
+                !active -> "disabled"
+                buffering -> "buffering"
+                else -> "active"
+            }
+
+        if (buffering) {
+            props["\$sdk_debug_replay_flush_hold_reason"] =
+                if (bufferingSnapshot.awaitingRemoteConfig) "awaiting_remote_config" else "below_minimum_duration"
+        }
+
+        // Read-only: getSessionId() can rotate an idle session and fire onSessionIdChanged mid-snapshot.
+        val eventTriggerState = eventTriggerState(PostHogSessionManager.peekSessionId()?.toString())
+        val eventTriggerStatus =
+            triggerStatus(
+                // postHog is null when install() short-circuited (unsupported API) or after uninstall();
+                // a trigger can never fire there, so report it disabled rather than pending.
+                configured = postHog != null && eventTriggerState.configured,
+                activated = eventTriggerState.activated,
+            )
+        props["\$sdk_debug_replay_event_trigger_status"] = eventTriggerStatus
+
+        val linkedFlagSnapshot = config.remoteConfigHolder?.sessionReplayLinkedFlagSnapshot()
+        val linkedFlagStatus =
+            triggerStatus(
+                configured = linkedFlagSnapshot?.configured == true,
+                activated = linkedFlagSnapshot?.activated == true,
+            )
+        props["\$sdk_debug_replay_linked_flag_trigger_status"] = linkedFlagStatus
+
+        val pendingConditions =
+            listOfNotNull(
+                "event_trigger".takeIf { eventTriggerStatus == "trigger_pending" },
+                "linked_flag".takeIf { linkedFlagStatus == "trigger_pending" },
+            )
+        if (pendingConditions.isNotEmpty()) {
+            props["\$sdk_debug_replay_pending_trigger_conditions"] = pendingConditions
+        }
+
+        val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
+        props["\$sdk_debug_replay_capture_mode"] = captureMode
+        props["\$sdk_debug_replay_throttle_delay_ms"] = config.sessionReplayConfig.throttleDelayMs
+        props["\$sdk_debug_replay_internal_buffer_length"] =
+            if (buffering) replayQueue?.bufferDepth ?: 0 else replayQueue?.size ?: 0
+
+        return props
+    }
+
+    private fun triggerStatus(
+        configured: Boolean,
+        activated: Boolean,
+    ): String =
+        when {
+            !configured -> "trigger_disabled"
+            activated -> "trigger_activated"
+            else -> "trigger_pending"
+        }
+
     /**
      * Called when an event is captured. Checks if the event matches any configured triggers
      * and starts session recording if so, provided the other gates permit the session.
@@ -2653,19 +2722,20 @@ public class PostHogReplayIntegration(
      */
     private fun shouldWaitForEventTriggers(): Boolean {
         val postHog = this.postHog ?: return false
-
         val currentSessionId = postHog.getSessionId()?.toString() ?: return false
+        val state = eventTriggerState(currentSessionId)
+        return state.configured && !state.activated
+    }
 
-        val triggers = config.remoteConfigHolder?.getEventTriggers()
+    private data class EventTriggerState(val configured: Boolean, val activated: Boolean)
 
-        // No triggers configured, don't wait
-        if (triggers.isNullOrEmpty()) {
-            return false
-        }
-
-        // Check if this session has been activated
+    private fun eventTriggerState(sessionId: String?): EventTriggerState {
+        val configured = !config.remoteConfigHolder?.getEventTriggers().isNullOrEmpty()
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
-        return activatedSession != currentSessionId
+        return EventTriggerState(
+            configured = configured,
+            activated = sessionId != null && activatedSession == sessionId,
+        )
     }
 
     private fun resetSessionStateIfNeeded(
@@ -2686,18 +2756,22 @@ public class PostHogReplayIntegration(
     // MARK: - PostHogReplayBufferDelegate
 
     private val isBuffering: Boolean
-        get() {
-            synchronized(bufferingLock) {
-                if (awaitingFirstRemoteConfig) {
-                    return true
-                }
-                val minimumDuration = cachedMinimumDurationMs
-                if (minimumDuration == null || minimumDuration <= 0) {
-                    return false
-                }
-                return !hasPassedMinimumDuration
+        get() = bufferingSnapshot().buffering
+
+    // Single lock acquisition for the active flag, the buffering decision and its reason, so
+    // debugProperties() never pairs a status with a hold reason from a different snapshot.
+    private fun bufferingSnapshot(): BufferingSnapshot =
+        synchronized(bufferingLock) {
+            val active = isSessionReplayActive
+            if (awaitingFirstRemoteConfig) {
+                return BufferingSnapshot(active = active, buffering = true, awaitingRemoteConfig = true)
             }
+            val minimumDuration = cachedMinimumDurationMs
+            val buffering = minimumDuration != null && minimumDuration > 0 && !hasPassedMinimumDuration
+            BufferingSnapshot(active = active, buffering = buffering, awaitingRemoteConfig = false)
         }
+
+    private data class BufferingSnapshot(val active: Boolean, val buffering: Boolean, val awaitingRemoteConfig: Boolean)
 
     private fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
         // The min-duration migrate is triggered by elapsed time, independently of isBuffering's

@@ -254,7 +254,13 @@ internal class PostHogAndroidEventSnapshotsTest {
             val uuid = assertIs<String>(event["uuid"])
             UUID.fromString(uuid)
             event["uuid"] = "<uuid>"
-            normalizeSdkVersion(event.map("properties"))
+            val properties = event.map("properties")
+            normalizeSdkVersion(properties)
+            // Depends on how many earlier captures the async queueExecutor has drained by the time
+            // this event's properties are built on the calling thread -- not deterministic run to run.
+            if (properties.containsKey("\$sdk_debug_pending_queue_size")) {
+                properties["\$sdk_debug_pending_queue_size"] = "<pending-queue-size>"
+            }
         }
 
         val featureFlagEvent = batch.single { (it as Map<*, *>)["event"] == "\$feature_flag_called" } as Map<*, *>

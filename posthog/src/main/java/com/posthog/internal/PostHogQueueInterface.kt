@@ -12,6 +12,8 @@ import com.posthog.PostHogInternal
  */
 @PostHogInternal
 public interface PostHogQueueInterface<Record> {
+    public val size: Int
+
     public fun add(record: Record)
 
     public fun flush()

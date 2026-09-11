@@ -75,6 +75,9 @@ internal class PostHogStatelessTest {
         var isStopped = false
         var flushed = false
 
+        override val size: Int
+            get() = events.size
+
         override fun add(record: PostHogEvent) {
             events.add(record)
         }

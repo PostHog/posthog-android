@@ -11,6 +11,12 @@ public interface PostHogSessionReplayHandler {
     public fun isActive(): Boolean
 
     /**
+     * Snapshot of `$recording_status` and `$sdk_debug_replay_*` properties to attach to captured
+     * events. Must always include `$recording_status`; the rest are omitted when not applicable.
+     */
+    public fun debugProperties(): Map<String, Any>
+
+    /**
      * Called when an event is captured.
      * Used for event trigger matching to start session recording.
      */
