@@ -17,7 +17,10 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -43,6 +46,7 @@ class ComplianceAdapterTest {
 
     private fun withAdapter(
         profile: SdkProfile,
+        closeTimeoutMs: Long = 15_000,
         test: (MockWebServer) -> Unit,
     ) {
         val mock = MockWebServer()
@@ -59,7 +63,7 @@ class ComplianceAdapterTest {
             }
         mock.start(19293)
         val storage = Files.createTempDirectory("compliance-test").toFile()
-        val server = embeddedServer(CIO, port = 18293) { complianceRoutes(profile, 18293, storage) }.start()
+        val server = embeddedServer(CIO, port = 18293) { complianceRoutes(profile, 18293, storage, closeTimeoutMs) }.start()
         try {
             action("init", """{"api_key":"phc_test","host":"http://127.0.0.1:19293","flush_at":100}""")
             test(mock)
@@ -70,6 +74,123 @@ class ComplianceAdapterTest {
             storage.deleteRecursively()
             http.connectionPool.evictAll()
         }
+    }
+
+    @Test(timeout = 20_000)
+    fun retiredSessionCleansUpAfterTimedOutInit() {
+        lateinit var ingress: String
+        lateinit var sessionStorage: File
+        val created = AtomicInteger()
+        val closed = AtomicInteger()
+        val sdkActions = AtomicInteger()
+        val profile =
+            object : SdkProfile by CoreProfile {
+                override fun create(
+                    request: InitRequest,
+                    storage: File,
+                    observer: Observation,
+                ): SdkClient {
+                    ingress = request.host
+                    sessionStorage = storage
+                    created.incrementAndGet()
+                    val sdk = CoreProfile.create(request, storage, observer)
+                    return object : SdkClient by sdk {
+                        override fun capture(request: CaptureRequest) {
+                            sdkActions.incrementAndGet()
+                            sdk.capture(request)
+                        }
+
+                        override fun flag(request: FlagRequest): Any? {
+                            sdkActions.incrementAndGet()
+                            return sdk.flag(request)
+                        }
+
+                        override fun flush() {
+                            sdkActions.incrementAndGet()
+                            sdk.flush()
+                        }
+
+                        override fun close() {
+                            sdk.close()
+                            closed.incrementAndGet()
+                        }
+                    }
+                }
+            }
+        fun assertRetiredActionsRejected() {
+            for ((name, body) in listOf(
+                "capture" to """{"distinct_id":"user","event":"retired"}""",
+                "get_feature_flag" to """{"distinct_id":"user","key":"test-flag"}""",
+                "flush" to "{}",
+            )) {
+                val error = assertFailsWith<IllegalStateException> { action(name, body) }
+                assertTrue(error.message.orEmpty().contains("Session is retired"))
+            }
+            assertEquals(0, sdkActions.get(), "Retired actions must reject before invoking the SDK")
+        }
+
+        withAdapter(profile, closeTimeoutMs = 100) { mock ->
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val executor = Executors.newSingleThreadExecutor()
+            mock.dispatcher =
+                object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.path != "/probe") return MockResponse().setBody("{}")
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS)) { "Held ingress was not released" }
+                        return MockResponse().setBody("original response")
+                    }
+                }
+            val oldIngress = ingress
+            val oldStorage = sessionStorage
+            val pending =
+                executor.submit {
+                    http.newCall(Request.Builder().url("$oldIngress/probe").build()).execute().use {
+                        assertEquals(200, it.code)
+                        assertEquals("original response", it.body!!.string())
+                    }
+                }
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                for (actionName in listOf("init", "reset")) {
+                    val error =
+                        assertFailsWith<IllegalStateException> {
+                            action(actionName, """{"api_key":"phc_test","host":"http://127.0.0.1:19293"}""")
+                        }
+                    assertTrue(error.message.orEmpty().contains("Previous session cleanup is still pending"))
+                }
+                assertEquals(1, created.get())
+                assertEquals(0, closed.get())
+                assertTrue(oldStorage.exists())
+                assertRetiredActionsRejected()
+                http.newCall(Request.Builder().url("$oldIngress/probe").build()).execute().use {
+                    assertEquals(410, it.code)
+                }
+
+                release.countDown()
+                pending.get(5, TimeUnit.SECONDS)
+                val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (oldStorage.exists() && System.nanoTime() < deadline) Thread.sleep(10)
+                assertFalse(oldStorage.exists(), "Retired storage must be removed without another reset/init")
+                assertEquals(1, closed.get())
+                assertRetiredActionsRejected()
+
+                action("init", """{"api_key":"phc_test","host":"http://127.0.0.1:19293"}""")
+                assertEquals(2, created.get())
+                assertEquals(1, closed.get())
+                assertTrue(sessionStorage.exists())
+                assertTrue(ingress != oldIngress)
+                action("reset")
+                assertEquals(2, closed.get())
+                assertFalse(sessionStorage.exists())
+            } finally {
+                release.countDown()
+                executor.shutdown()
+                assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+            }
+        }
+        assertEquals(2, closed.get())
     }
 
     private fun captureTimestamp(profile: SdkProfile) =

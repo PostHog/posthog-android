@@ -32,9 +32,12 @@ import java.time.OffsetDateTime
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.ReentrantLock
 import java.util.zip.GZIPInputStream
+import kotlin.concurrent.thread
 import kotlin.concurrent.withLock
 
 // Each initialization gets its own ingress URL and observation state, including during close().
@@ -157,7 +160,7 @@ class Observation {
         )
 }
 
-private class Session(val target: String, val storage: File) {
+private class Session(val target: String, val storage: File, private val closeTimeoutMs: Long) {
     val observation = Observation()
     lateinit var client: SdkClient
 
@@ -165,6 +168,19 @@ private class Session(val target: String, val storage: File) {
     private val settled = lock.newCondition()
     private var closed = false
     private var inFlight = 0
+    private val cleanup =
+        FutureTask<Unit> {
+            lock.withLock {
+                while (inFlight > 0) settled.await()
+            }
+            client.close()
+            check(storage.deleteRecursively()) { "Could not remove retired session storage" }
+        }
+
+    fun requireActive() =
+        lock.withLock {
+            check(!closed) { "Session is retired; call /init after cleanup" }
+        }
 
     fun begin(): Boolean =
         lock.withLock {
@@ -184,13 +200,17 @@ private class Session(val target: String, val storage: File) {
 
     fun close() {
         lock.withLock {
-            closed = true
-            var remaining = TimeUnit.SECONDS.toNanos(15)
-            while (inFlight > 0 && remaining > 0) remaining = settled.awaitNanos(remaining)
-            check(inFlight == 0) { "Previous session still has HTTP requests in flight" }
+            if (!closed) {
+                closed = true
+                // Cleanup outlives the bounded caller wait and runs once, off the ingress thread.
+                thread(name = "posthog-compliance-cleanup", isDaemon = true) { cleanup.run() }
+            }
         }
-        client.close()
-        storage.deleteRecursively()
+        try {
+            cleanup.get(closeTimeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            throw IllegalStateException("Previous session cleanup is still pending", e)
+        }
     }
 }
 
@@ -198,6 +218,7 @@ fun Application.complianceRoutes(
     profile: SdkProfile,
     port: Int,
     storageRoot: File,
+    sessionCloseTimeoutMs: Long = 15_000,
 ) {
     install(IgnoreTrailingSlash)
     val gson = Gson().newBuilder().setObjectToNumberStrategy(ToNumberPolicy.LONG_OR_DOUBLE).serializeNulls().create()
@@ -269,7 +290,7 @@ fun Application.complianceRoutes(
                                     sessions.clear()
                                     val req = gson.fromJson(call.receive<String>(), InitRequest::class.java)
                                     val id = UUID.randomUUID().toString()
-                                    val session = Session(req.host, File(storageRoot, id).apply { mkdirs() })
+                                    val session = Session(req.host, File(storageRoot, id).apply { mkdirs() }, sessionCloseTimeoutMs)
                                     sessions[id] = session
                                     session.client =
                                         profile.create(
@@ -282,6 +303,7 @@ fun Application.complianceRoutes(
                                 }
                                 "capture" -> {
                                     val session = checkNotNull(active) { "SDK not initialized" }
+                                    session.requireActive()
                                     val before = session.observation.capturedIds()
                                     session.client.capture(gson.fromJson(call.receive<String>(), CaptureRequest::class.java))
                                     val uuid = (session.observation.capturedIds() - before).singleOrNull()
@@ -290,11 +312,13 @@ fun Application.complianceRoutes(
                                 }
                                 "get_feature_flag" -> {
                                     val session = checkNotNull(active) { "SDK not initialized" }
+                                    session.requireActive()
                                     val value = session.client.flag(gson.fromJson(call.receive<String>(), FlagRequest::class.java))
                                     mapOf("success" to true, "value" to value)
                                 }
                                 "flush" -> {
                                     val session = checkNotNull(active) { "SDK not initialized" }
+                                    session.requireActive()
                                     val before = session.observation.sentCount()
                                     session.client.flush()
                                     val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
