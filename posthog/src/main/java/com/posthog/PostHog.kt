@@ -314,8 +314,6 @@ public class PostHog private constructor(
                 isOptedOut()
                 pushSubscriptionManager?.retryPending()
 
-                // Same clock for sessionStartedAt and the $sdk_debug_current_session_duration "now".
-                PostHogSessionManager.setDateProvider(config.dateProvider)
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
@@ -753,8 +751,7 @@ public class PostHog private constructor(
             val start = PostHogSessionManager.getSessionStartedAt()
             if (start > 0) {
                 props["\$sdk_debug_session_start"] = start
-                props["\$sdk_debug_current_session_duration"] =
-                    (config?.dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()) - start
+                props["\$sdk_debug_current_session_duration"] = PostHogSessionManager.currentTimeMillis() - start
             }
             queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {

@@ -23,6 +23,8 @@ public object PostHogSessionManager {
         this.dateProvider = dateProvider
     }
 
+    internal fun currentTimeMillis(): Long = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+
     /**
      * Timestamp (in milliseconds) when the current session was started.
      * Reset to 0 when the session ends.
@@ -71,7 +73,7 @@ public object PostHogSessionManager {
         var sessionChanged = false
         synchronized(sessionLock) {
             if (isReactNative || sessionId != sessionIdNone) return@synchronized
-            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            val now = currentTimeMillis()
             sessionId = TimeBasedEpochGenerator.generate()
             sessionStartedAt = now
             sessionActivityTimestamp = now
@@ -148,7 +150,7 @@ public object PostHogSessionManager {
             if (sessionId == sessionIdNone || isReactNative) {
                 tempSessionId = if (sessionId != sessionIdNone) sessionId else null
             } else {
-                val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+                val now = currentTimeMillis()
                 if (isIdle(now) || isMaxExpired(now)) {
                     sessionChanged = true
                     tempSessionId =
@@ -178,7 +180,7 @@ public object PostHogSessionManager {
         var sessionChanged = false
         synchronized(sessionLock) {
             if (isReactNative || isAppInBackground || sessionId == sessionIdNone) return@synchronized
-            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            val now = currentTimeMillis()
             if (isIdle(now)) {
                 rotateLocked(now)
                 sessionChanged = true
@@ -197,7 +199,7 @@ public object PostHogSessionManager {
             // Re-asserting the same id (e.g. RN syncing the active id on every event) must not
             // reset the 24h max-duration or 30-min inactivity clocks — sessions would never expire.
             if (this.sessionId == sessionId) return@synchronized
-            val now = dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+            val now = currentTimeMillis()
             this.sessionId = sessionId
             sessionStartedAt = now
             sessionActivityTimestamp = now
