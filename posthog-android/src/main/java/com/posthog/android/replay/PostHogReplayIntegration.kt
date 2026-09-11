@@ -457,7 +457,7 @@ public class PostHogReplayIntegration(
 
                     executor.submit {
                         try {
-                            if (!config.sessionReplayConfig.captureTouches || !isActive()) {
+                            if (!isActive()) {
                                 return@submit
                             }
                             when (safeMotionEvent.action.and(MotionEvent.ACTION_MASK)) {

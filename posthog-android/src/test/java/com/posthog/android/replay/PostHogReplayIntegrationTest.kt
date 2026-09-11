@@ -540,56 +540,6 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `captureTouches runtime false then true suppresses only disabled touches`() {
-        val config = configWithSampling(flagActive = true, samplingPasses = true)
-        val executor = QueuedReplayExecutor(createReplayExecutor())
-        val sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler(), executor)
-        val fake = createPostHogFake()
-        sut.install(fake)
-        try {
-            sut.start(resumeCurrent = true)
-            dispatchTouch(sut)
-            executor.tasks.removeAt(0).run()
-            assertEquals(1, fake.captures)
-
-            config.sessionReplayConfig.captureTouches = false
-            dispatchTouch(sut)
-            executor.tasks.forEach { it.run() }
-            executor.tasks.clear()
-            assertEquals(1, fake.captures, "Disabled touches must not emit coordinates")
-
-            config.sessionReplayConfig.captureTouches = true
-            dispatchTouch(sut)
-            executor.tasks.removeAt(0).run()
-            assertEquals(2, fake.captures)
-            assertTrue(sut.isActive())
-        } finally {
-            sut.uninstall()
-        }
-    }
-
-    @Test
-    fun `captureTouches disabled before queued work runs drops coordinates`() {
-        val config = configWithSampling(flagActive = true, samplingPasses = true)
-        val executor = QueuedReplayExecutor(createReplayExecutor())
-        val sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler(), executor)
-        val fake = createPostHogFake()
-        sut.install(fake)
-        try {
-            sut.start(resumeCurrent = true)
-            dispatchTouch(sut)
-            dispatchTouch(sut, MotionEvent.ACTION_UP)
-            assertEquals(2, executor.tasks.size)
-            config.sessionReplayConfig.captureTouches = false
-            executor.tasks.forEach { it.run() }
-            assertEquals(0, fake.captures, "Already queued touches must be dropped when disabled")
-            assertTrue(sut.isActive())
-        } finally {
-            sut.uninstall()
-        }
-    }
-
-    @Test
     fun `onSessionIdChanged starts replay when previously inactive and sampling passes`() {
         // The prior session may have been sampled out; rotation must re-evaluate sampling and
         // start replay even though isSessionReplayActive was false.
@@ -2151,13 +2101,17 @@ internal class PostHogReplayIntegrationTest {
             .setInt(attachInfo, View.VISIBLE)
     }
 
-    private fun screenshotFixture(enableMaskAlignmentVerification: Boolean = true): Pair<RealQueueFixture, PostHogFake> {
+    private fun screenshotFixture(
+        enableMaskAlignmentVerification: Boolean = true,
+        captureTouches: Boolean = true,
+    ): Pair<RealQueueFixture, PostHogFake> {
         val fx =
             createIntegrationWithRealQueue(
                 flagActive = true,
                 hasFetched = true,
                 integrationContext = ApplicationProvider.getApplicationContext(),
             )
+        fx.config.sessionReplayConfig.captureTouches = captureTouches
         fx.config.sessionReplayConfig.screenshot = true
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
         val fake = PostHogFake()
@@ -2438,10 +2392,9 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
     fun `captureTouches disabled leaves screenshot capture active`() {
-        val (fx, fake) = screenshotFixture()
+        val (fx, fake) = screenshotFixture(captureTouches = false)
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         try {
-            fx.config.sessionReplayConfig.captureTouches = false
             shadowOf(Looper.getMainLooper()).idle()
             val window = controller.get().window
             val view = window.decorView

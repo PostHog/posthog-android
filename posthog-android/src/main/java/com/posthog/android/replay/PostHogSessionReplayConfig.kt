@@ -64,10 +64,10 @@ public class PostHogSessionReplayConfig
     ) {
         /**
          * Capture touch coordinates in session replay. Defaults to true.
-         * Can be changed at runtime without stopping screenshots or view capture.
+         * Set before SDK setup. Runtime changes are not supported.
+         * Screenshot and view capture are unaffected.
          * Disable this when touch positions could reveal sensitive input, even if the views are masked.
          */
-        @Volatile
         public var captureTouches: Boolean = true
 
         /**
