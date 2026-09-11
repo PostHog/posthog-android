@@ -125,7 +125,8 @@ public open class PostHogConfig(
      */
     public var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
     /**
-     * Maximum number of retries for failed flush attempts before events are dropped
+     * Maximum number of retries for push subscription registration failures.
+     * Durable ingestion queues retain retryable records and are bounded by their queue size.
      * Defaults to 3
      */
     public var maxRetries: Int = 3,
