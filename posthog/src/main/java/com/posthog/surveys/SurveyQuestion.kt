@@ -8,6 +8,7 @@ public open class SurveyQuestion {
     public val descriptionContentType: SurveyTextContentType? = null
     public val optional: Boolean? = null
     public val buttonText: String? = null
+    public val skipSubmitButton: Boolean? = null
     public val branching: SurveyQuestionBranching? = null
     public val translations: Map<String, SurveyQuestionTranslation>? = null
 }

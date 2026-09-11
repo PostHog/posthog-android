@@ -29,6 +29,10 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildFeatures {
         compose = true
     }
@@ -91,6 +95,10 @@ dependencies {
     // tests
     testImplementation("junit:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
+    testImplementation("androidx.test.ext:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
+    testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 project.publishingAndroidConfig()
