@@ -1,0 +1,108 @@
+package com.posthog.internal
+
+import java.util.Date
+
+/**
+ * A call the host app made before `setup()` enabled the SDK.
+ *
+ * The maps are copied here: a buffered call waits until `setup()` is reached, so a host that
+ * reuses or mutates the map it passed cannot change what is replayed.
+ */
+internal sealed class PostHogPreSetupCall {
+    class Capture(
+        val event: String,
+        val distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        val timestamp: Date,
+    ) : PostHogPreSetupCall() {
+        val properties: Map<String, Any>? = properties?.toMap()
+        val userProperties: Map<String, Any>? = userProperties?.toMap()
+        val userPropertiesSetOnce: Map<String, Any>? = userPropertiesSetOnce?.toMap()
+        val groups: Map<String, String>? = groups?.toMap()
+    }
+
+    class Screen(
+        val screenTitle: String,
+        properties: Map<String, Any>?,
+        val timestamp: Date,
+    ) : PostHogPreSetupCall() {
+        val properties: Map<String, Any>? = properties?.toMap()
+    }
+
+    class Identify(
+        val distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+    ) : PostHogPreSetupCall() {
+        val userProperties: Map<String, Any>? = userProperties?.toMap()
+        val userPropertiesSetOnce: Map<String, Any>? = userPropertiesSetOnce?.toMap()
+    }
+
+    class Register(
+        val key: String,
+        val value: Any,
+    ) : PostHogPreSetupCall()
+
+    // Reset and Unregister are buffered too, so a call that undoes an earlier buffered one is
+    // replayed with it. Dropping them would let the replay reinstate an identity or a super
+    // property the host had already asked to clear.
+    object Reset : PostHogPreSetupCall()
+
+    class Unregister(
+        val key: String,
+    ) : PostHogPreSetupCall()
+}
+
+/**
+ * Holds the `capture`, `screen`, `identify`, `register`, `reset` and `unregister` calls made before
+ * `setup()` so they can be replayed once the SDK is enabled, instead of being dropped.
+ *
+ * A host that sets the SDK up off the main thread, or from a framework runtime that reaches
+ * `setup()` late, still races app open, the first screen view and deep link attribution against
+ * init. Those events are the reason the buffer exists, so once [maxSize] is reached the buffer
+ * keeps what it already has and drops the newest call: the earliest calls of a startup are the
+ * valuable ones, and an overflow means `setup()` was never reached at all.
+ */
+internal class PostHogPreSetupBuffer(private val maxSize: Int = MAX_SIZE) {
+    private val lock = Any()
+    private val calls = ArrayDeque<PostHogPreSetupCall>()
+    private var dropped = 0
+
+    fun add(call: PostHogPreSetupCall) {
+        synchronized(lock) {
+            if (calls.size >= maxSize) {
+                dropped++
+                return
+            }
+            calls.add(call)
+        }
+    }
+
+    /**
+     * Removes and returns every buffered call, oldest first, together with the number of calls
+     * that overflowed [maxSize].
+     */
+    fun drain(): Pair<List<PostHogPreSetupCall>, Int> {
+        synchronized(lock) {
+            val drained = calls.toList()
+            val droppedCount = dropped
+            calls.clear()
+            dropped = 0
+            return drained to droppedCount
+        }
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            calls.clear()
+            dropped = 0
+        }
+    }
+
+    companion object {
+        const val MAX_SIZE: Int = 1000
+    }
+}

@@ -13,20 +13,27 @@ import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import java.util.concurrent.Executor
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAppInstallIntegrationTest {
     private val context = mock<Context>()
 
-    private fun getSut(preferences: PostHogPreferences = PostHogMemoryPreferences()): PostHogAppInstallIntegration {
+    private fun getSut(
+        preferences: PostHogPreferences = PostHogMemoryPreferences(),
+        // runs the install work on the calling thread so the assertions do not have to wait
+        executor: Executor = Executor { it.run() },
+    ): PostHogAppInstallIntegration {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 cachePreferences = preferences
             }
-        return PostHogAppInstallIntegration(context, config)
+        return PostHogAppInstallIntegration(context, config, executor)
     }
 
     @BeforeTest
@@ -97,6 +104,28 @@ internal class PostHogAppInstallIntegrationTest {
     }
 
     @Test
+    fun `work queued by install is skipped once the integration is uninstalled`() {
+        var task: Runnable? = null
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(preferences, Executor { task = it })
+
+        context.mockPackageInfo("1.0.0", 1)
+
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.uninstall()
+
+        assertNotNull(task).run()
+
+        assertEquals(0, fake.captures)
+        // the stored version is the marker that says the event was reported, so it must not be
+        // written when no event is captured
+        assertNull(preferences.getValue(VERSION))
+        assertNull(preferences.getValue(BUILD))
+    }
+
+    @Test
     fun `install defers until preferences are readable instead of firing a spurious install event`() {
         val delegate = PostHogMemoryPreferences()
         var available = false
@@ -125,5 +154,39 @@ internal class PostHogAppInstallIntegrationTest {
         assertEquals(1L, fake.properties?.get("previous_build"))
 
         sut.uninstall()
+    }
+
+    @Test
+    fun `a failure in the deferred install work does not escape the task`() {
+        // a real pool rethrows whatever escapes the Runnable, and the worker's uncaught handler
+        // ends the process, so record it here instead of letting it out
+        var taskFailure: Throwable? = null
+        val executor =
+            Executor { task ->
+                try {
+                    task.run()
+                } catch (e: Throwable) {
+                    taskFailure = e
+                }
+            }
+        // a host-settable preferences implementation that throws where the install work reads it
+        val preferences =
+            object : PostHogPreferences by PostHogMemoryPreferences() {
+                override fun getValue(
+                    key: String,
+                    defaultValue: Any?,
+                ): Any? = throw RuntimeException("preferences unavailable")
+            }
+        val sut = getSut(preferences, executor)
+
+        context.mockPackageInfo("1.0.0", 1)
+
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.uninstall()
+
+        assertNull(taskFailure)
+        assertEquals(0, fake.captures)
     }
 }

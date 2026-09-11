@@ -30,8 +30,12 @@ import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.executeSafely
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Main entry point for the Android SDK.
@@ -42,6 +46,13 @@ import java.io.File
 public class PostHogAndroid private constructor() {
     public companion object {
         private val lock = Any()
+
+        /**
+         * Runs the blocking parts of init: a PackageManager binder call and an APK asset read.
+         * Single threaded, so the work still happens in the order [setup] queued it.
+         */
+        private val initExecutor: ExecutorService =
+            Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogAndroidInitThread"))
 
         /**
          * Retained so a host can hand the SDK a launch intent after setup; see
@@ -94,6 +105,13 @@ public class PostHogAndroid private constructor() {
         /**
          * Sets up the SDK and stores it as the global singleton.
          *
+         * Safe to call from a background thread. `capture`, `identify` and `register` calls the
+         * host makes before this returns are held in memory and replayed once the SDK is enabled,
+         * so app open, the first screen view and deep link attribution are not lost to the race.
+         * The cost of setting up off the main thread is that the SDK's own Activity lifecycle
+         * callbacks register later, so an Activity created in the meantime is not observed: call
+         * [capturePushNotificationOpened] with the launch intent if you need that path.
+         *
          * @param context Android context; the application context is retained internally.
          * @param config Android SDK configuration.
          */
@@ -143,10 +161,9 @@ public class PostHogAndroid private constructor() {
             config.logger =
                 if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
 
-            val packageInfo = getPackageInfo(context, config)
-            val packageName = packageInfo?.packageName ?: ""
-            val versionName = packageInfo?.versionName ?: ""
-            val buildNumber = packageInfo?.versionCodeCompat() ?: 0L
+            // Context.getPackageName is already in memory, unlike PackageManager.getPackageInfo,
+            // which is a binder call and is resolved off the caller's thread below.
+            val packageName = context.packageName ?: ""
 
             // only frames coming from the package name will be considered inApp by default
             if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
@@ -173,10 +190,14 @@ public class PostHogAndroid private constructor() {
                 config.networkStatus = PostHogAndroidNetworkStatus(context)
             }
 
-            val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
-            val path = File(context.cacheDir, "posthog-disk-queue")
-            val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
-            val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
+            // Context.getDir creates the directory and Context.getCacheDir creates it on every
+            // call, so the legacy path is computed instead (it is only ever read, and an old
+            // install already created it) and the cache directory is resolved once.
+            val legacyPath = File(context.applicationInfo.dataDir, "app_posthog-disk-queue")
+            val cacheDir = context.cacheDir
+            val path = File(cacheDir, "posthog-disk-queue")
+            val replayPath = File(cacheDir, "posthog-disk-replay-queue")
+            val logsPath = File(cacheDir, "posthog-disk-logs-queue")
             config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
             config.storagePrefix = config.storagePrefix ?: path.absolutePath
             config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
@@ -210,9 +231,18 @@ public class PostHogAndroid private constructor() {
             // session before any UI exists is cleared rather than silently rotated.
             PostHogSessionManager.setAppInBackground(true)
 
-            val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
-            val metaPropertiesApplier = PostHogMetaPropertiesApplier()
-            metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
+            // Reads the proguard mapping id from the APK assets, falling back to the package
+            // version, which needs the PackageManager. Nothing in setup reads releaseIdentifier,
+            // only error tracking does, so both are resolved off the caller's thread. An exception
+            // captured before this lands carries no release identifier.
+            initExecutor.executeSafely {
+                val packageInfo = getPackageInfo(context, config)
+                val versionName = packageInfo?.versionName ?: ""
+                val buildNumber = packageInfo?.versionCodeCompat() ?: 0L
+                val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
+                PostHogMetaPropertiesApplier()
+                    .applyToConfig(context, config, releaseIdentifierFallback)
+            }
 
             // Wire session replay sample rate provider so the core SDK can read the local value
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
@@ -234,7 +264,7 @@ public class PostHogAndroid private constructor() {
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
-                config.addIntegration(PostHogAppInstallIntegration(context, config))
+                config.addIntegration(PostHogAppInstallIntegration(context, config, initExecutor))
             }
             config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
             if (config.surveys) {

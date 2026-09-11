@@ -22,10 +22,15 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -152,6 +157,26 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertNotNull(config.legacyStoragePrefix)
+    }
+
+    @Test
+    fun `setup does not touch the PackageManager on the calling thread`() {
+        val config = PostHogAndroidConfig(API_KEY)
+
+        val threads = Collections.synchronizedSet(mutableSetOf<Thread>())
+        val touched = CountDownLatch(1)
+        mockContextAppStart(context, tmpDir) { app ->
+            whenever(app.packageManager).thenAnswer {
+                threads.add(Thread.currentThread())
+                touched.countDown()
+                null
+            }
+        }
+
+        PostHogAndroid.setup(context, config)
+
+        assertTrue(touched.await(10, TimeUnit.SECONDS))
+        assertFalse(threads.contains(Thread.currentThread()))
     }
 
     @Test

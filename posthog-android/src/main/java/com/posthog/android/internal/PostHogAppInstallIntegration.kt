@@ -6,17 +6,23 @@ import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.BUILD
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
+import com.posthog.internal.executeSafely
+import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app installed and updated events
  * @property context the App Context
  * @property config the Config
+ * @property executor runs the PackageManager lookup and the preferences read/write, so the
+ * thread that called setup does not pay for them
  */
 internal class PostHogAppInstallIntegration(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    private val executor: Executor,
 ) : PostHogIntegration {
+    @Volatile
     private var ownsInstallation = false
 
     private companion object {
@@ -37,6 +43,25 @@ internal class PostHogAppInstallIntegration(
         }
         ownsInstallation = true
 
+        executor.executeSafely {
+            // executeSafely only guards the submission, so the task carries its own catch: this
+            // work ran inline under setup's per-integration try before, and a host-supplied
+            // preferences or logger that throws would otherwise reach the worker's uncaught
+            // handler, which on Android ends the process.
+            try {
+                // uninstall() cannot cancel a queued task, so check again here: a run after a close
+                // writes the VERSION and BUILD marker that says the event was already reported, while
+                // its own capture is dropped, hiding that install or update for good.
+                if (ownsInstallation) {
+                    captureInstallOrUpdate(postHog)
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Capturing the app install or update failed: $e.")
+            }
+        }
+    }
+
+    private fun captureInstallOrUpdate(postHog: PostHogInterface) {
         getPackageInfo(context, config)?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName

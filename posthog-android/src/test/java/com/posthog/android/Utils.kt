@@ -109,13 +109,17 @@ public fun Context.mockDisplayMetrics() {
 public fun mockContextAppStart(
     context: Context,
     tmpDir: TemporaryFolder,
+    stubApp: (Application) -> Unit = {},
 ) {
     val app = mock<Application>()
     whenever(context.applicationContext).thenReturn(app)
-    whenever(app.getDir(any(), any())).thenReturn(tmpDir.newFolder())
+    whenever(app.applicationInfo).thenReturn(
+        ApplicationInfo().apply { dataDir = tmpDir.newFolder().absolutePath },
+    )
     whenever(app.cacheDir).thenReturn(tmpDir.newFolder())
     val sharedPreferences = mock<SharedPreferences>()
     whenever(app.getSharedPreferences(any(), any())).thenReturn(sharedPreferences)
+    stubApp(app)
 }
 
 public fun mockPermission(
