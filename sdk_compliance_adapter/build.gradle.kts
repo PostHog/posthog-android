@@ -7,32 +7,23 @@ group = "com.posthog.compliance"
 version = "1.0.0"
 
 dependencies {
-    // PostHog Core SDK
-    implementation(project(":posthog"))
-
-    // Ktor server
-    val ktorVersion = "2.3.7"
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-gson:$ktorVersion")
-
-    // Logging
-    implementation("ch.qos.logback:logback-classic:1.4.14")
-
-    // OkHttp (for interceptor)
-    implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
-    implementation("com.squareup.okhttp3:okhttp")
+    implementation(project(":sdk_compliance_adapter:common"))
+    implementation(project(":posthog-server"))
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
+    testImplementation("com.squareup.okhttp3:mockwebserver:${PosthogBuildConfig.Dependencies.OKHTTP}")
+    testImplementation("com.google.code.gson:gson:${PosthogBuildConfig.Dependencies.GSON}")
 }
 
 application {
-    mainClass.set("com.posthog.compliance.ComplianceAdapterKt")
+    mainClass.set("com.posthog.compliance.MainKt")
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = PosthogBuildConfig.Build.JAVA_VERSION.toString()
-    }
+kotlin {
+    jvmToolchain(PosthogBuildConfig.Build.JDK_VERSION)
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions.postHogConfig(false)
 }
 
 java {
