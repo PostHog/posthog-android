@@ -2,6 +2,8 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
@@ -30,7 +32,9 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.collections.get
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -4725,6 +4729,166 @@ internal class PostHogTest {
         assertEquals(0, http.requestCount)
 
         sut.close()
+    }
+
+    private val stepOne = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-1"}"""
+    private val stepTwo = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-2"}"""
+    private val pushOpens = CopyOnWriteArrayList<PostHogEvent>()
+
+    private fun getPushOpenSut(optOut: Boolean = false): PostHogInterface =
+        getSut(
+            mockHttp().url("/").toString(),
+            optOut = optOut,
+            preloadFeatureFlags = false,
+            reloadFeatureFlags = false,
+            beforeSend = { event ->
+                if (event.event == "\$push_notification_opened") pushOpens.add(event)
+                null
+            },
+        )
+
+    private fun PostHogInterface.captureAutomaticPushOpen(posthog: Any?) =
+        capturePushNotificationOpened(payload = mapOf("google.message_id" to "m-1", "posthog" to posthog))
+
+    private fun PostHogInterface.captureManualPushOpen(posthog: Any?) =
+        capturePushNotificationOpened(title = "Hello", body = "World", payload = mapOf("posthog" to posthog))
+
+    @Test
+    fun `capturePushNotificationOpened skips a manual repeat of an automatically captured PostHog push`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+        assertNull(pushOpens.single().properties!!["\$notification_title"])
+        assertEquals("inv-1", pushOpens.single().properties!!["\$notification_invocation_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips an automatic repeat of a manually captured PostHog push`() {
+        val sut = getPushOpenSut()
+
+        sut.captureManualPushOpen(mapOf("workflow_id" to "wf-1", "invocation_id" to "inv-1", "action_id" to "step-1"))
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+        assertEquals("Hello", pushOpens.single().properties!!["\$notification_title"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened keys PostHog pushes by invocation and action`() {
+        val sut = getPushOpenSut()
+        val noAction = """{"workflow_id":"wf-1","invocation_id":"inv-1"}"""
+        val otherRun = """{"workflow_id":"wf-1","invocation_id":"inv-2","action_id":"step-1"}"""
+
+        listOf(stepOne, stepTwo, noAction, otherRun).forEach { sut.captureAutomaticPushOpen(it) }
+        listOf(stepOne, stepTwo, noAction, otherRun).forEach { sut.captureManualPushOpen(it) }
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(
+            listOf("inv-1" to "step-1", "inv-1" to "step-2", "inv-1" to null, "inv-2" to "step-1"),
+            pushOpens.map {
+                it.properties!!["\$notification_invocation_id"] to it.properties!!["\$notification_action_id"]
+            },
+        )
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened never dedupes a push without a posthog entry`() {
+        val sut = getPushOpenSut()
+
+        sut.capturePushNotificationOpened(payload = mapOf("google.message_id" to "m-1"))
+        sut.capturePushNotificationOpened(title = "Hello", payload = mapOf("google.message_id" to "m-1"))
+        sut.capturePushNotificationOpened()
+        sut.capturePushNotificationOpened()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(4, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened never dedupes a push with a malformed posthog entry`() {
+        val sut = getPushOpenSut()
+        val malformed =
+            listOf(
+                "{not json",
+                """{"action_id":"step-1"}""",
+                """{"invocation_id":""}""",
+                """{"invocation_id":42}""",
+                """["inv-1"]""",
+                42,
+            )
+
+        malformed.forEach {
+            sut.captureAutomaticPushOpen(it)
+            sut.captureManualPushOpen(it)
+        }
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(malformed.size * 2, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures a repeat once the dedupe window has passed`() {
+        val sut = getPushOpenSut()
+        var nanos = 0L
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun nanoTime(): Long = nanos
+            }
+
+        sut.captureAutomaticPushOpen(stepOne)
+        nanos = TimeUnit.MINUTES.toNanos(5) - 1
+        sut.captureManualPushOpen(stepOne)
+        nanos = TimeUnit.MINUTES.toNanos(5)
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf(null, "Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened does not record a push skipped while opted out`() {
+        val sut = getPushOpenSut(optOut = true)
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.optIn()
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf<Any?>("Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened is a no-op after close`() {
+        val sut = getPushOpenSut()
+        sut.close()
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, pushOpens.size)
     }
 
     @Test
