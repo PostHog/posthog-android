@@ -113,6 +113,8 @@ internal class PostHogReplayIntegrationTest {
     private val replayExecutors = mutableListOf<ExecutorService>()
 
     private class FakeQueue : PostHogQueueInterface<PostHogEvent> {
+        override val size: Int = 0
+
         override fun add(record: PostHogEvent) {
         }
 
@@ -4119,5 +4121,186 @@ internal class PostHogReplayIntegrationTest {
         assertFalse(drawState.recordScreenshotDiscard()) // 2
         assertTrue(drawState.recordScreenshotDiscard()) // 3 - threshold reached, warns once
         assertFalse(drawState.recordScreenshotDiscard(), "Past the threshold, further discards must not re-warn")
+    }
+
+    @Test
+    fun `debugProperties reports screenshot capture mode when the screenshot flag is on`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        config.sessionReplayConfig.screenshot = true
+        val sut = getSut(config)
+
+        assertEquals("screenshot", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
+    }
+
+    @Test
+    fun `debugProperties reports screenshot capture mode for the flutter host`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        config.sdkName = "posthog-flutter"
+        config.sessionReplayConfig.screenshot = false
+        val sut = getSut(config)
+
+        assertEquals("screenshot", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
+    }
+
+    @Test
+    fun `debugProperties reports wireframe capture mode otherwise`() {
+        val config = PostHogAndroidConfig(API_KEY)
+        config.sessionReplayConfig.screenshot = false
+        val sut = getSut(config)
+
+        assertEquals("wireframe", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
+        assertEquals(1000L, sut.debugProperties()["\$sdk_debug_replay_throttle_delay_ms"])
+    }
+
+    @Test
+    fun `debugProperties reports buffering with awaiting_remote_config hold reason`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            val props = fx.sut.debugProperties()
+            assertEquals("buffering", props["\$recording_status"])
+            assertEquals("awaiting_remote_config", props["\$sdk_debug_replay_flush_hold_reason"])
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `debugProperties reports buffering with below_minimum_duration hold reason`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            val props = fx.sut.debugProperties()
+            assertEquals("buffering", props["\$recording_status"])
+            assertEquals("below_minimum_duration", props["\$sdk_debug_replay_flush_hold_reason"])
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `debugProperties reports active with no hold reason once buffering clears`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = null)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            val props = fx.sut.debugProperties()
+            assertEquals("active", props["\$recording_status"])
+            assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `debugProperties reports pending trigger conditions until each trigger fires`() {
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn false
+                on { sessionReplayLinkedFlagSnapshot() } doReturn
+                    PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = false)
+                on { makeSamplingDecision(any()) } doReturn true
+                on { getEventTriggers() } doReturn setOf("checkout_started")
+                on { hasRemoteConfigFetched() } doReturn true
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                remoteConfigHolder = remoteConfig
+            }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            var props = sut.debugProperties()
+            assertEquals("trigger_pending", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+            assertEquals("trigger_pending", props["\$sdk_debug_replay_event_trigger_status"])
+            @Suppress("UNCHECKED_CAST")
+            var pending = props["\$sdk_debug_replay_pending_trigger_conditions"] as List<String>
+            assertEquals(setOf("linked_flag", "event_trigger"), pending.toSet())
+
+            sut.onEvent("checkout_started", null)
+
+            props = sut.debugProperties()
+            assertEquals("trigger_activated", props["\$sdk_debug_replay_event_trigger_status"])
+            @Suppress("UNCHECKED_CAST")
+            pending = (props["\$sdk_debug_replay_pending_trigger_conditions"] as? List<String>) ?: emptyList()
+            assertFalse(pending.contains("event_trigger"))
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    private fun assertDebugPropertiesDisabledAfter(teardown: (PostHogReplayIntegration) -> Unit) {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        sut.install(createPostHogFake())
+        sut.start(resumeCurrent = true)
+        try {
+            assertTrue(sut.isActive())
+
+            teardown(sut)
+
+            val props = sut.debugProperties()
+            assertEquals("disabled", props["\$recording_status"])
+            assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
+            assertEquals("wireframe", props["\$sdk_debug_replay_capture_mode"])
+            assertEquals(1000L, props["\$sdk_debug_replay_throttle_delay_ms"])
+            assertEquals(0, props["\$sdk_debug_replay_internal_buffer_length"])
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `debugProperties reports disabled with config keys still present after stop`() {
+        assertDebugPropertiesDisabledAfter { it.stop() }
+    }
+
+    @Test
+    fun `debugProperties reports disabled with config keys still present after uninstall`() {
+        assertDebugPropertiesDisabledAfter { it.uninstall() }
+    }
+
+    @Test
+    fun `debugProperties stays consistent under concurrent stop and uninstall`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val fake = createPostHogFake()
+        sut.install(fake)
+        sut.start(resumeCurrent = true)
+
+        val statuses = Collections.synchronizedList(mutableListOf<Any?>())
+        val stopSignal = CountDownLatch(1)
+        val done = CountDownLatch(1)
+        val reader =
+            Thread {
+                while (stopSignal.count > 0) {
+                    statuses.add(sut.debugProperties()["\$recording_status"])
+                }
+                repeat(50) { statuses.add(sut.debugProperties()["\$recording_status"]) }
+                done.countDown()
+            }
+        reader.start()
+
+        Thread.sleep(20)
+        sut.stop()
+        sut.uninstall()
+        stopSignal.countDown()
+
+        assertTrue(done.await(5, TimeUnit.SECONDS))
+        reader.join(2000)
+
+        assertTrue(statuses.isNotEmpty())
+        assertTrue(statuses.all { it == "active" || it == "buffering" || it == "disabled" })
+        assertEquals("disabled", sut.debugProperties()["\$recording_status"])
+        assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))
     }
 }

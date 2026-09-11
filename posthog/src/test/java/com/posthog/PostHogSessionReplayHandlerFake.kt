@@ -10,6 +10,8 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventName: String? = null
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
+    public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
+    public var throwOnDebugProperties: Boolean = false
 
     public fun reset() {
         stopCalled = false
@@ -34,6 +36,13 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun isActive(): Boolean {
         return isActive
+    }
+
+    override fun debugProperties(): Map<String, Any> {
+        if (throwOnDebugProperties) {
+            throw RuntimeException("debugProperties failed")
+        }
+        return debugProperties
     }
 
     override fun onEvent(

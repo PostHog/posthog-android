@@ -122,6 +122,11 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionReplayFlagActive = false
 
+    // Tracks linkedFlag presence separately: isSessionReplayFlagActive() alone can't tell "no
+    // linkedFlag" from "linkedFlag set but not matched", which $sdk_debug_replay_linked_flag_trigger_status needs.
+    @Volatile
+    private var sessionReplayLinkedFlagConfigured = false
+
     @Volatile
     private var hasSurveys = false
 
@@ -512,7 +517,10 @@ public class PostHogRemoteConfig(
             is Boolean -> {
                 // if sessionRecording is a Boolean, its always disabled
                 // so we don't enable sessionReplayFlagActive here
-                sessionReplayFlagActive = false
+                synchronized(featureFlagsLock) {
+                    sessionReplayFlagActive = false
+                    sessionReplayLinkedFlagConfigured = false
+                }
                 consoleLogRecordingEnabled = false
 
                 if (!sessionRecording) {
@@ -531,7 +539,13 @@ public class PostHogRemoteConfig(
                     config.snapshotEndpoint = it["endpoint"] as? String
                         ?: config.snapshotEndpoint
 
-                    sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                    // Both fields under featureFlagsLock so sessionReplayLinkedFlagSnapshot() never
+                    // observes a torn pair. The /flags re-arm path already holds it (reentrant); the
+                    // /config path holds only remoteConfigLock, so this is load-bearing there.
+                    synchronized(featureFlagsLock) {
+                        sessionReplayLinkedFlagConfigured = it["linkedFlag"] != null
+                        sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                    }
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
 
@@ -1106,6 +1120,7 @@ public class PostHogRemoteConfig(
                 val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
 
                 if (sessionRecording != null) {
+                    sessionReplayLinkedFlagConfigured = sessionRecording["linkedFlag"] != null
                     sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
@@ -1318,6 +1333,21 @@ public class PostHogRemoteConfig(
     }
 
     public fun isSessionReplayFlagActive(): Boolean = sessionReplayFlagActive
+
+    /**
+     * Whether the session recording config has a `linkedFlag` entry ([configured]) and whether it
+     * currently matches ([activated]), read together under one lock so a caller never observes one
+     * field from an older config generation than the other.
+     */
+    public data class SessionReplayLinkedFlagSnapshot(val configured: Boolean, val activated: Boolean)
+
+    public fun sessionReplayLinkedFlagSnapshot(): SessionReplayLinkedFlagSnapshot =
+        synchronized(featureFlagsLock) {
+            SessionReplayLinkedFlagSnapshot(
+                configured = sessionReplayLinkedFlagConfigured,
+                activated = sessionReplayFlagActive,
+            )
+        }
 
     /**
      * Whether the live remote config has been resolved (via /config or /flags) since setup or the
@@ -1648,6 +1678,7 @@ public class PostHogRemoteConfig(
     override fun clear() {
         synchronized(featureFlagsLock) {
             sessionReplayFlagActive = false
+            sessionReplayLinkedFlagConfigured = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
             // Bootstrap is first-session only: drop the retained base layer and the "loaded from

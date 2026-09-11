@@ -47,6 +47,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
+private const val MAX_DEBUG_ERROR_LENGTH = 500
 
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
@@ -313,6 +314,8 @@ public class PostHog private constructor(
                 isOptedOut()
                 pushSubscriptionManager?.retryPending()
 
+                // Same clock for sessionStartedAt and the $sdk_debug_current_session_duration "now".
+                PostHogSessionManager.setDateProvider(config.dateProvider)
                 PostHogSessionManager.setOnSessionIdChangedListener {
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
@@ -725,6 +728,13 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
+        // After the caller merge so SDK-computed debug values win, matching posthog-js's
+        // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
+        // never precedes a rotation triggered by getActiveSessionId() above.
+        if (appendSharedProps) {
+            props.putAll(sdkDebugProperties())
+        }
+
         // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
@@ -733,6 +743,23 @@ public class PostHog private constructor(
             props["distinct_id"] = distinctId
         }
 
+        return props
+    }
+
+    private fun sdkDebugProperties(): Map<String, Any> {
+        val props = mutableMapOf<String, Any>()
+        try {
+            props.putAll(sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled"))
+            val start = PostHogSessionManager.getSessionStartedAt()
+            if (start > 0) {
+                props["\$sdk_debug_session_start"] = start
+                props["\$sdk_debug_current_session_duration"] =
+                    (config?.dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()) - start
+            }
+            queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+        } catch (e: Throwable) {
+            props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
+        }
         return props
     }
 

@@ -96,7 +96,7 @@ public object PostHogSessionManager {
 
     /**
      * Returns the timestamp (in milliseconds) when the current session was started,
-     * or 0 if no session is active. Test-only.
+     * or 0 if no session is active.
      */
     internal fun getSessionStartedAt(): Long {
         synchronized(sessionLock) {

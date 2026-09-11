@@ -590,6 +590,7 @@ internal class PostHogTest {
                 "\$lib_version",
             )
         assertEquals(expectedKeys, theEvent.properties!!.keys)
+        assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
 
         assertEquals("IAmInactive", theEvent.properties!!["\$feature_flag"])
         assertEquals(false, theEvent.properties!!["\$feature_flag_response"])
@@ -642,6 +643,7 @@ internal class PostHogTest {
         assertEquals(true, theEvent.properties!!["\$feature_flag_has_experiment"])
         assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
         assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
+        assertEquals("disabled", theEvent.properties!!["\$recording_status"])
 
         sut.close()
     }
@@ -2634,6 +2636,207 @@ internal class PostHogTest {
         assertEquals(currentSessionId, sut.getSessionId())
         assertTrue(integration.startCalled)
         assertTrue(integration.resumeCurrent == true)
+    }
+
+    @Test
+    fun `custom event carries debug properties from the replay handler`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(false).apply {
+                debugProperties =
+                    mapOf(
+                        "\$recording_status" to "disabled",
+                        "\$sdk_debug_replay_capture_mode" to "wireframe",
+                        "\$sdk_debug_replay_throttle_delay_ms" to 1000,
+                    )
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+
+        sut.capture(EVENT)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("disabled", theEvent.properties!!["\$recording_status"])
+        assertEquals("wireframe", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
+        assertEquals(1000, theEvent.properties!!["\$sdk_debug_replay_throttle_delay_ms"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `exception event carries debug properties from the replay handler`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(false).apply {
+                debugProperties =
+                    mapOf(
+                        "\$recording_status" to "disabled",
+                        "\$sdk_debug_replay_capture_mode" to "wireframe",
+                        "\$sdk_debug_replay_throttle_delay_ms" to 1000,
+                    )
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+
+        sut.captureException(RuntimeException("boom"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$exception", theEvent.event)
+        assertEquals("disabled", theEvent.properties!!["\$recording_status"])
+        assertEquals("wireframe", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
+        assertEquals(1000, theEvent.properties!!["\$sdk_debug_replay_throttle_delay_ms"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `captured event reports disabled recording status when no replay integration is installed`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capture(EVENT)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("disabled", theEvent.properties!!["\$recording_status"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_replay_capture_mode"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `captured event carries an active recording status verbatim from the replay handler`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(true).apply {
+                debugProperties =
+                    mapOf(
+                        "\$recording_status" to "active",
+                        "\$sdk_debug_replay_capture_mode" to "screenshot",
+                    )
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+
+        sut.capture(EVENT)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("active", theEvent.properties!!["\$recording_status"])
+        assertEquals("screenshot", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `debug properties win over caller and registered properties of the same name`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(true).apply {
+                debugProperties = mapOf("\$recording_status" to "active")
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        sut.register("\$recording_status", "registered")
+
+        sut.capture(EVENT, properties = mapOf("\$recording_status" to "caller", "\$sdk_debug_pending_queue_size" to -1))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("active", theEvent.properties!!["\$recording_status"])
+        assertNotEquals(-1, (theEvent.properties!!["\$sdk_debug_pending_queue_size"] as Number).toInt())
+
+        sut.close()
+    }
+
+    @Test
+    fun `snapshot event carries none of the debug properties`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(true)
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+
+        sut.capture(
+            "\$snapshot",
+            DISTINCT_ID,
+            props,
+        )
+
+        replayQueueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<List<PostHogEvent>>(content.reader())
+
+        val theEvent = batch.first()
+        assertEquals("\$snapshot", theEvent.event)
+        assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_session_start"))
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_current_session_duration"))
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `event is still captured and error key is set when debugProperties throws`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(true).apply {
+                throwOnDebugProperties = true
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+
+        sut.capture(EVENT)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals(EVENT, theEvent.event)
+        assertNotNull(theEvent.properties!!["\$sdk_debug_error_capturing_properties"])
+        assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
+
+        sut.close()
     }
 
     @Test
