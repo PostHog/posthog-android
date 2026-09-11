@@ -25,7 +25,9 @@ public interface PostHogFlagDefinitionCacheProvider {
      * Return cached flag definitions, or null when the cache is empty or unavailable.
      *
      * The data should use the shared local-evaluation definitions shape returned by PostHog's
-     * `/flags/definitions` endpoint: `flags`, `group_type_mapping`, and `cohorts`.
+     * `/flags/definitions` endpoint: `flags`, `group_type_mapping`, `cohorts`, and
+     * `property_matching_version`. Preserve the matching version with the definitions;
+     * older entries without it use legacy property matching.
      */
     public fun getFlagDefinitions(): CompletionStage<Map<String, Any?>?>
 

@@ -26,6 +26,60 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testVersionedExactAndIsNotMatching() {
+        data class Row(val filter: Any?, val value: Any?, val legacy: Boolean, val explicit: Boolean)
+
+        val rows =
+            listOf(
+                Row(false, "banana", true, false),
+                Row(false, 0, true, false),
+                Row(listOf("true", "false"), "true", false, true),
+                Row(listOf("true", "false"), "pro", true, false),
+                Row(emptyList<Any>(), true, true, true),
+                Row(emptyList<Any>(), emptyList<Any>(), true, true),
+                Row(true, listOf(true), true, false),
+                Row(false, "FALSE", true, true),
+                Row(false, null, true, false),
+                Row(false, "", true, false),
+                Row(emptyList<Any>(), listOf(true, listOf("TRUE", emptyList<Any>())), true, true),
+                Row(emptyList<Any>(), false, false, false),
+                Row(emptyList<Any>(), 1, false, false),
+                Row(emptyList<Any>(), "banana", false, false),
+                Row(emptyList<Any>(), null, false, false),
+                Row(listOf(true, "x"), "TRUE", true, true),
+                Row(listOf("FREE", "PRO"), "pro", true, true),
+                Row(listOf(null, "x"), null, true, true),
+                Row(listOf(listOf(true)), true, true, false),
+                Row("İ", "i\u0307", true, true),
+            )
+        for (version in listOf(null, 1, 2, 3)) {
+            val matcher = FlagEvaluator(config, version)
+            for (row in rows) {
+                for (operator in listOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)) {
+                    val expected = if (version == 2) row.explicit else row.legacy
+                    val property = FlagProperty("value", row.filter, operator, PropertyType.PERSON, false, null)
+                    assertEquals(
+                        "version=$version operator=$operator row=$row",
+                        if (operator == PropertyOperator.EXACT) expected else !expected,
+                        matcher.matchProperty(property, mapOf("value" to row.value)),
+                    )
+                    kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                        matcher.matchProperty(property, emptyMap())
+                    }
+                }
+            }
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                matcher.matchProperty(
+                    FlagProperty("value", "1.5", PropertyOperator.EXACT, PropertyType.PERSON, false, null),
+                    mapOf("value" to 1.5),
+                )
+            }
+        }
+        // Existing callers that do not select a version retain service legacy behavior.
+        assertTrue(evaluator.matchProperty(FlagProperty("value", false, null, null, null, null), mapOf("value" to "banana")))
+    }
+
+    @Test
     internal fun testHashConsistency() {
         // Test that hash function returns consistent values for same inputs
         val hash1 = evaluator.getMatchingVariant(createSimpleFlag(), "user-123")
