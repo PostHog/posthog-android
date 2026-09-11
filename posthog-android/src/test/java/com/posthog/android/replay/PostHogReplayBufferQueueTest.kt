@@ -113,7 +113,7 @@ internal class PostHogReplayBufferQueueTest {
         config: PostHogConfig = PostHogConfig(API_KEY),
     ): PostHogReplayBufferQueue {
         val dir = bufferDir ?: File(tmpDir.newFolder(), "buffer")
-        return PostHogReplayBufferQueue(config, dir)
+        return PostHogReplayBufferQueue(config, dir).apply { clear() }
     }
 
     private fun createExecutor(): ExecutorService {
@@ -199,7 +199,7 @@ internal class PostHogReplayBufferQueueTest {
     }
 
     @Test
-    fun `init clears leftover buffer from previous session`() {
+    fun `clear initializes directory and removes leftover buffer from previous session`() {
         val bufferDir = File(tmpDir.newFolder(), "buffer")
         bufferDir.mkdirs()
 
