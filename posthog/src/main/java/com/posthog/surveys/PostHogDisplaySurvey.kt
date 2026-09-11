@@ -12,6 +12,7 @@ import java.util.Date
  * @property appearance The appearance configuration for the survey
  * @property startDate Optional date indicating when the survey should start being shown
  * @property endDate Optional date indicating when the survey should stop being shown
+ * @property initialQuestionIndex The question to show when restoring unfinished progress; zero for a new survey.
  */
 public data class PostHogDisplaySurvey(
     val id: String,
@@ -20,7 +21,38 @@ public data class PostHogDisplaySurvey(
     val appearance: PostHogDisplaySurveyAppearance? = null,
     val startDate: Date? = null,
     val endDate: Date? = null,
+    val initialQuestionIndex: Int = 0,
 ) {
+    // Preserve constructor and copy signatures used by already-compiled SDK consumers.
+    public constructor(
+        id: String,
+        name: String,
+        questions: List<PostHogDisplaySurveyQuestion>,
+        appearance: PostHogDisplaySurveyAppearance? = null,
+        startDate: Date? = null,
+        endDate: Date? = null,
+    ) : this(id, name, questions, appearance, startDate, endDate, 0)
+
+    public fun copy(
+        id: String = this.id,
+        name: String = this.name,
+        questions: List<PostHogDisplaySurveyQuestion> = this.questions,
+        appearance: PostHogDisplaySurveyAppearance? = this.appearance,
+        startDate: Date? = this.startDate,
+        endDate: Date? = this.endDate,
+    ): PostHogDisplaySurvey = PostHogDisplaySurvey(id, name, questions, appearance, startDate, endDate, initialQuestionIndex)
+
+    // Kotlin's generated hashCode uses Integer.hashCode(int), unavailable on Android API 23.
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + name.hashCode()
+        result = 31 * result + questions.hashCode()
+        result = 31 * result + (appearance?.hashCode() ?: 0)
+        result = 31 * result + (startDate?.hashCode() ?: 0)
+        result = 31 * result + (endDate?.hashCode() ?: 0)
+        return 31 * result + initialQuestionIndex
+    }
+
     public companion object {
         /**
          * Creates a PostHogDisplaySurvey from a Survey object.

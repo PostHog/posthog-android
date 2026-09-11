@@ -93,7 +93,7 @@ internal fun SurveySheet(
             confirmValueChange = { it != SheetValue.Hidden },
         )
 
-    var currentQuestionIndex by rememberSaveable { mutableStateOf(0) }
+    var currentQuestionIndex by rememberSaveable(survey.id) { mutableStateOf(survey.initialQuestionIndex) }
     var showingConfirmation by rememberSaveable { mutableStateOf(false) }
     // Advancing past the intro is a pure UI transition: no response is recorded and no
     // survey event is sent. The X button keeps dismissing the whole survey as usual.
@@ -101,7 +101,7 @@ internal fun SurveySheet(
     // of drawing an empty sheet with a lone button (resolve() normalizes blank copy to null).
     var showingIntroScreen by rememberSaveable {
         mutableStateOf(
-            appearance.displayIntroScreen &&
+            survey.initialQuestionIndex == 0 && appearance.displayIntroScreen &&
                 (appearance.introScreenHeader != null || appearance.introScreenDescription != null),
         )
     }

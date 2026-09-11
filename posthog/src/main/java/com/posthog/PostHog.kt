@@ -40,6 +40,7 @@ import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
+import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -340,8 +341,7 @@ public class PostHog private constructor(
                             surveysHandler = it
                             // Immediately push any cached surveys from remote config
                             try {
-                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                                it.onSurveysLoaded(surveys)
+                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
                             } catch (e: Throwable) {
                                 config.logger.log("Pushing cached surveys to integration failed: $e.")
                             }
@@ -1946,7 +1946,22 @@ public class PostHog private constructor(
         if (config?.reuseAnonymousId == true) {
             except.add(ANONYMOUS_ID)
         }
-        getPreferences().clear(except = except.toList())
+        val surveysConfig = config?.surveysConfig
+        if (surveysConfig != null) {
+            val resetNotification =
+                synchronized(surveysConfig) {
+                    surveysConfig.reset()
+                    getPreferences().clear(except = except.toList())
+                    (surveysConfig.surveysDelegate as? PostHogSurveysResetAwareDelegate) to surveysConfig.resetGeneration
+                }
+            try {
+                resetNotification.first?.onSurveyReset(resetNotification.second, surveysConfig)
+            } catch (error: Throwable) {
+                config?.logger?.log("Resetting survey presentation failed: $error")
+            }
+        } else {
+            getPreferences().clear(except = except.toList())
+        }
         remoteConfig?.clear()
         featureFlagsCalled.clear()
         lastScreenName = null

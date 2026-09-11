@@ -25,7 +25,7 @@ internal class ActivityProvider : Application.ActivityLifecycleCallbacks {
 
     /**
      * Invoked on the main thread when an activity resumes, so a survey dropped
-     * for a configuration change can be re-presented on the recreated activity.
+     * during host teardown can be re-presented on the next foreground activity.
      */
     var onActivityResumedListener: ((Activity) -> Unit)? = null
 
