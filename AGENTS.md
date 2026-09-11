@@ -51,6 +51,8 @@ Always use Makefile targets when possible:
 
 ## PR process
 
+Before adding or changing public API, follow "Public API changes" in [CONTRIBUTING.md](./CONTRIBUTING.md): the API shape must be agreed on the issue first. For SDK design guidance, read https://posthog.com/handbook/engineering/sdks/guidelines.md.
+
 Before opening a PR, create a changeset entry for the affected packages:
 
 ```bash
