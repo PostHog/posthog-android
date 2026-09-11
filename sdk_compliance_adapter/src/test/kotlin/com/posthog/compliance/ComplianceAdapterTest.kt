@@ -117,6 +117,7 @@ class ComplianceAdapterTest {
                     }
                 }
             }
+
         fun assertRetiredActionsRejected() {
             for ((name, body) in listOf(
                 "capture" to """{"distinct_id":"user","event":"retired"}""",
