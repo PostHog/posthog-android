@@ -3,9 +3,11 @@ package com.posthog.internal
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonIOException
+import com.google.gson.JsonSerializer
 import com.google.gson.JsonSyntaxException
 import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
+import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
 import com.posthog.internal.replay.GsonRREventTypeSerializer
 import com.posthog.internal.replay.GsonRRIncrementalSourceSerializer
@@ -81,6 +83,26 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             registerTypeAdapter(PropertyValue::class.java, GsonPropertyValueAdapter())
             registerTypeAdapter(PropertyOperator::class.java, GsonPropertyOperatorAdapter())
             registerTypeAdapter(PropertyType::class.java, GsonPropertyTypeAdapter())
+
+            // Only event encoding opts into null array slots; log storage and flag caches
+            // keep the general map adapter's existing behavior. Build before registering
+            // the event adapter so its reflected event encoding cannot recurse into itself.
+            val eventMapSerializer = GsonSafeMapSerializer(config, preserveNullArrayElements = true)
+            val eventGson =
+                create().newBuilder()
+                    .registerTypeAdapter(
+                        object : TypeToken<Map<String, Any?>>() {}.type,
+                        eventMapSerializer,
+                    )
+                    .registerTypeAdapter(
+                        object : TypeToken<MutableMap<String, Any?>>() {}.type,
+                        eventMapSerializer,
+                    )
+                    .create()
+            registerTypeAdapter(
+                PostHogEvent::class.java,
+                JsonSerializer<PostHogEvent> { event, _, _ -> eventGson.toJsonTree(event) },
+            )
         }.create()
 
     @Throws(JsonIOException::class, IOException::class)
