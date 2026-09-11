@@ -7,6 +7,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 internal class PostHogSessionReplayConfigTest {
+    @Test
+    fun `captureTouches defaults to true and can change at runtime`() {
+        val config = PostHogSessionReplayConfig()
+        assertEquals(true, config.captureTouches)
+        config.captureTouches = false
+        assertEquals(false, config.captureTouches)
+        config.captureTouches = true
+        assertEquals(true, config.captureTouches)
+    }
+
     @RunWith(Parameterized::class)
     class ScreenshotScaleTest(private val input: Float, private val expected: Float) {
         companion object {

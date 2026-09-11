@@ -63,6 +63,14 @@ public class PostHogSessionReplayConfig
         public var sampleRate: Double? = null,
     ) {
         /**
+         * Capture touch coordinates in session replay. Defaults to true.
+         * Can be changed at runtime without stopping screenshots or view capture.
+         * Disable this when touch positions could reveal sensitive input, even if the views are masked.
+         */
+        @Volatile
+        public var captureTouches: Boolean = true
+
+        /**
          * Verifies mask alignment for session replay screenshots.
          * This can preserve screenshots during pixel-only redraws, including continuously animated
          * content, but performs additional view hierarchy walks while a screenshot is captured.
