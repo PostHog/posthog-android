@@ -28,8 +28,11 @@ import com.posthog.internal.PostHogQueue
  *   still needs the app to forward `onNewToken` to `registerPushNotificationToken(...)`. Default: `true`.
  * @property capturePushNotificationOpened Whether to auto-capture `$push_notification_opened` for
  *   cold-start taps on a tray notification (detected via the launch intent's `google.message_id`
- *   extra). Foreground data messages and warm-start `onNewIntent` are not observable here — forward
- *   those to `capturePushNotificationOpened(...)` manually. Default: `true`.
+ *   extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here —
+ *   forward that intent to [PostHogAndroid.capturePushNotificationOpened], which is deduped against
+ *   this path. Foreground data messages and push delivered outside FCM need
+ *   [PostHog.capturePushNotificationOpened], which is not. Also gates
+ *   [PostHogAndroid.capturePushNotificationOpened]. Default: `true`.
  */
 public open class PostHogAndroidConfig
     @JvmOverloads

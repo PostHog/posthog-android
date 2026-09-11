@@ -16,6 +16,7 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
@@ -2388,6 +2389,24 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `reset preserves the push dedupe id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        preferences.setValue(PUSH_OPENED_MESSAGE_IDS, "0:1700000000%abcdef")
+
+        sut.reset()
+
+        // Device state, not user data: clearing it would let a process-death restore be counted as a
+        // second tap of the same notification.
+        assertEquals("0:1700000000%abcdef", preferences.getValue(PUSH_OPENED_MESSAGE_IDS))
+
+        sut.close()
+    }
+
+    @Test
     fun `reset session id when reset is called`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -2751,6 +2770,17 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
 
         sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        assertTrue(integration.stopCalled)
+    }
+
+    @Test
+    fun `stopSessionReplay forwards stop when replay is inactive`() {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, integration = integration)
+
         sut.stopSessionReplay()
 
         assertTrue(integration.stopCalled)

@@ -1,5 +1,35 @@
 ## Next
 
+## 3.63.1
+
+### Patch Changes
+
+- 231caaf: Discard replay snapshots that cross a recording stop or session change, preserving the next session's initial keyframe and the captured frame's session identity.
+
+## 3.63.0
+
+### Minor Changes
+
+- 80a5370: Add experimental `sessionReplayConfig.screenshotScale`, `screenshotCompressionQuality`, and `screenshotColorMode` options. Scale is clamped to 0.1–1.0 and WebP quality to 0–100; defaults remain full resolution, quality 30, and ARGB_8888. RGB_565 can reduce bitmap memory at the cost of color precision and alpha. Screenshot destinations are reused when available, and idle destinations are released when recording stops; pending PixelCopy destinations are never reused before completion.
+
+## 3.62.0
+
+### Minor Changes
+
+- 5e3267b: Add `PostHogAndroid.capturePushNotificationOpened(intent)` to capture `$push_notification_opened` for a launch intent the SDK was installed too late to read. In the published test fixtures, `PostHogFake.optOut()` and `optIn()` now change what `isOptOut()` returns, where they were previously no-ops.
+
+## 3.61.3
+
+### Patch Changes
+
+- 0e6d7a4: Fix: a session recording started by an event trigger now checks the same gates as every other start path. A matching event used to start recording even when `PostHogConfig.sessionReplay` was false, the project flag was off, or sampling excluded the session, so an app that gates replay behind its own feature flag recorded the users the flag excluded. A manual start can still wait for a matching event, and `PostHog.stopSessionReplay` cancels that pending request.
+
+## 3.61.2
+
+### Patch Changes
+
+- 456f790: Skip redundant session replay captures while a window has a queued capture or unfinished PixelCopy callback.
+
 ## 3.61.1
 
 ### Patch Changes

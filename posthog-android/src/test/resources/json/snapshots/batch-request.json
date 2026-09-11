@@ -169,7 +169,10 @@
           "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
           "$feature_flag": "snapshot-flag",
           "$feature_flag_response": "snapshot-variant",
-          "$feature_flag_request_id": "flag-request-123"
+          "$feature_flag_request_id": "flag-request-123",
+          "$feature_flag_id": 123,
+          "$feature_flag_version": 7,
+          "$feature_flag_reason": ""
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"
