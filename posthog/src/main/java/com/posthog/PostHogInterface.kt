@@ -458,6 +458,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * first capture is skipped, whether that first capture came from this method or from the SDK's
      * automatic capture. Payloads without a `posthog.invocation_id` are always captured.
      *
+     * A rerun of that workflow, or a loop back to its push step, sends the pair again as a new
+     * notification, and its open counts separately: a payload whose `google.message_id` differs from the
+     * one captured first is captured. Forward the tapped intent's extras (which carry that id) to keep
+     * those apart — a payload without one, such as an FCM foreground `message.data`, is treated as a
+     * repeat report of the tap already captured.
+     *
      * @param title the notification title, attached as `$notification_title` when non-empty
      * @param body the notification body, attached as `$notification_body` when non-empty
      * @param payload the notification data payload; its `posthog` entry is spread into `$notification_*` props

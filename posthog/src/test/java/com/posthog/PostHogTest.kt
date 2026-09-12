@@ -4750,8 +4750,10 @@ internal class PostHogTest {
             },
         )
 
-    private fun PostHogInterface.captureAutomaticPushOpen(posthog: Any?) =
-        capturePushNotificationOpened(payload = mapOf("google.message_id" to "m-1", "posthog" to posthog))
+    private fun PostHogInterface.captureAutomaticPushOpen(
+        posthog: Any?,
+        messageId: String = "m-1",
+    ) = capturePushNotificationOpened(payload = mapOf("google.message_id" to messageId, "posthog" to posthog))
 
     private fun PostHogInterface.captureManualPushOpen(posthog: Any?) =
         capturePushNotificationOpened(title = "Hello", body = "World", payload = mapOf("posthog" to posthog))
@@ -4782,6 +4784,46 @@ internal class PostHogTest {
 
         assertEquals(1, pushOpens.size)
         assertEquals("Hello", pushOpens.single().properties!!["\$notification_title"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures a resend of the same workflow step`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-2")
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(2, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips a repeat report of the same delivery`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips a resend when the first capture carried no delivery id`() {
+        val sut = getPushOpenSut()
+
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-2")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
 
         sut.close()
     }

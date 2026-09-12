@@ -57,6 +57,12 @@ private const val PUSH_OPEN_DEDUPE_WINDOW_MILLIS = 5 * 60 * 1000L
 // Only needs the opens of the last few minutes; the cap bounds memory for hosts that call this in bulk.
 private const val MAX_RECENT_PUSH_OPENS = 20
 
+// FCM stamps every message it delivers with its own id and puts it on the launch intent, so a payload
+// built from that intent's extras identifies the delivery, not just the workflow step. `RemoteMessage.getData()`
+// strips the `google.` prefix keys, so a foreground data message relayed by the host carries none — which is
+// exactly the repeat this dedupe exists for.
+private const val PUSH_DELIVERY_ID_KEY = "google.message_id"
+
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
@@ -126,8 +132,13 @@ public class PostHog private constructor(
     private var logsRateCapWindowStartMillis: Long = 0
     private var logsRateCapWindowCount: Int = 0
 
-    // Captured PostHog push opens, by `invocation_id/action_id`, to the dateProvider millis of capture.
-    private val recentPushOpens = LinkedHashMap<String, Long>()
+    // Captured PostHog push opens, by `invocation_id/action_id`, to when they were captured.
+    private val recentPushOpens = LinkedHashMap<String, RecentPushOpen>()
+
+    private class RecentPushOpen(
+        val capturedAt: Long,
+        val deliveryId: String?,
+    )
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -2125,7 +2136,7 @@ public class PostHog private constructor(
         }
 
         val posthogPayload = payload?.get("posthog")?.let { posthogPayloadMap(it) }
-        if (!recordPushOpen(posthogPayload)) {
+        if (!recordPushOpen(posthogPayload, payload?.get(PUSH_DELIVERY_ID_KEY) as? String)) {
             return
         }
 
@@ -2141,7 +2152,10 @@ public class PostHog private constructor(
         capture(PUSH_NOTIFICATION_OPENED_EVENT, properties = props)
     }
 
-    private fun recordPushOpen(posthogPayload: Map<String, Any?>?): Boolean {
+    private fun recordPushOpen(
+        posthogPayload: Map<String, Any?>?,
+        deliveryId: String?,
+    ): Boolean {
         val invocationId = posthogPayload?.get("invocation_id") as? String
         if (posthogPayload == null || invocationId.isNullOrEmpty()) {
             return true
@@ -2151,20 +2165,33 @@ public class PostHog private constructor(
         val now = config?.dateProvider?.currentTimeMillis() ?: return true
 
         synchronized(recentPushOpens) {
-            val capturedAt = recentPushOpens[key]
+            val previous = recentPushOpens[key]
             // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
-            if (capturedAt != null && now - capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS) {
+            val insideWindow = previous != null && now - previous.capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS
+            if (insideWindow && !isNewDelivery(previous?.deliveryId, deliveryId)) {
                 config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
                 return false
             }
             recentPushOpens.remove(key)
-            recentPushOpens[key] = now
+            recentPushOpens[key] = RecentPushOpen(now, deliveryId)
             if (recentPushOpens.size > MAX_RECENT_PUSH_OPENS) {
                 recentPushOpens.remove(recentPushOpens.keys.first())
             }
             return true
         }
     }
+
+    /**
+     * Whether this report is a second notification rather than a second report of one tap. A rerun of a
+     * workflow, or a loop back to its push step, re-sends the same `invocation_id`/`action_id` pair, and
+     * only the delivery id tells that apart from the manual repeat the dedupe exists for — so the two
+     * ids have to disagree, not merely be absent. A report without one, or a first capture that had
+     * none, stays deduped.
+     */
+    private fun isNewDelivery(
+        previous: String?,
+        reported: String?,
+    ): Boolean = previous != null && reported != null && previous != reported
 
     /**
      * Coerces the `posthog` entry of a push payload into a map. FCM data maps are string→string,
