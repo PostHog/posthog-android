@@ -31,7 +31,7 @@ import com.posthog.internal.PostHogQueue
  *   extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here —
  *   forward that intent to [PostHogAndroid.capturePushNotificationOpened], which is deduped against
  *   this path. Foreground data messages and push delivered outside FCM need
- *   [PostHog.capturePushNotificationOpened], which is not. Also gates
+ *   [PostHog.capturePushNotificationOpened], which dedupes only notifications sent by PostHog. Also gates
  *   [PostHogAndroid.capturePushNotificationOpened]. Default: `true`.
  */
 public open class PostHogAndroidConfig
