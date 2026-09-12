@@ -49,9 +49,8 @@ import java.util.concurrent.Executors
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 
 // A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
-// after a cold start while the host's JS/Dart handlers register. The window stays finite because a
-// workflow that loops back to a push step re-sends the same `invocation_id`/`action_id` pair as a new
-// notification, and that later open must still count.
+// after a cold start while the host's JS/Dart handlers register. Finite so that a re-send carrying no
+// delivery id to tell it apart still counts once the window has passed.
 private const val PUSH_OPEN_DEDUPE_WINDOW_MILLIS = 5 * 60 * 1000L
 
 // Only needs the opens of the last few minutes; the cap bounds memory for hosts that call this in bulk.
@@ -132,7 +131,8 @@ public class PostHog private constructor(
     private var logsRateCapWindowStartMillis: Long = 0
     private var logsRateCapWindowCount: Int = 0
 
-    // Captured PostHog push opens, by `invocation_id/action_id`, to when they were captured.
+    // Recently captured PostHog push opens, keyed by `invocation_id/action_id`, oldest first. In memory
+    // only: both reports of one tap happen in the same launch.
     private val recentPushOpens = LinkedHashMap<String, RecentPushOpen>()
 
     private class RecentPushOpen(
@@ -2157,22 +2157,28 @@ public class PostHog private constructor(
         deliveryId: String?,
     ): Boolean {
         val invocationId = posthogPayload?.get("invocation_id") as? String
-        if (posthogPayload == null || invocationId.isNullOrEmpty()) {
+        if (invocationId.isNullOrEmpty()) {
             return true
         }
         // Every step of one workflow run shares the run's invocation_id, so action_id tells the steps apart.
-        val key = "$invocationId/${posthogPayload["action_id"] as? String ?: ""}"
+        val key = "$invocationId/${posthogPayload?.get("action_id") as? String ?: ""}"
         val now = config?.dateProvider?.currentTimeMillis() ?: return true
 
         synchronized(recentPushOpens) {
             val previous = recentPushOpens[key]
-            // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
-            val insideWindow = previous != null && now - previous.capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS
-            if (insideWindow && !isNewDelivery(previous?.deliveryId, deliveryId)) {
-                config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
-                return false
+            if (previous != null) {
+                // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
+                val insideWindow = now - previous.capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS
+                // A re-send of the same workflow step reuses the key, so only delivery ids that are present
+                // on both reports and disagree prove a second notification rather than a second report of
+                // one tap.
+                val resent = previous.deliveryId != null && deliveryId != null && previous.deliveryId != deliveryId
+                if (insideWindow && !resent) {
+                    config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
+                    return false
+                }
+                recentPushOpens.remove(key)
             }
-            recentPushOpens.remove(key)
             recentPushOpens[key] = RecentPushOpen(now, deliveryId)
             if (recentPushOpens.size > MAX_RECENT_PUSH_OPENS) {
                 recentPushOpens.remove(recentPushOpens.keys.first())
@@ -2180,18 +2186,6 @@ public class PostHog private constructor(
             return true
         }
     }
-
-    /**
-     * Whether this report is a second notification rather than a second report of one tap. A rerun of a
-     * workflow, or a loop back to its push step, re-sends the same `invocation_id`/`action_id` pair, and
-     * only the delivery id tells that apart from the manual repeat the dedupe exists for — so the two
-     * ids have to disagree, not merely be absent. A report without one, or a first capture that had
-     * none, stays deduped.
-     */
-    private fun isNewDelivery(
-        previous: String?,
-        reported: String?,
-    ): Boolean = previous != null && reported != null && previous != reported
 
     /**
      * Coerces the `posthog` entry of a push payload into a map. FCM data maps are string→string,
