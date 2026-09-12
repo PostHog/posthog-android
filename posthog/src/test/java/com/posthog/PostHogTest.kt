@@ -4868,6 +4868,42 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `capturePushNotificationOpened captures a repeat once the wall clock has moved backwards`() {
+        val sut = getPushOpenSut()
+        var millis = TimeUnit.MINUTES.toMillis(5)
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun currentTimeMillis(): Long = millis
+            }
+
+        sut.captureAutomaticPushOpen(stepOne)
+        millis -= TimeUnit.SECONDS.toMillis(60)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf(null, "Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened evicts the oldest open at the cap`() {
+        val sut = getPushOpenSut()
+
+        repeat(21) {
+            sut.captureAutomaticPushOpen("""{"invocation_id":"inv-$it","action_id":"step-1"}""")
+        }
+        sut.captureManualPushOpen("""{"invocation_id":"inv-0","action_id":"step-1"}""")
+        sut.captureManualPushOpen("""{"invocation_id":"inv-20","action_id":"step-1"}""")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(22, pushOpens.size)
+        assertEquals("inv-0", pushOpens.last().properties!!["\$notification_invocation_id"])
+
+        sut.close()
+    }
+
+    @Test
     fun `capturePushNotificationOpened does not record a push skipped while opted out`() {
         val sut = getPushOpenSut(optOut = true)
 
