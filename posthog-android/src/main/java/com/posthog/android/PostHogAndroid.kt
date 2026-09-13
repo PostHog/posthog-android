@@ -143,10 +143,9 @@ public class PostHogAndroid private constructor() {
             config.logger =
                 if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
 
-            val packageInfo = getPackageInfo(context, config)
-            val packageName = packageInfo?.packageName ?: ""
-            val versionName = packageInfo?.versionName ?: ""
-            val buildNumber = packageInfo?.versionCodeCompat() ?: 0L
+            val packageInfo by lazy { getPackageInfo(context, config) }
+            val packageInfoProvider = { packageInfo }
+            val packageName = context.packageName ?: ""
 
             // only frames coming from the package name will be considered inApp by default
             if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
@@ -164,6 +163,7 @@ public class PostHogAndroid private constructor() {
                     PostHogAndroidContext(
                         context,
                         config,
+                        packageInfoProvider,
                         contextNetworkStatus::getNetworkProperties,
                     )
                 if (config.networkStatus !== contextNetworkStatus) {
@@ -173,14 +173,12 @@ public class PostHogAndroid private constructor() {
                 config.networkStatus = PostHogAndroidNetworkStatus(context)
             }
 
-            val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
-            val path = File(context.cacheDir, "posthog-disk-queue")
-            val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
-            val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
-            config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
-            config.storagePrefix = config.storagePrefix ?: path.absolutePath
-            config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
-            config.logsStoragePrefix = config.logsStoragePrefix ?: logsPath.absolutePath
+            val cacheDir by lazy { context.cacheDir }
+            config.legacyStoragePrefix =
+                config.legacyStoragePrefix ?: context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE).absolutePath
+            config.storagePrefix = config.storagePrefix ?: File(cacheDir, "posthog-disk-queue").absolutePath
+            config.replayStoragePrefix = config.replayStoragePrefix ?: File(cacheDir, "posthog-disk-replay-queue").absolutePath
+            config.logsStoragePrefix = config.logsStoragePrefix ?: File(cacheDir, "posthog-disk-logs-queue").absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
@@ -210,9 +208,13 @@ public class PostHogAndroid private constructor() {
             // session before any UI exists is cleared rather than silently rotated.
             PostHogSessionManager.setAppInBackground(true)
 
-            val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
-            metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
+            metaPropertiesApplier.applyToConfig(context, config) {
+                val info = packageInfo
+                val versionName = info?.versionName ?: ""
+                val buildNumber = info?.versionCodeCompat() ?: 0L
+                "$packageName@$versionName+$buildNumber"
+            }
 
             // Wire session replay sample rate provider so the core SDK can read the local value
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
@@ -234,9 +236,11 @@ public class PostHogAndroid private constructor() {
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
-                config.addIntegration(PostHogAppInstallIntegration(context, config))
+                config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
             }
-            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
+            config.addIntegration(
+                PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider),
+            )
             if (config.surveys) {
                 config.addIntegration(PostHogSurveysIntegration(context, config))
             }

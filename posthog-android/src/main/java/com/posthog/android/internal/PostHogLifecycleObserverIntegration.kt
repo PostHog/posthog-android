@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -15,15 +16,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app opened and backgrounded events
- * @property context the App Context
  * @property config the Config
  * @property lifecycle The Lifecycle, defaults to ProcessLifecycleOwner.get().lifecycle
  */
 internal class PostHogLifecycleObserverIntegration(
-    private val context: Context,
+    context: Context,
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
+    private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
 ) : DefaultLifecycleObserver, PostHogIntegration {
     private val timerLock = Any()
     private var timer = Timer(true)
@@ -59,7 +60,7 @@ internal class PostHogLifecycleObserverIntegration(
             props["from_background"] = fromBackground
 
             if (!fromBackground) {
-                getPackageInfo(context, config)?.let { packageInfo ->
+                packageInfoProvider()?.let { packageInfo ->
                     packageInfo.versionName?.let { props["version"] = it }
                     packageInfo.versionCodeCompat()?.let { props["build"] = it }
                 }
