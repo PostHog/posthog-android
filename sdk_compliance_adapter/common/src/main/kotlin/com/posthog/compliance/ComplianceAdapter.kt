@@ -294,7 +294,9 @@ fun Application.complianceRoutes(
                                 "init" -> {
                                     val req = gson.fromJson(call.receive<String>(), InitRequest::class.java)
                                     req.distinct_id?.let {
-                                        require("bootstrap_identity" in profile.capabilities) { "Initial identity requires bootstrap_identity" }
+                                        require(
+                                            "bootstrap_identity" in profile.capabilities,
+                                        ) { "Initial identity requires bootstrap_identity" }
                                         require(it.isNotBlank()) { "Initial distinct ID must not be blank" }
                                     }
                                     active?.close()
