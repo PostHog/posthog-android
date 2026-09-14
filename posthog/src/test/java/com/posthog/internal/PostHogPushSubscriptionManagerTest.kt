@@ -103,6 +103,13 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals("POST", request.method)
         assertEquals("/api/push_subscriptions/", request.path)
 
+        // The server rejects the body with 400 missing_fields if any of these keys is absent,
+        // so the wire names are a contract and not an implementation detail.
+        val body = request.body.unGzip()
+        for (key in listOf("api_key", "distinct_id", "device_token", "platform", "app_id")) {
+            assertTrue(body.contains("\"$key\""), "request body is missing $key: $body")
+        }
+
         val file = pendingFile(storagePrefix!!)
         assertTrue(file.exists())
         // Decision 5: the record is kept with the distinct id it was delivered for.
