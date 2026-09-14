@@ -36,10 +36,14 @@ public open class PostHogStateless protected constructor(
     protected val optOutLock: Any = Any()
     private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
+    // Read on the capture path from any caller thread without setupLock.
     @JvmField
+    @Volatile
     protected var config: PostHogConfig? = null
 
     protected var featureFlags: PostHogFeatureFlagsInterface? = null
+
+    @Volatile
     protected var queue: PostHogQueueInterface<PostHogEvent>? = null
     protected var memoryPreferences: PostHogPreferences = PostHogMemoryPreferences()
     protected val throwableCoercer: ThrowableCoercer = ThrowableCoercer()

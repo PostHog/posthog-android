@@ -126,6 +126,7 @@ public class PostHog private constructor(
     // Used to deduplicate setPersonProperties calls
     private var cachedPersonPropertiesHash: String? = null
 
+    @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
 
