@@ -1,5 +1,12 @@
 ## Next
 
+## 3.64.1
+
+### Patch Changes
+
+- 20c72a2: Move replay buffer initialization and leftover-file cleanup off the SDK setup thread onto the replay executor to reduce main-thread startup stalls, including when session replay is disabled.
+- 1ae7aed: Resolve the cache directory and package information at most once per SDK setup, only when needed, and reuse the results across startup consumers.
+
 ## 3.64.0
 
 ### Minor Changes
