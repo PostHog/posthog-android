@@ -1941,6 +1941,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `group identify carries session and identity properties but not groups`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.group("theType", "theKey", groupProps)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$groupidentify", theEvent.event)
+        assertNotNull(theEvent.properties!!["\$session_id"])
+        assertFalse(theEvent.properties!!["\$is_identified"] as Boolean)
+        assertFalse(theEvent.properties!!.containsKey("\$groups"))
+
+        sut.close()
+    }
+
+    @Test
     fun `merges group`() {
         val http = mockHttp()
         val url = http.url("/")
