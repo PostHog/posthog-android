@@ -34,9 +34,12 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.collections.get
+import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -4924,6 +4927,38 @@ internal class PostHogTest {
         queueExecutor.shutdownAndAwaitTermination()
 
         assertEquals(listOf(null, "Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures once when two reports of one tap race`() {
+        val sut = getPushOpenSut()
+        val sampled = CountDownLatch(1)
+        val secondReportDone = CountDownLatch(1)
+        val clock = AtomicLong(TimeUnit.MINUTES.toMillis(5))
+        // Parks the first report between sampling the clock and admitting it, so the second report
+        // samples later but is admitted first — the inversion that would read as a backwards clock.
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun currentTimeMillis(): Long {
+                    val now = clock.getAndIncrement()
+                    if (sampled.count > 0) {
+                        sampled.countDown()
+                        secondReportDone.await(200, TimeUnit.MILLISECONDS)
+                    }
+                    return now
+                }
+            }
+
+        val firstReport = thread { sut.captureAutomaticPushOpen(stepOne) }
+        sampled.await()
+        thread { sut.captureManualPushOpen(stepOne) }.join()
+        secondReportDone.countDown()
+        firstReport.join()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
 
         sut.close()
     }
