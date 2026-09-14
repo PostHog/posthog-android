@@ -39,7 +39,7 @@ internal class PostHogMetaPropertiesApplierTest {
         config.releaseIdentifier = "manual-id"
         mockMetaProperties("io.posthog.proguard.mapid=meta-id")
 
-        sut.applyToConfig(context, config, FALLBACK)
+        sut.applyToConfig(context, config) { error("Fallback must not be resolved") }
 
         assertEquals("manual-id", config.releaseIdentifier)
         verify(assets, never()).open(any())
@@ -49,7 +49,7 @@ internal class PostHogMetaPropertiesApplierTest {
     fun `uses meta properties map id when releaseIdentifier not set`() {
         mockMetaProperties("io.posthog.proguard.mapid=meta-id")
 
-        sut.applyToConfig(context, config, FALLBACK)
+        sut.applyToConfig(context, config) { error("Fallback must not be resolved") }
 
         assertEquals("meta-id", config.releaseIdentifier)
     }
@@ -58,7 +58,7 @@ internal class PostHogMetaPropertiesApplierTest {
     fun `uses fallback when meta properties file is missing`() {
         mockMissingMetaProperties()
 
-        sut.applyToConfig(context, config, FALLBACK)
+        sut.applyToConfig(context, config) { FALLBACK }
 
         assertEquals(FALLBACK, config.releaseIdentifier)
     }
@@ -67,7 +67,7 @@ internal class PostHogMetaPropertiesApplierTest {
     fun `uses fallback when meta properties do not contain map id`() {
         mockMetaProperties("some.other.property=value")
 
-        sut.applyToConfig(context, config, FALLBACK)
+        sut.applyToConfig(context, config) { FALLBACK }
 
         assertEquals(FALLBACK, config.releaseIdentifier)
     }
@@ -77,7 +77,7 @@ internal class PostHogMetaPropertiesApplierTest {
         whenever(context.assets).thenReturn(assets)
         whenever(assets.open(any())).thenThrow(RuntimeException("boom"))
 
-        sut.applyToConfig(context, config, FALLBACK)
+        sut.applyToConfig(context, config) { FALLBACK }
 
         assertEquals(FALLBACK, config.releaseIdentifier)
     }
