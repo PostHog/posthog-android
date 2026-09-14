@@ -1,81 +1,58 @@
-# PostHog Android SDK Compliance Adapter
+# PostHog Android / Java compliance adapters
 
-This compliance adapter wraps the PostHog Android SDK and exposes a standardized HTTP API for automated compliance testing using the [PostHog SDK Test Harness](https://github.com/PostHog/posthog-sdk-test-harness).
+The adapter exposes three public SDK profiles:
 
-## Contributing
+| Profile | SDK entry point | Flag model |
+| --- | --- | --- |
+| JVM core | `com.posthog.PostHog.with(config)` | Stateful client |
+| Native Android | `PostHogAndroid.with(applicationContext, config)` | Stateful client |
+| Java server | `com.posthog.server.PostHog.with(config)` | Identity and context per evaluation |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test instructions.
+`common/` owns the Ktor routes, passive ingress proxy and stateful client mapping.
+`src/` supplies the JVM launcher and Java server mapping. `android/` contains the
+native Activity host. SDK HTTP requests and responses pass through the proxy
+unchanged; native SDK code owns serialization, retries and called-events.
 
-## Architecture
+## Client flag lifecycle
 
-- **adapter.kt** - Ktor HTTP server implementing the compliance adapter API
-- **TrackingInterceptor** - OkHttp interceptor for monitoring SDK HTTP requests
-- **Dockerfile** - Multi-stage Docker build (requires x86_64 for Java 8)
-- **docker-compose.yml** - Local test orchestration
+Core and native Android advertise `bootstrap_identity` and `client_feature_flags`.
+An optional `/init` `distinct_id` sets public `PostHogBootstrapConfig(distinctId = id,
+isIdentifiedId = true)` before constructing the SDK, using fresh owned storage.
+Blank IDs return HTTP 400. Initialization completes inside `/init`. Captures without
+an explicit per-event identity then use this initialized identity.
 
-## SDK Modifications
+The client test flow is:
 
-To enable request tracking, we added an optional `httpClient` parameter to `PostHogConfig`:
+1. `/init` establishes identity, with flag preload disabled.
+2. `POST /reload_feature_flags` calls public `reloadFeatureFlags` and waits for its
+   callback (up to 15 seconds). It does not identify or read a flag.
+3. `POST /get_cached_feature_flag` with `{"key":"my-flag"}` calls public
+   `getFeatureFlag`, preserving native called-events without a reload or context change.
+4. `/flush` invokes the SDK flush and waits for observed acknowledgments.
 
-```kotlin
-// PostHogConfig.kt
-public var httpClient: okhttp3.OkHttpClient? = null
-```
+A harness supporting these operations selects ten client lifecycle cases with
+`--sdk-type client --suite feature_flags`. They cover identity, request shape, cache
+reuse/replacement, multiple keys, native 502/504 retries and called-events. They do
+not establish default preload behavior, group/context updates, or GeoIP configuration.
 
-This allows the test adapter to inject a custom OkHttpClient with tracking interceptors. **This change is fully backward compatible** - existing code works unchanged.
+The legacy `/get_feature_flag` route still accepts per-call context for older callers.
+Without bootstrap it uses public `identify` and waits for the reload that operation
+already triggers; bootstrap avoids the merge event rather than removing a redundant
+reload from that path. A different identified user requires a new `/init`.
 
-## Implementation Details
+## Java server
 
-### HTTP Request Tracking
+Java continues to call `evaluateFlags` with each request's identity and evaluation
+context. It advertises neither client capability and rejects client bootstrap init.
+Its 17 server flag cases remain selected with `--sdk-type server`.
 
-The adapter injects a custom OkHttpClient that:
-- Intercepts all `/batch/` requests
-- Extracts event UUIDs from request bodies
-- Tracks status codes, retry attempts, and event counts
+## CI and validation
 
-### Event Tracking
+The current CI scripts still pin harness 1.0.0 and its legacy 30 capture + 17 server
+flag inventory for all three profiles. Migrating the client jobs requires releasing
+and adopting the client lifecycle contract and updating report inventories together.
+A `/batch` wire format does not make the core or Android SDK a server SDK.
 
-Events are tracked via:
-1. `beforeSend` hook - Captures UUIDs as events are queued
-2. HTTP interceptor - Verifies UUIDs in outgoing requests
-
-### SDK Type
-
-The Android SDK uses **server SDK format**:
-- Endpoint: `/batch/`
-- Format: `{api_key, batch, sent_at}`
-
-Tests run with `--sdk-type server`.
-
-## Files Created
-
-```
-sdk_compliance_adapter/
-├── adapter.kt              # Main adapter implementation
-├── build.gradle.kts        # Gradle build configuration
-├── Dockerfile              # Docker build (x86_64)
-├── docker-compose.yml      # Local test setup
-├── README.md               # This file
-└── IMPLEMENTATION_NOTES.md # Detailed technical notes
-```
-
-## Changes to Core SDK
-
-### posthog/src/main/java/com/posthog/PostHogConfig.kt
-- Added `httpClient: OkHttpClient?` parameter
-
-### posthog/src/main/java/com/posthog/internal/PostHogApi.kt
-- Modified to use injected `httpClient` if provided
-
-### settings.gradle.kts
-- Added `:sdk_compliance_adapter` module
-
-### .github/workflows/sdk-compliance-tests.yml
-- GitHub Actions workflow for automated testing
-
-## References
-
-- [Test Harness Repository](https://github.com/PostHog/posthog-sdk-test-harness)
-- [Adapter Guide](https://github.com/PostHog/posthog-sdk-test-harness/blob/main/ADAPTER_GUIDE.md)
-- [Contract Specification](https://github.com/PostHog/posthog-sdk-test-harness/blob/main/CONTRACT.yaml)
-- [Browser SDK Adapter](https://github.com/PostHog/posthog-js/tree/main/packages/browser/sdk_compliance_adapter) (Reference)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the existing build/run commands.
+JVM core execution does not certify the native Activity, Android device behavior,
+or Java server semantics. Reports and validation must identify the executed profile.

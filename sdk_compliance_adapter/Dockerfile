@@ -1,24 +1,12 @@
-# Build with the repo's own Gradle wrapper: an image-pinned Gradle skews from
-# the wrapper-generated lockfiles on every wrapper bump (the embedded Kotlin
-# build-tools version is locked strictly per Gradle release).
-FROM --platform=linux/amd64 eclipse-temurin:17-jdk AS builder
-
+FROM eclipse-temurin:17-jdk AS builder
 WORKDIR /app
-
 COPY . .
+RUN ./gradlew -Pcompliance :sdk_compliance_adapter:installDist --no-daemon
 
-RUN echo 'include(":sdk_compliance_adapter")' >> settings.gradle.kts && \
-    sed -i '/^dependencyResolutionManagement/i plugins {\n    id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"\n}' settings.gradle.kts && \
-    mkdir -p /root/.gradle && \
-    echo 'org.gradle.java.installations.auto-download=true' > /root/.gradle/gradle.properties && \
-    ./gradlew :sdk_compliance_adapter:installDist --no-daemon
-
-FROM eclipse-temurin:11-jre
-
+FROM eclipse-temurin:17-jre
 WORKDIR /app
-
 COPY --from=builder /app/sdk_compliance_adapter/build/install/sdk_compliance_adapter /app
-
+ARG SDK_PROFILE=core
+ENV SDK_PROFILE=${SDK_PROFILE}
 EXPOSE 8080
-
 CMD ["/app/bin/sdk_compliance_adapter"]

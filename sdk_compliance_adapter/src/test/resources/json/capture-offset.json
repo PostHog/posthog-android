@@ -1,0 +1,6 @@
+{
+  "event": "test",
+  "distinct_id": "user",
+  "timestamp": "2025-01-02T08:34:05+05:30",
+  "properties": {"timestamp_like": "2025-01-02T08:34:05+05:30"}
+}

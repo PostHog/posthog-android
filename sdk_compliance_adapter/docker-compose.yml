@@ -1,4 +1,4 @@
-name: posthog-android-sdk-compliance
+name: posthog-jvm-sdk-compliance
 
 services:
   sdk-adapter:
@@ -9,10 +9,11 @@ services:
       - test-network
     environment:
       - JAVA_TOOL_OPTIONS=-Xmx512m
+      - SDK_PROFILE=${SDK_PROFILE:-core}
 
   test-harness:
-    image: ghcr.io/posthog/sdk-test-harness:0.10.0
-    command: ["run", "--adapter-url", "http://sdk-adapter:8080", "--mock-url", "http://test-harness:8081", "--sdk-type", "server", "--debug"]
+    image: ghcr.io/posthog/sdk-test-harness:1.0.0
+    command: ["run", "--adapter-url", "http://sdk-adapter:8080", "--mock-url", "http://test-harness:8081", "--sdk-type", "server", "--concurrency", "1", "--debug"]
     networks:
       - test-network
     depends_on:
