@@ -47,6 +47,7 @@ class ComplianceAdapterTest {
     private fun withAdapter(
         profile: SdkProfile,
         closeTimeoutMs: Long = 15_000,
+        distinctId: String? = null,
         test: (MockWebServer) -> Unit,
     ) {
         val mock = MockWebServer()
@@ -65,7 +66,9 @@ class ComplianceAdapterTest {
         val storage = Files.createTempDirectory("compliance-test").toFile()
         val server = embeddedServer(CIO, port = 18293) { complianceRoutes(profile, 18293, storage, closeTimeoutMs) }.start()
         try {
-            action("init", """{"api_key":"phc_test","host":"http://127.0.0.1:19293","flush_at":100}""")
+            val config = JsonParser.parseString("""{"api_key":"phc_test","host":"http://127.0.0.1:19293","flush_at":100}""").asJsonObject
+            distinctId?.let { config.addProperty("distinct_id", it) }
+            action("init", config.toString())
             test(mock)
         } finally {
             action("reset")
@@ -105,6 +108,16 @@ class ComplianceAdapterTest {
                             return sdk.flag(request)
                         }
 
+                        override fun reloadFlags() {
+                            sdkActions.incrementAndGet()
+                            sdk.reloadFlags()
+                        }
+
+                        override fun cachedFlag(key: String): Any? {
+                            sdkActions.incrementAndGet()
+                            return sdk.cachedFlag(key)
+                        }
+
                         override fun flush() {
                             sdkActions.incrementAndGet()
                             sdk.flush()
@@ -122,6 +135,8 @@ class ComplianceAdapterTest {
             for ((name, body) in listOf(
                 "capture" to """{"distinct_id":"user","event":"retired"}""",
                 "get_feature_flag" to """{"distinct_id":"user","key":"test-flag"}""",
+                "reload_feature_flags" to "{}",
+                "get_cached_feature_flag" to """{"key":"test-flag"}""",
                 "flush" to "{}",
             )) {
                 val error = assertFailsWith<IllegalStateException> { action(name, body) }
@@ -193,6 +208,127 @@ class ComplianceAdapterTest {
         }
         assertEquals(2, closed.get())
     }
+
+    @Test(timeout = 20_000)
+    fun coreBootstrapsIdentityBeforeCaptureAndExplicitFlagLoad() =
+        withAdapter(CoreProfile, distinctId = "client-user-café 雪") { mock ->
+            assertEquals(0, mock.requestCount)
+            val captured = action("capture", """{"event":"before-flags"}""")
+            assertTrue(action("flush")["success"].asBoolean)
+            val batch = mock.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/batch", batch.path)
+            val event = batchEvents(batch).single().asJsonObject
+            assertEquals("client-user-café 雪", event["distinct_id"].asString)
+            assertEquals(captured["uuid"].asString, event["uuid"].asString)
+
+            assertTrue(action("reload_feature_flags")["success"].asBoolean)
+            val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/flags/?v=2", flags.path)
+            assertEquals("client-user-café 雪", JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+            for (i in 1..2) {
+                assertEquals("variant-a", action("get_cached_feature_flag", """{"key":"test-flag"}""")["value"].asString)
+            }
+            assertTrue(action("flush")["success"].asBoolean)
+            val calledBatch = mock.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/batch", calledBatch.path)
+            val called = batchEvents(calledBatch).single().asJsonObject
+            assertEquals("\$feature_flag_called", called["event"].asString)
+            assertEquals("client-user-café 雪", called["distinct_id"].asString)
+            assertEquals(3, mock.requestCount)
+
+            mock.dispatcher =
+                object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse =
+                        MockResponse().setHeader("Content-Type", "application/json").setBody(
+                            if (request.path!!.startsWith("/flags/")) fixture("flags-v2.json").replace("variant-a", "variant-b") else "{}",
+                        )
+                }
+            assertEquals("variant-a", action("get_cached_feature_flag", """{"key":"test-flag"}""")["value"].asString)
+            assertTrue(action("reload_feature_flags")["success"].asBoolean)
+            assertEquals("variant-b", action("get_cached_feature_flag", """{"key":"test-flag"}""")["value"].asString)
+            assertTrue(action("flush")["success"].asBoolean)
+            val later = generateSequence { mock.takeRequest(200, TimeUnit.MILLISECONDS) }.toList()
+            assertEquals(1, later.count { it.path!!.startsWith("/flags/") })
+            val laterEvents = later.filter { it.path == "/batch" }.flatMap { batchEvents(it) }
+            assertTrue(laterEvents.all { it.asJsonObject["event"].asString == "\$feature_flag_called" })
+            val requestsBefore = mock.requestCount
+            val error =
+                assertFailsWith<IllegalStateException> {
+                    action("get_feature_flag", """{"key":"test-flag","distinct_id":"different-user"}""")
+                }
+            assertTrue(error.message.orEmpty().contains("requires reset/init"))
+            assertEquals(requestsBefore, mock.requestCount)
+        }
+
+    private fun batchEvents(request: RecordedRequest): List<com.google.gson.JsonElement> {
+        val body = GZIPInputStream(request.body.inputStream()).reader().readText()
+        return JsonParser.parseString(body).asJsonObject["batch"].asJsonArray.toList()
+    }
+
+    @Test(timeout = 40_000)
+    fun coreExplicitReloadRetainsNativeRetries() {
+        for (status in listOf(502, 504)) {
+            withAdapter(CoreProfile, distinctId = "retry-user") { mock ->
+                val attempts = AtomicInteger()
+                mock.dispatcher =
+                    object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse =
+                            if (request.path!!.startsWith("/flags/")) {
+                                MockResponse().setResponseCode(if (attempts.incrementAndGet() == 1) status else 200)
+                                    .setHeader("Content-Type", "application/json").setBody(fixture("flags-v2.json"))
+                            } else {
+                                MockResponse().setBody("{}")
+                            }
+                    }
+                assertTrue(action("reload_feature_flags")["success"].asBoolean)
+                assertEquals("variant-a", action("get_cached_feature_flag", """{"key":"test-flag"}""")["value"].asString)
+                assertTrue(action("flush")["success"].asBoolean)
+                val requests = generateSequence { mock.takeRequest(200, TimeUnit.MILLISECONDS) }.toList()
+                assertEquals(2, attempts.get())
+                assertEquals(2, requests.count { it.path!!.startsWith("/flags/") })
+                val events = requests.filter { it.path == "/batch" }.flatMap { batchEvents(it) }
+                assertEquals(listOf("\$feature_flag_called"), events.map { it.asJsonObject["event"].asString })
+            }
+        }
+    }
+
+    @Test(timeout = 20_000)
+    fun serverEvaluationsKeepPerCallIdentity() =
+        withAdapter(ServerProfile) { mock ->
+            for (user in listOf("first-user", "second-user")) {
+                val result = action("get_feature_flag", """{"key":"test-flag","distinct_id":"$user","force_remote":true}""")
+                assertEquals("variant-a", result["value"].asString)
+                val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
+                assertEquals("/flags/?v=2", flags.path)
+                assertEquals(user, JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+                assertTrue(action("flush")["success"].asBoolean)
+                val events = generateSequence { mock.takeRequest(200, TimeUnit.MILLISECONDS) }.flatMap { batchEvents(it) }.toList()
+                assertEquals(listOf("\$feature_flag_called"), events.map { it.asJsonObject["event"].asString })
+            }
+            for (name in listOf("reload_feature_flags", "get_cached_feature_flag")) {
+                assertFailsWith<IllegalStateException> { action(name, """{"key":"test-flag"}""") }
+            }
+            val error =
+                assertFailsWith<IllegalStateException> {
+                    action("init", """{"api_key":"phc_test","host":"http://127.0.0.1:19293","distinct_id":"user"}""")
+                }
+            assertTrue(error.message.orEmpty().contains("bootstrap_identity"))
+        }
+
+    @Test(timeout = 10_000)
+    fun blankBootstrapIdentityRejectsBeforeReplacingClient() =
+        withAdapter(CoreProfile, distinctId = "original-user") { mock ->
+            for (id in listOf("", " ")) {
+                val error =
+                    assertFailsWith<IllegalStateException> {
+                        action("init", """{"api_key":"phc_test","host":"http://127.0.0.1:19293","distinct_id":"$id"}""")
+                    }
+                assertTrue(error.message.orEmpty().contains("must not be blank"))
+            }
+            action("reload_feature_flags")
+            val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("original-user", JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+        }
 
     private fun captureTimestamp(profile: SdkProfile) =
         withAdapter(profile) { mock ->

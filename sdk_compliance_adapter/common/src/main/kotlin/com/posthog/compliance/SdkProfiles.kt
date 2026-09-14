@@ -1,6 +1,7 @@
 package com.posthog.compliance
 
 import com.posthog.PostHog
+import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.internal.PostHogContext
@@ -37,6 +38,7 @@ fun configureStateful(
     config.flushAt = request.flush_at ?: 100
     config.flushIntervalSeconds = request.flushSeconds()
     config.preloadFeatureFlags = false
+    request.distinct_id?.let { config.bootstrap = PostHogBootstrapConfig(distinctId = it, isIdentifiedId = true) }
     request.max_retries?.let { config.maxRetries = it }
     config.addBeforeSend(observer.beforeSend)
     return ReloadCompletion(config)
@@ -46,9 +48,9 @@ class StatefulClient(
     private val sdk: PostHogInterface,
     private val observer: Observation,
     private val completion: ReloadCompletion,
+    private var identified: Boolean = false,
 ) : SdkClient {
     private val groups = mutableMapOf<String, String>()
-    private var identified = false
 
     override fun capture(request: CaptureRequest) {
         observer.track {
@@ -60,6 +62,10 @@ class StatefulClient(
             )
         }
     }
+
+    override fun reloadFlags() = completion.await { sdk.reloadFeatureFlags(it) }
+
+    override fun cachedFlag(key: String): Any? = observer.track { sdk.getFeatureFlag(key) }
 
     override fun flag(request: FlagRequest): Any? {
         require(!identified || request.distinct_id == null || request.distinct_id == sdk.distinctId()) {
@@ -106,6 +112,7 @@ class StatefulClient(
 object CoreProfile : SdkProfile {
     override val name = "posthog-core-integration"
     override val version = PostHogConfig("").sdkVersion
+    override val capabilities = listOf("capture_v0", "encoding_gzip", "bootstrap_identity", "client_feature_flags")
 
     override fun create(
         request: InitRequest,
@@ -123,6 +130,6 @@ object CoreProfile : SdkProfile {
 
                 override fun getSdkInfo(): Map<String, Any> = mapOf("\$lib" to config.sdkName, "\$lib_version" to config.sdkVersion)
             }
-        return StatefulClient(PostHog.with(config), observer, completion)
+        return StatefulClient(PostHog.with(config), observer, completion, identified = request.distinct_id != null)
     }
 }

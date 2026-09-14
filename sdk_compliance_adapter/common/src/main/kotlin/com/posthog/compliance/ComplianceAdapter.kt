@@ -48,10 +48,11 @@ data class InitRequest(
     val flush_interval_ms: Int? = null,
     val max_retries: Int? = null,
     val enable_compression: Boolean? = null,
+    val distinct_id: String? = null,
 )
 
 data class CaptureRequest(
-    val distinct_id: String,
+    val distinct_id: String? = null,
     val event: String,
     val properties: Map<String, Any>? = null,
     val timestamp: String? = null,
@@ -74,6 +75,10 @@ interface SdkClient {
 
     fun flag(request: FlagRequest): Any?
 
+    fun reloadFlags(): Unit = error("reload_feature_flags requires client_feature_flags")
+
+    fun cachedFlag(key: String): Any? = error("get_cached_feature_flag requires client_feature_flags")
+
     fun flush()
 
     fun close()
@@ -82,6 +87,7 @@ interface SdkClient {
 interface SdkProfile {
     val name: String
     val version: String
+    val capabilities: List<String> get() = listOf("capture_v0", "encoding_gzip")
 
     fun create(
         request: InitRequest,
@@ -237,7 +243,7 @@ fun Application.complianceRoutes(
                         "sdk_version" to profile.version,
                         "adapter_version" to "1.0.0",
                         "supports_parallel" to false,
-                        "capabilities" to listOf("capture_v0", "encoding_gzip"),
+                        "capabilities" to profile.capabilities,
                     ),
                 ),
                 ContentType.Application.Json,
@@ -286,9 +292,13 @@ fun Application.complianceRoutes(
                         val result: Any =
                             when (call.parameters["action"]) {
                                 "init" -> {
+                                    val req = gson.fromJson(call.receive<String>(), InitRequest::class.java)
+                                    req.distinct_id?.let {
+                                        require("bootstrap_identity" in profile.capabilities) { "Initial identity requires bootstrap_identity" }
+                                        require(it.isNotBlank()) { "Initial distinct ID must not be blank" }
+                                    }
                                     active?.close()
                                     sessions.clear()
-                                    val req = gson.fromJson(call.receive<String>(), InitRequest::class.java)
                                     val id = UUID.randomUUID().toString()
                                     val session = Session(req.host, File(storageRoot, id).apply { mkdirs() }, sessionCloseTimeoutMs)
                                     sessions[id] = session
@@ -314,6 +324,19 @@ fun Application.complianceRoutes(
                                     val session = checkNotNull(active) { "SDK not initialized" }
                                     session.requireActive()
                                     val value = session.client.flag(gson.fromJson(call.receive<String>(), FlagRequest::class.java))
+                                    mapOf("success" to true, "value" to value)
+                                }
+                                "reload_feature_flags" -> {
+                                    val session = checkNotNull(active) { "SDK not initialized" }
+                                    session.requireActive()
+                                    session.client.reloadFlags()
+                                    mapOf("success" to true)
+                                }
+                                "get_cached_feature_flag" -> {
+                                    val session = checkNotNull(active) { "SDK not initialized" }
+                                    session.requireActive()
+                                    val input = JsonParser.parseString(call.receive<String>()).asJsonObject
+                                    val value = session.client.cachedFlag(input["key"].asString)
                                     mapOf("success" to true, "value" to value)
                                 }
                                 "flush" -> {

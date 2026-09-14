@@ -28,6 +28,7 @@ class AdapterActivity : Activity() {
             object : SdkProfile {
                 override val name = "posthog-android-entry"
                 override val version = sdkVersion("android")
+                override val capabilities = listOf("capture_v0", "encoding_gzip", "bootstrap_identity", "client_feature_flags")
 
                 override fun create(
                     request: InitRequest,
@@ -50,7 +51,12 @@ class AdapterActivity : Activity() {
                             capturePushNotificationOpened = false,
                         )
                     val completion = configureStateful(config, request, observer)
-                    return StatefulClient(PostHogAndroid.with(context, config), observer, completion)
+                    return StatefulClient(
+                        PostHogAndroid.with(context, config),
+                        observer,
+                        completion,
+                        identified = request.distinct_id != null,
+                    )
                 }
             }
         server =
