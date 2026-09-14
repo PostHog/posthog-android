@@ -456,7 +456,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * A notification sent by PostHog is captured once: when `payload["posthog"]` carries an
      * `invocation_id`, a repeat with the same `invocation_id` and `action_id` within 5 minutes of the
      * first capture is skipped, whether that first capture came from this method or from the SDK's
-     * automatic capture. Payloads without a `posthog.invocation_id` are always captured.
+     * automatic capture. Payloads without a `posthog.invocation_id` are always captured. Only the 20
+     * most recently captured notifications are remembered, so a host that reports more than that
+     * inside the window can capture a repeat of the oldest.
      *
      * A rerun of that workflow, or a loop back to its push step, sends the pair again as a new
      * notification, and its open counts separately: a payload whose `google.message_id` differs from the

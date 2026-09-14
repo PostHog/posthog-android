@@ -2162,9 +2162,12 @@ public class PostHog private constructor(
         }
         // Every step of one workflow run shares the run's invocation_id, so action_id tells the steps apart.
         val key = "$invocationId/${posthogPayload?.get("action_id") as? String ?: ""}"
-        val now = config?.dateProvider?.currentTimeMillis() ?: return true
+        val dateProvider = config?.dateProvider ?: return true
 
         synchronized(recentPushOpens) {
+            // Sampled under the lock so two concurrent reports can't be admitted out of order and read
+            // the inversion as a backwards clock.
+            val now = dateProvider.currentTimeMillis()
             val previous = recentPushOpens[key]
             if (previous != null) {
                 // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
