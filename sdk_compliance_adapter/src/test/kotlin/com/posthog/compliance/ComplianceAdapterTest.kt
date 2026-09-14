@@ -224,7 +224,7 @@ class ComplianceAdapterTest {
             assertTrue(action("reload_feature_flags")["success"].asBoolean)
             val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
             assertEquals("/flags/?v=2", flags.path)
-            assertEquals("client-user-café 雪", JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+            assertEquals("client-user-café 雪", gzipJson(flags)["distinct_id"].asString)
             for (i in 1..2) {
                 assertEquals("variant-a", action("get_cached_feature_flag", """{"key":"test-flag"}""")["value"].asString)
             }
@@ -260,10 +260,12 @@ class ComplianceAdapterTest {
             assertEquals(requestsBefore, mock.requestCount)
         }
 
-    private fun batchEvents(request: RecordedRequest): List<com.google.gson.JsonElement> {
-        val body = GZIPInputStream(request.body.inputStream()).reader().readText()
-        return JsonParser.parseString(body).asJsonObject["batch"].asJsonArray.toList()
-    }
+    private fun gzipJson(request: RecordedRequest): JsonObject =
+        GZIPInputStream(request.body.inputStream()).reader().use {
+            JsonParser.parseString(it.readText()).asJsonObject
+        }
+
+    private fun batchEvents(request: RecordedRequest): List<com.google.gson.JsonElement> = gzipJson(request)["batch"].asJsonArray.toList()
 
     @Test(timeout = 40_000)
     fun coreExplicitReloadRetainsNativeRetries() {
@@ -300,7 +302,7 @@ class ComplianceAdapterTest {
                 assertEquals("variant-a", result["value"].asString)
                 val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
                 assertEquals("/flags/?v=2", flags.path)
-                assertEquals(user, JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+                assertEquals(user, gzipJson(flags)["distinct_id"].asString)
                 assertTrue(action("flush")["success"].asBoolean)
                 val events = generateSequence { mock.takeRequest(200, TimeUnit.MILLISECONDS) }.flatMap { batchEvents(it) }.toList()
                 assertEquals(listOf("\$feature_flag_called"), events.map { it.asJsonObject["event"].asString })
@@ -327,7 +329,7 @@ class ComplianceAdapterTest {
             }
             action("reload_feature_flags")
             val flags = mock.takeRequest(5, TimeUnit.SECONDS)!!
-            assertEquals("original-user", JsonParser.parseString(flags.body.readUtf8()).asJsonObject["distinct_id"].asString)
+            assertEquals("original-user", gzipJson(flags)["distinct_id"].asString)
         }
 
     private fun captureTimestamp(profile: SdkProfile) =
