@@ -41,9 +41,7 @@ internal fun SingleChoice(
 ) {
     val selectedSet = selectedChoice?.let { setOf(it) } ?: emptySet()
     ChoiceOptions(
-        options = question.choices,
-        hasOpenChoice = question.hasOpenChoice,
-        allowsMultipleSelection = false,
+        question = question,
         selectedOptions = selectedSet,
         onSelectedOptionsChange = { newSet -> onSelectedChoiceChange(newSet.firstOrNull()) },
         openChoiceInput = openChoiceInput,
