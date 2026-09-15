@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
@@ -39,6 +40,8 @@ internal class PostHogPushSubscriptionManagerTest {
         tmpDir.root.deleteRecursively()
     }
 
+    private var preferences = PostHogMemoryPreferences()
+
     private fun getSut(
         http: MockWebServer,
         storagePrefix: String? = tmpDir.newFolder().absolutePath,
@@ -54,6 +57,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.networkStatus = networkStatus
                 this.maxRetries = maxRetries
                 this.encryption = encryption
+                this.cachePreferences = preferences
             }
         val api = PostHogApi(config)
         val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
@@ -204,6 +208,84 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `an invalid project key stops registering on this launch and the next`() {
+        // A key that resolves to no project answers 401 forever, so the device has to stop asking.
+        // Without this it re-posts on every app open for the life of the install.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        sut.retryPending()
+        flush()
+        sut.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        // A fresh instance is the next app launch: the marker is on disk, so it does not ask either.
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `a rejected key still lets a queued unregister through`() {
+        // The marker stops registrations, not logouts. If the key is ever wrongly rejected,
+        // suppressing the unregister would leave the logged-out user subscribed until it expires.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        // A logout names the identity being left, which is not the one the manager reports now.
+        sut.unregister("logged-out-user", "fcm-token", "firebase-project", "android")
+
+        val unregister = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(unregister)
+        assertEquals("DELETE", unregister.method)
+    }
+
+    @Test
+    fun `a 401 without the invalid key code still retries on the next launch`() {
+        // Identity verification failures are 401 too, and those do recover: the next launch mints a
+        // fresh token. Only the project key code is terminal.
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(401))
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.retryPending()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
     }
 
     @Test

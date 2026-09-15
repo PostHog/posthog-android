@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogConfig
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import java.io.File
 import java.util.Timer
 import java.util.concurrent.ExecutorService
@@ -14,6 +15,12 @@ private const val PENDING_FILE_NAME = "push_subscription.pending"
 private const val PENDING_UNREGISTER_FILE_NAME = "push_subscription.unregister.pending"
 private const val INITIAL_RETRY_DELAY_SECONDS = 5
 private const val MAX_RETRY_DELAY_SECONDS = 30
+private const val INVALID_API_KEY_CODE = "invalid_api_key"
+
+// A project token that resolves to nothing never starts working, so the device stops asking. The
+// probe exists for the case the server was wrong: a key that works again is picked up within a week
+// instead of never.
+private const val REJECTED_REPROBE_MILLIS = 7L * 24 * 60 * 60 * 1000
 
 /**
  * Persists the latest push subscription registration and retries it on transient failures.
@@ -130,6 +137,13 @@ internal class PostHogPushSubscriptionManager(
         appId: String,
         platform: String,
     ) {
+        if (isTokenRejected()) {
+            config.logger.log(
+                "Push subscription skipped: this project API key was rejected. " +
+                    "Check the key passed to PostHog.setup().",
+            )
+            return
+        }
         val existing = currentRecord()
         if (existing != null &&
             existing.deviceToken == deviceToken &&
@@ -217,6 +231,10 @@ internal class PostHogPushSubscriptionManager(
             // Drain any pending unregister first (independent of the send record, usually absent after
             // a logout). If a same-identity registration is queued (logged out of A offline, then back
             // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
+            //
+            // Runs before the rejected-key check on purpose. An unregister is the safety direction: if
+            // the marker is ever wrong, suppressing it would leave a logged-out user subscribed until
+            // the marker expires.
             currentPendingUnregister()?.let { pending ->
                 val record = currentRecord()
                 if (record != null && pending.distinctId == distinctIdProvider() && pending.appId == record.appId) {
@@ -224,6 +242,10 @@ internal class PostHogPushSubscriptionManager(
                 } else {
                     performUnregister(pending)
                 }
+            }
+
+            if (isTokenRejected()) {
+                return@executeSafely
             }
 
             val record = currentRecord() ?: return@executeSafely
@@ -572,7 +594,19 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun handleFailure(e: Throwable) {
-        if ((e as? PostHogApiError)?.statusCode == 401) {
+        val apiError = e as? PostHogApiError
+        if (apiError?.statusCode == 401 && apiError.errorCode == INVALID_API_KEY_CODE) {
+            // The key resolves to no project, so every later attempt gets the same answer. Without
+            // this the device re-posts on every app open for the life of the install.
+            config.logger.log(
+                "Push subscription rejected: the project API key is not valid. " +
+                    "No further push registrations will be sent for this key.",
+            )
+            markTokenRejected()
+            haltForSession()
+            return
+        }
+        if (apiError?.statusCode == 401) {
             val provider = config.pushIdentityProvider
             if (provider != null && !didAuthRetry) {
                 // One fresh-token retry, then terminal. Re-queued (not inline) so the failing
@@ -727,6 +761,29 @@ internal class PostHogPushSubscriptionManager(
             }
         }
         return pendingRecord
+    }
+
+    /** Stored as "<apiKey>:<millis>" so a build shipping a corrected key does not read the old
+     * verdict, and so a stale entry can expire. */
+    private fun isTokenRejected(): Boolean {
+        val stored = config.cachePreferences?.getValue(PUSH_SUBSCRIPTION_REJECTED) as? String ?: return false
+        val separator = stored.lastIndexOf(':')
+        val rejectedAt = if (separator == -1) null else stored.substring(separator + 1).toLongOrNull()
+        if (separator == -1 || rejectedAt == null || stored.substring(0, separator) != config.apiKey) {
+            return false
+        }
+        if (System.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
+            return true
+        }
+        config.cachePreferences?.remove(PUSH_SUBSCRIPTION_REJECTED)
+        return false
+    }
+
+    private fun markTokenRejected() {
+        config.cachePreferences?.setValue(
+            PUSH_SUBSCRIPTION_REJECTED,
+            "${config.apiKey}:${System.currentTimeMillis()}",
+        )
     }
 
     private fun currentPendingUnregister(): PendingUnregister? {
