@@ -203,6 +203,8 @@ internal class PostHogAndroidEventSnapshotsTest {
 
         val client = PostHogAndroid.with(context, config)
         clients += client
+        // PostHogAndroid only wires the session clock on API 33+; the fixture runs below that.
+        PostHogSessionManager.setDateProvider(config.dateProvider)
         PostHogSessionManager.setSessionId(SESSION_ID)
         return Fixture(client, config, server)
     }
