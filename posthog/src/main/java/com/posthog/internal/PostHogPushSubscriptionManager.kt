@@ -773,7 +773,9 @@ internal class PostHogPushSubscriptionManager(
             hydratedRejectedFromDisk = true
             rejectedFile?.takeIf { it.existsSafely(config) }?.let { file ->
                 rejectedAtMillis =
-                    readPending<RejectedRecord>(file, "Failed to read push subscription rejection")?.rejectedAtMillis
+                    readPending<RejectedRecord>(file, "Failed to read push subscription rejection")
+                        ?.rejectedAtMillis
+                        ?.toLongOrNull()
                         ?: run {
                             file.deleteSafely(config)
                             null
@@ -794,7 +796,7 @@ internal class PostHogPushSubscriptionManager(
         rejectedAtMillis = now
         hydratedRejectedFromDisk = true
         rejectedFile?.let {
-            writePending(it, RejectedRecord(now), "Failed to persist push subscription rejection")
+            writePending(it, RejectedRecord(now.toString()), "Failed to persist push subscription rejection")
         }
     }
 
@@ -891,9 +893,11 @@ internal class PostHogPushSubscriptionManager(
         val platform: String,
     )
 
+    // Millis as text: a Long in a data class compiles to Long.hashCode(long), which is not in the
+    // minimum supported Android API level.
     internal data class RejectedRecord(
         @SerializedName("rejected_at_millis")
-        val rejectedAtMillis: Long,
+        val rejectedAtMillis: String,
     )
 
     private data class CachedIdentityToken(
