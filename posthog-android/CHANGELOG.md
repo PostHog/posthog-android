@@ -1,5 +1,11 @@
 ## Next
 
+## 3.66.0
+
+### Minor Changes
+
+- 853ec7d: Add the internal `persistOptOut` config so a wrapper SDK that owns consent can stop a persisted opt-out from overriding the value it passes to setup.
+
 ## 3.65.2
 
 ### Patch Changes
