@@ -12,8 +12,15 @@ import kotlin.math.pow
 
 private const val PENDING_FILE_NAME = "push_subscription.pending"
 private const val PENDING_UNREGISTER_FILE_NAME = "push_subscription.unregister.pending"
+private const val REJECTED_FILE_NAME = "push_subscription.rejected"
 private const val INITIAL_RETRY_DELAY_SECONDS = 5
 private const val MAX_RETRY_DELAY_SECONDS = 30
+private const val INVALID_API_KEY_CODE = "invalid_api_key"
+
+// A project token that resolves to nothing never starts working, so the device stops asking. The
+// probe exists for the case the server was wrong: a key that works again is picked up within a week
+// instead of never.
+private const val REJECTED_REPROBE_MILLIS = 7L * 24 * 60 * 60 * 1000
 
 /**
  * Persists the latest push subscription registration and retries it on transient failures.
@@ -104,6 +111,16 @@ internal class PostHogPushSubscriptionManager(
         File(File(File(prefix, "push"), config.apiKey), PENDING_UNREGISTER_FILE_NAME)
     }
 
+    // Keyed by api key through its path, so correcting the key in a new build clears the block.
+    private val rejectedFile: File? by lazy {
+        val prefix = config.storagePrefix ?: return@lazy null
+        File(File(File(prefix, "push"), config.apiKey), REJECTED_FILE_NAME)
+    }
+
+    @Volatile private var rejectedAtMillis: Long? = null
+
+    @Volatile private var hydratedRejectedFromDisk = false
+
     // Test seam: computed backoff seconds are multiplied by this to get the scheduled delay in
     // millis. Production keeps the real 1000; tests shrink it so retries fire near-instantly.
     internal var retryDelayMillisPerSecond: Long = 1_000L
@@ -130,6 +147,13 @@ internal class PostHogPushSubscriptionManager(
         appId: String,
         platform: String,
     ) {
+        if (isTokenRejected()) {
+            config.logger.log(
+                "Push subscription skipped: this project API key was rejected. " +
+                    "Check the key passed to PostHog.setup().",
+            )
+            return
+        }
         val existing = currentRecord()
         if (existing != null &&
             existing.deviceToken == deviceToken &&
@@ -214,6 +238,9 @@ internal class PostHogPushSubscriptionManager(
 
     fun retryPending() {
         executor.executeSafely {
+            if (isTokenRejected()) {
+                return@executeSafely
+            }
             // Drain any pending unregister first (independent of the send record, usually absent after
             // a logout). If a same-identity registration is queued (logged out of A offline, then back
             // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
@@ -572,7 +599,19 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun handleFailure(e: Throwable) {
-        if ((e as? PostHogApiError)?.statusCode == 401) {
+        val apiError = e as? PostHogApiError
+        if (apiError?.statusCode == 401 && apiError.errorCode == INVALID_API_KEY_CODE) {
+            // The key resolves to no project, so every later attempt gets the same answer. Without
+            // this the device re-posts on every app open for the life of the install.
+            config.logger.log(
+                "Push subscription rejected: the project API key is not valid. " +
+                    "No further push registrations will be sent for this key.",
+            )
+            markTokenRejected()
+            haltForSession()
+            return
+        }
+        if (apiError?.statusCode == 401) {
             val provider = config.pushIdentityProvider
             if (provider != null && !didAuthRetry) {
                 // One fresh-token retry, then terminal. Re-queued (not inline) so the failing
@@ -729,6 +768,36 @@ internal class PostHogPushSubscriptionManager(
         return pendingRecord
     }
 
+    private fun isTokenRejected(): Boolean {
+        if (rejectedAtMillis == null && !hydratedRejectedFromDisk) {
+            hydratedRejectedFromDisk = true
+            rejectedFile?.takeIf { it.existsSafely(config) }?.let { file ->
+                rejectedAtMillis =
+                    readPending<RejectedRecord>(file, "Failed to read push subscription rejection")?.rejectedAtMillis
+                        ?: run {
+                            file.deleteSafely(config)
+                            null
+                        }
+            }
+        }
+        val rejectedAt = rejectedAtMillis ?: return false
+        if (System.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
+            return true
+        }
+        rejectedAtMillis = null
+        rejectedFile?.deleteSafely(config)
+        return false
+    }
+
+    private fun markTokenRejected() {
+        val now = System.currentTimeMillis()
+        rejectedAtMillis = now
+        hydratedRejectedFromDisk = true
+        rejectedFile?.let {
+            writePending(it, RejectedRecord(now), "Failed to persist push subscription rejection")
+        }
+    }
+
     private fun currentPendingUnregister(): PendingUnregister? {
         if (pendingUnregister == null && !hydratedUnregisterFromDisk) {
             hydratedUnregisterFromDisk = true
@@ -820,6 +889,11 @@ internal class PostHogPushSubscriptionManager(
         @SerializedName("app_id")
         val appId: String,
         val platform: String,
+    )
+
+    internal data class RejectedRecord(
+        @SerializedName("rejected_at_millis")
+        val rejectedAtMillis: Long,
     )
 
     private data class CachedIdentityToken(

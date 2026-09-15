@@ -62,6 +62,8 @@ internal class PostHogPushSubscriptionManagerTest {
 
     private fun pendingFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.pending")
 
+    private fun rejectedFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.rejected")
+
     private fun pendingUnregisterFile(storagePrefix: String): File =
         File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.unregister.pending")
 
@@ -204,6 +206,59 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `an invalid project key stops registering on this launch and the next`() {
+        // A key that resolves to no project answers 401 forever, so the device has to stop asking.
+        // Without this it re-posts on every app open for the life of the install.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertTrue(rejectedFile(storagePrefix!!).exists())
+
+        sut.retryPending()
+        flush()
+        sut.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        // A fresh instance is the next app launch: the marker is on disk, so it does not ask either.
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `a 401 without the invalid key code still retries on the next launch`() {
+        // Identity verification failures are 401 too, and those do recover: the next launch mints a
+        // fresh token. Only the project key code is terminal.
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(401))
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertFalse(rejectedFile(storagePrefix!!).exists())
+
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.retryPending()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
     }
 
     @Test
