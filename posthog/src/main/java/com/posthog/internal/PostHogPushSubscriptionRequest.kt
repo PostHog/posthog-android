@@ -10,6 +10,7 @@ internal data class PostHogPushSubscriptionRequest(
     val distinctId: String,
     @SerializedName("device_token")
     val deviceToken: String,
+    @SerializedName("platform")
     val platform: String,
     @SerializedName("app_id")
     val appId: String,
