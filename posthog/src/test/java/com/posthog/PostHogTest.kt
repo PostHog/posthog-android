@@ -73,6 +73,7 @@ internal class PostHogTest {
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
+        persistOptOut: Boolean = true,
         preloadFeatureFlags: Boolean = true,
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
@@ -96,6 +97,7 @@ internal class PostHogTest {
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
                 this.replayStoragePrefix = File(storagePrefix, "snapshots").absolutePath
                 this.optOut = optOut
+                this.persistOptOut = persistOptOut
                 this.preloadFeatureFlags = preloadFeatureFlags
                 if (integration != null) {
                     addIntegration(integration)
@@ -152,6 +154,90 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), optOut = true)
 
         assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    private fun storedOptOut(value: Boolean) = PostHogMemoryPreferences().apply { setValue(OPT_OUT, value) }
+
+    @Test
+    fun `a stored optIn outranks an opted-out config`() {
+        val sut = getSut(mockHttp().url("/").toString(), optOut = true, cachePreferences = storedOptOut(false))
+
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut is stored`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(mockHttp().url("/").toString(), cachePreferences = preferences)
+
+        sut.optOut()
+
+        assertEquals(true, preferences.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `the config outranks a stored optIn when persistOptOut is false`() {
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                cachePreferences = storedOptOut(false),
+            )
+
+        assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `the config outranks a stored optOut when persistOptOut is false`() {
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                persistOptOut = false,
+                cachePreferences = storedOptOut(true),
+            )
+
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut is not stored when persistOptOut is false`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(mockHttp().url("/").toString(), persistOptOut = false, cachePreferences = preferences)
+
+        sut.optOut()
+
+        assertTrue(sut.isOptOut())
+        assertNull(preferences.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn is not stored when persistOptOut is false`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                cachePreferences = preferences,
+            )
+
+        sut.optIn()
+
+        assertFalse(sut.isOptOut())
+        assertNull(preferences.getValue(OPT_OUT))
 
         sut.close()
     }
@@ -4028,6 +4114,29 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
 
         assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `the config gates group as the first call when persistOptOut is false`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                cachePreferences = storedOptOut(false),
+                personProfiles = PersonProfiles.ALWAYS,
+            )
+
+        sut.group("company", "acme")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
 
         sut.close()
     }

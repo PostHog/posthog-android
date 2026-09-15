@@ -76,13 +76,15 @@ public open class PostHogStateless protected constructor(
                 val remoteConfig = config.remoteConfigProvider(config, api, featureFlagsExecutor, null, null, null)
 
                 // no need to lock optOut here since the setup is locked already
-                val optOut =
-                    getPreferences().getValue(
-                        OPT_OUT,
-                        defaultValue = config.optOut,
-                    ) as? Boolean
-                optOut?.let {
-                    config.optOut = optOut
+                if (config.persistOptOut) {
+                    val optOut =
+                        getPreferences().getValue(
+                            OPT_OUT,
+                            defaultValue = config.optOut,
+                        ) as? Boolean
+                    optOut?.let {
+                        config.optOut = optOut
+                    }
                 }
 
                 this.config = config
@@ -333,7 +335,9 @@ public open class PostHogStateless protected constructor(
 
         synchronized(optOutLock) {
             config?.optOut = false
-            getPreferences().setValue(OPT_OUT, false)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, false)
+            }
         }
     }
 
@@ -344,7 +348,9 @@ public open class PostHogStateless protected constructor(
 
         synchronized(optOutLock) {
             config?.optOut = true
-            getPreferences().setValue(OPT_OUT, true)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, true)
+            }
         }
     }
 

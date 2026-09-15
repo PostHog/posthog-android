@@ -1127,6 +1127,11 @@ public class PostHog private constructor(
 
     private fun isOptedOut(): Boolean {
         val config = this.config ?: return true
+        // The host owns consent: config.optOut is the truth, and a value this SDK stored on an
+        // earlier launch must not outrank it.
+        if (!config.persistOptOut) {
+            return config.optOut
+        }
         if (!optOutLoaded) {
             synchronized(optOutLock) {
                 if (!optOutLoaded && getPreferences().isAvailable()) {
@@ -1147,7 +1152,9 @@ public class PostHog private constructor(
 
         synchronized(optOutLock) {
             config?.optOut = false
-            getPreferences().setValue(OPT_OUT, false)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, false)
+            }
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
         }
@@ -1171,7 +1178,9 @@ public class PostHog private constructor(
 
         synchronized(optOutLock) {
             config?.optOut = true
-            getPreferences().setValue(OPT_OUT, true)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, true)
+            }
             optOutLoaded = true
             exceptionStepsBuffer?.clear()
         }

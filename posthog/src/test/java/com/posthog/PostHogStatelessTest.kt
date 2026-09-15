@@ -7,6 +7,7 @@ import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
+import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
@@ -367,6 +368,40 @@ internal class PostHogStatelessTest {
 
         sut.optOut()
         assertTrue(sut.isOptOut())
+    }
+
+    @Test
+    fun `a stored optOut does not outrank the config when persistOptOut is false`() {
+        sut = createStatelessInstance()
+        sut.getPreferencesPublic().setValue(OPT_OUT, true)
+        config = createConfig().apply { persistOptOut = false }
+
+        sut.setup(config)
+
+        assertFalse(sut.isOptOut())
+    }
+
+    @Test
+    fun `a stored optOut outranks the config by default`() {
+        sut = createStatelessInstance()
+        sut.getPreferencesPublic().setValue(OPT_OUT, true)
+        config = createConfig()
+
+        sut.setup(config)
+
+        assertTrue(sut.isOptOut())
+    }
+
+    @Test
+    fun `optOut is not stored when persistOptOut is false`() {
+        sut = createStatelessInstance()
+        config = createConfig().apply { persistOptOut = false }
+
+        sut.setup(config)
+        sut.optOut()
+
+        assertTrue(sut.isOptOut())
+        assertNull(sut.getPreferencesPublic().getValue(OPT_OUT))
     }
 
     @Test
