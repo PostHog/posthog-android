@@ -57,6 +57,7 @@ public interface PostHogPreferences {
         public const val PUSH_OPENED_MESSAGE_IDS: String = "pushOpenedMessageIds"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
+        public const val SURVEY_PROGRESS: String = "surveyProgress"
         public const val SURVEY_SEEN: String = "surveySeen"
         public const val LAST_SEEN_SURVEY_DATE: String = "lastSeenSurveyDate"
         public const val VERSION: String = "version"
@@ -78,6 +79,7 @@ public interface PostHogPreferences {
                 SESSION_REPLAY,
                 SURVEYS,
                 SURVEY_SEEN,
+                SURVEY_PROGRESS,
                 LAST_SEEN_SURVEY_DATE,
                 VERSION,
                 BUILD,

@@ -40,6 +40,9 @@
 -keep class com.posthog.internal.replay.** { <init>(); }
 
 # Surveys
+# Persisted progress must remain readable after an app update with a different R8 mapping.
+-keep class com.posthog.android.surveys.SurveyProgress { *; }
+-keep class com.posthog.android.surveys.StoredSurveyResponse { *; }
 -keep class com.posthog.surveys.** { *; }
 -keep class com.posthog.surveys.** { <init>(); }
 

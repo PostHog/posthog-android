@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine checkRelease updateLocks
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava testSurveyUI generateLintBaseLine checkRelease updateLocks
 
 clean:
 	./gradlew clean
@@ -66,6 +66,10 @@ test:
 # compile already runs the tests (tests only java)
 testJava:
 	./gradlew :posthog:test
+
+# Mounted Compose tests use the debug-only test activity manifest, including on CI.
+testSurveyUI:
+	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest
 
 generateLintBaseLine:
 	rm -f posthog-android/lint-baseline.xml

@@ -20,9 +20,12 @@ import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogNextSurveyQuestion
+import com.posthog.surveys.PostHogSurveyPresentation
+import com.posthog.surveys.PostHogSurveyPresentationSession
 import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.PostHogSurveysDefaultDelegate
 import com.posthog.surveys.PostHogSurveysDelegate
+import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.surveys.RatingSurveyQuestion
 import com.posthog.surveys.SingleSurveyQuestion
 import com.posthog.surveys.Survey
@@ -34,6 +37,7 @@ import com.posthog.surveys.SurveyQuestionTranslation
 import com.posthog.surveys.SurveyType
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 public class PostHogSurveysIntegration(
     context: Context,
@@ -66,7 +70,11 @@ public class PostHogSurveysIntegration(
     private val surveysLock = Any()
     private val seenSurveysLock = Any()
     private val eventActivationLock = Any()
-    private val activeSurveyLock = Any()
+    private val activeSurveyLock = config.surveysConfig
+    private val progressStore = SurveyProgressStore(config)
+    private var activeSubmissionId: String? = null
+    private var activeProgressWasPersisted = false
+    private var resetGeneration = config.surveysConfig.resetGeneration
     private val lifecycleLock = Any()
 
     private var postHog: PostHogInterface? = null
@@ -92,6 +100,8 @@ public class PostHogSurveysIntegration(
         // Start the survey integration lifecycle
         synchronized(lifecycleLock) {
             isStarted = true
+            presentationSession?.invalidate()
+            presentationSession = PostHogSurveyPresentationSession(config.surveysConfig)
         }
 
         // Resolve the delegate now, at app start — do NOT defer this to first
@@ -102,7 +112,10 @@ public class PostHogSurveysIntegration(
         // (on the first survey) registers it too late — the resume has already
         // fired and is not replayed, leaving no foreground activity to host the
         // survey, which then closes immediately as a "non-active survey".
-        getSurveysDelegate()
+        val delegate = getSurveysDelegate()
+        presentationSession?.let { session ->
+            (delegate as? PostHogSurveysResetAwareDelegate)?.bindSurveySession(session)
+        }
 
         showNextSurvey()
     }
@@ -111,13 +124,14 @@ public class PostHogSurveysIntegration(
         // Stop the survey integration lifecycle
         synchronized(lifecycleLock) {
             isStarted = false
+            presentationSession?.invalidate()
         }
 
         // Tear down any survey UI still on screen so its dialog window doesn't outlive the
         // integration; clearActiveSurvey() only resets our bookkeeping, not the delegate's UI.
-        cleanupSurveys()
-
         clearActiveSurvey()
+
+        cleanupSurveys()
 
         this.postHog = null
     }
@@ -127,6 +141,7 @@ public class PostHogSurveysIntegration(
         synchronized(surveysLock) {
             cachedSurveys = surveys
         }
+        progressStore.reconcile(surveys)
         synchronized(eventActivationLock) {
             rebuildEventsToSurveysMap(surveys)
         }
@@ -152,10 +167,13 @@ public class PostHogSurveysIntegration(
      */
     private fun getSurveysDelegate(): PostHogSurveysDelegate {
         val configured = config.surveysConfig.surveysDelegate
-        if (configured !is PostHogSurveysDefaultDelegate) {
-            return configured
-        }
-        return autoDiscoveredComposeDelegate ?: configured
+        val delegate =
+            if (configured !is PostHogSurveysDefaultDelegate) {
+                configured
+            } else {
+                autoDiscoveredComposeDelegate?.also { config.surveysConfig.surveysDelegate = it } ?: configured
+            }
+        return delegate
     }
 
     /**
@@ -207,6 +225,7 @@ public class PostHogSurveysIntegration(
      * @return List of filtered surveys
      */
     internal fun getActiveMatchingSurveys(): List<Survey> {
+        synchronizeReset()
         // Check if surveys are enabled in config
         if (!config.surveys) {
             return emptyList()
@@ -263,7 +282,7 @@ public class PostHogSurveysIntegration(
             survey.targetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
 
             // Internal targeting flag key (only if survey cannot activate repeatedly)
-            if (!canActivateRepeatedly(survey)) {
+            if (!canActivateOrResume(survey)) {
                 survey.internalTargetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
             }
 
@@ -287,8 +306,12 @@ public class PostHogSurveysIntegration(
                 }
 
             featureFlagsMatch && eventActivationCheck
-        }
+        }.sortedByDescending(::hasProgress)
     }
+
+    private fun canActivateOrResume(survey: Survey): Boolean = canActivateRepeatedly(survey) || hasProgress(survey)
+
+    private fun hasProgress(survey: Survey): Boolean = progressStore.load(survey) != null
 
     /**
      * Shows a survey to the user using the configured delegate.
@@ -301,115 +324,76 @@ public class PostHogSurveysIntegration(
      * @param survey The survey to show
      */
     internal fun showSurvey(survey: Survey) {
+        val session = synchronized(lifecycleLock) { presentationSession?.takeIf { isStarted } } ?: return
         // Check if we can show a survey (no active survey)
         if (!canShowNextSurvey()) {
             config.logger.log("Cannot show survey - another survey is already active")
             return
         }
 
+        val resetGeneration = synchronized(activeSurveyLock) { config.surveysConfig.resetGeneration }
         val displayLanguage = resolveDisplayLanguage()
         val translations = resolveSurveyTranslations(survey, displayLanguage)
-        val resolvedLanguage = translations.matchedKey
-        val resolvedQuestionTranslations = translations.questions
+        val savedProgress = progressStore.load(survey)
+        val progress = savedProgress ?: progressStore.getOrCreate(survey)
+        val responseContext =
+            SurveyResponseContext(
+                survey,
+                translations.matchedKey,
+                translations.questions,
+                progress.submissionId,
+                progress.questionText.toMutableMap(),
+                progress.language,
+                resetGeneration,
+                savedProgress != null,
+            )
 
         val displaySurvey =
             PostHogDisplaySurvey.toDisplaySurvey(
                 survey,
                 surveyTranslation = translations.survey,
-                questionTranslations = resolvedQuestionTranslations,
-            )
+                questionTranslations = responseContext.questionTranslations,
+            ).copy(initialQuestionIndex = progress.questionIndex)
 
         // Store the original survey for branching logic
         val originalSurvey = survey
 
         // Setup callbacks for delegate call
-        val onSurveyShown: OnPostHogSurveyShown = { shownSurvey ->
-            // Check if shownSurvey is originalSurvey
-            if (shownSurvey.id == originalSurvey.id) {
-                // If no survey is active, set this originalSurvey as active
-                synchronized(activeSurveyLock) {
-                    if (activeSurvey == null) {
-                        activeSurvey = originalSurvey
-                        activeSurveyCompleted = false
-                        currentSurveyResponses.clear()
-                    }
-                }
+        val onSurveyShown = surveyShownCallback(responseContext, progress)
 
-                // Send survey shown event
-                sendSurveyShownEvent(originalSurvey, resolvedLanguage)
-
-                // Clear up event-activated surveys if this survey has events
-                if (hasEvents(originalSurvey)) {
-                    synchronized(eventActivationLock) {
-                        eventActivatedSurveys.remove(originalSurvey.id)
-                    }
-                }
-            } else {
-                config.logger.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
-            }
-        }
-
-        val onSurveyResponse: OnPostHogSurveyResponse = onSurveyResponse@{ responseSurvey, questionIndex, response ->
-            // Calculate next question based on current response
-            val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
-            var responsesToSend: Map<String, PostHogSurveyResponse>? = null
-
-            synchronized(activeSurveyLock) {
-                // Validate that this survey matches the currently active survey
-                val currentActiveSurvey = activeSurvey
-                if (currentActiveSurvey == null || responseSurvey.id != currentActiveSurvey.id) {
-                    config.logger.log("Received a response event for a non-active survey")
-                    return@onSurveyResponse null
-                }
-
-                // Store the response for survey completion tracking
-                currentSurveyResponses[getLegacyResponseKey(questionIndex)] = response
-                originalSurvey.questions.getOrNull(questionIndex)?.id?.takeIf { it.isNotEmpty() }?.let { questionId ->
-                    currentSurveyResponses[getQuestionIdResponseKey(questionId)] = response
-                }
-
-                // Check if survey is completed (needed on close event)
-                activeSurveyCompleted = nextQuestion.isSurveyCompleted
-
-                // Send completion event if survey is finished
-                if (activeSurveyCompleted) {
-                    responsesToSend = currentSurveyResponses.toMap()
-                }
-            }
-
-            responsesToSend?.let { sendSurveySentEvent(originalSurvey, it, resolvedLanguage, resolvedQuestionTranslations) }
-
-            nextQuestion
-        }
+        val onSurveyResponse = surveyResponseCallback(responseContext)
 
         val onSurveyClosed: OnPostHogSurveyClosed = onSurveyClosed@{ _ ->
-            var surveyResponses: Map<String, PostHogSurveyResponse> = emptyMap()
-            var wasSurveyCompleted = false
+            val distinctId = postHog?.distinctId()
+            val event =
+                synchronized(activeSurveyLock) {
+                    // Validate that this survey matches the currently active survey
+                    if (!isActiveAttempt(originalSurvey.id, responseContext.submissionId)) {
+                        config.logger.log("[Surveys] Received a close event for a non-active survey")
+                        return@onSurveyClosed
+                    }
 
-            synchronized(activeSurveyLock) {
-                // Validate that this survey matches the currently active survey
-                val currentActiveSurvey = activeSurvey
-                if (currentActiveSurvey == null || originalSurvey.id != currentActiveSurvey.id) {
-                    config.logger.log("[Surveys] Received a close event for a non-active survey")
-                    return@onSurveyClosed
+                    if (!canCloseAttempt(responseContext)) {
+                        return@onSurveyClosed
+                    }
+                    progressStore.remove(originalSurvey)
+                    if (responseContext.resetGeneration != config.surveysConfig.resetGeneration) return@onSurveyClosed
+
+                    // Get current active survey and completion state
+                    val surveyResponses = currentSurveyResponses.toMap()
+                    val wasSurveyCompleted = activeSurveyCompleted
+
+                    activeSurvey = null
+                    activeSurveyCompleted = false
+                    currentSurveyResponses.clear()
+
+                    // Mark survey as seen
+                    setSurveySeen(originalSurvey)
+
+                    // Send survey dismissed event if survey was not completed
+                    if (!wasSurveyCompleted) surveyDismissedEvent(responseContext, surveyResponses, distinctId) else null
                 }
-
-                // Get current active survey and completion state
-                surveyResponses = currentSurveyResponses.toMap()
-                wasSurveyCompleted = activeSurveyCompleted
-
-                activeSurvey = null
-                activeSurveyCompleted = false
-                currentSurveyResponses.clear()
-            }
-
-            // Send survey dismissed event if survey was not completed
-            if (!wasSurveyCompleted) {
-                sendSurveyDismissedEvent(originalSurvey, surveyResponses, resolvedLanguage, resolvedQuestionTranslations)
-            }
-
-            // Mark survey as seen
-            setSurveySeen(originalSurvey)
+            event?.let(::captureSurveyEvent)
 
             // Show next survey in queue after a short delay
             Thread {
@@ -419,14 +403,180 @@ public class PostHogSurveysIntegration(
         }
 
         // Call the delegate to render the survey
-        getSurveysDelegate().renderSurvey(displaySurvey, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        renderSurvey(PostHogSurveyPresentation(displaySurvey, resetGeneration, session), onSurveyShown, onSurveyResponse, onSurveyClosed)
+    }
+
+    private fun renderSurvey(
+        presentation: PostHogSurveyPresentation,
+        onSurveyShown: OnPostHogSurveyShown,
+        onSurveyResponse: OnPostHogSurveyResponse,
+        onSurveyClosed: OnPostHogSurveyClosed,
+    ) {
+        if (!presentation.session.isActive) return
+        val delegate = getSurveysDelegate()
+        if (delegate is PostHogSurveysResetAwareDelegate) {
+            delegate.bindSurveySession(presentation.session)
+            delegate.renderSurvey(presentation, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        } else {
+            delegate.renderSurvey(presentation.survey, onSurveyShown, onSurveyResponse, onSurveyClosed)
+        }
+    }
+
+    private fun surveyResponseCallback(responseContext: SurveyResponseContext): OnPostHogSurveyResponse =
+        onSurveyResponse@{ responseSurvey, questionIndex, response ->
+            val originalSurvey = responseContext.survey
+            // Calculate next question based on current response
+            val nextQuestion = getNextQuestion(originalSurvey, questionIndex, response)
+            val distinctId = postHog?.distinctId()
+            val event =
+                synchronized(activeSurveyLock) {
+                    // Validate that this survey matches the currently active survey
+                    if (!isActiveAttempt(responseSurvey.id, responseContext.submissionId)) {
+                        config.logger.log("Received a response event for a non-active survey")
+                        return@onSurveyResponse null
+                    }
+
+                    if (!canRecordResponse(responseContext)) {
+                        return@onSurveyResponse null
+                    }
+
+                    recordResponse(responseContext, questionIndex, response, nextQuestion)
+                    if (responseContext.resetGeneration != config.surveysConfig.resetGeneration) return@onSurveyResponse null
+
+                    // Send completion event if survey is finished
+                    if (shouldSendResponse(originalSurvey, activeSurveyCompleted)) {
+                        surveySentEvent(responseContext, currentSurveyResponses.toMap(), nextQuestion.isSurveyCompleted, distinctId)
+                    } else {
+                        null
+                    }
+                }
+            event?.let(::captureSurveyEvent)
+
+            nextQuestion
+        }
+
+    private fun surveyShownCallback(
+        responseContext: SurveyResponseContext,
+        progress: SurveyProgress,
+    ): OnPostHogSurveyShown =
+        { shownSurvey ->
+            val originalSurvey = responseContext.survey
+            // Check if shownSurvey is originalSurvey
+            if (shownSurvey.id == originalSurvey.id) {
+                // If no survey is active, set this originalSurvey as active
+                val distinctId = postHog?.distinctId()
+                val event =
+                    synchronized(activeSurveyLock) {
+                        if (!isCurrentContext(responseContext)) return@synchronized null
+                        activateSurvey(originalSurvey, progress, responseContext.wasRestored)
+
+                        // Clear up event-activated surveys if this survey has events
+                        synchronized(eventActivationLock) {
+                            eventActivatedSurveys.remove(originalSurvey.id)
+                        }
+                        surveyShownEvent(originalSurvey, responseContext.language, distinctId)
+                    }
+                event?.let(::captureSurveyEvent)
+            } else {
+                config.logger.log("Received a show event for a non-matching survey: ${shownSurvey.id} vs ${originalSurvey.id}")
+            }
+        }
+
+    private fun activateSurvey(
+        survey: Survey,
+        progress: SurveyProgress,
+        persisted: Boolean,
+    ) {
+        synchronized(activeSurveyLock) {
+            if (activeSurvey == null) {
+                activeSurvey = survey
+                activeSurveyCompleted = false
+                currentSurveyResponses.clear()
+                currentSurveyResponses.putAll(progress.responses.mapValues { checkNotNull(it.value.toResponse()) })
+                activeSubmissionId = progress.submissionId
+                activeProgressWasPersisted = persisted
+            }
+        }
+    }
+
+    private fun isActiveAttempt(
+        surveyId: String,
+        submissionId: String,
+    ): Boolean = activeSurvey?.id == surveyId && activeSubmissionId == submissionId
+
+    private fun canCloseAttempt(context: SurveyResponseContext): Boolean =
+        (context.resetGeneration == config.surveysConfig.resetGeneration && activeSurveyCompleted) || canRecordResponse(context)
+
+    private fun isCurrentContext(context: SurveyResponseContext): Boolean =
+        hasExpectedProgress(context, context.wasRestored) && context.resetGeneration == config.surveysConfig.resetGeneration
+
+    private fun hasExpectedProgress(
+        context: SurveyResponseContext,
+        persisted: Boolean,
+    ): Boolean = !persisted || progressStore.load(context.survey)?.submissionId == context.submissionId
+
+    private fun canRecordResponse(context: SurveyResponseContext): Boolean {
+        if (hasExpectedProgress(context, activeProgressWasPersisted) && context.resetGeneration == config.surveysConfig.resetGeneration
+        ) {
+            return true
+        }
+        if (isActiveAttempt(context.survey.id, context.submissionId)) clearActiveSurvey()
+        return false
+    }
+
+    private fun recordResponse(
+        context: SurveyResponseContext,
+        questionIndex: Int,
+        response: PostHogSurveyResponse,
+        nextQuestion: PostHogNextSurveyQuestion,
+    ) {
+        // Store the response for survey completion tracking
+        currentSurveyResponses[getLegacyResponseKey(questionIndex)] = response
+        context.survey.questions.getOrNull(questionIndex)?.id?.takeIf { it.isNotEmpty() }?.let { questionId ->
+            currentSurveyResponses[getQuestionIdResponseKey(questionId)] = response
+        }
+
+        val text =
+            context.questionTranslations?.getOrNull(questionIndex)?.question
+                ?: context.survey.questions.getOrNull(questionIndex)?.question
+        text?.let {
+            context.questionText[questionIndex] = it
+        }
+
+        context.responseLanguage = context.language
+
+        // Check if survey is completed (needed on close event)
+        activeSurveyCompleted = nextQuestion.isSurveyCompleted
+        if (activeSurveyCompleted) {
+            progressStore.remove(context.survey)
+        } else {
+            progressStore.save(
+                context.survey,
+                SurveyProgress(
+                    submissionId = context.submissionId,
+                    questionOrder = progressStore.questionOrder(context.survey),
+                    questionIndex = nextQuestion.questionIndex,
+                    responses = currentSurveyResponses.mapValues { StoredSurveyResponse.from(it.value) },
+                    questionText = context.questionText.toMap(),
+                    language = context.language,
+                ),
+            )
+            val persisted = hasProgress(context.survey)
+            if (context.resetGeneration == config.surveysConfig.resetGeneration) activeProgressWasPersisted = persisted
+        }
     }
 
     /**
      * Cleans up any active surveys by calling the delegate's cleanupSurveys method.
      */
     internal fun cleanupSurveys() {
-        getSurveysDelegate().cleanupSurveys()
+        val delegate = getSurveysDelegate()
+        val session = presentationSession
+        if (delegate is PostHogSurveysResetAwareDelegate && session != null) {
+            delegate.cleanupSurveys(session)
+        } else {
+            delegate.cleanupSurveys()
+        }
     }
 
     /**
@@ -469,11 +619,7 @@ public class PostHogSurveysIntegration(
                 )
             }
             is SurveyQuestionBranching.SpecificQuestion -> {
-                val targetIndex = minOf(branching.index, originalSurvey.questions.size - 1)
-                PostHogNextSurveyQuestion(
-                    questionIndex = targetIndex,
-                    isSurveyCompleted = targetIndex == originalSurvey.questions.size - 1,
-                )
+                questionDestination(branching.index, originalSurvey.questions.size)
             }
             is SurveyQuestionBranching.ResponseBased -> {
                 getResponseBasedNextQuestion(
@@ -483,7 +629,7 @@ public class PostHogSurveysIntegration(
                     branching.responseValues,
                 ) ?: PostHogNextSurveyQuestion(
                     questionIndex = nextQuestionIndex,
-                    isSurveyCompleted = nextQuestionIndex == originalSurvey.questions.size - 1,
+                    isSurveyCompleted = currentIndex == originalSurvey.questions.size - 1,
                 )
             }
         }
@@ -578,6 +724,15 @@ public class PostHogSurveysIntegration(
         return null
     }
 
+    private fun questionDestination(
+        index: Int,
+        totalQuestions: Int,
+    ): PostHogNextSurveyQuestion =
+        PostHogNextSurveyQuestion(
+            questionIndex = index.coerceIn(0, maxOf(totalQuestions - 1, 0)),
+            isSurveyCompleted = index !in 0 until totalQuestions,
+        )
+
     /**
      * Processes a branching step result, handling both Int indices and "end" string values.
      */
@@ -587,11 +742,7 @@ public class PostHogSurveysIntegration(
     ): PostHogNextSurveyQuestion? {
         return when {
             nextIndex is Int -> {
-                val safeIndex = minOf(nextIndex, totalQuestions - 1)
-                PostHogNextSurveyQuestion(
-                    questionIndex = safeIndex,
-                    isSurveyCompleted = safeIndex >= totalQuestions,
-                )
+                questionDestination(nextIndex, totalQuestions)
             }
             nextIndex is String && nextIndex.lowercase() == "end" -> {
                 PostHogNextSurveyQuestion(
@@ -654,6 +805,8 @@ public class PostHogSurveysIntegration(
     // Lifecycle management
     private var isStarted: Boolean = false
 
+    @Volatile private var presentationSession: PostHogSurveyPresentationSession? = null
+
     private fun resolveDisplayLanguage(): String? {
         val override = config.surveysConfig.overrideDisplayLanguage
         val personProperties = config.remoteConfigHolder?.getPersonPropertiesForFlags()
@@ -666,8 +819,9 @@ public class PostHogSurveysIntegration(
      * Returns true if there's no active survey currently being displayed.
      */
     internal fun canShowNextSurvey(): Boolean {
+        synchronizeReset()
         return synchronized(activeSurveyLock) {
-            activeSurvey == null
+            config.cachePreferences?.isAvailable() != false && activeSurvey == null
         }
     }
 
@@ -716,80 +870,105 @@ public class PostHogSurveysIntegration(
     private fun clearActiveSurvey() {
         synchronized(activeSurveyLock) {
             activeSurvey = null
+            activeSubmissionId = null
+            activeProgressWasPersisted = false
             activeSurveyCompleted = false
             currentSurveyResponses.clear()
         }
     }
+
+    private fun synchronizeReset() {
+        synchronized(activeSurveyLock) {
+            val generation = config.surveysConfig.resetGeneration
+            if (resetGeneration == generation) return
+            resetGeneration = generation
+            clearActiveSurvey()
+            synchronized(seenSurveysLock) { seenSurveyKeys = null }
+            synchronized(eventActivationLock) { eventActivatedSurveys.clear() }
+        }
+    }
+
+    private data class SurveyResponseContext(
+        val survey: Survey,
+        val language: String?,
+        val questionTranslations: List<SurveyQuestionTranslation?>?,
+        val submissionId: String = UUID.randomUUID().toString(),
+        val questionText: MutableMap<Int, String> = mutableMapOf(),
+        var responseLanguage: String? = language,
+        val resetGeneration: Long,
+        val wasRestored: Boolean,
+    )
+
+    private fun shouldSendResponse(
+        survey: Survey,
+        isCompleted: Boolean,
+    ): Boolean = survey.enablePartialResponses == true || isCompleted
 
     // Survey Event Methods
 
     /**
      * Sends a "survey shown" event to PostHog instance
      */
-    private fun sendSurveyShownEvent(
+    private fun surveyShownEvent(
         survey: Survey,
         language: String?,
-    ) {
-        sendSurveyEvent(
-            event = "survey shown",
-            survey = survey,
-            language = language,
-        )
-    }
+        distinctId: String?,
+    ): SurveyEvent = SurveyEvent("survey shown", surveyEventProperties(survey, language = language), distinctId)
 
     /**
      * Sends a "survey sent" event to PostHog instance
      * Sends a survey completion event to PostHog with all collected responses
-     * @param survey The completed survey
+     * @param context The survey submission and display language
      * @param responses Map of collected responses for each question
      */
-    private fun sendSurveySentEvent(
-        survey: Survey,
+    private fun surveySentEvent(
+        context: SurveyResponseContext,
         responses: Map<String, PostHogSurveyResponse>,
-        language: String?,
-        questionTranslations: List<SurveyQuestionTranslation?>?,
-    ) {
+        isCompleted: Boolean,
+        distinctId: String?,
+    ): SurveyEvent {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses, questionTranslations) +
+            buildSurveyResponseProperties(context.survey, responses, context.questionTranslations, context.questionText) +
                 mapOf(
+                    "\$survey_submission_id" to context.submissionId,
+                    "\$survey_completed" to isCompleted,
                     "\$set" to
                         mapOf(
-                            getSurveyInteractionProperty(survey, "responded") to true,
+                            getSurveyInteractionProperty(context.survey, "responded") to true,
                         ),
                 )
 
-        sendSurveyEvent(
-            event = "survey sent",
-            survey = survey,
-            additionalProperties = additionalProperties,
-            language = language,
-        )
+        setSurveySeen(context.survey)
+        return SurveyEvent("survey sent", surveyEventProperties(context.survey, additionalProperties, context.language), distinctId)
     }
 
     /**
      * Sends a "survey dismissed" event to PostHog instance
      */
-    private fun sendSurveyDismissedEvent(
-        survey: Survey,
+    private fun surveyDismissedEvent(
+        context: SurveyResponseContext,
         responses: Map<String, PostHogSurveyResponse>,
-        language: String?,
-        questionTranslations: List<SurveyQuestionTranslation?>?,
-    ) {
+        distinctId: String?,
+    ): SurveyEvent {
         val additionalProperties =
-            buildSurveyResponseProperties(survey, responses, questionTranslations) +
+            buildSurveyResponseProperties(context.survey, responses, context.questionTranslations, context.questionText) +
                 mapOf(
+                    "\$survey_submission_id" to context.submissionId,
                     "\$survey_partially_completed" to surveyHasResponses(responses),
                     "\$set" to
                         mapOf(
-                            getSurveyInteractionProperty(survey, "dismissed") to true,
+                            getSurveyInteractionProperty(context.survey, "dismissed") to true,
                         ),
                 )
 
-        sendSurveyEvent(
-            event = "survey dismissed",
-            survey = survey,
-            additionalProperties = additionalProperties,
-            language = language,
+        return SurveyEvent(
+            "survey dismissed",
+            surveyEventProperties(
+                context.survey,
+                additionalProperties,
+                if (responses.isEmpty()) context.language else context.responseLanguage,
+            ),
+            distinctId,
         )
     }
 
@@ -797,6 +976,7 @@ public class PostHogSurveysIntegration(
         survey: Survey,
         responses: Map<String, PostHogSurveyResponse>,
         questionTranslations: List<SurveyQuestionTranslation?>?,
+        questionText: Map<Int, String>,
     ): Map<String, Any> {
         val responsesProperties =
             responses.mapNotNull { (key, response) ->
@@ -811,7 +991,7 @@ public class PostHogSurveysIntegration(
                     question.id?.let { put("id", it) }
                     // Use translated question text (if applied) so $survey_questions matches what the user saw.
                     val translatedText = questionTranslations?.getOrNull(index)?.question
-                    val effectiveQuestion = translatedText ?: question.question
+                    val effectiveQuestion = questionText[index] ?: translatedText ?: question.question
                     effectiveQuestion?.let { put("question", it) }
 
                     val responseKey =
@@ -829,26 +1009,26 @@ public class PostHogSurveysIntegration(
     }
 
     /**
-     * Helper method to send survey events with consistent properties
+     * Event snapshot prepared before releasing survey state, then dispatched without holding its lock.
      */
-    private fun sendSurveyEvent(
-        event: String,
+    private data class SurveyEvent(val name: String, val properties: Map<String, Any>, val distinctId: String?)
+
+    private fun captureSurveyEvent(event: SurveyEvent) {
+        postHog?.capture(event.name, distinctId = event.distinctId, properties = event.properties)
+    }
+
+    private fun surveyEventProperties(
         survey: Survey,
         additionalProperties: Map<String, Any> = emptyMap(),
         language: String? = null,
-    ) {
-        val postHog =
-            postHog ?: run {
-                return
-            }
-
+    ): Map<String, Any> {
         val properties = getBaseSurveyEventProperties(survey).toMutableMap()
         properties.putAll(additionalProperties)
         if (!language.isNullOrEmpty()) {
             properties["\$survey_language"] = language
         }
 
-        postHog.capture(event, properties = properties)
+        return properties.toMap()
     }
 
     /**
@@ -939,7 +1119,7 @@ public class PostHogSurveysIntegration(
      * Note: if the survey can be repeatedly activated by its events, this value will default to false
      */
     private fun getSurveySeen(survey: Survey): Boolean {
-        if (canActivateRepeatedly(survey)) {
+        if (canActivateOrResume(survey)) {
             // if this survey can activate repeatedly, we override this return value
             return false
         }

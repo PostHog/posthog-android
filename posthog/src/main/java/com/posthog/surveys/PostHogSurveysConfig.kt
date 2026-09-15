@@ -1,9 +1,23 @@
 package com.posthog.surveys
 
+import com.posthog.PostHogInternal
+
 /**
  * Configuration for PostHog Surveys feature.
  */
 public class PostHogSurveysConfig {
+    /**
+     * Invalidates pending survey callbacks across SDK reset. Access and survey state mutations
+     * are synchronized on this configuration so reset cannot interleave with response snapshots.
+     */
+    @PostHogInternal
+    public var resetGeneration: Long = 0
+        private set
+
+    internal fun reset() {
+        resetGeneration++
+    }
+
     /**
      * Delegate responsible for managing survey presentation in your app.
      * Handles survey rendering, response collection, and lifecycle events.

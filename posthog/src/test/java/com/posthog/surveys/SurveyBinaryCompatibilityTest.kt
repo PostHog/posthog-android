@@ -1,0 +1,130 @@
+package com.posthog.surveys
+
+import org.junit.Test
+import java.util.Date
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+internal class SurveyBinaryCompatibilityTest {
+    private val legacyParameterTypes =
+        arrayOf(
+            String::class.java, String::class.java, SurveyType::class.java, List::class.java,
+            String::class.java, List::class.java, String::class.java, String::class.java,
+            String::class.java, SurveyConditions::class.java, SurveyAppearance::class.java,
+            Integer::class.java, Date::class.java, Date::class.java, Date::class.java,
+            SurveySchedule::class.java, Map::class.java,
+        )
+
+    private fun legacyArguments(): Array<Any?> =
+        arrayOf(
+            "survey", "Survey", SurveyType.POPOVER, emptyList<SurveyQuestion>(),
+            "Description", null, "linked", "targeting", "internal", null, null, 7,
+            Date(
+                101,
+            ),
+            Date(202), Date(303), null, emptyMap<String, SurveyTranslation>(),
+        )
+
+    @Test
+    fun `display survey legacy constructor and copy preserve resume index`() {
+        val types =
+            arrayOf(
+                String::class.java,
+                String::class.java,
+                List::class.java,
+                PostHogDisplaySurveyAppearance::class.java,
+                Date::class.java,
+                Date::class.java,
+            )
+        val constructor = PostHogDisplaySurvey::class.java.getDeclaredConstructor(*types)
+        val original =
+            constructor.newInstance(
+                "id",
+                "name",
+                emptyList<PostHogDisplaySurveyQuestion>(),
+                PostHogDisplaySurveyAppearance(),
+                Date(404),
+                Date(505),
+            )
+        assertEquals(Date(404), original.startDate)
+        assertEquals(Date(505), original.endDate)
+        assertEquals(0, original.initialQuestionIndex)
+        val resumed = original.copy(initialQuestionIndex = 2)
+        assertEquals(2, resumed.copy(name = "Updated").initialQuestionIndex)
+        val defaultCopy =
+            PostHogDisplaySurvey::class.java.getDeclaredMethod(
+                "copy\$default",
+                PostHogDisplaySurvey::class.java,
+                *types,
+                Int::class.javaPrimitiveType,
+                Any::class.java,
+            )
+        val copied =
+            defaultCopy.invoke(
+                null, resumed, null, "Mixed name", null, null,
+                Date(
+                    606,
+                ),
+                null, 63 xor (1 shl 1) xor (1 shl 4), null,
+            ) as PostHogDisplaySurvey
+        assertEquals(resumed.copy(name = "Mixed name", startDate = Date(606)), copied)
+    }
+
+    @Test
+    fun `legacy constructor and its Kotlin defaults remain callable`() {
+        val constructor = Survey::class.java.getDeclaredConstructor(*legacyParameterTypes)
+        val survey = constructor.newInstance(*legacyArguments())
+        assertEquals("survey", survey.id)
+        assertEquals(
+            listOf("Description", "linked", "targeting", "internal"),
+            listOf(survey.description, survey.linkedFlagKey, survey.targetingFlagKey, survey.internalTargetingFlagKey),
+        )
+        assertEquals(7, survey.currentIteration)
+        assertEquals(listOf(Date(101), Date(202), Date(303)), listOf(survey.currentIterationStartDate, survey.startDate, survey.endDate))
+        assertEquals(null, survey.enablePartialResponses)
+
+        val defaultConstructor =
+            Survey::class.java.getDeclaredConstructor(
+                *legacyParameterTypes,
+                Int::class.javaPrimitiveType,
+                Class.forName("kotlin.jvm.internal.DefaultConstructorMarker"),
+            )
+        val withDefaults = defaultConstructor.newInstance(*legacyArguments(), 1 shl 16, null)
+        assertEquals(survey.copy(translations = null), withDefaults)
+    }
+
+    @Test
+    fun `legacy copy and Kotlin default copy preserve partial responses`() {
+        val survey =
+            Survey::class.java.getDeclaredConstructor(
+                *legacyParameterTypes,
+            ).newInstance(*legacyArguments()).copy(enablePartialResponses = true)
+        assertEquals(true, survey.copy(name = "Renamed").enablePartialResponses)
+        assertEquals(false, survey.copy(enablePartialResponses = false).enablePartialResponses)
+        val copy = Survey::class.java.getDeclaredMethod("copy", *legacyParameterTypes)
+        val copied = copy.invoke(survey, *legacyArguments()) as Survey
+        assertEquals(survey, copied)
+        assertTrue(copied.enablePartialResponses == true)
+
+        val defaultCopy =
+            Survey::class.java.getDeclaredMethod(
+                "copy\$default",
+                Survey::class.java,
+                *legacyParameterTypes,
+                Int::class.javaPrimitiveType,
+                Any::class.java,
+            )
+        val copiedWithDefaults =
+            defaultCopy.invoke(
+                null,
+                survey,
+                *legacyArguments().apply {
+                    this[1] = "Mixed name"
+                    this[4] = "New description"
+                },
+                ((1 shl 17) - 1) xor (1 shl 1) xor (1 shl 4),
+                null,
+            ) as Survey
+        assertEquals(survey.copy(name = "Mixed name", description = "New description"), copiedWithDefaults)
+    }
+}
