@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine checkRelease updateLocks
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine checkRelease updateLocks testSurveyUI
 
 clean:
 	./gradlew clean
@@ -62,6 +62,10 @@ testReport:
 # compile already runs the tests (tests java and android)
 test:
 	./gradlew testDebugUnitTest
+
+# Mounted Compose tests need the debug-only test host, which CI builds normally skip.
+testSurveyUI:
+	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest
 
 # compile already runs the tests (tests only java)
 testJava:
