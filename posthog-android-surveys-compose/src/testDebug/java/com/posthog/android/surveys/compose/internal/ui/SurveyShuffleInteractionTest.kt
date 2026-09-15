@@ -24,20 +24,20 @@ import kotlin.test.assertNotEquals
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @Config(sdk = [28])
 internal class SurveyShuffleInteractionTest(
-    private val multiple: Boolean,
-    private val open: Boolean,
-    private val shuffle: Boolean,
+    private val isMultipleChoice: Boolean,
+    private val hasOpenChoice: Boolean,
+    private val shouldShuffleOptions: Boolean,
 ) {
     @get:Rule val compose = createComposeRule()
 
     @Test
     fun `display order stays stable through selection and submits the displayed answer`() {
-        val choices = listOf("A", "B", "C") + if (open) listOf("Other") else emptyList()
-        val labels = choices.map { if (open && it == "Other") "Other:" else it }
+        val choices = listOf("A", "B", "C") + if (hasOpenChoice) listOf("Other") else emptyList()
+        val labels = choices.map { if (hasOpenChoice && it == "Other") "Other:" else it }
         val responses = mutableListOf<PostHogSurveyResponse>()
         val survey =
             PostHogDisplaySurvey(
-                id = "shuffle",
+                id = "shouldShuffleOptions",
                 name = "Shuffle",
                 questions = listOf(question("First", choices), question("Last", listOf("Done"))),
                 appearance = PostHogDisplaySurveyAppearance(displayThankYouMessage = false),
@@ -53,12 +53,12 @@ internal class SurveyShuffleInteractionTest(
 
         fun visibleOrder() = labels.sortedBy { compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top }
         val order = visibleOrder()
-        if (shuffle) assertNotEquals(labels, order) else assertEquals(labels, order)
-        if (open) assertEquals("Other:", order.last())
+        if (shouldShuffleOptions) assertNotEquals(labels, order) else assertEquals(labels, order)
+        if (hasOpenChoice) assertEquals("Other:", order.last())
 
         compose.onNodeWithText("B").performClick()
         assertEquals(order, visibleOrder())
-        if (open) {
+        if (hasOpenChoice) {
             compose.onNodeWithText("Other:").performClick()
             compose.onNode(hasSetTextAction()).performTextInput("Custom answer")
             assertEquals(order, visibleOrder())
@@ -72,10 +72,10 @@ internal class SurveyShuffleInteractionTest(
     }
 
     private fun expectedResponse(): PostHogSurveyResponse =
-        if (multiple) {
-            PostHogSurveyResponse.MultipleChoice(if (open) listOf("B", "Custom answer") else listOf("B"))
+        if (isMultipleChoice) {
+            PostHogSurveyResponse.MultipleChoice(if (hasOpenChoice) listOf("B", "Custom answer") else listOf("B"))
         } else {
-            PostHogSurveyResponse.SingleChoice(if (open) "Custom answer" else "B")
+            PostHogSurveyResponse.SingleChoice(if (hasOpenChoice) "Custom answer" else "B")
         }
 
     private fun question(
@@ -85,15 +85,21 @@ internal class SurveyShuffleInteractionTest(
         id = id, question = id, questionDescription = null,
         questionDescriptionContentType = PostHogDisplaySurveyTextContentType.TEXT,
         isOptional = false, buttonText = "Submit", choices = choices,
-        hasOpenChoice = open && id == "First", shuffleOptions = shuffle, isMultipleChoice = multiple,
+        hasOpenChoice = hasOpenChoice && id == "First", shuffleOptions = shouldShuffleOptions, isMultipleChoice = isMultipleChoice,
     )
 
     companion object {
         @JvmStatic
-        @ParameterizedRobolectricTestRunner.Parameters(name = "multiple={0}, open={1}, shuffle={2}")
+        @ParameterizedRobolectricTestRunner.Parameters(name = "isMultipleChoice={0}, hasOpenChoice={1}, shouldShuffleOptions={2}")
         fun cases(): List<Array<Boolean>> =
-            listOf(false, true).flatMap { multiple ->
-                listOf(false, true).flatMap { open -> listOf(false, true).map { shuffle -> arrayOf(multiple, open, shuffle) } }
+            listOf(false, true).flatMap { isMultipleChoice ->
+                listOf(false, true).flatMap {
+                        hasOpenChoice ->
+                    listOf(false, true).map {
+                            shouldShuffleOptions ->
+                        arrayOf(isMultipleChoice, hasOpenChoice, shouldShuffleOptions)
+                    }
+                }
             }
     }
 }
