@@ -116,7 +116,10 @@ internal class PostHogLifecycleObserverIntegration(
             // Force the rotation now and stop replay synchronously — process may suspend
             // before the listener's main-thread post can run.
             postHog?.endSession()
-            postHog?.stopSessionReplay()
+            // An expired session is an SDK-internal stop, not the app asking for replay off:
+            // stopSessionReplay() would record an app-owned off state and keep replay off for
+            // every session after this one.
+            postHog?.stopSessionReplayInternally()
         } else {
             scheduleEndSession()
         }

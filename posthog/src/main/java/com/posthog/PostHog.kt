@@ -160,12 +160,8 @@ public class PostHog private constructor(
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
-            sessionReplayHandler?.let {
-                if (isSessionReplayConfigEnabled()) {
-                    // start will bail if session replay is already active anyway
-                    startSessionReplay(resumeCurrent = true)
-                }
-            }
+            // start will bail if session replay is already active anyway
+            startSessionReplayAutomatically()
         }
 
     public override fun <T : PostHogConfig> setup(config: T) {
@@ -355,9 +351,7 @@ public class PostHog private constructor(
 
                             // resume because we just created the session id above with
                             // the startSession call
-                            if (isSessionReplayConfigEnabled()) {
-                                startSessionReplay(resumeCurrent = true)
-                            }
+                            startSessionReplayAutomatically()
                         } else if (it is PostHogSurveysHandler) {
                             // surveys integration so we can notify it about captured events
                             surveysHandler = it
@@ -2251,6 +2245,20 @@ public class PostHog private constructor(
         return false
     }
 
+    /**
+     * Every automatic resume goes through here: [startSessionReplay] is the app asking for
+     * recording, which revokes an off state the app set earlier, so an automatic path must not
+     * call it while that off state stands.
+     */
+    private fun startSessionReplayAutomatically() {
+        val handler = sessionReplayHandler ?: return
+        if (!isSessionReplayConfigEnabled() || handler.isStoppedByHost()) {
+            return
+        }
+
+        startSessionReplay(resumeCurrent = true)
+    }
+
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
@@ -2295,9 +2303,19 @@ public class PostHog private constructor(
             return
         }
 
-        sessionReplayHandler?.stop() ?: run {
+        // The app owns this decision: the handler keeps the off state until an explicit start,
+        // so an event trigger or a session rotation cannot restart recording behind the app.
+        sessionReplayHandler?.stopRequestedByHost() ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }
+    }
+
+    override fun stopSessionReplayInternally() {
+        if (!isEnabled()) {
+            return
+        }
+
+        sessionReplayHandler?.stop()
     }
 
     override fun getSessionId(): UUID? {
@@ -2611,6 +2629,10 @@ public class PostHog private constructor(
 
         override fun stopSessionReplay() {
             shared.stopSessionReplay()
+        }
+
+        override fun stopSessionReplayInternally() {
+            shared.stopSessionReplayInternally()
         }
 
         override fun getSessionId(): UUID? {
