@@ -4240,6 +4240,36 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    fun `debugProperties reports both trigger statuses disabled after uninstall`() {
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { isSessionReplayFlagActive() } doReturn false
+                on { sessionReplayLinkedFlagSnapshot() } doReturn
+                    PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = true)
+                on { makeSamplingDecision(any()) } doReturn true
+                on { getEventTriggers() } doReturn setOf("checkout_started")
+                on { hasRemoteConfigFetched() } doReturn true
+            }
+        val config =
+            PostHogAndroidConfig(API_KEY).apply {
+                remoteConfigHolder = remoteConfig
+            }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        PostHogSessionManager.startSession()
+        assertEquals("trigger_activated", sut.debugProperties()["\$sdk_debug_replay_linked_flag_trigger_status"])
+
+        sut.uninstall()
+
+        val props = sut.debugProperties()
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_event_trigger_status"])
+        assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+    }
+
     private fun assertDebugPropertiesDisabledAfter(teardown: (PostHogReplayIntegration) -> Unit) {
         val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
         sut.install(createPostHogFake())

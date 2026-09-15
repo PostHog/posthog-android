@@ -2576,7 +2576,7 @@ public class PostHogReplayIntegration(
         val linkedFlagSnapshot = config.remoteConfigHolder?.sessionReplayLinkedFlagSnapshot()
         val linkedFlagStatus =
             triggerStatus(
-                configured = linkedFlagSnapshot?.configured == true,
+                configured = postHog != null && linkedFlagSnapshot?.configured == true,
                 activated = linkedFlagSnapshot?.activated == true,
             )
         props["\$sdk_debug_replay_linked_flag_trigger_status"] = linkedFlagStatus
