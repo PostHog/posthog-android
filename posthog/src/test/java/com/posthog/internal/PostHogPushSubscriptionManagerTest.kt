@@ -241,6 +241,31 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a rejected key still lets a queued unregister through`() {
+        // The marker stops registrations, not logouts. If the key is ever wrongly rejected,
+        // suppressing the unregister would leave the logged-out user subscribed until it expires.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertTrue(rejectedFile(storagePrefix!!).exists())
+
+        // A logout names the identity being left, which is not the one the manager reports now.
+        sut.unregister("logged-out-user", "fcm-token", "firebase-project", "android")
+
+        val unregister = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(unregister)
+        assertEquals("DELETE", unregister.method)
+    }
+
+    @Test
     fun `a 401 without the invalid key code still retries on the next launch`() {
         // Identity verification failures are 401 too, and those do recover: the next launch mints a
         // fresh token. Only the project key code is terminal.

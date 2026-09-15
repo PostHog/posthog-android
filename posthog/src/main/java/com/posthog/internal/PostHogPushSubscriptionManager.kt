@@ -238,12 +238,13 @@ internal class PostHogPushSubscriptionManager(
 
     fun retryPending() {
         executor.executeSafely {
-            if (isTokenRejected()) {
-                return@executeSafely
-            }
             // Drain any pending unregister first (independent of the send record, usually absent after
             // a logout). If a same-identity registration is queued (logged out of A offline, then back
             // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
+            //
+            // Runs before the rejected-key check on purpose. An unregister is the safety direction: if
+            // the marker is ever wrong, suppressing it would leave a logged-out user subscribed until
+            // the marker expires.
             currentPendingUnregister()?.let { pending ->
                 val record = currentRecord()
                 if (record != null && pending.distinctId == distinctIdProvider() && pending.appId == record.appId) {
@@ -251,6 +252,10 @@ internal class PostHogPushSubscriptionManager(
                 } else {
                     performUnregister(pending)
                 }
+            }
+
+            if (isTokenRejected()) {
+                return@executeSafely
             }
 
             val record = currentRecord() ?: return@executeSafely
