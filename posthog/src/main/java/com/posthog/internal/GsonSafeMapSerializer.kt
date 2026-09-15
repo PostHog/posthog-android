@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
@@ -18,7 +19,10 @@ import java.lang.reflect.Type
  *
  * @property config the Config
  */
-internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSerializer<Map<String, Any?>> {
+internal class GsonSafeMapSerializer(
+    private val config: PostHogConfig,
+    private val preserveNullArrayElements: Boolean = false,
+) : JsonSerializer<Map<String, Any?>> {
     private val mapType: Type = object : TypeToken<Map<String, Any?>>() {}.type
 
     override fun serialize(
@@ -57,7 +61,12 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
             }
             else -> {
                 try {
-                    config.serializer.gson.toJsonTree(targetValue)
+                    if (preserveNullArrayElements) {
+                        // Keep event mode for maps reached through reflected custom values.
+                        context.serialize(targetValue)
+                    } else {
+                        config.serializer.gson.toJsonTree(targetValue)
+                    }
                 } catch (e: Throwable) {
                     config.logger.log(
                         "Property '$key' with value '$targetValue' cannot be serialized to JSON: $e. " +
@@ -70,7 +79,8 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
     }
 
     /**
-     * Safely serializes a list, filtering out unserializable elements.
+     * Safely serializes a list, preserving null positions only for event encoding.
+     * Unserializable elements are always filtered out.
      */
     private fun safeSerializeList(
         list: List<*>,
@@ -79,7 +89,11 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
         val jsonArray = JsonArray()
 
         list.forEach { element ->
-            if (element != null) {
+            if (element == null) {
+                if (preserveNullArrayElements) {
+                    jsonArray.add(JsonNull.INSTANCE)
+                }
+            } else {
                 val serialized = safeSerializeValue(element, "list-element", context)
                 if (serialized != null) {
                     jsonArray.add(serialized)
