@@ -208,6 +208,7 @@ public class PostHogReplayIntegration(
     private val isScreenshotCapable: Boolean
         get() = config.sessionReplayConfig.screenshot || !isNativeSdk
 
+    @Volatile
     private var postHog: PostHogInterface? = null
 
     @Volatile
