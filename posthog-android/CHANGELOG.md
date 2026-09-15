@@ -1,5 +1,11 @@
 ## Next
 
+## 3.65.2
+
+### Patch Changes
+
+- e1523b5: Send `$groupidentify` through `capture()` so it carries the session id, identity flags and shared properties like every other event, matching posthog-js
+
 ## 3.65.1
 
 ### Patch Changes
