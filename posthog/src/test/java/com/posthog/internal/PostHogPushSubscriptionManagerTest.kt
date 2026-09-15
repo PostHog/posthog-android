@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
@@ -39,6 +40,8 @@ internal class PostHogPushSubscriptionManagerTest {
         tmpDir.root.deleteRecursively()
     }
 
+    private var preferences = PostHogMemoryPreferences()
+
     private fun getSut(
         http: MockWebServer,
         storagePrefix: String? = tmpDir.newFolder().absolutePath,
@@ -54,6 +57,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.networkStatus = networkStatus
                 this.maxRetries = maxRetries
                 this.encryption = encryption
+                this.cachePreferences = preferences
             }
         val api = PostHogApi(config)
         val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
@@ -61,8 +65,6 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     private fun pendingFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.pending")
-
-    private fun rejectedFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.rejected")
 
     private fun pendingUnregisterFile(storagePrefix: String): File =
         File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.unregister.pending")
@@ -224,7 +226,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
         assertEquals(1, http.requestCount)
-        assertTrue(rejectedFile(storagePrefix!!).exists())
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
 
         sut.retryPending()
         flush()
@@ -255,7 +257,7 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.register("fcm-token", "firebase-project", "android")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
-        assertTrue(rejectedFile(storagePrefix!!).exists())
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
 
         // A logout names the identity being left, which is not the one the manager reports now.
         sut.unregister("logged-out-user", "fcm-token", "firebase-project", "android")
@@ -277,7 +279,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
         assertEquals(1, http.requestCount)
-        assertFalse(rejectedFile(storagePrefix!!).exists())
+        assertNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
 
         val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
         relaunched.retryPending()

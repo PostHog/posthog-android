@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogConfig
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import java.io.File
 import java.util.Timer
 import java.util.concurrent.ExecutorService
@@ -12,7 +13,6 @@ import kotlin.math.pow
 
 private const val PENDING_FILE_NAME = "push_subscription.pending"
 private const val PENDING_UNREGISTER_FILE_NAME = "push_subscription.unregister.pending"
-private const val REJECTED_FILE_NAME = "push_subscription.rejected"
 private const val INITIAL_RETRY_DELAY_SECONDS = 5
 private const val MAX_RETRY_DELAY_SECONDS = 30
 private const val INVALID_API_KEY_CODE = "invalid_api_key"
@@ -110,16 +110,6 @@ internal class PostHogPushSubscriptionManager(
         val prefix = config.storagePrefix ?: return@lazy null
         File(File(File(prefix, "push"), config.apiKey), PENDING_UNREGISTER_FILE_NAME)
     }
-
-    // Keyed by api key through its path, so correcting the key in a new build clears the block.
-    private val rejectedFile: File? by lazy {
-        val prefix = config.storagePrefix ?: return@lazy null
-        File(File(File(prefix, "push"), config.apiKey), REJECTED_FILE_NAME)
-    }
-
-    @Volatile private var rejectedAtMillis: Long? = null
-
-    @Volatile private var hydratedRejectedFromDisk = false
 
     // Test seam: computed backoff seconds are multiplied by this to get the scheduled delay in
     // millis. Production keeps the real 1000; tests shrink it so retries fire near-instantly.
@@ -773,36 +763,27 @@ internal class PostHogPushSubscriptionManager(
         return pendingRecord
     }
 
+    /** Stored as "<apiKey>:<millis>" so a build shipping a corrected key does not read the old
+     * verdict, and so a stale entry can expire. */
     private fun isTokenRejected(): Boolean {
-        if (rejectedAtMillis == null && !hydratedRejectedFromDisk) {
-            hydratedRejectedFromDisk = true
-            rejectedFile?.takeIf { it.existsSafely(config) }?.let { file ->
-                rejectedAtMillis =
-                    readPending<RejectedRecord>(file, "Failed to read push subscription rejection")
-                        ?.rejectedAtMillis
-                        ?.toLongOrNull()
-                        ?: run {
-                            file.deleteSafely(config)
-                            null
-                        }
-            }
+        val stored = config.cachePreferences?.getValue(PUSH_SUBSCRIPTION_REJECTED) as? String ?: return false
+        val separator = stored.lastIndexOf(':')
+        val rejectedAt = if (separator == -1) null else stored.substring(separator + 1).toLongOrNull()
+        if (separator == -1 || rejectedAt == null || stored.substring(0, separator) != config.apiKey) {
+            return false
         }
-        val rejectedAt = rejectedAtMillis ?: return false
         if (System.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
             return true
         }
-        rejectedAtMillis = null
-        rejectedFile?.deleteSafely(config)
+        config.cachePreferences?.remove(PUSH_SUBSCRIPTION_REJECTED)
         return false
     }
 
     private fun markTokenRejected() {
-        val now = System.currentTimeMillis()
-        rejectedAtMillis = now
-        hydratedRejectedFromDisk = true
-        rejectedFile?.let {
-            writePending(it, RejectedRecord(now.toString()), "Failed to persist push subscription rejection")
-        }
+        config.cachePreferences?.setValue(
+            PUSH_SUBSCRIPTION_REJECTED,
+            "${config.apiKey}:${System.currentTimeMillis()}",
+        )
     }
 
     private fun currentPendingUnregister(): PendingUnregister? {
@@ -896,13 +877,6 @@ internal class PostHogPushSubscriptionManager(
         @SerializedName("app_id")
         val appId: String,
         val platform: String,
-    )
-
-    // Millis as text: a Long in a data class compiles to Long.hashCode(long), which is not in the
-    // minimum supported Android API level.
-    internal data class RejectedRecord(
-        @SerializedName("rejected_at_millis")
-        val rejectedAtMillis: String,
     )
 
     private data class CachedIdentityToken(
