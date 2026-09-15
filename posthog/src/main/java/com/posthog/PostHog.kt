@@ -1655,7 +1655,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        super.groupStateless(this.distinctId, type, key, groupProperties)
+        capture(PostHogEventName.GROUP_IDENTIFY.event, distinctId = this.distinctId, properties = props)
 
         // Automatically set group properties for feature flags
         setGroupPropertiesForFlagsIfNeeded(type, groupProperties)
