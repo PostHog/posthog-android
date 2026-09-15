@@ -19,6 +19,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
@@ -2436,6 +2437,24 @@ internal class PostHogTest {
         // Device state, not user data: clearing it would let a process-death restore be counted as a
         // second tap of the same notification.
         assertEquals("0:1700000000%abcdef", preferences.getValue(PUSH_OPENED_MESSAGE_IDS))
+
+        sut.close()
+    }
+
+    @Test
+    fun `reset preserves the rejected push key marker`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, "phc_key:1700000000")
+
+        sut.reset()
+
+        // A logout does not make an invalid project API key valid, so clearing this would put the
+        // device back to re-posting a doomed registration on every launch.
+        assertEquals("phc_key:1700000000", preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
 
         sut.close()
     }
