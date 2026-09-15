@@ -251,7 +251,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 total = 5,
                 response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
             )
-        val (sut, _, storagePrefix) = getSut(http)
+        val (sut, _, _) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
         sut.register("fcm-token", "firebase-project", "android")
