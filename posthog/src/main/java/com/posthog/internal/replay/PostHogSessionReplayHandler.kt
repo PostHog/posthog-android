@@ -8,6 +8,21 @@ public interface PostHogSessionReplayHandler {
 
     public fun stop()
 
+    /**
+     * Called when the app asks for replay off, e.g. after it reads its own feature flag.
+     * The handler keeps that off state, so an automatic start cannot undo the app's decision.
+     * Only an explicit start clears it again.
+     */
+    public fun stopRequestedByHost() {
+        stop()
+    }
+
+    /**
+     * Whether the app asked for replay off and has not asked for it back yet.
+     * Automatic start paths must not start recording while this is true.
+     */
+    public fun isStoppedByHost(): Boolean = false
+
     public fun isActive(): Boolean
 
     /**
