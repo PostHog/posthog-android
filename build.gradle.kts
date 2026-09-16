@@ -31,6 +31,16 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         jvmArgs("-Xshare:off")
+
+        // Diagnostic: PostHogAndroidEventSnapshotsTest fails on the Linux CI runner but passes on
+        // macOS, and the default logging prints only the assertion's location. FULL prints the
+        // expected/actual maps; the per-test events let the CI test list be diffed against a local
+        // run (569 tests on CI vs 541 locally). Revert once the mismatch is identified.
+        testLogging {
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showStackTraces = true
+            events("passed", "skipped", "failed")
+        }
     }
 }
 
