@@ -13,6 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.Date
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -42,6 +43,31 @@ internal class PostHogPushSubscriptionManagerTest {
 
     private var preferences = PostHogMemoryPreferences()
 
+    /** Real time plus an offset a test can push forward.
+     *
+     * Most tests here depend on the clock running normally while a retry is in flight. Only the
+     * tests that have to outlast a backoff window or the rejection re-probe call [advance].
+     */
+    private class TestClock : PostHogDateProvider {
+        private var offsetMs = 0L
+
+        val nowMs: Long get() = System.currentTimeMillis() + offsetMs
+
+        fun advance(millis: Long) {
+            offsetMs += millis
+        }
+
+        override fun currentDate() = Date(nowMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int) = Date(nowMs + seconds * 1000L)
+
+        override fun currentTimeMillis() = nowMs
+
+        override fun nanoTime() = System.nanoTime()
+    }
+
+    private var clock = TestClock()
+
     private fun getSut(
         http: MockWebServer,
         storagePrefix: String? = tmpDir.newFolder().absolutePath,
@@ -58,6 +84,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.maxRetries = maxRetries
                 this.encryption = encryption
                 this.cachePreferences = preferences
+                this.dateProvider = clock
             }
         val api = PostHogApi(config)
         val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
@@ -304,9 +331,9 @@ internal class PostHogPushSubscriptionManagerTest {
         // The re-probe is the only way back if a key is ever marked wrongly, so an expired verdict
         // has to let one registration through and then stop claiming the key is rejected.
         val http = mockHttp(total = 2)
-        val expired = System.currentTimeMillis() - (8L * 24 * 60 * 60 * 1000)
-        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"$expired"}""")
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}"}""")
         val (sut, _, _) = getSut(http)
+        clock.advance(8L * 24 * 60 * 60 * 1000)
 
         sut.register("fcm-token", "firebase-project", "android")
 
@@ -330,7 +357,7 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         // A second instance on another key records its own verdict in the same store.
-        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${System.currentTimeMillis()}","phc_other":"1"}""")
+        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}","phc_other":"1"}""")
 
         val (relaunched, _, _) = getSut(http)
         relaunched.register("fcm-token-2", "firebase-project", "android")
@@ -1001,6 +1028,30 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
+        http.shutdown()
+    }
+
+    @Test
+    fun `retryPending sends again once the backoff window elapses`() {
+        // The other half of the window: a backoff that never reopens would stop retries for good.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(500)) // opens a 5s backoff window
+        http.enqueue(MockResponse().setBody(""))
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        // Let the 500 land and open the window before moving the clock past it.
+        flush()
+        assertEquals(1, http.requestCount)
+
+        clock.advance(6_000)
+        sut.retryPending()
+        flush()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
         http.shutdown()
     }
 

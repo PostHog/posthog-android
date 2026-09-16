@@ -443,7 +443,7 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
-    private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
+    private fun isWithinBackoffWindow(): Boolean = config.dateProvider.currentTimeMillis() < nextAttemptAtMs
 
     private fun attempt(resetStateOnFold: Boolean) {
         if (closed || config.optOut) {
@@ -649,7 +649,7 @@ internal class PostHogPushSubscriptionManager(
         // Server-driven backoff: gate resume paths so flush() doesn't immediately re-hit the
         // endpoint, ignoring the server's Retry-After. No timer — the next attempt is driven by
         // flush()/identify()/relaunch once the window elapses.
-        nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
+        nextAttemptAtMs = config.dateProvider.currentTimeMillis() + delay * retryDelayMillisPerSecond
         config.logger.log(
             "Push subscription failed: $e. Will retry on flush/identify/next launch after ${delay}s (attempt $retryCount).",
         )
@@ -764,7 +764,7 @@ internal class PostHogPushSubscriptionManager(
 
     private fun isTokenRejected(): Boolean {
         val rejectedAt = readRejections()[config.apiKey]?.toLongOrNull() ?: return false
-        if (System.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
+        if (config.dateProvider.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
             return true
         }
         writeRejections(readRejections() - config.apiKey)
@@ -772,7 +772,7 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun markTokenRejected() {
-        writeRejections(readRejections() + (config.apiKey to System.currentTimeMillis().toString()))
+        writeRejections(readRejections() + (config.apiKey to config.dateProvider.currentTimeMillis().toString()))
     }
 
     /** Verdicts per api key, not one slot.
