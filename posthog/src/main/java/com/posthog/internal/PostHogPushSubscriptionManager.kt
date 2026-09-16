@@ -26,7 +26,7 @@ private const val MAX_REJECTED_KEYS = 8
 /**
  * Persists the latest push subscription registration and retries it on transient failures.
  *
- * A single latest-wins record `{deviceToken, appId, platform}` is stored before the first
+ * A single latest-wins record `{deviceToken, appId}` is stored before the first
  * attempt; every new [register] overwrites it and resets the retry counter. The distinct id
  * is read at send time, never persisted with the record — only the id a successful send was
  * delivered for is remembered ([PendingRecord.deliveredForDistinctId]) so [resendIfDistinctIdChanged]
@@ -125,10 +125,9 @@ internal class PostHogPushSubscriptionManager(
     fun register(
         deviceToken: String,
         appId: String,
-        platform: String,
     ) {
         executor.executeSafely {
-            performRegister(deviceToken, appId, platform)
+            performRegister(deviceToken, appId)
         }
     }
 
@@ -136,13 +135,11 @@ internal class PostHogPushSubscriptionManager(
     private fun performRegister(
         deviceToken: String,
         appId: String,
-        platform: String,
     ) {
         val existing = currentRecord()
         if (existing != null &&
             existing.deviceToken == deviceToken &&
             existing.appId == appId &&
-            existing.platform == platform &&
             existing.deliveredForDistinctId != null &&
             existing.deliveredForDistinctId == distinctIdProvider()
         ) {
@@ -155,9 +152,8 @@ internal class PostHogPushSubscriptionManager(
         val isIdenticalUndelivered =
             existing != null &&
                 existing.deviceToken == deviceToken &&
-                existing.appId == appId &&
-                existing.platform == platform
-        val record = PendingRecord(deviceToken, appId, platform)
+                existing.appId == appId
+        val record = PendingRecord(deviceToken, appId)
         pendingRecord = record
         hydratedFromDisk = true
         pendingFile?.let { writePending(it, record, "Failed to persist push subscription") }
@@ -281,14 +277,13 @@ internal class PostHogPushSubscriptionManager(
         distinctId: String,
         deviceToken: String,
         appId: String,
-        platform: String,
     ) {
         executor.executeSafely {
             if (distinctId.isBlank() || deviceToken.isBlank() || appId.isBlank()) {
                 config.logger.log("Push unregister skipped: missing distinctId, token, or appId.")
                 return@executeSafely
             }
-            val pending = PendingUnregister(distinctId, deviceToken, appId, platform)
+            val pending = PendingUnregister(distinctId, deviceToken, appId)
             writePendingUnregister(pending)
             performUnregister(pending)
         }
@@ -334,7 +329,6 @@ internal class PostHogPushSubscriptionManager(
                 api.pushUnsubscription(
                     distinctId = pending.distinctId,
                     deviceToken = pending.deviceToken,
-                    platform = pending.platform,
                     appId = pending.appId,
                     identityToken = identityToken,
                 )
@@ -392,11 +386,11 @@ internal class PostHogPushSubscriptionManager(
             // DELETE would unset the very id we re-register under — and performRegister's dedup guard
             // would then skip the re-POST, leaving the device unregistered.
             if (oldDistinctId != distinctIdProvider()) {
-                val pending = PendingUnregister(oldDistinctId, record.deviceToken, record.appId, record.platform)
+                val pending = PendingUnregister(oldDistinctId, record.deviceToken, record.appId)
                 writePendingUnregister(pending)
                 performUnregister(pending)
             }
-            performRegister(record.deviceToken, record.appId, record.platform)
+            performRegister(record.deviceToken, record.appId)
         }
     }
 
@@ -411,7 +405,7 @@ internal class PostHogPushSubscriptionManager(
                 config.logger.log("Push unregister skipped: no registered token.")
                 return@executeSafely
             }
-            val pending = PendingUnregister(distinctIdProvider(), record.deviceToken, record.appId, record.platform)
+            val pending = PendingUnregister(distinctIdProvider(), record.deviceToken, record.appId)
             writePendingUnregister(pending)
             clearRecord()
             performUnregister(pending)
@@ -542,7 +536,6 @@ internal class PostHogPushSubscriptionManager(
             api.pushSubscription(
                 distinctId = distinctId,
                 deviceToken = record.deviceToken,
-                platform = record.platform,
                 appId = record.appId,
                 identityToken = identityToken,
             )
@@ -557,7 +550,7 @@ internal class PostHogPushSubscriptionManager(
             // A fresh registration delivered to this identity supersedes any queued logout-DELETE for
             // it (log out of A, then back into A): otherwise the next retryPending() drain would
             // unregister the subscription we just re-registered.
-            clearPendingUnregister(PendingUnregister(distinctId, record.deviceToken, record.appId, record.platform))
+            clearPendingUnregister(PendingUnregister(distinctId, record.deviceToken, record.appId))
         } catch (e: Throwable) {
             handleFailure(e)
         } finally {
@@ -877,7 +870,6 @@ internal class PostHogPushSubscriptionManager(
         val deviceToken: String,
         @SerializedName("app_id")
         val appId: String,
-        val platform: String,
         @SerializedName("delivered_for_distinct_id")
         val deliveredForDistinctId: String? = null,
     )
@@ -900,7 +892,6 @@ internal class PostHogPushSubscriptionManager(
         val deviceToken: String,
         @SerializedName("app_id")
         val appId: String,
-        val platform: String,
     )
 
     private data class CachedIdentityToken(

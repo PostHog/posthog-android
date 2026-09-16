@@ -4678,7 +4678,7 @@ internal class PostHogTest {
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals("fcm-token", parsed["device_token"])
         assertEquals("firebase-project", parsed["app_id"])
-        assertEquals("android", parsed["platform"])
+        assertFalse(parsed.containsKey("platform"))
         assertEquals(sut.distinctId(), parsed["distinct_id"])
 
         sut.close()
