@@ -948,6 +948,46 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a pending registration written before platform was dropped still replays`() {
+        // Upgrading the SDK must not strand a queued registration. Files written by an older
+        // version carry a `platform` key this class no longer declares.
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        val file = pendingFile(storagePrefix!!)
+        file.parentFile.mkdirs()
+        file.writeText("""{"device_token":"fcm-token","app_id":"firebase-project","platform":"android"}""")
+
+        sut.retryPending()
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertEquals("POST", request.method)
+        val body = request.body.unGzip()
+        assertTrue(body.contains("\"device_token\":\"fcm-token\""))
+        assertFalse(body.contains("\"platform\""))
+    }
+
+    @Test
+    fun `a pending unregister written before platform was dropped still replays`() {
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        val file = pendingUnregisterFile(storagePrefix!!)
+        file.parentFile.mkdirs()
+        file.writeText(
+            """{"distinct_id":"logged-out-user","device_token":"fcm-token","app_id":"firebase-project","platform":"android"}""",
+        )
+
+        sut.retryPending()
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertEquals("DELETE", request.method)
+        assertFalse(request.body.unGzip().contains("\"platform\""))
+    }
+
+    @Test
     fun `retryPending deletes a corrupt pending file`() {
         val http = mockHttp()
         val (sut, _, storagePrefix) = getSut(http)
