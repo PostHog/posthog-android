@@ -300,6 +300,22 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a stale rejection re-probes and clears itself`() {
+        // The re-probe is the only way back if a key is ever marked wrongly, so an expired verdict
+        // has to let one registration through and then stop claiming the key is rejected.
+        val http = mockHttp(total = 2)
+        val expired = System.currentTimeMillis() - (8L * 24 * 60 * 60 * 1000)
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"$expired"}""")
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+    }
+
+    @Test
     fun `a rejection for one api key does not clear another`() {
         // A host can share one preferences store between instances holding different keys.
         val http =
