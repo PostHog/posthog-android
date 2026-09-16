@@ -39,12 +39,37 @@ import java.io.IOException
  */
 @PostHogInternal
 public class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
+    private companion object {
+        private const val HTTP_BAD_REQUEST = 400
+        private const val MAX_ERROR_BODY_BYTES = 512L
+
+        // What the server answers when it cannot read the compressed body, e.g. because a managed
+        // work profile decompressed or re-encoded it but kept the Content-Encoding header.
+        private val DECODE_ERROR_HINTS = listOf("gzip", "decompress", "unexpected end of file")
+    }
+
+    private enum class Compression {
+        ON,
+
+        // The server rejected one compressed body and the uncompressed retry did not help,
+        // so the SDK keeps compressing instead of sending every rejected body twice.
+        PROBED,
+
+        // The server cannot read compressed bodies, e.g. because the network alters them in transit.
+        OFF,
+    }
+
+    @Volatile
+    private var compression = Compression.ON
+
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val body = originalRequest.body
 
-        return if (body == null ||
+        return if (!config.compressRequestBody ||
+            compression == Compression.OFF ||
+            body == null ||
             originalRequest.header("Content-Encoding") != null ||
             body is MultipartBody
         ) {
@@ -59,10 +84,40 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
                 } catch (e: Throwable) {
                     config.logger.log("Failed to gzip the request body: $e.")
 
-                    originalRequest
+                    return chain.proceed(originalRequest)
                 }
-            chain.proceed(compressedRequest)
+
+            val response = chain.proceed(compressedRequest)
+            if (compression == Compression.PROBED || !isCompressionRejected(response)) {
+                return response
+            }
+            compression = Compression.PROBED
+            response.close()
+
+            // Send the body again uncompressed, to find out whether compression is what the
+            // server could not read.
+            val uncompressedResponse = chain.proceed(originalRequest)
+            if (uncompressedResponse.isSuccessful) {
+                compression = Compression.OFF
+                config.logger.log("The server rejected a gzipped request body, compression is now off.")
+            }
+            uncompressedResponse
         }
+    }
+
+    private fun isCompressionRejected(response: Response): Boolean {
+        if (response.code != HTTP_BAD_REQUEST) {
+            return false
+        }
+        val body =
+            try {
+                response.peekBody(MAX_ERROR_BODY_BYTES).string().lowercase()
+            } catch (e: Throwable) {
+                config.logger.log("Failed to read the error response body: $e.")
+
+                return false
+            }
+        return DECODE_ERROR_HINTS.any { it in body }
     }
 
     private fun gzip(body: RequestBody): RequestBody {

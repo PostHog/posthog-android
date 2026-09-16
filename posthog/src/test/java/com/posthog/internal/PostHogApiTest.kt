@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.BuildConfig
+import com.posthog.DISTINCT_ID
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.logs.PostHogLogRecord
@@ -49,8 +50,10 @@ internal class PostHogApiTest {
         maxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
         requestHeaders: Map<String, String>? = null,
+        compressRequestBody: Boolean = true,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
+        config.compressRequestBody = compressRequestBody
         config.proxy = proxy
         config.debug = debug
         if (!requestHeaders.isNullOrEmpty()) {
@@ -91,6 +94,68 @@ internal class PostHogApiTest {
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `batch does not compress the body when compression is off`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), compressRequestBody = false)
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+
+        assertNull(request.headers["Content-Encoding"])
+        assertTrue(request.body.readUtf8().contains(DISTINCT_ID))
+    }
+
+    @Test
+    fun `batch sends the body again uncompressed when the server rejects the gzipped body`() {
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(MockResponse().setBody(""))
+
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.batch(listOf(generateEvent()))
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+
+        val retry = http.takeRequest()
+        assertNull(retry.headers["Content-Encoding"])
+        assertTrue(retry.body.readUtf8().contains(DISTINCT_ID))
+
+        sut.batch(listOf(generateEvent()))
+
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `batch keeps compressing when the uncompressed body is rejected too`() {
+        val http = mockHttp(total = 3, response = MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertThrows(PostHogApiError::class.java) {
+            sut.batch(listOf(generateEvent()))
+        }
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        assertThrows(PostHogApiError::class.java) {
+            sut.batch(listOf(generateEvent()))
+        }
+
+        // the SDK probes once, so a payload the server dislikes is not sent twice every time
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
     }
 
     @Test

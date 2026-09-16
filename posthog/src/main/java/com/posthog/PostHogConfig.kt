@@ -439,6 +439,18 @@ public open class PostHogConfig(
     public var requestHeaders: Map<String, String> = emptyMap()
 
     /**
+     * Compresses the request body with gzip before sending it to the PostHog API.
+     *
+     * Set this to `false` when the network between the app and PostHog changes or re-encodes the
+     * compressed body, e.g. on a managed work profile, which makes the server reject the request.
+     * The SDK also stops compressing on its own if the server rejects a compressed body.
+     *
+     * Default: `true`.
+     */
+    @Volatile
+    public var compressRequestBody: Boolean = true
+
+    /**
      * The PostHog project API key, trimmed of leading and trailing whitespace.
      */
     public val apiKey: String = apiKey.trim()
