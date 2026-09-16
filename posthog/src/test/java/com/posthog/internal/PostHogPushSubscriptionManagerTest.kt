@@ -268,6 +268,63 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `a rejected key blocks an identity resend`() {
+        // The key can stop resolving after a registration already succeeded, for example when the
+        // project is deleted. The delivered marker survives, so identify() resends through the shared
+        // send path rather than register(), and a guard on the entry points alone would keep posting.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setBody(""))
+        repeat(3) { http.enqueue(MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}")) }
+        val (sut, _, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+
+        // Second identity: this one is refused, which records the verdict.
+        distinctId = "distinct-2"
+        sut.resendIfDistinctIdChanged()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(2, http.requestCount)
+
+        // Third identity: nothing more may go out for this key.
+        distinctId = "distinct-3"
+        sut.resendIfDistinctIdChanged()
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `a rejection for one api key does not clear another`() {
+        // A host can share one preferences store between instances holding different keys.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val shared = preferences
+        val (first, _, _) = getSut(http)
+        first.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+
+        // A second instance on another key records its own verdict in the same store.
+        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${System.currentTimeMillis()}","phc_other":"1"}""")
+
+        val (relaunched, _, _) = getSut(http)
+        relaunched.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `a 401 without the invalid key code still retries on the next launch`() {
         // Identity verification failures are 401 too, and those do recover: the next launch mints a
         // fresh token. Only the project key code is terminal.
