@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogConfig
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import java.io.File
 import java.util.Timer
 import java.util.concurrent.ExecutorService
@@ -14,6 +15,13 @@ private const val PENDING_FILE_NAME = "push_subscription.pending"
 private const val PENDING_UNREGISTER_FILE_NAME = "push_subscription.unregister.pending"
 private const val INITIAL_RETRY_DELAY_SECONDS = 5
 private const val MAX_RETRY_DELAY_SECONDS = 30
+private const val INVALID_API_KEY_CODE = "invalid_api_key"
+
+// A project token that resolves to nothing never starts working, so the device stops asking. The
+// probe exists for the case the server was wrong: a key that works again is picked up within a week
+// instead of never.
+private const val REJECTED_REPROBE_MILLIS = 7L * 24 * 60 * 60 * 1000
+private const val MAX_REJECTED_KEYS = 8
 
 /**
  * Persists the latest push subscription registration and retries it on transient failures.
@@ -217,6 +225,10 @@ internal class PostHogPushSubscriptionManager(
             // Drain any pending unregister first (independent of the send record, usually absent after
             // a logout). If a same-identity registration is queued (logged out of A offline, then back
             // into A), drop the DELETE — completing after the POST it would kill the subscription just delivered.
+            //
+            // Runs before the rejected-key check on purpose. An unregister is the safety direction: if
+            // the marker is ever wrong, suppressing it would leave a logged-out user subscribed until
+            // the marker expires.
             currentPendingUnregister()?.let { pending ->
                 val record = currentRecord()
                 if (record != null && pending.distinctId == distinctIdProvider() && pending.appId == record.appId) {
@@ -431,7 +443,7 @@ internal class PostHogPushSubscriptionManager(
         }
     }
 
-    private fun isWithinBackoffWindow(): Boolean = System.currentTimeMillis() < nextAttemptAtMs
+    private fun isWithinBackoffWindow(): Boolean = config.dateProvider.currentTimeMillis() < nextAttemptAtMs
 
     private fun attempt(resetStateOnFold: Boolean) {
         if (closed || config.optOut) {
@@ -441,6 +453,15 @@ internal class PostHogPushSubscriptionManager(
         }
         if (halted) {
             // Session halt set in handleFailure; this choke point makes flush()-driven retryPending() a no-op.
+            return
+        }
+        if (isTokenRejected()) {
+            // The project API key resolves to no project, so every send gets the same 401. Guarding
+            // here and not at each entry point covers identify resends and app_id changes too.
+            config.logger.log(
+                "Push subscription skipped: this project API key was rejected. " +
+                    "Check the key passed to PostHog.setup().",
+            )
             return
         }
         // Read the record here, not from the caller: an already-queued executor task can run after
@@ -572,7 +593,19 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun handleFailure(e: Throwable) {
-        if ((e as? PostHogApiError)?.statusCode == 401) {
+        val apiError = e as? PostHogApiError
+        if (apiError?.statusCode == 401 && apiError.errorCode == INVALID_API_KEY_CODE) {
+            // The key resolves to no project, so every later attempt gets the same answer. Without
+            // this the device re-posts on every app open for the life of the install.
+            config.logger.log(
+                "Push subscription rejected: the project API key is not valid. " +
+                    "No further push registrations will be sent for this key.",
+            )
+            markTokenRejected()
+            haltForSession()
+            return
+        }
+        if (apiError?.statusCode == 401) {
             val provider = config.pushIdentityProvider
             if (provider != null && !didAuthRetry) {
                 // One fresh-token retry, then terminal. Re-queued (not inline) so the failing
@@ -616,7 +649,7 @@ internal class PostHogPushSubscriptionManager(
         // Server-driven backoff: gate resume paths so flush() doesn't immediately re-hit the
         // endpoint, ignoring the server's Retry-After. No timer — the next attempt is driven by
         // flush()/identify()/relaunch once the window elapses.
-        nextAttemptAtMs = System.currentTimeMillis() + delay * retryDelayMillisPerSecond
+        nextAttemptAtMs = config.dateProvider.currentTimeMillis() + delay * retryDelayMillisPerSecond
         config.logger.log(
             "Push subscription failed: $e. Will retry on flush/identify/next launch after ${delay}s (attempt $retryCount).",
         )
@@ -727,6 +760,54 @@ internal class PostHogPushSubscriptionManager(
             }
         }
         return pendingRecord
+    }
+
+    private fun isTokenRejected(): Boolean {
+        val rejectedAt = readRejections()[config.apiKey]?.toLongOrNull() ?: return false
+        if (config.dateProvider.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
+            return true
+        }
+        writeRejections(readRejections() - config.apiKey)
+        return false
+    }
+
+    private fun markTokenRejected() {
+        writeRejections(readRejections() + (config.apiKey to config.dateProvider.currentTimeMillis().toString()))
+    }
+
+    /** Verdicts per api key, not one slot.
+     *
+     * A host can hand the same [PostHogPreferences] to two instances that hold different keys. One
+     * slot would let the second rejection erase the first, and the first instance would then resume
+     * sending to a key the server already refused.
+     *
+     * Millis are held as text: a Long map value round-trips through the serializer as a double.
+     */
+    private fun readRejections(): Map<String, String> {
+        val stored = config.cachePreferences?.getValue(PUSH_SUBSCRIPTION_REJECTED) as? String ?: return emptyMap()
+        return try {
+            val parsed = config.serializer.deserializeString(stored) as? Map<*, *> ?: return emptyMap()
+            parsed.entries.mapNotNull { (key, value) ->
+                if (key is String && value is String) key to value else null
+            }.toMap()
+        } catch (e: Throwable) {
+            config.logger.log("Failed to read push subscription rejections: $e.")
+            emptyMap()
+        }
+    }
+
+    private fun writeRejections(rejections: Map<String, String>) {
+        val preferences = config.cachePreferences ?: return
+        if (rejections.isEmpty()) {
+            preferences.remove(PUSH_SUBSCRIPTION_REJECTED)
+            return
+        }
+        // Bounded: one entry per api key the process has seen, and the oldest go first. An app runs a
+        // handful of keys, so this only stops a pathological caller growing the value without limit.
+        val bounded = rejections.entries.sortedByDescending { it.value.toLongOrNull() ?: 0L }.take(MAX_REJECTED_KEYS)
+        config.serializer.serializeObject(bounded.associate { it.key to it.value })?.let {
+            preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, it)
+        }
     }
 
     private fun currentPendingUnregister(): PendingUnregister? {

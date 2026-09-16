@@ -20,6 +20,7 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -1962,6 +1963,8 @@ public class PostHog private constructor(
         // from /config, not user data) so each survives an identity change without an app restart.
         // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
         // notification tap being counted twice, so clearing it would re-enable a duplicate.
+        // Preserve PUSH_SUBSCRIPTION_REJECTED too: it records that the project API key names no
+        // project, which a logout does not change, and clearing it restarts the registration loop.
         val except =
             mutableListOf(
                 VERSION,
@@ -1972,6 +1975,7 @@ public class PostHog private constructor(
                 CAPTURE_PERFORMANCE,
                 SURVEYS,
                 PUSH_OPENED_MESSAGE_IDS,
+                PUSH_SUBSCRIPTION_REJECTED,
             )
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)

@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
@@ -12,6 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.Date
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -39,6 +41,33 @@ internal class PostHogPushSubscriptionManagerTest {
         tmpDir.root.deleteRecursively()
     }
 
+    private var preferences = PostHogMemoryPreferences()
+
+    /** Real time plus an offset a test can push forward.
+     *
+     * Most tests here depend on the clock running normally while a retry is in flight. Only the
+     * tests that have to outlast a backoff window or the rejection re-probe call [advance].
+     */
+    private class TestClock : PostHogDateProvider {
+        private var offsetMs = 0L
+
+        val nowMs: Long get() = System.currentTimeMillis() + offsetMs
+
+        fun advance(millis: Long) {
+            offsetMs += millis
+        }
+
+        override fun currentDate() = Date(nowMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int) = Date(nowMs + seconds * 1000L)
+
+        override fun currentTimeMillis() = nowMs
+
+        override fun nanoTime() = System.nanoTime()
+    }
+
+    private var clock = TestClock()
+
     private fun getSut(
         http: MockWebServer,
         storagePrefix: String? = tmpDir.newFolder().absolutePath,
@@ -54,6 +83,8 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.networkStatus = networkStatus
                 this.maxRetries = maxRetries
                 this.encryption = encryption
+                this.cachePreferences = preferences
+                this.dateProvider = clock
             }
         val api = PostHogApi(config)
         val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
@@ -204,6 +235,157 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `an invalid project key stops registering on this launch and the next`() {
+        // A key that resolves to no project answers 401 forever, so the device has to stop asking.
+        // Without this it re-posts on every app open for the life of the install.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        sut.retryPending()
+        flush()
+        sut.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        // A fresh instance is the next app launch: the marker is on disk, so it does not ask either.
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `a rejected key still lets a queued unregister through`() {
+        // The marker stops registrations, not logouts. If the key is ever wrongly rejected,
+        // suppressing the unregister would leave the logged-out user subscribed until it expires.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val (sut, _, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        // A logout names the identity being left, which is not the one the manager reports now.
+        sut.unregister("logged-out-user", "fcm-token", "firebase-project", "android")
+
+        val unregister = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(unregister)
+        assertEquals("DELETE", unregister.method)
+    }
+
+    @Test
+    fun `a rejected key blocks an identity resend`() {
+        // The key can stop resolving after a registration already succeeded, for example when the
+        // project is deleted. The delivered marker survives, so identify() resends through the shared
+        // send path rather than register(), and a guard on the entry points alone would keep posting.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setBody(""))
+        repeat(3) { http.enqueue(MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}")) }
+        val (sut, _, _) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+
+        // Second identity: this one is refused, which records the verdict.
+        distinctId = "distinct-2"
+        sut.resendIfDistinctIdChanged()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(2, http.requestCount)
+
+        // Third identity: nothing more may go out for this key.
+        distinctId = "distinct-3"
+        sut.resendIfDistinctIdChanged()
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `a stale rejection re-probes and clears itself`() {
+        // The re-probe is the only way back if a key is ever marked wrongly, so an expired verdict
+        // has to let one registration through and then stop claiming the key is rejected.
+        val http = mockHttp(total = 2)
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}"}""")
+        val (sut, _, _) = getSut(http)
+        clock.advance(8L * 24 * 60 * 60 * 1000)
+
+        sut.register("fcm-token", "firebase-project", "android")
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+    }
+
+    @Test
+    fun `a rejection for one api key does not clear another`() {
+        // A host can share one preferences store between instances holding different keys.
+        val http =
+            mockHttp(
+                total = 5,
+                response = MockResponse().setResponseCode(401).setBody("{\"code\": \"invalid_api_key\"}"),
+            )
+        val shared = preferences
+        val (first, _, _) = getSut(http)
+        first.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+
+        // A second instance on another key records its own verdict in the same store.
+        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}","phc_other":"1"}""")
+
+        val (relaunched, _, _) = getSut(http)
+        relaunched.register("fcm-token-2", "firebase-project", "android")
+        flush()
+
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `a 401 without the invalid key code still retries on the next launch`() {
+        // Identity verification failures are 401 too, and those do recover: the next launch mints a
+        // fresh token. Only the project key code is terminal.
+        val http = mockHttp(total = 5, response = MockResponse().setResponseCode(401))
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.retryDelayMillisPerSecond = 1L
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        flush()
+        assertEquals(1, http.requestCount)
+        assertNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
+        relaunched.retryPending()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
     }
 
     @Test
@@ -846,6 +1028,30 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals(1, http.requestCount)
+        http.shutdown()
+    }
+
+    @Test
+    fun `retryPending sends again once the backoff window elapses`() {
+        // The other half of the window: a backoff that never reopens would stop retries for good.
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(500)) // opens a 5s backoff window
+        http.enqueue(MockResponse().setBody(""))
+        val (sut, _, _) = getSut(http)
+
+        sut.register("fcm-token", "firebase-project", "android")
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        // Let the 500 land and open the window before moving the clock past it.
+        flush()
+        assertEquals(1, http.requestCount)
+
+        clock.advance(6_000)
+        sut.retryPending()
+        flush()
+
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
         http.shutdown()
     }
 
