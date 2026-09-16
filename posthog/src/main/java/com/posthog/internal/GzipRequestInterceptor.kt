@@ -30,6 +30,7 @@ import okio.BufferedSink
 import okio.GzipSink
 import okio.buffer
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicReference
 
 // https://square.github.io/okhttp/features/interceptors/
 
@@ -51,16 +52,15 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
     private enum class Compression {
         ON,
 
-        // The server rejected one compressed body and the uncompressed retry did not help,
-        // so the SDK keeps compressing instead of sending every rejected body twice.
+        // One thread claimed the probe. It retries that body uncompressed, and the SDK keeps
+        // compressing if the retry does not help, instead of sending every rejected body twice.
         PROBED,
 
         // The server cannot read compressed bodies, e.g. because the network alters them in transit.
         OFF,
     }
 
-    @Volatile
-    private var compression = Compression.ON
+    private val compression = AtomicReference(Compression.ON)
 
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -68,7 +68,7 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
         val body = originalRequest.body
 
         return if (!config.compressRequestBody ||
-            compression == Compression.OFF ||
+            compression.get() == Compression.OFF ||
             body == null ||
             originalRequest.header("Content-Encoding") != null ||
             body is MultipartBody
@@ -88,17 +88,23 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
                 }
 
             val response = chain.proceed(compressedRequest)
-            if (compression == Compression.PROBED || !isCompressionRejected(response)) {
+
+            // Claim the probe atomically. Every executor shares this interceptor, so two rejected
+            // bodies must not probe twice, and a late claim must not put the state back to PROBED
+            // after another thread turned compression off.
+            if (compression.get() != Compression.ON ||
+                !isCompressionRejected(response) ||
+                !compression.compareAndSet(Compression.ON, Compression.PROBED)
+            ) {
                 return response
             }
-            compression = Compression.PROBED
             response.close()
 
             // Send the body again uncompressed, to find out whether compression is what the
             // server could not read.
             val uncompressedResponse = chain.proceed(originalRequest)
             if (uncompressedResponse.isSuccessful) {
-                compression = Compression.OFF
+                compression.set(Compression.OFF)
                 config.logger.log("The server rejected a gzipped request body, compression is now off.")
             }
             uncompressedResponse
