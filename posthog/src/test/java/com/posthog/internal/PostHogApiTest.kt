@@ -159,6 +159,38 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `batch probes again when the uncompressed body fails for another reason`() {
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setResponseCode(503))
+        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(MockResponse().setBody(""))
+
+        val sut = getSut(host = http.url("/").toString())
+
+        assertThrows(PostHogApiError::class.java) {
+            sut.batch(listOf(generateEvent()))
+        }
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        // the transient answer says nothing about compression, so the next rejection probes again
+        sut.batch(listOf(generateEvent()))
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        sut.batch(listOf(generateEvent()))
+
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        http.shutdown()
+    }
+
+    @Test
     fun `batch includes custom request headers`() {
         val http = mockHttp()
         val url = http.url("/")

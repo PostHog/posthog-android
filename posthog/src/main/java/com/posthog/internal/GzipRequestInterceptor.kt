@@ -52,8 +52,8 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
     private enum class Compression {
         ON,
 
-        // One thread claimed the probe. It retries that body uncompressed, and the SDK keeps
-        // compressing if the retry does not help, instead of sending every rejected body twice.
+        // One thread claimed the probe. The SDK keeps compressing if the server rejects the
+        // uncompressed retry too, instead of sending every rejected body twice.
         PROBED,
 
         // The server cannot read compressed bodies, e.g. because the network alters them in transit.
@@ -102,13 +102,29 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
 
             // Send the body again uncompressed, to find out whether compression is what the
             // server could not read.
-            val uncompressedResponse = chain.proceed(originalRequest)
+            val uncompressedResponse =
+                try {
+                    chain.proceed(originalRequest)
+                } catch (e: IOException) {
+                    releaseProbe()
+
+                    throw e
+                }
             if (uncompressedResponse.isSuccessful) {
                 compression.set(Compression.OFF)
                 config.logger.log("The server rejected a gzipped request body, compression is now off.")
+            } else if (isEventsRetriableStatusCode(uncompressedResponse.code)) {
+                releaseProbe()
             }
             uncompressedResponse
         }
+    }
+
+    // A thrown error or a transient answer says nothing about whether the server can read a
+    // compressed body, so give the claim back instead of spending it.
+    private fun releaseProbe() {
+        compression.set(Compression.ON)
+        config.logger.log("The uncompressed request failed for another reason, the SDK will probe again.")
     }
 
     private fun isCompressionRejected(response: Response): Boolean {
