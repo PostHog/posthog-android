@@ -138,26 +138,23 @@ public class PostHogApi(
     public fun pushSubscription(
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String? = null,
-    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, platform, appId, identityToken)
+    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     public fun pushUnsubscription(
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String? = null,
-    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, platform, appId, identityToken)
+    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     private fun sendPushSubscription(
         method: String,
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String?,
     ) {
@@ -166,7 +163,6 @@ public class PostHogApi(
                 projectToken = config.apiKey,
                 distinctId = distinctId,
                 deviceToken = deviceToken,
-                platform = platform,
                 appId = appId,
                 identityToken = identityToken,
             )

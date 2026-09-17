@@ -127,7 +127,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, config, storagePrefix) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         val request = http.takeRequest()
@@ -149,7 +149,7 @@ internal class PostHogPushSubscriptionManagerTest {
             }
         val (sut, _, storagePrefix) = getSut(http, networkStatus = offline)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(0, http.requestCount)
@@ -167,7 +167,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals(0, http.requestCount)
 
@@ -190,7 +190,7 @@ internal class PostHogPushSubscriptionManagerTest {
         distinctId = "  "
         val (sut, _, storagePrefix) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(0, http.requestCount)
@@ -203,7 +203,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         // Vector 5: 400 -> no in-session retry, record kept (no delivered marker).
@@ -221,7 +221,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // the single 400
         assertEquals(1, http.requestCount)
         assertTrue(pendingFile(storagePrefix!!).exists())
@@ -249,7 +249,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
         assertEquals(1, http.requestCount)
@@ -257,12 +257,12 @@ internal class PostHogPushSubscriptionManagerTest {
 
         sut.retryPending()
         flush()
-        sut.register("fcm-token-2", "firebase-project", "android")
+        sut.register("fcm-token-2", "firebase-project")
         flush()
 
         // A fresh instance is the next app launch: the marker is on disk, so it does not ask either.
         val (relaunched, _, _) = getSut(http, storagePrefix = storagePrefix)
-        relaunched.register("fcm-token-2", "firebase-project", "android")
+        relaunched.register("fcm-token-2", "firebase-project")
         flush()
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
@@ -281,13 +281,13 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, _) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
         assertNotNull(preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
 
         // A logout names the identity being left, which is not the one the manager reports now.
-        sut.unregister("logged-out-user", "fcm-token", "firebase-project", "android")
+        sut.unregister("logged-out-user", "fcm-token", "firebase-project")
 
         val unregister = http.takeRequest(2, TimeUnit.SECONDS)
         assertNotNull(unregister)
@@ -306,7 +306,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, _) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
 
@@ -335,7 +335,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, _) = getSut(http)
         clock.advance(8L * 24 * 60 * 60 * 1000)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
@@ -352,7 +352,7 @@ internal class PostHogPushSubscriptionManagerTest {
             )
         val shared = preferences
         val (first, _, _) = getSut(http)
-        first.register("fcm-token", "firebase-project", "android")
+        first.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
 
@@ -360,7 +360,7 @@ internal class PostHogPushSubscriptionManagerTest {
         shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}","phc_other":"1"}""")
 
         val (relaunched, _, _) = getSut(http)
-        relaunched.register("fcm-token-2", "firebase-project", "android")
+        relaunched.register("fcm-token-2", "firebase-project")
         flush()
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
@@ -375,7 +375,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         flush()
         assertEquals(1, http.requestCount)
@@ -398,7 +398,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // initial 500
         // No self-firing timer: nothing retries until an external trigger lands after the window.
@@ -426,7 +426,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, _) = getSut(http, storagePrefix = storagePrefix, maxRetries = 2)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         // Vector 4: the retry ladder persists across flush-driven triggers, so repeated failures
         // exhaust maxRetries: 500, then flush retry 500, flush retry 500, halt.
@@ -485,7 +485,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 2)
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals(1, http.requestCount)
 
@@ -500,7 +500,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
         val (sut, config, storagePrefix) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("distinct-1", parsedDistinctId(http.takeRequest()))
 
@@ -518,7 +518,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 2)
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         sut.resendIfDistinctIdChanged()
@@ -533,7 +533,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, _) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         val request = http.takeRequest()
@@ -551,7 +551,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, _) = getSut(http)
 
         // 1) Register and deliver a token.
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
 
@@ -583,7 +583,7 @@ internal class PostHogPushSubscriptionManagerTest {
             pending = completion
         }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         config.optOut = true
         sut.onOptOut()
@@ -591,7 +591,7 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         config.optOut = false
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         pending!!.invoke("jwt-fresh")
         flush()
@@ -611,10 +611,10 @@ internal class PostHogPushSubscriptionManagerTest {
         val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
         config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
 
-        sut.register("fcm-token-1", "firebase-project", "android")
+        sut.register("fcm-token-1", "firebase-project")
         flush()
         // First mint is still outstanding (isSending held); a newer token registers mid-mint.
-        sut.register("fcm-token-2", "firebase-project", "android")
+        sut.register("fcm-token-2", "firebase-project")
         flush()
 
         // First mint completes: its record is now stale (fcm-token-2 superseded it), so the send bails
@@ -641,14 +641,14 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.identityTokenMintTimeoutMillis = 50
         config.pushIdentityProvider = { _, _, _ -> } // never calls completion
 
-        sut.register("fcm-token-1", "firebase-project", "android")
+        sut.register("fcm-token-1", "firebase-project")
         val post = http.takeRequest(2, TimeUnit.SECONDS)
         assertNotNull(post)
         assertEquals("POST", post!!.method)
         assertFalse(post.body.unGzip().contains("identity_token"))
 
         // isSending was released by the fallback, so a later registration is not wedged.
-        sut.register("fcm-token-2", "firebase-project", "android")
+        sut.register("fcm-token-2", "firebase-project")
         val post2 = http.takeRequest(2, TimeUnit.SECONDS)
         assertNotNull(post2)
         assertTrue(post2!!.body.unGzip().contains("\"device_token\":\"fcm-token-2\""))
@@ -662,13 +662,13 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, _) = getSut(http)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-cached") }
 
-        sut.register("fcm-token-1", "firebase-project", "android")
+        sut.register("fcm-token-1", "firebase-project")
         flush()
         assertTrue(http.takeRequest().body.unGzip().contains("\"identity_token\":\"jwt-cached\""))
 
         // App removes the provider; a subsequent send for the same distinctId/appId must not reuse the cache.
         config.pushIdentityProvider = null
-        sut.register("fcm-token-2", "firebase-project", "android")
+        sut.register("fcm-token-2", "firebase-project")
         flush()
 
         val body = http.takeRequest().body.unGzip()
@@ -684,7 +684,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val minted = java.util.concurrent.atomic.AtomicInteger(0)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         assertEquals("DELETE", http.takeRequest().method)
@@ -704,7 +704,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         // 503 is retryable: the DELETE fired but the intent is kept for a later drain.
@@ -729,7 +729,7 @@ internal class PostHogPushSubscriptionManagerTest {
             }
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         // Offline: nothing sent, but the intent is persisted so the logout isn't dropped.
@@ -754,8 +754,8 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
 
         // Log out of distinct-1 while offline, then re-register for the same identity.
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals(0, http.requestCount)
         assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
@@ -777,7 +777,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
 
         distinctId = "user-A"
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
 
@@ -804,7 +804,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
         val (sut, _, storagePrefix) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
 
@@ -823,7 +823,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
         val (sut, _, storagePrefix) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
         assertTrue(pendingFile(storagePrefix!!).exists())
@@ -851,7 +851,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, _, storagePrefix) = getSut(http)
         sut.retryDelayMillisPerSecond = 1L // 5s backoff -> ~5ms, fires well inside the 300ms DELETE
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         sut.unregisterCurrent()
 
         assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)?.method)
@@ -870,7 +870,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, _) = getSut(http)
         config.optOut = true
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         val request = http.takeRequest(2, TimeUnit.SECONDS)
@@ -883,9 +883,9 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
         val (sut, _, storagePrefix) = getSut(http)
 
-        sut.register("token-1", "firebase-project", "android")
+        sut.register("token-1", "firebase-project")
         flush()
-        sut.register("token-2", "firebase-project", "android")
+        sut.register("token-2", "firebase-project")
         flush()
 
         assertEquals(2, http.requestCount)
@@ -900,7 +900,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(response = MockResponse().setResponseCode(503))
         val (sut, config, storagePrefix) = getSut(http, maxRetries = 0, encryption = encryption)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         val file = pendingFile(storagePrefix!!)
@@ -910,7 +910,6 @@ internal class PostHogPushSubscriptionManagerTest {
         val record = readRecord(config, file)
         assertEquals("fcm-token", record?.deviceToken)
         assertEquals("firebase-project", record?.appId)
-        assertEquals("android", record?.platform)
         assertNull(record?.deliveredForDistinctId)
     }
 
@@ -919,7 +918,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, _) = getSut(http, storagePrefix = null)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(1, http.requestCount)
@@ -934,7 +933,7 @@ internal class PostHogPushSubscriptionManagerTest {
 
         val storagePrefix = tmpDir.newFolder().absolutePath
         val (first, _, _) = getSut(http, storagePrefix = storagePrefix, maxRetries = 0)
-        first.register("fcm-token", "firebase-project", "android")
+        first.register("fcm-token", "firebase-project")
         flush()
         assertTrue(pendingFile(storagePrefix).exists())
 
@@ -945,6 +944,48 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertEquals(2, http.requestCount)
         assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix))?.deliveredForDistinctId)
+        http.shutdown()
+    }
+
+    @Test
+    fun `a pending registration written before platform was dropped still replays`() {
+        // Upgrading the SDK must not strand a queued registration. Files written by an older
+        // version carry a `platform` key this class no longer declares.
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        val file = pendingFile(storagePrefix!!)
+        file.parentFile.mkdirs()
+        file.writeText("""{"device_token":"fcm-token","app_id":"firebase-project","platform":"android"}""")
+
+        sut.retryPending()
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertEquals("POST", request.method)
+        val body = request.body.unGzip()
+        assertTrue(body.contains("\"device_token\":\"fcm-token\""))
+        assertFalse(body.contains("\"platform\""))
+        http.shutdown()
+    }
+
+    @Test
+    fun `a pending unregister written before platform was dropped still replays`() {
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        val file = pendingUnregisterFile(storagePrefix!!)
+        file.parentFile.mkdirs()
+        file.writeText(
+            """{"distinct_id":"logged-out-user","device_token":"fcm-token","app_id":"firebase-project","platform":"android"}""",
+        )
+
+        sut.retryPending()
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertEquals("DELETE", request.method)
+        assertFalse(request.body.unGzip().contains("\"platform\""))
         http.shutdown()
     }
 
@@ -975,7 +1016,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
 
         // Persist an undelivered record (register defers while offline).
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals(0, http.requestCount)
         assertTrue(pendingFile(storagePrefix!!).exists())
@@ -994,7 +1035,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, config, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // delivered for distinct-1
         assertEquals(1, http.requestCount)
@@ -1018,7 +1059,7 @@ internal class PostHogPushSubscriptionManagerTest {
         // Real 1000ms/sec so the 5s window stays open for the whole test.
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS)) // the 500
         assertEquals(1, http.requestCount)
 
@@ -1040,7 +1081,7 @@ internal class PostHogPushSubscriptionManagerTest {
         http.enqueue(MockResponse().setBody(""))
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         // Let the 500 land and open the window before moving the clock past it.
         flush()
@@ -1060,13 +1101,13 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         assertEquals(1, http.requestCount)
 
         // Cold-start auto-register forwards the same cached token again for the same user.
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
@@ -1080,7 +1121,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, _) = getSut(http)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-abc") }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         val post = http.takeRequest()
@@ -1090,7 +1131,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertTrue(postBody.contains("\"api_key\""))
         assertTrue(postBody.contains("\"distinct_id\""))
         assertTrue(postBody.contains("\"device_token\""))
-        assertTrue(postBody.contains("\"platform\""))
+        assertFalse(postBody.contains("\"platform\""))
         assertTrue(postBody.contains("\"app_id\""))
 
         sut.unregisterCurrent()
@@ -1107,7 +1148,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, _) = getSut(http)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertFalse(http.takeRequest().body.unGzip().contains("identity_token"))
@@ -1120,7 +1161,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
         config.pushIdentityProvider = { _, _, completion -> completion(null) }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         flush() // the null completion re-enters via a queued executor task
 
@@ -1142,7 +1183,7 @@ internal class PostHogPushSubscriptionManagerTest {
         }
 
         distinctId = "user-A"
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"tok-user-A\""))
 
@@ -1184,7 +1225,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val minted = java.util.concurrent.atomic.AtomicInteger(0)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
         Thread.sleep(50) // let the ms-scaled backoff window elapse
@@ -1207,7 +1248,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val minted = java.util.concurrent.atomic.AtomicInteger(0)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-1\""))
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-2\""))
@@ -1231,7 +1272,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val minted = java.util.concurrent.atomic.AtomicInteger(0)
         config.pushIdentityProvider = { _, _, completion -> completion("jwt-${minted.incrementAndGet()}") }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
@@ -1265,7 +1306,7 @@ internal class PostHogPushSubscriptionManagerTest {
                 override fun isEnabled(): Boolean = true
             }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
@@ -1283,7 +1324,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, _) = getSut(http)
         config.pushIdentityProvider = { _, _, _ -> throw RuntimeException("mint failed") }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         val request = http.takeRequest(2, TimeUnit.SECONDS)!!
@@ -1299,7 +1340,7 @@ internal class PostHogPushSubscriptionManagerTest {
             Thread { completion("jwt-thread") }.start()
         }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
 
         assertTrue(http.takeRequest(2, TimeUnit.SECONDS)!!.body.unGzip().contains("\"identity_token\":\"jwt-thread\""))
     }
@@ -1313,7 +1354,7 @@ internal class PostHogPushSubscriptionManagerTest {
             completion("second")
         }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         flush()
 
@@ -1329,7 +1370,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
         config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         // Identity changes (login/logout) while the token minted for the original user is still
@@ -1356,8 +1397,8 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
 
         // Log out of app-a while offline, then register for app-b under the same identity.
-        sut.unregister("distinct-1", "fcm-token-a", "app-a", "android")
-        sut.register("fcm-token-b", "app-b", "android")
+        sut.unregister("distinct-1", "fcm-token-a", "app-a")
+        sut.register("fcm-token-b", "app-b")
         flush()
         assertEquals(0, http.requestCount)
         assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
@@ -1379,7 +1420,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http)
         // No pushIdentityProvider configured: the 401 can't be re-minted against.
 
-        sut.unregister("distinct-1", "fcm-token", "firebase-project", "android")
+        sut.unregister("distinct-1", "fcm-token", "firebase-project")
         flush()
 
         assertEquals("DELETE", http.takeRequest().method)
@@ -1400,14 +1441,14 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp(total = 1, response = MockResponse().setResponseCode(500))
         val (sut, _, _) = getSut(http, maxRetries = 0)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
 
         // maxRetries is 0, so the single failure above already halted the session.
-        // Re-registering the exact same (token, appId, platform) must not clear that halt — it's
+        // Re-registering the exact same (token, appId) must not clear that halt — it's
         // register spam (e.g. FCM redelivering onNewToken), not a genuinely new registration.
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
@@ -1421,7 +1462,7 @@ internal class PostHogPushSubscriptionManagerTest {
         distinctId = "user-A"
 
         // A DELETE for user-A is queued and fails (retryable), so the intent stays persisted.
-        sut.unregister("user-A", "fcm-token", "firebase-project", "android")
+        sut.unregister("user-A", "fcm-token", "firebase-project")
         flush()
         assertEquals("DELETE", http.takeRequest().method)
         assertNotNull(readUnregister(config, pendingUnregisterFile(storagePrefix!!)))
@@ -1429,7 +1470,7 @@ internal class PostHogPushSubscriptionManagerTest {
         // A fresh register() for the same identity succeeds via attempt()/performSend directly
         // (not retryPending()'s drain) and must clear the still-pending same-identity DELETE.
         http.enqueue(MockResponse().setBody(""))
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
         assertNull(readUnregister(config, pendingUnregisterFile(storagePrefix)))
@@ -1449,7 +1490,7 @@ internal class PostHogPushSubscriptionManagerTest {
         // Force a raw transport failure (no HTTP response at all) rather than a status code.
         http.shutdown()
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         // Kept for retry, not halted: the pending file survives an unclassified send error.
@@ -1467,7 +1508,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val (sut, config, storagePrefix) = getSut(http, networkStatus = network)
 
         distinctId = "user-A"
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals("POST", http.takeRequest().method)
 
@@ -1509,14 +1550,14 @@ internal class PostHogPushSubscriptionManagerTest {
         distinctId = "user-A"
 
         // register()'s identity mint is held in flight (isSending claimed, no HTTP call yet).
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertNotNull(heldCompletion)
         holdNext = false
 
         // An identical re-register arrives mid-mint: isIdenticalUndelivered is true, so it folds in
         // without resetting state (resetStateOnFold = false).
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         // The in-flight send's mint completes; performSend hits the 400 and halts the session.
@@ -1549,14 +1590,14 @@ internal class PostHogPushSubscriptionManagerTest {
         distinctId = "user-A"
 
         // token-A's identity mint is held in flight.
-        sut.register("token-A", "firebase-project", "android")
+        sut.register("token-A", "firebase-project")
         flush()
         assertNotNull(heldCompletion)
         holdNext = false
 
         // A different token folds in mid-mint: isIdenticalUndelivered is false, so it resets state
         // synchronously and asks the fold to reset again (resetStateOnFold = true).
-        sut.register("token-B", "firebase-project", "android")
+        sut.register("token-B", "firebase-project")
         flush()
 
         // token-A's stale mint completes; performSend detects the record changed underneath it and
@@ -1604,7 +1645,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, storagePrefix) = getSut(http, pushAppIds = listOf("another-project"))
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(0, http.requestCount)
@@ -1622,7 +1663,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val mints = java.util.concurrent.LinkedBlockingQueue<(String?) -> Unit>()
         config.pushIdentityProvider = { _, _, completion -> mints.add(completion) }
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         // Config resolves mid-mint and no longer lists this app_id.
@@ -1643,7 +1684,7 @@ internal class PostHogPushSubscriptionManagerTest {
         // every deployment that predates the key.
         val (sut, _, _) = getSut(http, pushAppIds = null)
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(1, http.requestCount)
@@ -1654,7 +1695,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, _) = getSut(http, pushAppIds = listOf("firebase-project"))
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
 
         assertEquals(1, http.requestCount)
@@ -1672,7 +1713,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val gated =
             PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
 
-        gated.register("fcm-token", "firebase-project", "android")
+        gated.register("fcm-token", "firebase-project")
         flush()
         assertEquals(0, http.requestCount)
 
@@ -1696,7 +1737,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val gated =
             PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
 
-        gated.register("fcm-token", "firebase-project", "android")
+        gated.register("fcm-token", "firebase-project")
         flush()
 
         var durableCalls = 0
@@ -1712,7 +1753,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val http = mockHttp()
         val (sut, _, _) = getSut(http, pushAppIds = listOf("firebase-project"))
 
-        sut.register("fcm-token", "firebase-project", "android")
+        sut.register("fcm-token", "firebase-project")
         flush()
         assertEquals(1, http.requestCount)
 

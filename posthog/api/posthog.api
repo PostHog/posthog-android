@@ -757,10 +757,10 @@ public final class com/posthog/internal/PostHogApi {
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;ZILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
-	public final fun pushSubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun pushSubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
-	public final fun pushUnsubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun pushUnsubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun pushSubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun pushSubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun pushUnsubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static synthetic fun pushUnsubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
 	public final fun snapshot (Ljava/util/List;)V
 }
