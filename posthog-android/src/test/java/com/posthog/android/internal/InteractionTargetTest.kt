@@ -114,11 +114,32 @@ internal class InteractionTargetTest {
     }
 
     @Test
+    fun `enabled child remains a target beneath a disabled clickable ancestor`() {
+        val child = button()
+        root.isClickable = true
+        root.isEnabled = false
+        assertSame(child, assertNotNull(resolve()).view.get())
+        root.setTag(R.id.posthog_autocapture_no_capture, true)
+        assertNull(resolve())
+        root.setTag(R.id.posthog_autocapture_no_capture, false)
+        root.tag = "ph-no-capture"
+        assertNull(resolve())
+    }
+
+    @Test
+    fun `disabled clickable child blocks fallback to enabled ancestor`() {
+        val child = button()
+        root.isClickable = true
+        child.isEnabled = false
+        assertNull(resolve())
+    }
+
+    @Test
     fun `exclusions are subtree wide and dynamic including replay masking`() {
         val button = button()
-        root.setTag(R.id.posthog_autocapture_ignore, true)
+        root.setTag(R.id.posthog_autocapture_no_capture, true)
         assertNull(resolve())
-        root.setTag(R.id.posthog_autocapture_ignore, false)
+        root.setTag(R.id.posthog_autocapture_no_capture, false)
         assertNotNull(resolve())
         button.tag = "ph-no-capture"
         assertNull(resolve())

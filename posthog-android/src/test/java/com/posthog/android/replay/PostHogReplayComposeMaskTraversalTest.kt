@@ -3,6 +3,8 @@ package com.posthog.android.replay
 import android.content.Context
 import android.os.Looper
 import android.view.View
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.API_KEY
@@ -10,6 +12,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.internal.PostHogLogger
 import org.junit.runner.RunWith
+import org.mockito.Mockito
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.CopyOnWriteArrayList
@@ -121,18 +124,12 @@ internal class PostHogReplayComposeMaskTraversalTest {
 
     private fun composeViewWithBrokenSemanticsOwner(): View {
         val composeViewClass = Class.forName(PostHogReplayIntegration.ANDROID_COMPOSE_VIEW_CLASS_NAME)
-        val composeView = composeViewClass.getConstructor(Context::class.java).newInstance(context) as View
-
-        // A standalone LayoutNode has no outer semantics wrapper. Installing its owner makes the
-        // real getAllSemanticsNodes(true) traversal fail deterministically at current Compose 1.0.0.
-        val layoutNodeClass = Class.forName("androidx.compose.ui.node.LayoutNode")
-        val layoutNode = layoutNodeClass.getConstructor().newInstance()
-        val semanticsOwnerClass = Class.forName("androidx.compose.ui.semantics.SemanticsOwner")
-        val brokenOwner = semanticsOwnerClass.getConstructor(layoutNodeClass).newInstance(layoutNode)
-        composeViewClass.getDeclaredField("semanticsOwner").apply {
-            isAccessible = true
-            set(composeView, brokenOwner)
-        }
+        val composeView = Mockito.mock(composeViewClass) as View
+        val brokenOwner =
+            Mockito.mock(SemanticsOwner::class.java) {
+                throw IllegalStateException("Semantics enumeration failed")
+            }
+        Mockito.`when`((composeView as RootForTest).semanticsOwner).thenReturn(brokenOwner)
         return composeView
     }
 }

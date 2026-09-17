@@ -4,11 +4,13 @@ import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.webkit.WebView
 import android.widget.Checkable
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
+import curtains.phoneWindow
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -18,6 +20,7 @@ internal class InteractionResponseSnapshot {
 
     fun take(root: View): ByteArray? =
         try {
+            check(root.phoneWindow?.attributes?.flags?.and(FLAG_SECURE) != FLAG_SECURE)
             val sink = InteractionResponseDigest(salt)
             val excludedLayouts = mutableSetOf<androidx.compose.ui.layout.LayoutInfo>()
             val origin = IntArray(2)

@@ -5,6 +5,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.widget.Button
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -116,6 +117,26 @@ internal class InteractionDetectorIntegrationTest {
         assertTrue(events.all { it.properties?.get("\$event_type") == "touch" })
         assertTrue(events.all { it.properties?.containsKey("\$session_id") == true })
         assertFalse(events.any { it.properties.toString().contains("Action") })
+    }
+
+    @Test
+    fun `secure windows suppress detectors and clearing the flag allows new taps`() {
+        activity.window.addFlags(FLAG_SECURE)
+        repeat(4) { tap() }
+        waitForTimeout()
+        assertTrue(events.isEmpty())
+        activity.window.clearFlags(FLAG_SECURE)
+        tap()
+        waitForTimeout()
+        assertEquals(listOf("\$dead_click"), events.map { it.event })
+    }
+
+    @Test
+    fun `setting secure flag cancels pending dead observation without another touch`() {
+        tap()
+        activity.window.addFlags(FLAG_SECURE)
+        waitForTimeout()
+        assertTrue(events.isEmpty())
     }
 
     @Test

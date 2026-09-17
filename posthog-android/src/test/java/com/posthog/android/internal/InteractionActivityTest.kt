@@ -1,6 +1,5 @@
-package com.posthog.android.sample
+package com.posthog.android.internal
 
-import android.app.Application
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.widget.FrameLayout
@@ -25,7 +24,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.posthog.PostHogEvent
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.PostHogAutocaptureModifier.postHogAutocaptureIgnore
+import com.posthog.android.postHogAutocaptureNoCapture
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,8 +36,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [35])
-class InteractionActivityTest {
+@Config(application = InteractionTestApplication::class, sdk = [35])
+internal class InteractionActivityTest {
     @get:Rule
     val compose = createAndroidComposeRule<InteractionActivity>()
 
@@ -103,9 +102,9 @@ class InteractionActivityTest {
                 compose.runOnIdle { view.getLocationInWindow(location) }
                 tap(location[0] + view.width / 2f, location[1] + view.height / 2f)
             }
-            tapView(R.id.interaction_view_responsive)
-            tapView(R.id.interaction_view_noop)
-            tapView(R.id.interaction_view_ignored)
+            tapView(android.R.id.button1)
+            tapView(android.R.id.button2)
+            tapView(android.R.id.button3)
             compose.waitUntil { events.count { it.event == "\$autocapture" } >= 4 }
             val captures = events.filter { it.event == "\$autocapture" }
             assertEquals(4, captures.size)
@@ -115,15 +114,15 @@ class InteractionActivityTest {
             val chains = captures.map { it.properties?.get("\$elements_chain").toString() }
             assertTrue(chains.any { it.startsWith("button:") && it.contains("compose_responsive") })
             assertTrue(chains.any { it.contains("compose_noop") })
-            assertTrue(chains.any { it.contains("interaction_view_responsive") })
-            assertTrue(chains.any { it.contains("interaction_view_noop") })
+            assertTrue(chains.any { it.contains("button1") })
+            assertTrue(chains.any { it.contains("button2") })
             assertFalse(chains.any { it.contains("ignored") || it.contains("responses") })
             assertTrue(captures.all { it.properties?.containsKey("\$session_id") == true })
             assertTrue(captures.all { it.properties?.get("\$screen_name") == "Interaction" })
             var nestedClicks = 0
             compose.runOnIdle {
                 compose.activity.setContent {
-                    Column(Modifier.postHogAutocaptureIgnore()) {
+                    Column(Modifier.postHogAutocaptureNoCapture()) {
                         AndroidView(factory = { context ->
                             ComposeView(context).apply {
                                 setContent {
@@ -147,7 +146,7 @@ class InteractionActivityTest {
                     Column(Modifier.clickable { }) {
                         Button(
                             onClick = { hiddenClicks++ },
-                            modifier = Modifier.testTag("hidden_ignored").semantics { invisibleToUser() }.postHogAutocaptureIgnore(),
+                            modifier = Modifier.testTag("hidden_ignored").semantics { invisibleToUser() }.postHogAutocaptureNoCapture(),
                         ) { Text("Hidden from accessibility") }
                     }
                 }
@@ -165,7 +164,7 @@ class InteractionActivityTest {
                         AndroidView(
                             factory = { context ->
                                 android.widget.Button(context).apply {
-                                    id = R.id.interaction_view_noop
+                                    id = android.R.id.button2
                                     setOnClickListener { nativeClicks++ }
                                 }
                             },
@@ -184,13 +183,13 @@ class InteractionActivityTest {
             assertEquals(0, nativeClicks)
             assertEquals(5, events.count { it.event == "\$autocapture" })
             assertTrue(events.last().properties?.get("\$elements_chain").toString().contains("compose_overlay"))
-            assertFalse(events.last().properties?.get("\$elements_chain").toString().contains("interaction_view_noop"))
+            assertFalse(events.last().properties?.get("\$elements_chain").toString().contains("button2"))
 
             var ancestorClicks = 0
             compose.runOnIdle {
                 val parent =
                     FrameLayout(compose.activity).apply {
-                        id = R.id.interaction_view_responsive
+                        id = android.R.id.button1
                         setOnClickListener { ancestorClicks++ }
                         addView(
                             ComposeView(context).apply {
@@ -206,9 +205,33 @@ class InteractionActivityTest {
             assertEquals(1, ancestorClicks)
             assertEquals(6, events.count { it.event == "\$autocapture" })
             assertTrue(events.last().properties?.get("\$elements_chain").toString().startsWith("framelayout:"))
+            var enabledChildClicks = 0
+            compose.runOnIdle {
+                val parent =
+                    FrameLayout(compose.activity).apply {
+                        isClickable = true
+                        isEnabled = false
+                        addView(
+                            ComposeView(context).apply {
+                                setContent {
+                                    Button(onClick = { enabledChildClicks++ }, modifier = Modifier.testTag("enabled_child")) {
+                                        Text("Enabled child")
+                                    }
+                                }
+                            },
+                            FrameLayout.LayoutParams(-1, -1),
+                        )
+                    }
+                compose.activity.setContentView(parent)
+            }
+            compose.waitForIdle()
+            tapCompose("enabled_child")
+            assertEquals(1, enabledChildClicks)
+            assertEquals(7, events.count { it.event == "\$autocapture" })
+            assertTrue(events.last().properties?.get("\$elements_chain").toString().contains("enabled_child"))
             client!!.optOut()
-            tapCompose("native_child")
-            assertEquals(6, events.count { it.event == "\$autocapture" })
+            tapCompose("enabled_child")
+            assertEquals(7, events.count { it.event == "\$autocapture" })
         } finally {
             compose.runOnIdle { client?.close() }
         }

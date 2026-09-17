@@ -4,6 +4,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import android.view.Window
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -128,6 +129,7 @@ internal class PostHogElementInteractionIntegration(
     ) {
         if (interceptors.containsKey(window)) return
         val weakRoot = WeakReference(root)
+        val weakWindow = WeakReference(window)
         val tracker = InteractionTapTracker()
         val interceptor =
             TouchEventInterceptor { event, dispatch ->
@@ -135,7 +137,10 @@ internal class PostHogElementInteractionIntegration(
                     if (Looper.myLooper() != mainHandler.mainLooper) return@safely
                     val client = postHog
                     val view = weakRoot.get()
-                    if (client == null || client.isOptOut() || view == null || !enabled()) {
+                    val currentWindow = weakWindow.get()
+                    if (client == null || client.isOptOut() || view == null || currentWindow == null ||
+                        !enabled() || currentWindow.attributes.flags and FLAG_SECURE != 0
+                    ) {
                         resetDetectors()
                         tracker.reset()
                     } else {

@@ -159,9 +159,9 @@ internal class InteractionDeadDetectorTest {
     @Test
     fun `dynamic exclusion and replay masking cancel pending emission`() {
         begin()
-        root.setTag(R.id.posthog_autocapture_ignore, true)
+        root.setTag(R.id.posthog_autocapture_no_capture, true)
         timeout()
-        root.setTag(R.id.posthog_autocapture_ignore, false)
+        root.setTag(R.id.posthog_autocapture_no_capture, false)
         begin()
         button.tag = "ph-no-capture"
         timeout()
@@ -216,7 +216,7 @@ internal class InteractionDeadDetectorTest {
     @Test
     fun `masked content is not processed and per-observation digests are unlinkable`() {
         val snapshot = InteractionResponseSnapshot()
-        status.setTag(R.id.posthog_autocapture_ignore, true)
+        status.setTag(R.id.posthog_autocapture_no_capture, true)
         val before = assertNotNull(snapshot.take(root))
         status.text = "x".repeat(20000)
         assertTrue(before.contentEquals(assertNotNull(snapshot.take(root))))

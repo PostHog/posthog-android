@@ -10,7 +10,7 @@ import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureIgnore
+import com.posthog.android.PostHogAutocaptureNoCapture
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import org.junit.runner.RunWith
 import org.mockito.Mockito
@@ -27,6 +27,7 @@ internal class InteractionInteropSnapshotTest {
     @Test
     fun `Compose exclusions prevent native interop content from being read`() {
         val host = Mockito.mock(Class.forName("androidx.compose.ui.platform.AndroidComposeView")) as ViewGroup
+        whenever(host.rootView).thenReturn(host)
         val holderClass = Class.forName("androidx.compose.ui.viewinterop.AndroidViewHolder")
         val holder = Mockito.mock(holderClass) as ViewGroup
         val layout = Mockito.mock(Class.forName("androidx.compose.ui.node.LayoutNode")) as LayoutInfo
@@ -49,7 +50,7 @@ internal class InteractionInteropSnapshotTest {
         whenever(text.text).thenReturn("private content")
         whenever(text.contentDescription).thenReturn("private description")
 
-        for (key in listOf(PostHogAutocaptureIgnore, PostHogReplayMask)) {
+        for (key in listOf(PostHogAutocaptureNoCapture, PostHogReplayMask)) {
             config[key] = true
             val snapshot = InteractionResponseSnapshot()
             val first = assertNotNull(snapshot.take(host))

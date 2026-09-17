@@ -111,9 +111,9 @@ internal class InteractionTapTrackerTest {
     @Test
     fun `exclusion and target changes during tap are re-evaluated`() {
         touch(MotionEvent.ACTION_DOWN, 0)
-        button.setTag(R.id.posthog_autocapture_ignore, true)
+        button.setTag(R.id.posthog_autocapture_no_capture, true)
         assertNull(touch(MotionEvent.ACTION_UP))
-        button.setTag(R.id.posthog_autocapture_ignore, false)
+        button.setTag(R.id.posthog_autocapture_no_capture, false)
         touch(MotionEvent.ACTION_DOWN, 0)
         root.removeView(button)
         val replacement =

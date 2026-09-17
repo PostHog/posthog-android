@@ -1,6 +1,5 @@
-package com.posthog.android.sample
+package com.posthog.android.internal
 
-import android.app.Application
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -44,8 +43,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [35])
-class InteractionDetectorActivityTest {
+@Config(application = InteractionTestApplication::class, sdk = [35])
+internal class InteractionDetectorActivityTest {
     @get:Rule val compose = createAndroidComposeRule<InteractionActivity>()
     private val events = CopyOnWriteArrayList<PostHogEvent>()
     private var client: PostHogInterface? = null

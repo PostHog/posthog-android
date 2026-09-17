@@ -7,7 +7,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureIgnore
+import com.posthog.android.PostHogAutocaptureNoCapture
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 
 /** Called only for a verified Compose host; never stores semantics configurations or strings. */
@@ -35,7 +35,7 @@ internal object ComposeInteractionResponseSnapshot {
             sink.number(bounds.bottom.toBits())
             val config = node.config
             val ignored =
-                excluded || config.getOrNull(PostHogAutocaptureIgnore) == true ||
+                excluded || config.getOrNull(PostHogAutocaptureNoCapture) == true ||
                     config.getOrNull(PostHogReplayMask) == true || config.contains(SemanticsProperties.Password) ||
                     config.contains(SemanticsActions.SetText) || config.contains(SemanticsProperties.EditableText)
             if (ignored) excludedLayouts += node.layoutInfo
