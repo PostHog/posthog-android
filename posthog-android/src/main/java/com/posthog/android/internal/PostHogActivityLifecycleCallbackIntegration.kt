@@ -10,6 +10,8 @@ import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import java.lang.ref.WeakReference
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -23,6 +25,10 @@ internal class PostHogActivityLifecycleCallbackIntegration(
 ) : ActivityLifecycleCallbacks, PostHogIntegration {
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
+
+    // Identity, not URL: separate deliveries may open the same link. Neither the Activity nor
+    // its previous Intent (including any extras) should be kept alive by this bookkeeping.
+    private val deepLinkIntents = WeakHashMap<Activity, WeakReference<Intent>>()
 
     internal companion object {
         private val integrationInstalled = AtomicBoolean(false)
@@ -145,29 +151,37 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         if (config.capturePushNotificationOpened && savedInstanceState == null) {
             capturePushNotificationOpenedIfNeeded(activity)
         }
-        if (config.captureDeepLinks) {
-            activity.intent?.let { intent ->
-                val props = mutableMapOf<String, Any>()
-                val data = intent.data
-                try {
-                    data?.let {
-                        for (item in it.queryParameterNames) {
-                            val param = it.getQueryParameter(item)
-                            if (!param.isNullOrEmpty()) {
-                                props[item] = param
-                            }
-                        }
-                    }
-                } catch (e: UnsupportedOperationException) {
-                    config.logger.log("Deep link $data has invalid query param names.")
-                } finally {
-                    data?.let { props["url"] = it.toString() }
-                    intent.getReferrerInfo(config).let { props.putAll(it) }
+        captureDeepLinkIfNeeded(activity)
+    }
 
-                    if (props.isNotEmpty()) {
-                        postHog?.capture("Deep Link Opened", properties = props)
+    private fun captureDeepLinkIfNeeded(activity: Activity) {
+        if (!config.captureDeepLinks) return
+        val target = postHog ?: return
+        val intent = activity.intent ?: return
+        synchronized(deepLinkIntents) {
+            if (deepLinkIntents[activity]?.get() === intent) return
+            deepLinkIntents[activity] = WeakReference(intent)
+        }
+
+        val props = mutableMapOf<String, Any>()
+        val data = intent.data
+        try {
+            data?.let {
+                for (item in it.queryParameterNames) {
+                    val param = it.getQueryParameter(item)
+                    if (!param.isNullOrEmpty()) {
+                        props[item] = param
                     }
                 }
+            }
+        } catch (e: UnsupportedOperationException) {
+            config.logger.log("Deep link $data has invalid query param names.")
+        } finally {
+            data?.let { props["url"] = it.toString() }
+            intent.getReferrerInfo(config).let { props.putAll(it) }
+
+            if (props.isNotEmpty()) {
+                target.capture("Deep Link Opened", properties = props)
             }
         }
     }
@@ -188,6 +202,8 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     }
 
     override fun onActivityResumed(activity: Activity) {
+        // Warm launches are observable here when onNewIntent calls Activity.setIntent.
+        captureDeepLinkIfNeeded(activity)
     }
 
     override fun onActivityPaused(activity: Activity) {
@@ -203,6 +219,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
     }
 
     override fun onActivityDestroyed(activity: Activity) {
+        synchronized(deepLinkIntents) { deepLinkIntents.remove(activity) }
     }
 
     @Synchronized
@@ -225,6 +242,7 @@ internal class PostHogActivityLifecycleCallbackIntegration(
             this.postHog = null
             application.unregisterActivityLifecycleCallbacks(this)
         } finally {
+            synchronized(deepLinkIntents) { deepLinkIntents.clear() }
             ownsInstallation = false
             integrationInstalled.set(false)
         }

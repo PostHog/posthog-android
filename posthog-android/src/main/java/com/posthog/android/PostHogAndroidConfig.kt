@@ -15,6 +15,11 @@ import com.posthog.internal.PostHogQueue
  * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
  *   automatically, including app installed, app updated, app opened, and app backgrounded.
  * @property captureDeepLinks Whether to capture `Deep Link Opened` events automatically.
+ *   For warm links delivered to `singleTop` or `singleTask` activities, call `setIntent(intent)`
+ *   in `Activity.onNewIntent` after `super.onNewIntent(intent)`. The SDK checks the current intent
+ *   on resume and captures each new Intent instance, even if its URL is unchanged. Ordinary
+ *   resumes do not recapture the same intent. Creation capture, including activity recreation,
+ *   is unchanged. Default: `true`.
  * @property captureScreenViews Whether to capture a `$screen` event whenever a foreground
  *   Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most
  *   recent screen name is also attached as `$screen_name` to every subsequent event captured by
