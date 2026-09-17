@@ -21,16 +21,6 @@ SDK usage examples and code snippets live in the official documentation so they 
 - [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
 
-### Warm deep links on Android
-
-With `captureDeepLinks` enabled, activities using `singleTop` or `singleTask` must call
-`setIntent(intent)` in `onNewIntent`, after `super.onNewIntent(intent)`, to make the new intent
-available for automatic `Deep Link Opened` capture on resume. No additional PostHog API call is
-needed. A new Intent with the same URL is captured again; resuming with the same Intent is not.
-Mutating an existing Intent in place is not treated as a new delivery. Capture on activity
-creation (including recreation) remains unchanged. Push-open tracking still uses its existing
-[notification integration](https://posthog.com/docs/libraries/android).
-
 ## Questions?
 
 ### [Check out our community page.](https://posthog.com/posts)
