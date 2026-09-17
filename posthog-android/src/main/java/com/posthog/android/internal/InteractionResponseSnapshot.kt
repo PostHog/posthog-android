@@ -14,6 +14,12 @@ import curtains.phoneWindow
 import java.security.MessageDigest
 import java.security.SecureRandom
 
+private const val ANDROID_WIDGET_PACKAGE_PREFIX = "android.widget."
+private const val ANDROID_VIEW_PACKAGE_PREFIX = "android.view."
+private const val ANDROID_INTERNAL_PACKAGE_PREFIX = "com.android.internal."
+private const val APPCOMPAT_WIDGET_PACKAGE_PREFIX = "androidx.appcompat.widget."
+private const val MATERIAL_PACKAGE_PREFIX = "com.google.android.material."
+
 /** Ephemeral salted digest, never serialized. No text, nodes or Views survive a snapshot walk. */
 internal class InteractionResponseSnapshot {
     private val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
@@ -35,8 +41,8 @@ internal class InteractionResponseSnapshot {
             ) {
                 // Compose lazily adds these native drawing-only layers for pressed feedback.
                 // Their creation/removal and animation are not meaningful UI responses.
-                if (view.javaClass.name == "androidx.compose.material.ripple.RippleContainer" ||
-                    view.javaClass.name == "androidx.compose.material.ripple.RippleHostView"
+                if (view.javaClass.name == COMPOSE_RIPPLE_CONTAINER_CLASS_NAME ||
+                    view.javaClass.name == COMPOSE_RIPPLE_HOST_VIEW_CLASS_NAME
                 ) {
                     return
                 }
@@ -56,7 +62,7 @@ internal class InteractionResponseSnapshot {
                 sink.number(if (view.isActivated) 1 else 0)
                 sink.number(if (view.hasFocus()) 1 else 0)
                 val excludedInterop =
-                    if (excludedLayouts.isNotEmpty() && view.javaClass.name.startsWith("androidx.compose.ui.viewinterop.")) {
+                    if (excludedLayouts.isNotEmpty() && view.javaClass.name.startsWith(COMPOSE_VIEW_INTEROP_PACKAGE_PREFIX)) {
                         val layout = ComposeInteractionTargetResolver.interopLayoutInfo(listOf(view))
                         checkNotNull(layout)
                         layout in excludedLayouts
@@ -72,10 +78,10 @@ internal class InteractionResponseSnapshot {
                     check(view !is SurfaceView && view !is TextureView && view !is WebView)
                     val name = view.javaClass.name
                     check(
-                        name.startsWith("android.widget.") || name.startsWith("android.view.") ||
-                            name.startsWith("com.android.internal.") || name.startsWith("androidx.appcompat.widget.") ||
-                            name.startsWith("androidx.compose.ui.platform.") || name.startsWith("androidx.compose.ui.viewinterop.") ||
-                            name.startsWith("com.google.android.material."),
+                        name.startsWith(ANDROID_WIDGET_PACKAGE_PREFIX) || name.startsWith(ANDROID_VIEW_PACKAGE_PREFIX) ||
+                            name.startsWith(ANDROID_INTERNAL_PACKAGE_PREFIX) || name.startsWith(APPCOMPAT_WIDGET_PACKAGE_PREFIX) ||
+                            name.startsWith(COMPOSE_PLATFORM_PACKAGE_PREFIX) || name.startsWith(COMPOSE_VIEW_INTEROP_PACKAGE_PREFIX) ||
+                            name.startsWith(MATERIAL_PACKAGE_PREFIX),
                     )
                     sink.text(view.contentDescription)
                     if (android.os.Build.VERSION.SDK_INT >= 30) sink.text(view.stateDescription)
@@ -85,7 +91,7 @@ internal class InteractionResponseSnapshot {
                     if (view is Checkable) sink.number(if (view.isChecked) 1 else 0)
                     if (view is ProgressBar) sink.number(view.progress)
                     // Drawable state/pressed/alpha are deliberately absent: ripples are not responses.
-                    if (name == "androidx.compose.ui.platform.AndroidComposeView") {
+                    if (name == ANDROID_COMPOSE_VIEW_CLASS_NAME) {
                         // Transfer semantic exclusions before traversing the separate native interop tree.
                         excludedLayouts.addAll(ComposeInteractionResponseSnapshot.append(view, sink, depth + 1))
                     }

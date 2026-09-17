@@ -95,7 +95,7 @@ internal object ComposeInteractionTargetResolver {
     // before returning a native target, so an overlaid Compose control cannot be misattributed.
     fun interopLayoutInfo(path: List<View>): LayoutInfo? =
         try {
-            val holderClass = Class.forName("androidx.compose.ui.viewinterop.AndroidViewHolder")
+            val holderClass = Class.forName(ANDROID_COMPOSE_VIEW_HOLDER_CLASS_NAME)
             val holder = path.lastOrNull { holderClass.isInstance(it) }
             holder?.let { holderClass.getMethod("getLayoutNode").invoke(it) as? LayoutInfo }
         } catch (_: Throwable) {
