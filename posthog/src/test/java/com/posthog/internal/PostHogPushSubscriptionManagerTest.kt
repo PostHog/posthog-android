@@ -966,6 +966,7 @@ internal class PostHogPushSubscriptionManagerTest {
         val body = request.body.unGzip()
         assertTrue(body.contains("\"device_token\":\"fcm-token\""))
         assertFalse(body.contains("\"platform\""))
+        http.shutdown()
     }
 
     @Test
@@ -985,6 +986,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNotNull(request)
         assertEquals("DELETE", request.method)
         assertFalse(request.body.unGzip().contains("\"platform\""))
+        http.shutdown()
     }
 
     @Test
