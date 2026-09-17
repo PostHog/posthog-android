@@ -1,5 +1,11 @@
 # posthog-android-surveys-compose
 
+## 0.3.1
+
+### Patch Changes
+
+- 8090aee: Leave open-text survey inputs empty when no placeholder is configured.
+
 ## 0.3.0
 
 ### Minor Changes
