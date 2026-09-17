@@ -61,7 +61,7 @@ internal fun OpenText(
                 .border(1.dp, appearance.borderColor, RoundedCornerShape(6.dp))
                 .padding(8.dp),
     ) {
-        if (value.isEmpty()) {
+        if (value.isEmpty() && appearance.placeholder.isNotEmpty()) {
             Text(
                 text = appearance.placeholder,
                 color = appearance.placeholderTextColor,
