@@ -1,5 +1,11 @@
 ## Next
 
+## 6.40.0
+
+### Minor Changes
+
+- d0a59ab: Support survey targeting by a specific linked feature flag variant.
+
 ## 6.39.0
 
 ### Minor Changes
