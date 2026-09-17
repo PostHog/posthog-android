@@ -96,6 +96,8 @@ uses its native ancestor chain; Compose-only targets include semantic and host V
   a target in an underlying window. Custom native child drawing order, nonrectangular clipping,
   and app-specific input interception can differ from geometric hit testing. Compose's expanded
   minimum touch-target regions outside semantic bounds are not inferred.
+- Nested Compose hosts (a `ComposeView` inside an `AndroidView` in another Compose host) are
+  skipped so exclusions in an enclosing semantic tree cannot be bypassed.
 - Hierarchies beyond the safety bounds and incompatible Compose implementations are skipped.
   Class names can change with app obfuscation; resource IDs/test tags are preferable identifiers.
 - `captureElementInteractions` does not enable the separate rage/dead options.

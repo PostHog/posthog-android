@@ -147,12 +147,15 @@ internal class InteractionTargetResolver(
                     },
             )
         }
-        val composeIndex =
+        val composeHosts =
             if (composeAvailable) {
-                path.indexOfLast { it.javaClass.name == "androidx.compose.ui.platform.AndroidComposeView" }
+                path.indices.filter { path[it].javaClass.name == "androidx.compose.ui.platform.AndroidComposeView" }
             } else {
-                -1
+                emptyList()
             }
+        // Resolving only the inner host cannot prove that outer Compose exclusions were respected.
+        if (composeHosts.size > 1) return null
+        val composeIndex = composeHosts.singleOrNull() ?: -1
         if (composeIndex >= 0) {
             // AndroidViewsHandler and rendering layers can cover the entire Compose host. They
             // must not hide semantic targets, and native interop still needs Compose exclusions.
