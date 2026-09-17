@@ -11,7 +11,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureIgnore
+import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureNoCapture
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import org.junit.runner.RunWith
 import org.mockito.Mockito
@@ -70,11 +70,11 @@ internal class ComposeInteractionTargetResolverTest {
 
     @Test
     fun `unmerged ignored child blocks actionable parent and dynamic false restores capture`() {
-        childConfig[PostHogAutocaptureIgnore] = true
+        childConfig[PostHogAutocaptureNoCapture] = true
         assertNull(resolve())
-        childConfig[PostHogAutocaptureIgnore] = false
+        childConfig[PostHogAutocaptureNoCapture] = false
         assertNotNull(resolve())
-        rootConfig[PostHogAutocaptureIgnore] = true
+        rootConfig[PostHogAutocaptureNoCapture] = true
         assertNull(resolve())
     }
 
@@ -94,7 +94,7 @@ internal class ComposeInteractionTargetResolverTest {
         val layout = mock<androidx.compose.ui.layout.LayoutInfo>()
         whenever(child.layoutInfo).thenReturn(layout)
         assertEquals(native, ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native, layout))
-        rootConfig[PostHogAutocaptureIgnore] = true
+        rootConfig[PostHogAutocaptureNoCapture] = true
         assertNull(ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native, layout))
     }
 

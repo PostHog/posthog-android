@@ -144,7 +144,7 @@ internal class InteractionTargetResolver(
         }
         val composeHosts =
             if (composeAvailable) {
-                path.indices.filter { path[it].javaClass.name == "androidx.compose.ui.platform.AndroidComposeView" }
+                path.indices.filter { path[it].javaClass.name == ANDROID_COMPOSE_VIEW_CLASS_NAME }
             } else {
                 emptyList()
             }
@@ -170,7 +170,7 @@ internal class InteractionTargetResolver(
 }
 
 internal fun View.isInteractionIgnored(): Boolean =
-    getTag(R.id.posthog_autocapture_ignore) == true ||
+    getTag(R.id.posthog_autocapture_no_capture) == true ||
         (tag as? String)?.contains("ph-no-capture", ignoreCase = true) == true ||
         contentDescription?.contains("ph-no-capture", ignoreCase = true) == true
 
@@ -205,7 +205,7 @@ internal fun View.interactionElement(): InteractionElement {
 private fun isInteractionComposeAvailable(): Boolean =
     try {
         // Its name is already preserved by the replay consumer rules.
-        Class.forName("androidx.compose.ui.platform.AndroidComposeView", false, InteractionTargetResolver::class.java.classLoader)
+        Class.forName(ANDROID_COMPOSE_VIEW_CLASS_NAME, false, InteractionTargetResolver::class.java.classLoader)
         true
     } catch (_: Throwable) {
         false

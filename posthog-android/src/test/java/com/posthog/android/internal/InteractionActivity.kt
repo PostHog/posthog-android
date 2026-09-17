@@ -1,4 +1,4 @@
-package com.posthog.android.sample
+package com.posthog.android.internal
 
 import android.os.Bundle
 import android.widget.LinearLayout
@@ -19,18 +19,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.posthog.android.PostHogAutocaptureModifier.postHogAutocaptureNoCapture
-import com.posthog.android.sample.ui.theme.postHogAndroidSampleTheme
 import android.widget.Button as NativeButton
 
 /** Static, non-sensitive identifiers for interaction testing, with replay independently configurable. */
-class InteractionActivity : ComponentActivity() {
+internal class InteractionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { postHogAndroidSampleTheme { InteractionProbeContent() } }
+        setContent { InteractionProbeContent() }
     }
 }
 
 @Composable
+@Suppress("ktlint:standard:function-naming")
 internal fun InteractionProbeContent() {
     var responses by remember { mutableIntStateOf(0) }
     Column(Modifier.padding(24.dp)) {
@@ -61,14 +61,14 @@ internal fun InteractionProbeContent() {
                     )
                 }
                 addView(status)
-                addButton(R.id.interaction_view_responsive, "View responsive") { status.text = "View responses: ${++count}" }
-                addButton(R.id.interaction_view_noop, "View no-op") { }
+                addButton(android.R.id.button1, "View responsive") { status.text = "View responses: ${++count}" }
+                addButton(android.R.id.button2, "View no-op") { }
                 addView(
                     LinearLayout(context).apply {
                         setTag(com.posthog.android.R.id.posthog_autocapture_no_capture, true)
                         addView(
                             NativeButton(context).apply {
-                                id = R.id.interaction_view_ignored
+                                id = android.R.id.button3
                                 text = "View ignored"
                                 setOnClickListener { status.text = "View responses: ${++count}" }
                             },

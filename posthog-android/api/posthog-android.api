@@ -44,8 +44,8 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 
 public final class com/posthog/android/PostHogAutocaptureModifier {
 	public static final field INSTANCE Lcom/posthog/android/PostHogAutocaptureModifier;
-	public final fun postHogAutocaptureIgnore (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
-	public static synthetic fun postHogAutocaptureIgnore$default (Lcom/posthog/android/PostHogAutocaptureModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
+	public final fun postHogAutocaptureNoCapture (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
+	public static synthetic fun postHogAutocaptureNoCapture$default (Lcom/posthog/android/PostHogAutocaptureModifier;Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
 }
 
 public final class com/posthog/android/errortracking/PostHogNativeCrashIntegration : com/posthog/PostHogIntegration {

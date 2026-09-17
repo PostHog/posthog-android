@@ -119,9 +119,9 @@ internal class InteractionTargetTest {
         root.isClickable = true
         root.isEnabled = false
         assertSame(child, assertNotNull(resolve()).view.get())
-        root.setTag(R.id.posthog_autocapture_ignore, true)
+        root.setTag(R.id.posthog_autocapture_no_capture, true)
         assertNull(resolve())
-        root.setTag(R.id.posthog_autocapture_ignore, false)
+        root.setTag(R.id.posthog_autocapture_no_capture, false)
         root.tag = "ph-no-capture"
         assertNull(resolve())
     }
@@ -137,9 +137,9 @@ internal class InteractionTargetTest {
     @Test
     fun `exclusions are subtree wide and dynamic including replay masking`() {
         val button = button()
-        root.setTag(R.id.posthog_autocapture_ignore, true)
+        root.setTag(R.id.posthog_autocapture_no_capture, true)
         assertNull(resolve())
-        root.setTag(R.id.posthog_autocapture_ignore, false)
+        root.setTag(R.id.posthog_autocapture_no_capture, false)
         assertNotNull(resolve())
         button.tag = "ph-no-capture"
         assertNull(resolve())
