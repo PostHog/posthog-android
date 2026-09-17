@@ -28,7 +28,6 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
 	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
 	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
-	public final fun captureGuarded (Lcom/posthog/PostHogCaptureGuard;JLjava/lang/String;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureLog (Ljava/lang/String;Lcom/posthog/logs/PostHogLogSeverity;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
 	public fun capturePushNotificationOpened (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)V
 	public fun close ()V
@@ -137,13 +136,6 @@ public final class com/posthog/PostHogBootstrapConfig {
 	public final fun getFeatureFlagPayloads ()Ljava/util/Map;
 	public final fun getFeatureFlags ()Ljava/util/Map;
 	public final fun isIdentifiedId ()Z
-}
-
-public final class com/posthog/PostHogCaptureGuard {
-	public fun <init> ()V
-	public final fun generation ()Ljava/lang/Long;
-	public final fun invalidate ()V
-	public final fun setActive (Z)V
 }
 
 public class com/posthog/PostHogConfig {

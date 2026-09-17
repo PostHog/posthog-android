@@ -29,6 +29,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -120,6 +121,25 @@ internal class InteractionDetectorIntegrationTest {
     }
 
     @Test
+    fun `detectors emit through normal capture without a session`() {
+        client.endSession()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNull(client.getSessionId())
+        repeat(4) { tap() }
+        waitForTimeout()
+        assertEquals(listOf("\$rageclick", "\$dead_click"), events.map { it.event })
+    }
+
+    @Test
+    fun `detectors accept any PostHogInterface implementation`() {
+        sut.uninstall()
+        sut.install(object : com.posthog.PostHogInterface by client {})
+        repeat(4) { tap() }
+        waitForTimeout()
+        assertEquals(listOf("\$rageclick", "\$dead_click"), events.map { it.event })
+    }
+
+    @Test
     fun `secure windows suppress detectors and clearing the flag allows new taps`() {
         activity.window.addFlags(FLAG_SECURE)
         repeat(4) { tap() }
@@ -196,7 +216,7 @@ internal class InteractionDetectorIntegrationTest {
 
     @Test
     @Suppress("DEPRECATION")
-    fun `second client owning global session listener cannot reattribute owner pending taps`() {
+    fun `secondary session changes use normal capture context when owner is not notified`() {
         val secondary =
             PostHog.with(
                 PostHogAndroidConfig("secondary-test-key").apply {
@@ -208,16 +228,11 @@ internal class InteractionDetectorIntegrationTest {
             )
         try {
             repeat(3) { tap() }
-            val guard = ReflectionHelpers.getField<com.posthog.PostHogCaptureGuard>(sut, "captureGuard")
-            val generation = guard.generation()
             secondary.endSession()
             secondary.startSession()
-            // Demonstrate the inherited singleton listener belongs to B, not owner A.
-            assertEquals(generation, guard.generation())
             waitForTimeout()
-            assertTrue(events.isEmpty())
-            tap()
-            assertTrue(events.isEmpty())
+            assertEquals(listOf("\$dead_click"), events.map { it.event })
+            assertEquals(client.getSessionId().toString(), events.single().properties?.get("\$session_id"))
         } finally {
             secondary.close()
         }

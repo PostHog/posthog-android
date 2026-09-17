@@ -42,7 +42,6 @@ internal class InteractionDeadDetectorTest {
             config,
             MainHandler(),
             { generation },
-            { "session" },
             { _, props, date -> events += props to date },
             { time },
         )
@@ -74,7 +73,7 @@ internal class InteractionDeadDetectorTest {
             1,
             position[0] + 20f,
             position[1] + 20f,
-            interactionProperties(target.elements, 20f, 20f) + ("\$session_id" to "session"),
+            interactionProperties(target.elements, 20f, 20f),
         )
     }
 

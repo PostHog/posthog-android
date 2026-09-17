@@ -12,7 +12,6 @@ internal class InteractionRageDetector {
     private var target: InteractionTarget? = null
     private var root = WeakReference<View>(null)
     private var generation: Long? = null
-    private var session: String? = null
     private var lastTime = 0L
     private var emitted = false
 
@@ -21,7 +20,6 @@ internal class InteractionRageDetector {
         target = null
         root.clear()
         generation = null
-        session = null
         emitted = false
     }
 
@@ -32,13 +30,12 @@ internal class InteractionRageDetector {
         time: Long,
         x: Float,
         y: Float,
-        sessionId: String,
     ): Boolean {
         if (current.repetitive || !x.isFinite() || !y.isFinite()) {
             reset()
             return false
         }
-        if (root.get() !== view || target?.sameTarget(current) != true || generation != epoch || session != sessionId ||
+        if (root.get() !== view || target?.sameTarget(current) != true || generation != epoch ||
             time < lastTime || time - lastTime > 1000
         ) {
             reset()
@@ -46,7 +43,6 @@ internal class InteractionRageDetector {
         root = WeakReference(view)
         target = current
         generation = epoch
-        session = sessionId
         lastTime = time
         if (emitted) return false
         while (taps.isNotEmpty() && time - taps.first.time > 1000) taps.removeFirst()

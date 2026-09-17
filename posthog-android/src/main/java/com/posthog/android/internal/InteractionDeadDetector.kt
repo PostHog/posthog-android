@@ -12,7 +12,6 @@ internal class InteractionDeadDetector(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
     private val generation: () -> Long?,
-    private val sessionId: () -> String?,
     private val emit: (Long, Map<String, Any>, Date) -> Unit,
     private val now: () -> Long = SystemClock::uptimeMillis,
     private val resolver: InteractionTargetResolver = InteractionTargetResolver(),
@@ -63,8 +62,6 @@ internal class InteractionDeadDetector(
     ) {
         cancel()
         if (!config.captureDeadClicks || target.repetitive || !root.isAttachedToWindow || generation() != epoch) return
-        val session = properties["\$session_id"] as? String ?: return
-        if (sessionId() != session) return
         val snapshot = InteractionResponseSnapshot()
         val baseline = snapshot.take(root) ?: return
         val observer = root.viewTreeObserver
@@ -81,7 +78,7 @@ internal class InteractionDeadDetector(
         try {
             val root = candidate.root.get()
             if (!config.captureDeadClicks || generation() != candidate.generation ||
-                sessionId() != candidate.properties["\$session_id"] || root == null || !root.isAttachedToWindow ||
+                root == null || !root.isAttachedToWindow ||
                 root.windowVisibility != View.VISIBLE || !root.isShown
             ) {
                 cancel()
@@ -102,7 +99,7 @@ internal class InteractionDeadDetector(
                 cancel()
             } else if (elapsed >= 3000) {
                 cancel()
-                if (generation() == candidate.generation && sessionId() == candidate.properties["\$session_id"]) {
+                if (generation() == candidate.generation) {
                     emit(
                         candidate.generation,
                         candidate.properties +

@@ -776,50 +776,6 @@ public class PostHog private constructor(
         }
     }
 
-    /** SDK-only guarded enqueue. Host hooks run outside the generation lock. */
-    @PostHogInternal
-    public fun captureGuarded(
-        guard: PostHogCaptureGuard,
-        expectedGeneration: Long,
-        event: String,
-        properties: Map<String, Any>,
-        timestamp: Date,
-    ) {
-        val observationSession = properties["\$session_id"] as? String ?: return
-        val observationTime = timestamp.time
-        try {
-            if (!enabled || isOptOut() || guard.generation() != expectedGeneration ||
-                getSessionId()?.toString() != observationSession
-            ) {
-                return
-            }
-            val id = distinctId
-            if (id.isBlank()) return
-            val props = buildProperties(id, properties, null, null, null)
-            val prepared = buildEvent(event, id, props, timestamp) ?: return
-            // Guarded observations always use the asynchronous analytics queue. A hook cannot
-            // turn them into synchronous fatal uploads or replay records while holding the guard.
-            if (prepared.isExceptionEvent() || prepared.event == PostHogEventName.SNAPSHOT.event) return
-            if (prepared.properties?.get("\$session_id") != observationSession || prepared.timestamp.time != observationTime ||
-                getSessionId()?.toString() != observationSession
-            ) {
-                return
-            }
-            val enqueued =
-                guard.enqueueIfCurrent(expectedGeneration) {
-                    if (!enabled || config?.optOut == true) return@enqueueIfCurrent false
-                    val currentQueue = queue ?: return@enqueueIfCurrent false
-                    currentQueue.add(prepared)
-                    true
-                }
-            if (!enqueued) return
-            surveysHandler?.onEvent(event, props)
-            sessionReplayHandler?.onEvent(event, props)
-        } catch (_: Throwable) {
-            // Do not log potentially sensitive capture state or hook exception messages.
-        }
-    }
-
     public override fun capture(
         event: String,
         distinctId: String?,
