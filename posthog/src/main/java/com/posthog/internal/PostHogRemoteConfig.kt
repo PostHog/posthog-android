@@ -539,12 +539,17 @@ public class PostHogRemoteConfig(
                     config.snapshotEndpoint = it["endpoint"] as? String
                         ?: config.snapshotEndpoint
 
+                    // Resolved before the lock: isRecordingActive fires the feature-flag-called
+                    // callback for a linked flag, which captures an event synchronously, and that
+                    // must not run while featureFlagsLock is held.
+                    val recordingActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+
                     // Both fields under featureFlagsLock so sessionReplayLinkedFlagSnapshot() never
                     // observes a torn pair. The /flags re-arm path already holds it (reentrant); the
                     // /config path holds only remoteConfigLock, so this is load-bearing there.
                     synchronized(featureFlagsLock) {
                         sessionReplayLinkedFlagConfigured = it["linkedFlag"] != null
-                        sessionReplayFlagActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                        sessionReplayFlagActive = recordingActive
                     }
 
                     consoleLogRecordingEnabled = it["consoleLogRecordingEnabled"] as? Boolean ?: false
