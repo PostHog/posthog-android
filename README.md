@@ -19,6 +19,7 @@ SDK usage examples and code snippets live in the official documentation so they 
 ## Documentation
 
 - [Android library docs](https://posthog.com/docs/libraries/android)
+- [Opt-in Android element interactions](docs/element-interactions.md)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
 
 ## Questions?

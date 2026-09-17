@@ -65,5 +65,15 @@ public open class PostHogAndroidConfig
                 }
             },
         ) {
+        /**
+         * Captures `$autocapture` for actionable View and Compose taps. Default: false.
+         * Configure before setup. Independent of session replay; sends types and resource IDs/test
+         * tags and window-local touch coordinates in dp, never text, content descriptions or input
+         * values. Use only non-sensitive test tags.
+         * Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_ignore` set to
+         * true, or use [PostHogAutocaptureModifier.postHogAutocaptureIgnore] for Compose.
+         */
+        public var captureElementInteractions: Boolean = false
+
         internal var replayQueueHolder: PostHogReplayQueue? = null
     }

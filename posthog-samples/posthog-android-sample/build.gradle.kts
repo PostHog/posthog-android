@@ -52,6 +52,8 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions.unitTests.isIncludeAndroidResources = true
+
     packaging {
         jniLibs {
             keepDebugSymbols += "**/libandroidx.graphics.path.so"
@@ -98,4 +100,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+
+    testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
 }

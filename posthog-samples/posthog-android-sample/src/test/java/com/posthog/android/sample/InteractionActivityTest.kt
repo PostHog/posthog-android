@@ -1,0 +1,112 @@
+package com.posthog.android.sample
+
+import android.app.Application
+import android.os.SystemClock
+import android.view.MotionEvent
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import com.posthog.PostHogEvent
+import com.posthog.android.PostHogAndroid
+import com.posthog.android.PostHogAndroidConfig
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, sdk = [35])
+class InteractionActivityTest {
+    @get:Rule
+    val compose = createAndroidComposeRule<InteractionActivity>()
+
+    @Test
+    fun `real Compose and embedded Views capture through window with replay off`() {
+        val events = CopyOnWriteArrayList<PostHogEvent>()
+        val config =
+            PostHogAndroidConfig("test").apply {
+                captureElementInteractions = true
+                sessionReplay = false
+                captureApplicationLifecycleEvents = false
+                captureScreenViews = false
+                captureDeepLinks = false
+                capturePushNotificationOpened = false
+                capturePushNotificationSubscriptions = false
+                @Suppress("DEPRECATION") // Test isolation: do not fetch remote configuration.
+                remoteConfig = false
+                preloadFeatureFlags = false
+                addBeforeSend { event ->
+                    events += event
+                    null
+                }
+            }
+        var client: com.posthog.PostHogInterface? = null
+        try {
+            compose.runOnIdle {
+                client = PostHogAndroid.with(compose.activity, config)
+                client!!.screen("Interaction")
+            }
+
+            fun tap(
+                x: Float,
+                y: Float,
+            ) {
+                compose.runOnIdle {
+                    val time = SystemClock.uptimeMillis()
+                    for ((index, action) in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP).withIndex()) {
+                        val event = MotionEvent.obtain(time, time + index * 10, action, x, y, 0)
+                        try {
+                            compose.activity.window.callback.dispatchTouchEvent(event)
+                        } finally {
+                            event.recycle()
+                        }
+                    }
+                }
+                compose.waitForIdle()
+            }
+
+            fun tapCompose(tag: String) {
+                val point = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow.center
+                tap(point.x, point.y)
+            }
+            tapCompose("compose_responsive")
+            compose.onNodeWithText("Compose responses: 1").assertExists()
+            tapCompose("compose_noop")
+            tapCompose("compose_ignored")
+
+            fun tapView(id: Int) {
+                val view = compose.activity.findViewById<android.view.View>(id)
+                val location = IntArray(2)
+                compose.runOnIdle { view.getLocationInWindow(location) }
+                tap(location[0] + view.width / 2f, location[1] + view.height / 2f)
+            }
+            tapView(R.id.interaction_view_responsive)
+            tapView(R.id.interaction_view_noop)
+            tapView(R.id.interaction_view_ignored)
+            compose.waitUntil { events.count { it.event == "\$autocapture" } >= 4 }
+            val captures = events.filter { it.event == "\$autocapture" }
+            assertEquals(4, captures.size)
+            assertTrue(captures.all { it.properties?.get("\$event_type") == "touch" })
+            assertTrue(captures.all { (it.properties?.get("\$touch_x") as? Number)?.toFloat()?.isFinite() == true })
+            assertTrue(captures.all { (it.properties?.get("\$touch_y") as? Number)?.toFloat()?.isFinite() == true })
+            val chains = captures.map { it.properties?.get("\$elements_chain").toString() }
+            assertTrue(chains.any { it.startsWith("button:") && it.contains("compose_responsive") })
+            assertTrue(chains.any { it.contains("compose_noop") })
+            assertTrue(chains.any { it.contains("interaction_view_responsive") })
+            assertTrue(chains.any { it.contains("interaction_view_noop") })
+            assertFalse(chains.any { it.contains("ignored") || it.contains("responses") })
+            assertTrue(captures.all { it.properties?.containsKey("\$session_id") == true })
+            assertTrue(captures.all { it.properties?.get("\$screen_name") == "Interaction" })
+            client!!.optOut()
+            tapCompose("compose_noop")
+            assertEquals(4, events.count { it.event == "\$autocapture" })
+        } finally {
+            compose.runOnIdle { client?.close() }
+        }
+    }
+}
