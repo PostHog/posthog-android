@@ -8,6 +8,7 @@ import okhttp3.ResponseBody
  * @property statusCode the HTTP status code
  * @property message the exception message
  * @property message the OkHttp response body, the source might be closed already
+ * @property errorCode the `code` field of a PostHog JSON error body, when the response carried one
  */
 @PostHogInternal
 public class PostHogApiError(
@@ -15,6 +16,7 @@ public class PostHogApiError(
     override val message: String,
     public val body: ResponseBody?,
     public val retryAfterSeconds: Int? = null,
+    public val errorCode: String? = null,
 ) : RuntimeException(message) {
     override fun toString(): String {
         return "PostHogApiError(statusCode=$statusCode, message='$message')"

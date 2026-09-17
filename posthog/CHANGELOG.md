@@ -1,5 +1,51 @@
 ## Next
 
+## 6.38.2
+
+### Patch Changes
+
+- 1293056: Stop sending the unused `platform` field when registering a device for push notifications. The API resolves the provider from `app_id` alone and ignores `platform`, so the field was dead weight. It was also the only field in the request without `@SerializedName`, which meant R8 renamed it in minified release builds. Removing it drops that failure mode instead of working around it.
+
+## 6.38.1
+
+### Patch Changes
+
+- 57ae6ed: fix: stop retrying push registration when the project API key is not valid
+  
+  A device that gets `401 invalid_api_key` from the registration endpoint stops sending push
+  registrations for that key instead of re-posting on every app open. Adds the internal
+  `PostHogPreferences.PUSH_SUBSCRIPTION_REJECTED` key, which holds that verdict and survives `reset()`.
+
+## 6.38.0
+
+### Minor Changes
+
+- 853ec7d: Add the internal `persistOptOut` config so a wrapper SDK that owns consent can stop a persisted opt-out from overriding the value it passes to setup.
+
+## 6.37.1
+
+### Patch Changes
+
+- e1523b5: Send `$groupidentify` through `capture()` so it carries the session id, identity flags and shared properties like every other event, matching posthog-js
+
+## 6.37.0
+
+### Minor Changes
+
+- 61c1a0e: Change `capturePushNotificationOpened` to skip a PostHog-sent notification open already captured in the last 5 minutes (same `invocation_id` and `action_id`), unless the payload's `google.message_id` differs.
+
+## 6.36.0
+
+### Minor Changes
+
+- 7068a36: Retain bounded durable queue entries across retryable transport and HTTP failures, pause while offline, and acknowledge successful batches by unique queue-entry identity. `maxRetries` now controls push subscription registration retries, not durable queue flush attempts. Preserve existing queued records when a new record fails to persist, and enforce FIFO capacity when loading records from disk.
+
+## 6.35.0
+
+### Minor Changes
+
+- 5e3267b: Add `PostHogAndroid.capturePushNotificationOpened(intent)` to capture `$push_notification_opened` for a launch intent the SDK was installed too late to read. In the published test fixtures, `PostHogFake.optOut()` and `optIn()` now change what `isOptOut()` returns, where they were previously no-ops.
+
 ## 6.34.2
 
 ### Patch Changes

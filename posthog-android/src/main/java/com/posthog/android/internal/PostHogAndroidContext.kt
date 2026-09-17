@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
@@ -16,6 +17,7 @@ import java.util.TimeZone
 internal class PostHogAndroidContext(
     private val context: Context,
     private val config: PostHogAndroidConfig,
+    private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
     private val networkPropertiesProvider: () -> Map<String, Any>,
 ) : PostHogContext {
     private val cacheSdkInfo by lazy {
@@ -37,7 +39,7 @@ internal class PostHogAndroidContext(
         staticContext["\$screen_height"] = displayMetrics.heightPixels.densityValue(displayMetrics.density)
         staticContext["\$screen_width"] = displayMetrics.widthPixels.densityValue(displayMetrics.density)
 
-        getPackageInfo(context, config)?.let {
+        packageInfoProvider()?.let {
             it.versionName?.let { name ->
                 staticContext["\$app_version"] = name
             }

@@ -10,14 +10,22 @@ import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
+import java.util.Collections
+import java.util.Date
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -36,6 +44,8 @@ internal class PostHogQueueTest {
         dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
+        maxRetries: Int = 3,
+        httpClient: OkHttpClient? = null,
     ): PostHogQueue<PostHogEvent> {
         val config =
             PostHogConfig(API_KEY, host).apply {
@@ -45,6 +55,8 @@ internal class PostHogQueueTest {
                 this.networkStatus = networkStatus
                 this.maxBatchSize = maxBatchSize
                 this.dateProvider = dateProvider
+                this.maxRetries = maxRetries
+                this.httpClient = httpClient
             }
         val api = PostHogApi(config)
         return PostHogQueue(config, EndpointSpec.batch(config, api, config.storagePrefix), executor)
@@ -245,6 +257,326 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
+    }
+
+    @Test
+    fun `known offline flushes do not consume retries and availability drains the queue`() {
+        val http = mockHttp()
+        var connected = false
+        var onAvailableCallback: (() -> Unit)? = null
+        val path = tmpDir.newFolder().absolutePath
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                storagePrefix = path,
+                flushAt = 1,
+                maxRetries = 0,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = connected
+
+                        override fun register(callback: () -> Unit) {
+                            onAvailableCallback = callback
+                        }
+                    },
+            )
+
+        try {
+            sut.start()
+            sut.add(generateEvent())
+            executor.awaitExecution()
+
+            repeat(3) {
+                sut.flush()
+                executor.awaitExecution()
+            }
+
+            assertEquals(0, http.requestCount)
+            assertEquals(0, sut.currentRetryCountForTesting)
+            assertEquals(1, sut.dequeList.size)
+            assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+
+            connected = true
+            onAvailableCallback?.invoke()
+            executor.awaitExecution()
+
+            assertEquals(1, http.requestCount)
+            assertEquals(0, sut.currentRetryCountForTesting)
+            assertEquals(0, sut.dequeList.size)
+            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        } finally {
+            sut.stop()
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `retryable HTTP exhaustion retains a bounded queue and later success drains it`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
+        http.enqueue(MockResponse().setResponseCode(503).setBody("error"))
+        http.enqueue(MockResponse().setBody(""))
+        val fakeCurrentTime = FakePostHogDateProvider()
+        fakeCurrentTime.setAddSecondsToCurrentDate(parseISO8601Date("1970-09-20T11:58:49.000Z")!!)
+        val path = tmpDir.newFolder().absolutePath
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                storagePrefix = path,
+                flushAt = 100,
+                maxQueueSize = 2,
+                maxRetries = 0,
+                dateProvider = fakeCurrentTime,
+            )
+
+        try {
+            sut.add(generateEvent("first", givenUuuid = UUID.randomUUID()))
+            sut.add(generateEvent("second", givenUuuid = UUID.randomUUID()))
+            executor.awaitExecution()
+            val firstFile = sut.dequeList.first()
+
+            repeat(2) {
+                sut.flush()
+                executor.awaitExecution()
+
+                assertEquals(2, sut.dequeList.size)
+                assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+            }
+
+            sut.add(generateEvent("replacement", givenUuuid = UUID.randomUUID()))
+            executor.awaitExecution()
+
+            assertEquals(2, sut.dequeList.size)
+            assertFalse(sut.dequeList.contains(firstFile))
+            assertFalse(firstFile.exists())
+            assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+
+            sut.flush()
+            executor.awaitExecution()
+
+            assertEquals(3, http.requestCount)
+            assertEquals(0, sut.dequeList.size)
+            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        } finally {
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `retry after remains authoritative beyond the exponential backoff cap`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(429).setHeader("Retry-After", "120").setBody("error"))
+        var scheduledDelay = 0
+        val dateProvider =
+            object : PostHogDateProvider {
+                override fun currentDate() = Date()
+
+                override fun addSecondsToCurrentDate(seconds: Int): Date {
+                    scheduledDelay = seconds
+                    return Date(System.currentTimeMillis() + seconds * 1000L)
+                }
+
+                override fun currentTimeMillis() = System.currentTimeMillis()
+
+                override fun nanoTime() = System.nanoTime()
+            }
+        val path = tmpDir.newFolder().absolutePath
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                storagePrefix = path,
+                flushAt = 1,
+                dateProvider = dateProvider,
+            )
+
+        try {
+            sut.add(generateEvent())
+            executor.awaitExecution()
+
+            assertEquals(120, scheduledDelay)
+            assertEquals(1, sut.dequeList.size)
+        } finally {
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `generic transport IO failures retain files beyond max retries and recover`() {
+        val http = mockHttp()
+        val failedAttempts = 3
+        val attempts = AtomicInteger()
+        val httpClient =
+            OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val attempt = attempts.incrementAndGet()
+                    if (attempt <= failedAttempts || attempt == failedAttempts + 2) {
+                        throw IOException("connection reset")
+                    }
+                    chain.proceed(chain.request())
+                }.build()
+        val fakeCurrentTime = FakePostHogDateProvider()
+        fakeCurrentTime.setAddSecondsToCurrentDate(parseISO8601Date("1970-09-20T11:58:49.000Z")!!)
+        val path = tmpDir.newFolder().absolutePath
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                storagePrefix = path,
+                flushAt = 100,
+                maxRetries = 0,
+                dateProvider = fakeCurrentTime,
+                httpClient = httpClient,
+            )
+
+        try {
+            sut.add(generateEvent())
+            executor.awaitExecution()
+
+            repeat(failedAttempts) {
+                sut.flush()
+                executor.awaitExecution()
+
+                assertEquals(1, sut.dequeList.size)
+                assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+            }
+            assertEquals(0, http.requestCount)
+
+            sut.flush()
+            executor.awaitExecution()
+
+            assertEquals(failedAttempts + 1, attempts.get())
+            assertEquals(1, http.requestCount)
+            assertEquals(0, sut.currentRetryCountForTesting)
+            assertEquals(0, sut.dequeList.size)
+            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+
+            sut.add(generateEvent("fresh"))
+            sut.flush()
+            executor.awaitExecution()
+
+            assertEquals(failedAttempts + 2, attempts.get())
+            assertEquals(1, http.requestCount)
+            assertEquals(1, sut.currentRetryCountForTesting)
+            assertEquals(1, sut.dequeList.size)
+            assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        } finally {
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `duplicate payload UUIDs create distinct durable queue entries`() {
+        val http = mockHttp()
+        val path = tmpDir.newFolder().absolutePath
+        val sut = getSut(host = http.url("/").toString(), storagePrefix = path)
+        val payloadUuid = UUID.randomUUID()
+        val event = generateEvent("same", givenUuuid = payloadUuid)
+
+        try {
+            sut.add(event)
+            sut.add(event)
+            executor.awaitExecution()
+
+            assertEquals(2, sut.dequeList.size)
+            assertEquals(2, sut.dequeList.map { it.name }.toSet().size)
+            assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+        } finally {
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `successful in-flight batch removes exact entries after identical full queue replacement`() {
+        assertInFlightReplacementPreserved(200)
+    }
+
+    @Test
+    fun `terminal in-flight batch removes exact entries after identical full queue replacement`() {
+        assertInFlightReplacementPreserved(400)
+    }
+
+    private fun assertInFlightReplacementPreserved(status: Int) {
+        // SDK callers serialize sends and enqueues. This stress harness permits replacement
+        // during transport to verify acknowledgement independently of executor ordering.
+        val queueExecutor = Executors.newFixedThreadPool(1, PostHogThreadFactory("ConcurrentQueueTest")) as ThreadPoolExecutor
+        val path = tmpDir.newFolder().absolutePath
+        val config =
+            PostHogConfig(API_KEY).apply {
+                storagePrefix = path
+                maxQueueSize = 3
+                maxBatchSize = 3
+                flushAt = 100
+            }
+        val sendStarted = CountDownLatch(1)
+        val releaseSend = CountDownLatch(1)
+        val sentRecords = Collections.synchronizedList(mutableListOf<List<String>>())
+        val spec =
+            EndpointSpec(
+                recordsLabel = "records",
+                storagePrefix = path,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.maxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
+                encode = { record, stream -> stream.write(record.toByteArray()) },
+                decode = { stream -> String(stream.readBytes()) },
+                describe = { it },
+                send = { records ->
+                    sentRecords.add(records)
+                    if (sentRecords.size == 1) {
+                        sendStarted.countDown()
+                        check(releaseSend.await(5, TimeUnit.SECONDS))
+                        if (status == 400) throw PostHogApiError(status, "terminal", null)
+                    } else {
+                        throw IOException("retain replacements after their later send attempt")
+                    }
+                },
+                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+            )
+        val sut = PostHogQueue(config, spec, queueExecutor)
+
+        try {
+            repeat(3) {
+                sut.add("same")
+                queueExecutor.awaitExecution()
+            }
+            val initialFiles = sut.dequeList.toSet()
+            assertEquals(3, initialFiles.size)
+            queueExecutor.maximumPoolSize = 2
+            queueExecutor.corePoolSize = 2
+
+            sut.flush()
+            assertTrue(sendStarted.await(5, TimeUnit.SECONDS))
+
+            repeat(3) {
+                sut.add("same")
+                queueExecutor.awaitExecution()
+            }
+            val replacementFiles = sut.dequeList
+            assertEquals(3, replacementFiles.size)
+            assertTrue(replacementFiles.none { it in initialFiles })
+            assertTrue(initialFiles.none { it.exists() })
+
+            releaseSend.countDown()
+            queueExecutor.shutdownAndAwaitTermination()
+
+            assertEquals(List(2) { List(3) { "same" } }, sentRecords)
+            assertEquals(1, sut.currentRetryCountForTesting)
+            assertEquals(replacementFiles, sut.dequeList)
+            assertEquals(List(3) { "same" }, replacementFiles.map { it.readText() })
+            assertEquals(replacementFiles.toSet(), File(path, API_KEY).listFiles()!!.toSet())
+        } finally {
+            releaseSend.countDown()
+            sut.clear()
+            queueExecutor.shutdownAndAwaitTermination()
+        }
     }
 
     @Test
@@ -615,6 +947,36 @@ internal class PostHogQueueTest {
 
         // 3 cached + 1 new
         assertEquals(4, sut.dequeList.size)
+    }
+
+    @Test
+    fun `reload evicts oldest cached files beyond queue capacity`() {
+        val http = mockHttp()
+        val path = tmpDir.newFolder().absolutePath
+        val dir = File(path, API_KEY)
+        dir.mkdirs()
+        val eventContent = File("src/test/resources/json/basic-event.json").readText()
+        val cachedFiles =
+            (1..3).map { index ->
+                File(dir, "${UUID.randomUUID()}.event").apply {
+                    writeText(eventContent)
+                    setLastModified(System.currentTimeMillis() - (4 - index) * 1000L)
+                }
+            }
+        val sut = getSut(host = http.url("/").toString(), storagePrefix = path, maxQueueSize = 2)
+
+        try {
+            sut.reloadFromDisk()
+
+            assertEquals(2, sut.dequeList.size)
+            assertFalse(cachedFiles.first().exists())
+            assertEquals(cachedFiles.drop(1), sut.dequeList)
+            assertEquals(2, dir.listFiles()!!.size)
+        } finally {
+            sut.clear()
+            executor.shutdownAndAwaitTermination()
+            http.shutdown()
+        }
     }
 
     @Test

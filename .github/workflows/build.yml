@@ -53,7 +53,7 @@ jobs:
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make compile
 
-      - name: Test survey UI
+      - name: Test survey interactions
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make testSurveyUI
 

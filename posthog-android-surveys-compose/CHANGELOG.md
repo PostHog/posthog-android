@@ -1,5 +1,17 @@
 # posthog-android-surveys-compose
 
+## 0.2.2
+
+### Patch Changes
+
+- b3b0d22: Honor survey shuffleOptions in the built-in choice UI, keeping Other last and the display order stable while answering.
+
+## 0.2.1
+
+### Patch Changes
+
+- 5e3267b: Add `PostHogAndroid.capturePushNotificationOpened(intent)` to capture `$push_notification_opened` for a launch intent the SDK was installed too late to read. In the published test fixtures, `PostHogFake.optOut()` and `optIn()` now change what `isOptOut()` returns, where they were previously no-ops.
+
 ## 0.2.0
 
 ### Minor Changes

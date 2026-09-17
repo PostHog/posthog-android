@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.posthog.PostHog
 import com.posthog.PostHogOkHttpInterceptor
+import com.posthog.android.PostHogAndroid
 import okhttp3.OkHttpClient
 import okhttp3.internal.closeQuietly
 
@@ -15,6 +16,14 @@ class NormalActivity : ComponentActivity() {
         OkHttpClient.Builder()
             .addInterceptor(PostHogOkHttpInterceptor(captureNetworkTelemetry = true))
             .build()
+
+    // A tap while the app is already running arrives here, not through the SDK's lifecycle
+    // callbacks — Android gives libraries no way to observe it, so the host forwards it.
+    // Cold starts need no code: the SDK reads the launch intent itself.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        PostHogAndroid.capturePushNotificationOpened(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

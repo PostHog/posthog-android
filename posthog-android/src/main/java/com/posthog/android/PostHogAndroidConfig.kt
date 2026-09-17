@@ -15,6 +15,11 @@ import com.posthog.internal.PostHogQueue
  * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
  *   automatically, including app installed, app updated, app opened, and app backgrounded.
  * @property captureDeepLinks Whether to capture `Deep Link Opened` events automatically.
+ *   For warm links delivered to `singleTop` or `singleTask` activities, call `setIntent(intent)`
+ *   in `Activity.onNewIntent` after `super.onNewIntent(intent)`. The SDK checks the current intent
+ *   on resume and captures each new Intent instance, even if its URL is unchanged. Ordinary
+ *   resumes do not recapture the same intent. Creation capture, including activity recreation,
+ *   is unchanged. Default: `true`.
  * @property captureScreenViews Whether to capture a `$screen` event whenever a foreground
  *   Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most
  *   recent screen name is also attached as `$screen_name` to every subsequent event captured by
@@ -28,8 +33,11 @@ import com.posthog.internal.PostHogQueue
  *   still needs the app to forward `onNewToken` to `registerPushNotificationToken(...)`. Default: `true`.
  * @property capturePushNotificationOpened Whether to auto-capture `$push_notification_opened` for
  *   cold-start taps on a tray notification (detected via the launch intent's `google.message_id`
- *   extra). Foreground data messages and warm-start `onNewIntent` are not observable here — forward
- *   those to `capturePushNotificationOpened(...)` manually. Default: `true`.
+ *   extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here —
+ *   forward that intent to [PostHogAndroid.capturePushNotificationOpened], which is deduped against
+ *   this path. Foreground data messages and push delivered outside FCM need
+ *   [PostHog.capturePushNotificationOpened], which dedupes only notifications sent by PostHog. Also gates
+ *   [PostHogAndroid.capturePushNotificationOpened]. Default: `true`.
  */
 public open class PostHogAndroidConfig
     @JvmOverloads

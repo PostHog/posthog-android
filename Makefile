@@ -1,4 +1,4 @@
-.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava testSurveyUI generateLintBaseLine checkRelease updateLocks
+.PHONY: clean compile stop checkFormat format api dryRelease release testReport test testJava generateLintBaseLine checkRelease updateLocks
 
 clean:
 	./gradlew clean
@@ -67,10 +67,6 @@ test:
 testJava:
 	./gradlew :posthog:test
 
-# Mounted Compose tests use the debug-only test activity manifest, including on CI.
-testSurveyUI:
-	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest
-
 generateLintBaseLine:
 	rm -f posthog-android/lint-baseline.xml
 	./gradlew lintDebug -Dlint.baselines.continue=true
@@ -86,3 +82,9 @@ checkRelease:
 updateLocks:
 	./gradlew build :posthog-android-gradle-plugin:build --write-locks
 	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
+
+.PHONY: testSurveyUI
+
+# Compose interaction tests require the debug variant, which CI otherwise skips.
+testSurveyUI:
+	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest

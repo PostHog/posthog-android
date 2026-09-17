@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,27 +35,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
+import com.posthog.surveys.PostHogDisplayChoiceQuestion
 
 /**
  * Shared list-of-choices renderer for [SingleChoice] and [MultipleChoice].
  *
  * Each option is a rounded bordered button that turns bold + checkmark-decorated
- * when selected. When [hasOpenChoice] is true the last option is treated as an
+ * when selected. When [PostHogDisplayChoiceQuestion.hasOpenChoice] is true the last option is treated as an
  * "other"-style free-text input that becomes editable while selected.
  */
 @Composable
 internal fun ChoiceOptions(
-    options: List<String>,
-    hasOpenChoice: Boolean,
-    allowsMultipleSelection: Boolean,
+    question: PostHogDisplayChoiceQuestion,
     selectedOptions: Set<String>,
     onSelectedOptionsChange: (Set<String>) -> Unit,
     openChoiceInput: String,
     onOpenChoiceInputChange: (String) -> Unit,
 ) {
+    val options = question.choices
+    val displayOrder =
+        rememberSaveable(question.id, options.size, question.hasOpenChoice, question.shuffleOptions) {
+            surveyChoiceOrder(options, question.hasOpenChoice, question.shuffleOptions)
+        }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEachIndexed { index, option ->
-            val isOpenChoice = hasOpenChoice && index == options.lastIndex
+        displayOrder.forEach { index ->
+            val option = options[index]
+            val isOpenChoice = question.hasOpenChoice && index == options.lastIndex
             val isSelected = option in selectedOptions
             ChoiceOption(
                 option = option,
@@ -66,7 +72,7 @@ internal fun ChoiceOptions(
                     val newSelected =
                         when {
                             isSelected -> selectedOptions - option
-                            allowsMultipleSelection -> selectedOptions + option
+                            question.isMultipleChoice -> selectedOptions + option
                             else -> setOf(option)
                         }
                     onSelectedOptionsChange(newSelected)
@@ -165,4 +171,19 @@ private fun ChoiceOption(
             }
         }
     }
+}
+
+internal fun surveyChoiceOrder(
+    options: List<String>,
+    hasOpenChoice: Boolean,
+    shuffleOptions: Boolean,
+): List<Int> {
+    val indices = options.indices.toList()
+    if (!shuffleOptions) return indices
+    val regular = if (hasOpenChoice) indices.dropLast(1) else indices
+    val shuffled = regular.shuffled().toMutableList()
+    // Match web: avoid the original display order when the random shuffle leaves it unchanged.
+    if (shuffled.map { options[it] } == regular.map { options[it] }) shuffled.reverse()
+    if (hasOpenChoice && options.isNotEmpty()) shuffled.add(options.lastIndex)
+    return shuffled
 }
