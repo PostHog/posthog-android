@@ -19,6 +19,7 @@ internal class InteractionResponseSnapshot {
     fun take(root: View): ByteArray? =
         try {
             val sink = InteractionResponseDigest(salt)
+            val excludedLayouts = mutableSetOf<androidx.compose.ui.layout.LayoutInfo>()
             val origin = IntArray(2)
             root.getLocationOnScreen(origin)
             origin.forEach { sink.number(it) }
@@ -51,8 +52,16 @@ internal class InteractionResponseSnapshot {
                 sink.number(if (view.isSelected) 1 else 0)
                 sink.number(if (view.isActivated) 1 else 0)
                 sink.number(if (view.hasFocus()) 1 else 0)
+                val excludedInterop =
+                    if (excludedLayouts.isNotEmpty() && view.javaClass.name.startsWith("androidx.compose.ui.viewinterop.")) {
+                        val layout = ComposeInteractionTargetResolver.interopLayoutInfo(listOf(view))
+                        checkNotNull(layout)
+                        layout in excludedLayouts
+                    } else {
+                        false
+                    }
                 val ignored =
-                    excluded || view is EditText ||
+                    excluded || excludedInterop || view is EditText ||
                         (view is TextView && view.transformationMethod is android.text.method.PasswordTransformationMethod) ||
                         view.isInteractionIgnored()
                 sink.number(if (ignored) 1 else 0)
@@ -74,7 +83,8 @@ internal class InteractionResponseSnapshot {
                     if (view is ProgressBar) sink.number(view.progress)
                     // Drawable state/pressed/alpha are deliberately absent: ripples are not responses.
                     if (name == "androidx.compose.ui.platform.AndroidComposeView") {
-                        ComposeInteractionResponseSnapshot.append(view, sink, depth + 1)
+                        // Transfer semantic exclusions before traversing the separate native interop tree.
+                        excludedLayouts.addAll(ComposeInteractionResponseSnapshot.append(view, sink, depth + 1))
                     }
                 }
                 if (view is ViewGroup) {

@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.view.View
+import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -16,8 +17,9 @@ internal object ComposeInteractionResponseSnapshot {
         view: View,
         sink: InteractionResponseDigest,
         depth: Int,
-    ) {
+    ): Set<LayoutInfo> {
         val owner = (view as? RootForTest)?.semanticsOwner ?: error("Unsupported semantics")
+        val excludedLayouts = mutableSetOf<LayoutInfo>()
 
         fun visit(
             node: SemanticsNode,
@@ -36,6 +38,7 @@ internal object ComposeInteractionResponseSnapshot {
                 excluded || config.getOrNull(PostHogAutocaptureIgnore) == true ||
                     config.getOrNull(PostHogReplayMask) == true || config.contains(SemanticsProperties.Password) ||
                     config.contains(SemanticsActions.SetText) || config.contains(SemanticsProperties.EditableText)
+            if (ignored) excludedLayouts += node.layoutInfo
             sink.number(if (ignored) 1 else 0)
             sink.number(if (config.contains(SemanticsProperties.Disabled)) 1 else 0)
             sink.number(if (config.contains(SemanticsProperties.InvisibleToUser)) 1 else 0)
@@ -55,5 +58,6 @@ internal object ComposeInteractionResponseSnapshot {
             children.forEach { visit(it, level + 1, ignored) }
         }
         visit(owner.unmergedRootSemanticsNode, depth, false)
+        return excludedLayouts
     }
 }
