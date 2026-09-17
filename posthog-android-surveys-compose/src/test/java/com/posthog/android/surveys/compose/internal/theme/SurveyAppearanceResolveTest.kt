@@ -8,6 +8,15 @@ import org.junit.Test
 
 internal class SurveyAppearanceResolveTest {
     @Test
+    fun `open text placeholder is empty unless configured`() {
+        listOf(null, "", "  ").forEach { placeholder ->
+            assertEquals("", PostHogDisplaySurveyAppearance(placeholder = placeholder).resolve().placeholder)
+        }
+
+        assertEquals("Tell us more", PostHogDisplaySurveyAppearance(placeholder = "Tell us more").resolve().placeholder)
+    }
+
+    @Test
     fun `blank intro copy resolves to null so the sheet can skip an empty intro`() {
         val resolved =
             PostHogDisplaySurveyAppearance(
