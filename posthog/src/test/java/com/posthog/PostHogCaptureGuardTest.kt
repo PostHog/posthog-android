@@ -16,12 +16,21 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-internal class PostHogInteractionGuardTest {
+internal class PostHogCaptureGuardTest {
     @get:Rule val directory = TemporaryFolder()
     private val http = MockWebServer().apply { repeat(50) { enqueue(MockResponse().setBody("{}")) } }
     private val executors = List(4) { Executors.newSingleThreadScheduledExecutor() }
     private var client: PostHog? = null
     private lateinit var config: PostHogConfig
+    private val guard = PostHogCaptureGuard()
+    private val integration =
+        object : PostHogIntegration, PostHogCaptureContextReceiver {
+            override fun install(postHog: PostHogInterface) = guard.setActive(true)
+
+            override fun uninstall() = guard.setActive(false)
+
+            override fun onCaptureContextChange(inProgress: Boolean) = guard.onCaptureContextChange(inProgress)
+        }
 
     @Suppress("DEPRECATION")
     private fun setup(): PostHog {
@@ -33,6 +42,7 @@ internal class PostHogInteractionGuardTest {
                 remoteConfig = false
                 preloadFeatureFlags = false
                 flushAt = 1
+                addIntegration(integration)
             }
         return (PostHog.withInternal(config, executors[0], executors[1], executors[2], executors[3], false) as PostHog).also { client = it }
     }
@@ -51,9 +61,10 @@ internal class PostHogInteractionGuardTest {
     private fun emit(
         sut: PostHog,
         epoch: Long,
-    ) = sut.captureInteraction(
+    ) = sut.captureGuarded(
+        guard,
         epoch,
-        "\$dead_click",
+        "deferred",
         mapOf("\$event_type" to "touch", "\$session_id" to sut.getSessionId().toString()),
         Date(1234),
     )
@@ -69,12 +80,12 @@ internal class PostHogInteractionGuardTest {
             calls++
             event
         }
-        emit(sut, assertNotNull(sut.interactionGeneration()))
+        emit(sut, assertNotNull(guard.generation()))
         drain()
         assertEquals(1, calls)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         val body = request.body.unGzip()
-        assertTrue(body.contains("\$dead_click"))
+        assertTrue(body.contains("deferred"))
         assertTrue(body.contains("Checkout"))
         assertTrue(body.contains("\$session_id"))
         assertTrue(body.contains("1970-01-01T00:00:01.234"))
@@ -84,7 +95,7 @@ internal class PostHogInteractionGuardTest {
     @Test
     fun `old generations cannot survive consent ABA identity reset screen session or close`() {
         val sut = setup()
-        config.addBeforeSend { event -> if (event.event == "\$dead_click") event else null }
+        config.addBeforeSend { event -> if (event.event == "deferred") event else null }
         val changes: List<() -> Unit> =
             listOf(
                 {
@@ -107,14 +118,14 @@ internal class PostHogInteractionGuardTest {
                 { sut.close() },
             )
         for (change in changes) {
-            val before = assertNotNull(sut.interactionGeneration())
+            val before = assertNotNull(guard.generation())
             change()
-            assertNotEquals(before, sut.interactionGeneration())
+            assertNotEquals(before, guard.generation())
             emit(sut, before)
         }
         drain()
         assertEquals(0, http.requestCount)
-        assertNull(sut.interactionGeneration())
+        assertNull(guard.generation())
     }
 
     @Test
@@ -139,7 +150,7 @@ internal class PostHogInteractionGuardTest {
         for (change in changes) {
             val hook =
                 PostHogBeforeSend { event ->
-                    if (event.event == "\$dead_click") {
+                    if (event.event == "deferred") {
                         change()
                         event
                     } else {
@@ -147,29 +158,29 @@ internal class PostHogInteractionGuardTest {
                     }
                 }
             config.addBeforeSend(hook)
-            emit(sut, assertNotNull(sut.interactionGeneration()))
+            emit(sut, assertNotNull(guard.generation()))
             config.removeBeforeSend(hook)
-            assertNotNull(sut.interactionGeneration())
+            assertNotNull(guard.generation())
         }
         drain()
         assertEquals(0, http.requestCount)
     }
 
     @Test
-    fun `hook filtering and unsupported event restriction do not affect ordinary capture`() {
+    fun `guarded capture supports generic events without changing ordinary capture`() {
         val sut = setup()
         var calls = 0
         config.addBeforeSend {
             calls++
             null
         }
-        val epoch = assertNotNull(sut.interactionGeneration())
-        sut.captureInteraction(epoch, "other", emptyMap(), Date())
-        assertEquals(0, calls)
-        emit(sut, epoch)
+        val epoch = assertNotNull(guard.generation())
+        sut.captureGuarded(guard, epoch, "other", mapOf("\$session_id" to sut.getSessionId().toString()), Date())
         assertEquals(1, calls)
-        sut.capture("ordinary")
+        emit(sut, epoch)
         assertEquals(2, calls)
+        sut.capture("ordinary")
+        assertEquals(3, calls)
         drain()
         assertEquals(0, http.requestCount)
     }
@@ -179,10 +190,11 @@ internal class PostHogInteractionGuardTest {
         val sut = setup()
         var calls = 0
         config.addIntegration(
-            object : PostHogIntegration, PostHogInteractionInvalidationReceiver {
-                override fun onInteractionInvalidated() {
+            object : PostHogIntegration, PostHogCaptureContextReceiver {
+                override fun onCaptureContextChange(inProgress: Boolean) {
+                    if (!inProgress) return
                     calls++
-                    assertNull(sut.interactionGeneration())
+                    assertNull(guard.generation())
                     if (calls == 1) sut.screen("Nested")
                     throw IllegalStateException("test")
                 }
@@ -191,7 +203,7 @@ internal class PostHogInteractionGuardTest {
         sut.optOut()
         sut.optIn()
         assertTrue(calls >= 2)
-        assertNotNull(sut.interactionGeneration())
+        assertNotNull(guard.generation())
     }
 
     @Test
@@ -200,13 +212,13 @@ internal class PostHogInteractionGuardTest {
         val entered = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
         config.addBeforeSend { event ->
-            if (event.event == "\$dead_click") {
+            if (event.event == "deferred") {
                 entered.countDown()
                 assertTrue(release.await(5, TimeUnit.SECONDS))
             }
             event
         }
-        val epoch = assertNotNull(sut.interactionGeneration())
+        val epoch = assertNotNull(guard.generation())
         val capture = Thread { emit(sut, epoch) }.apply { start() }
         assertTrue(entered.await(5, TimeUnit.SECONDS))
         sut.optOut()
@@ -223,17 +235,37 @@ internal class PostHogInteractionGuardTest {
         val sut = setup()
         val throwing = PostHogBeforeSend { throw IllegalStateException("test") }
         config.addBeforeSend(throwing)
-        emit(sut, assertNotNull(sut.interactionGeneration()))
+        emit(sut, assertNotNull(guard.generation()))
         config.removeBeforeSend(throwing)
-        assertNotNull(sut.interactionGeneration())
+        assertNotNull(guard.generation())
         config.addBeforeSend { event ->
             sut.close()
             event
         }
-        emit(sut, assertNotNull(sut.interactionGeneration()))
+        emit(sut, assertNotNull(guard.generation()))
         drain()
         assertEquals(0, http.requestCount)
-        assertNull(sut.interactionGeneration())
+        assertNull(guard.generation())
+    }
+
+    @Test
+    fun `context change hooks remain paired when close removes config and callbacks throw`() {
+        val sut = setup()
+        val phases = mutableListOf<Boolean>()
+        config.addIntegration(
+            object : PostHogIntegration, PostHogCaptureContextReceiver {
+                override fun onCaptureContextChange(inProgress: Boolean) {
+                    phases += inProgress
+                    if (inProgress) throw IllegalStateException("test")
+                }
+            },
+        )
+        sut.close()
+        assertEquals(listOf(true, false), phases)
+        assertNull(guard.generation())
+        guard.setActive(true)
+        assertNotNull(guard.generation())
+        guard.setActive(false)
     }
 
     @Test
@@ -252,7 +284,7 @@ internal class PostHogInteractionGuardTest {
                     event
                 }
             config.addBeforeSend(hook)
-            emit(sut, assertNotNull(sut.interactionGeneration()))
+            emit(sut, assertNotNull(guard.generation()))
             config.removeBeforeSend(hook)
         }
         drain()

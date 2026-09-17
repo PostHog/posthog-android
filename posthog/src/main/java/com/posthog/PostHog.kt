@@ -338,8 +338,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
-                    beginInteractionTransition()
-                    endInteractionTransition()
+                    config.withCaptureContextChange { }
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
                     } catch (e: Throwable) {
@@ -531,8 +530,7 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
-        beginInteractionTransition()
-        try {
+        config.withCaptureContextChange {
             synchronized(setupLock) {
                 try {
                     if (!isEnabled()) {
@@ -582,8 +580,6 @@ public class PostHog private constructor(
                     config?.logger?.log("Close failed: $e.")
                 }
             }
-        } finally {
-            endInteractionTransition()
         }
     }
 
@@ -781,72 +777,47 @@ public class PostHog private constructor(
         }
     }
 
-    private val interactionLock = Any()
-    private var interactionEpoch = 0L
-    private var interactionTransitions = 0
-
-    private fun beginInteractionTransition() {
-        synchronized(interactionLock) {
-            interactionEpoch++
-            interactionTransitions++
-        }
-        config?.integrations?.filterIsInstance<PostHogInteractionInvalidationReceiver>()?.forEach {
-            try {
-                it.onInteractionInvalidated()
-            } catch (_: Throwable) {
-                // Invalidation must never prevent identity/consent changes.
-            }
-        }
-    }
-
-    private fun endInteractionTransition() {
-        synchronized(interactionLock) {
-            interactionEpoch++
-            interactionTransitions--
-        }
-    }
-
-    /** SDK-only generation for short-lived Android interaction observations. */
-    @PostHogInternal
-    public fun interactionGeneration(): Long? =
-        synchronized(interactionLock) {
-            interactionEpoch.takeIf { interactionTransitions == 0 && enabled }
-        }
-
     /** SDK-only guarded enqueue. Host hooks run outside the generation lock. */
     @PostHogInternal
-    public fun captureInteraction(
+    public fun captureGuarded(
+        guard: PostHogCaptureGuard,
         expectedGeneration: Long,
         event: String,
         properties: Map<String, Any>,
         timestamp: Date,
     ) {
-        if (event != "\$rageclick" && event != "\$dead_click") return
-        val tapSession = properties["\$session_id"] as? String ?: return
-        val tapTime = timestamp.time
+        val observationSession = properties["\$session_id"] as? String ?: return
+        val observationTime = timestamp.time
         try {
-            if (isOptOut() || interactionGeneration() != expectedGeneration || getSessionId()?.toString() != tapSession) return
+            if (!enabled || isOptOut() || guard.generation() != expectedGeneration ||
+                getSessionId()?.toString() != observationSession
+            ) {
+                return
+            }
             val id = distinctId
             if (id.isBlank()) return
             val props = buildProperties(id, properties, null, null, null)
             val prepared = buildEvent(event, id, props, timestamp) ?: return
-            // These SDK observations always use the asynchronous analytics queue. A hook cannot
+            // Guarded observations always use the asynchronous analytics queue. A hook cannot
             // turn them into synchronous fatal uploads or replay records while holding the guard.
             if (prepared.isExceptionEvent() || prepared.event == PostHogEventName.SNAPSHOT.event) return
-            if (prepared.properties?.get("\$session_id") != tapSession || prepared.timestamp.time != tapTime ||
-                getSessionId()?.toString() != tapSession
+            if (prepared.properties?.get("\$session_id") != observationSession || prepared.timestamp.time != observationTime ||
+                getSessionId()?.toString() != observationSession
             ) {
                 return
             }
-            synchronized(interactionLock) {
-                if (interactionTransitions != 0 || interactionEpoch != expectedGeneration || !enabled || config?.optOut == true) return
-                // Nonfatal add only submits to the SDK-owned executor; no host callbacks here.
-                queue?.add(prepared)
-            }
+            val enqueued =
+                guard.enqueueIfCurrent(expectedGeneration) {
+                    if (!enabled || config?.optOut == true) return@enqueueIfCurrent false
+                    val currentQueue = queue ?: return@enqueueIfCurrent false
+                    currentQueue.add(prepared)
+                    true
+                }
+            if (!enqueued) return
             surveysHandler?.onEvent(event, props)
             sessionReplayHandler?.onEvent(event, props)
         } catch (_: Throwable) {
-            // Do not log potentially sensitive interaction state or hook exception messages.
+            // Do not log potentially sensitive capture state or hook exception messages.
         }
     }
 
@@ -1249,8 +1220,7 @@ public class PostHog private constructor(
     }
 
     public override fun optOut() {
-        beginInteractionTransition()
-        try {
+        config.withCaptureContextChange {
             if (!isEnabled()) {
                 return
             }
@@ -1266,8 +1236,6 @@ public class PostHog private constructor(
             // Clear cached identity-token state so a stale token/401 flag isn't reused after
             // re-opting-in; the send guard in the manager already blocks sends while opted out.
             pushSubscriptionManager?.onOptOut()
-        } finally {
-            endInteractionTransition()
         }
     }
 
@@ -1297,8 +1265,7 @@ public class PostHog private constructor(
         screenTitle: String,
         properties: Map<String, Any>?,
     ) {
-        beginInteractionTransition()
-        try {
+        config.withCaptureContextChange {
             if (!isEnabled()) {
                 return
             }
@@ -1320,8 +1287,6 @@ public class PostHog private constructor(
             }
 
             capture(PostHogEventName.SCREEN.event, properties = props)
-        } finally {
-            endInteractionTransition()
         }
     }
 
@@ -1430,8 +1395,7 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        beginInteractionTransition()
-        try {
+        config.withCaptureContextChange {
             if (!isEnabled()) {
                 return
             }
@@ -1553,8 +1517,6 @@ public class PostHog private constructor(
             } else {
                 config?.logger?.log("already identified with id: $distinctId.")
             }
-        } finally {
-            endInteractionTransition()
         }
     }
 
@@ -2039,8 +2001,7 @@ public class PostHog private constructor(
     }
 
     public override fun reset() {
-        beginInteractionTransition()
-        try {
+        config.withCaptureContextChange {
             if (!isEnabled()) {
                 return
             }
@@ -2104,8 +2065,6 @@ public class PostHog private constructor(
             if (reloadFeatureFlags) {
                 reloadFeatureFlags(config?.onFeatureFlags)
             }
-        } finally {
-            endInteractionTransition()
         }
     }
 

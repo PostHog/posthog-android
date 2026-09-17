@@ -208,11 +208,12 @@ internal class InteractionDetectorIntegrationTest {
             )
         try {
             repeat(3) { tap() }
-            val generation = client.interactionGeneration()
+            val guard = ReflectionHelpers.getField<com.posthog.PostHogCaptureGuard>(sut, "captureGuard")
+            val generation = guard.generation()
             secondary.endSession()
             secondary.startSession()
             // Demonstrate the inherited singleton listener belongs to B, not owner A.
-            assertEquals(generation, client.interactionGeneration())
+            assertEquals(generation, guard.generation())
             waitForTimeout()
             assertTrue(events.isEmpty())
             tap()

@@ -10,8 +10,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
+import com.posthog.PostHogCaptureContextReceiver
+import com.posthog.PostHogCaptureGuard
 import com.posthog.PostHogIntegration
-import com.posthog.PostHogInteractionInvalidationReceiver
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import curtains.Curtains
@@ -30,7 +31,7 @@ internal class PostHogElementInteractionIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler = MainHandler(),
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
-) : PostHogIntegration, DefaultLifecycleObserver, PostHogInteractionInvalidationReceiver {
+) : PostHogIntegration, DefaultLifecycleObserver, PostHogCaptureContextReceiver {
     private companion object {
         // All ownership and window work runs on main, including deferred setup and close.
         var owner: PostHogElementInteractionIntegration? = null
@@ -39,17 +40,18 @@ internal class PostHogElementInteractionIntegration(
     private val lifecycleGeneration = AtomicLong()
     private val interceptors = WeakHashMap<Window, TouchEventInterceptor>()
     private var postHog: PostHogInterface? = null
+    private val captureGuard = PostHogCaptureGuard()
     private val rage = InteractionRageDetector()
     private val dead =
         InteractionDeadDetector(config, mainHandler, ::generation, ::sessionId, { epoch, properties, timestamp ->
-            (postHog as? PostHog)?.captureInteraction(epoch, "\$dead_click", properties, timestamp)
+            (postHog as? PostHog)?.captureGuarded(captureGuard, epoch, "\$dead_click", properties, timestamp)
         })
 
     private fun sessionId(): String? = postHog?.getSessionId()?.toString()
 
     private fun generation(): Long? {
         val client = postHog as? PostHog ?: return null
-        return if (client.isOptOut()) null else client.interactionGeneration()
+        return if (client.isOptOut()) null else captureGuard.generation()
     }
 
     private val invalidationScheduled = AtomicBoolean()
@@ -59,7 +61,9 @@ internal class PostHogElementInteractionIntegration(
             safely { resetDetectors() }
         }
 
-    override fun onInteractionInvalidated() {
+    override fun onCaptureContextChange(inProgress: Boolean) {
+        captureGuard.onCaptureContextChange(inProgress)
+        if (!inProgress) return
         // Core calls this on any thread. Coalesce signals; never wait for main or touch UI here.
         if (invalidationScheduled.compareAndSet(false, true)) mainHandler.handler.post(invalidateOnMain)
     }
@@ -92,6 +96,7 @@ internal class PostHogElementInteractionIntegration(
             if (generation != lifecycleGeneration.get() || owner != null) return@onMain
             owner = this
             this.postHog = postHog
+            captureGuard.setActive(true)
             try {
                 lifecycle.addObserver(this)
                 Curtains.onRootViewsChangedListeners += rootsListener
@@ -112,6 +117,7 @@ internal class PostHogElementInteractionIntegration(
     }
 
     private fun clearInstallation() {
+        captureGuard.setActive(false)
         mainHandler.handler.removeCallbacks(invalidateOnMain)
         invalidationScheduled.set(false)
         resetDetectors()
@@ -165,7 +171,8 @@ internal class PostHogElementInteractionIntegration(
                                         session,
                                     )
                                 ) {
-                                    (client as? PostHog)?.captureInteraction(
+                                    (client as? PostHog)?.captureGuarded(
+                                        captureGuard,
                                         epoch,
                                         "\$rageclick",
                                         detectorProperties,
