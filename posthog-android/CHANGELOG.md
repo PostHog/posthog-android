@@ -1,5 +1,11 @@
 ## Next
 
+## 3.66.4
+
+### Patch Changes
+
+- 9c83392: Support skipSubmitButton for survey rating and single-choice questions. The Compose renderer submits eligible selections immediately and hides the submit button; multiple-choice questions and single-choice questions with an open option retain explicit submission.
+
 ## 3.66.3
 
 ### Patch Changes
