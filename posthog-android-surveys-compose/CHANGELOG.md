@@ -1,5 +1,11 @@
 # posthog-android-surveys-compose
 
+## 0.2.2
+
+### Patch Changes
+
+- b3b0d22: Honor survey shuffleOptions in the built-in choice UI, keeping Other last and the display order stable while answering.
+
 ## 0.2.1
 
 ### Patch Changes

@@ -141,6 +141,9 @@
           "$network_carrier": "Snapshot Telecom",
           "$lib": "posthog-android",
           "$lib_version": "<sdk-version>",
+          "$is_identified": true,
+          "$process_person_profile": true,
+          "$session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
           "$group_type": "company",
           "$group_key": "posthog",
           "$group_set": {

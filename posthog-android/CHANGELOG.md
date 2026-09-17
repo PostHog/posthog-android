@@ -1,5 +1,42 @@
 ## Next
 
+## 3.66.0
+
+### Minor Changes
+
+- 853ec7d: Add the internal `persistOptOut` config so a wrapper SDK that owns consent can stop a persisted opt-out from overriding the value it passes to setup.
+
+## 3.65.2
+
+### Patch Changes
+
+- e1523b5: Send `$groupidentify` through `capture()` so it carries the session id, identity flags and shared properties like every other event, matching posthog-js
+
+## 3.65.1
+
+### Patch Changes
+
+- 6e57336: Cut the heap a session replay screenshot needs. The Base64 encoder buffer was sized from the bitmap's `allocationByteCount`, so every capture reserved a second full uncompressed frame, about 10 MB on a 1080x2400 screen, for a payload that lands in the tens of kilobytes. The buffer is now sized from a compressed estimate, and the compressed bytes stream straight into the encoder instead of being held in an intermediate array. Devices with a small heap were running out of memory on this allocation at the default 1 second capture cadence.
+
+## 3.65.0
+
+### Minor Changes
+
+- 61c1a0e: Change `capturePushNotificationOpened` to skip a PostHog-sent notification open already captured in the last 5 minutes (same `invocation_id` and `action_id`), unless the payload's `google.message_id` differs.
+
+## 3.64.1
+
+### Patch Changes
+
+- 20c72a2: Move replay buffer initialization and leftover-file cleanup off the SDK setup thread onto the replay executor to reduce main-thread startup stalls, including when session replay is disabled.
+- 1ae7aed: Resolve the cache directory and package information at most once per SDK setup, only when needed, and reuse the results across startup consumers.
+
+## 3.64.0
+
+### Minor Changes
+
+- 58294dc: Add `PostHogSessionReplayConfig.captureTouches` (default `true`) to disable touch coordinate recording during SDK initialization independently of screenshots and view capture. Runtime changes are not supported.
+
 ## 3.63.1
 
 ### Patch Changes

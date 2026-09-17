@@ -183,6 +183,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
 	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogOnFeatureFlags;
 	public final fun getOptOut ()Z
+	public final fun getPersistOptOut ()Z
 	public final fun getPersonProfiles ()Lcom/posthog/PersonProfiles;
 	public final fun getPreloadFeatureFlags ()Z
 	public final fun getPropertiesSanitizer ()Lcom/posthog/PostHogPropertiesSanitizer;
@@ -234,6 +235,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
 	public final fun setOnFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public final fun setOptOut (Z)V
+	public final fun setPersistOptOut (Z)V
 	public final fun setPersonProfiles (Lcom/posthog/PersonProfiles;)V
 	public final fun setPreloadFeatureFlags (Z)V
 	public final fun setPropertiesSanitizer (Lcom/posthog/PostHogPropertiesSanitizer;)V

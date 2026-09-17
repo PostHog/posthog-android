@@ -125,7 +125,12 @@ public open class PostHogConfig(
      */
     public var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
     /**
-     * Maximum number of retries for failed flush attempts before events are dropped
+     * Maximum number of retries for push subscription registration failures.
+     *
+     * This limit does not apply to event, replay, or log ingestion. Retryable ingestion
+     * failures retain queued records for later flush triggers, subject to backoff.
+     * Use [maxQueueSize] for events and replay, and [PostHogLogsConfig.maxBufferSize] for logs.
+     *
      * Defaults to 3
      */
     public var maxRetries: Int = 3,
@@ -349,6 +354,38 @@ public open class PostHogConfig(
      */
     public var pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,
 ) {
+    /**
+     * Whether the SDK stores the opt-out state itself and restores it on the next setup.
+     *
+     * Defaults to true: [PostHog.optIn] and [PostHog.optOut] write the state to disk, and it is read
+     * back on the first consent check after storage becomes readable, where it takes precedence over
+     * [optOut]. A runtime choice made by the user therefore outlives the app's configured default.
+     *
+     * When false, the SDK neither reads nor writes its own copy: [optOut] is the truth at setup, and
+     * [PostHog.optIn]/[PostHog.optOut] change only the running SDK.
+     *
+     * When true and the layer above already owns consent, a value stored by an earlier launch can
+     * outrank the [optOut] passed here — so a host whose own state says opted out can still start the
+     * SDK opted in, and capture what it reports during setup.
+     *
+     * Set it to false only when that layer keeps its own consent store; leave it true otherwise,
+     * including for hosts that merely wrap the SDK without owning consent.
+     *
+     * ```kotlin
+     * val config = PostHogAndroidConfig(apiKey = "<ph_project_api_key>").apply {
+     *     persistOptOut = false
+     *     optOut = myConsentManager.isOptedOut
+     * }
+     * PostHogAndroid.setup(context, config)
+     * ```
+     *
+     * Must be set before [PostHog.setup]. Flipping it afterwards does not re-resolve a value already
+     * read from storage, but does change whether [PostHog.optIn]/[PostHog.optOut] write to disk.
+     */
+    @PostHogInternal
+    @Volatile
+    public var persistOptOut: Boolean = true
+
     @Volatile
     private var tracingHeadersList: List<String>? = null
 

@@ -1,5 +1,29 @@
 ## Next
 
+## 6.38.0
+
+### Minor Changes
+
+- 853ec7d: Add the internal `persistOptOut` config so a wrapper SDK that owns consent can stop a persisted opt-out from overriding the value it passes to setup.
+
+## 6.37.1
+
+### Patch Changes
+
+- e1523b5: Send `$groupidentify` through `capture()` so it carries the session id, identity flags and shared properties like every other event, matching posthog-js
+
+## 6.37.0
+
+### Minor Changes
+
+- 61c1a0e: Change `capturePushNotificationOpened` to skip a PostHog-sent notification open already captured in the last 5 minutes (same `invocation_id` and `action_id`), unless the payload's `google.message_id` differs.
+
+## 6.36.0
+
+### Minor Changes
+
+- 7068a36: Retain bounded durable queue entries across retryable transport and HTTP failures, pause while offline, and acknowledge successful batches by unique queue-entry identity. `maxRetries` now controls push subscription registration retries, not durable queue flush attempts. Preserve existing queued records when a new record fails to persist, and enforce FIFO capacity when loading records from disk.
+
 ## 6.35.0
 
 ### Minor Changes

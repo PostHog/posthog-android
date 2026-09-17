@@ -34,6 +34,13 @@ internal class PostHogReplayQueue internal constructor(
             },
         )
 
+    init {
+        // Queue cleanup before any writes, without doing disk IO on the setup caller's thread.
+        executor.executeSafely {
+            bufferQueue.clear()
+        }
+    }
+
     internal var bufferDelegate: PostHogReplayBufferDelegate? = null
 
     /**

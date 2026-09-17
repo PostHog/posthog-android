@@ -2,6 +2,8 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
@@ -27,11 +29,17 @@ import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.collections.get
+import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -65,6 +73,7 @@ internal class PostHogTest {
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
+        persistOptOut: Boolean = true,
         preloadFeatureFlags: Boolean = true,
         reloadFeatureFlags: Boolean = true,
         sendFeatureFlagEvent: Boolean = true,
@@ -88,6 +97,7 @@ internal class PostHogTest {
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
                 this.replayStoragePrefix = File(storagePrefix, "snapshots").absolutePath
                 this.optOut = optOut
+                this.persistOptOut = persistOptOut
                 this.preloadFeatureFlags = preloadFeatureFlags
                 if (integration != null) {
                     addIntegration(integration)
@@ -120,6 +130,7 @@ internal class PostHogTest {
 
     @AfterTest
     fun `set down`() {
+        pushOpenHttp?.shutdown()
         tmpDir.root.deleteRecursively()
     }
 
@@ -143,6 +154,90 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), optOut = true)
 
         assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    private fun storedOptOut(value: Boolean) = PostHogMemoryPreferences().apply { setValue(OPT_OUT, value) }
+
+    @Test
+    fun `a stored optIn outranks an opted-out config`() {
+        val sut = getSut(mockHttp().url("/").toString(), optOut = true, cachePreferences = storedOptOut(false))
+
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut is stored`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(mockHttp().url("/").toString(), cachePreferences = preferences)
+
+        sut.optOut()
+
+        assertEquals(true, preferences.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `the config outranks a stored optIn when persistOptOut is false`() {
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                cachePreferences = storedOptOut(false),
+            )
+
+        assertTrue(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `the config outranks a stored optOut when persistOptOut is false`() {
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                persistOptOut = false,
+                cachePreferences = storedOptOut(true),
+            )
+
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut is not stored when persistOptOut is false`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(mockHttp().url("/").toString(), persistOptOut = false, cachePreferences = preferences)
+
+        sut.optOut()
+
+        assertTrue(sut.isOptOut())
+        assertNull(preferences.getValue(OPT_OUT))
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn is not stored when persistOptOut is false`() {
+        val preferences = PostHogMemoryPreferences()
+        val sut =
+            getSut(
+                mockHttp().url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                cachePreferences = preferences,
+            )
+
+        sut.optIn()
+
+        assertFalse(sut.isOptOut())
+        assertNull(preferences.getValue(OPT_OUT))
 
         sut.close()
     }
@@ -1938,6 +2033,31 @@ internal class PostHogTest {
         assertEquals("theType", theEvent.properties!!["\$group_type"] as String)
         assertEquals("theKey", theEvent.properties!!["\$group_key"] as String)
         assertEquals(groupProps, theEvent.properties!!["\$group_set"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `group identify carries session and identity properties but not groups`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.group("theType", "theKey", groupProps)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val theEvent = batch.batch.first()
+        assertEquals("\$groupidentify", theEvent.event)
+        assertNotNull(theEvent.properties!!["\$session_id"])
+        assertFalse(theEvent.properties!!["\$is_identified"] as Boolean)
+        assertFalse(theEvent.properties!!.containsKey("\$groups"))
 
         sut.close()
     }
@@ -4202,6 +4322,29 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `the config gates group as the first call when persistOptOut is false`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                optOut = true,
+                persistOptOut = false,
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                cachePreferences = storedOptOut(false),
+                personProfiles = PersonProfiles.ALWAYS,
+            )
+
+        sut.group("company", "acme")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `persisted opt-out gates group as the first call`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -4928,6 +5071,277 @@ internal class PostHogTest {
         assertEquals(0, http.requestCount)
 
         sut.close()
+    }
+
+    private val stepOne = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-1"}"""
+    private val stepTwo = """{"workflow_id":"wf-1","invocation_id":"inv-1","action_id":"step-2"}"""
+    private val pushOpens = CopyOnWriteArrayList<PostHogEvent>()
+    private var pushOpenHttp: MockWebServer? = null
+
+    private fun getPushOpenSut(optOut: Boolean = false): PostHogInterface =
+        getSut(
+            mockHttp().also { pushOpenHttp = it }.url("/").toString(),
+            optOut = optOut,
+            preloadFeatureFlags = false,
+            reloadFeatureFlags = false,
+            beforeSend = { event ->
+                if (event.event == "\$push_notification_opened") pushOpens.add(event)
+                null
+            },
+        )
+
+    private fun PostHogInterface.captureAutomaticPushOpen(
+        posthog: Any?,
+        messageId: String = "m-1",
+    ) = capturePushNotificationOpened(payload = mapOf("google.message_id" to messageId, "posthog" to posthog))
+
+    private fun PostHogInterface.captureManualPushOpen(posthog: Any?) =
+        capturePushNotificationOpened(title = "Hello", body = "World", payload = mapOf("posthog" to posthog))
+
+    @Test
+    fun `capturePushNotificationOpened skips a manual repeat of an automatically captured PostHog push`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+        assertNull(pushOpens.single().properties!!["\$notification_title"])
+        assertEquals("inv-1", pushOpens.single().properties!!["\$notification_invocation_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips an automatic repeat of a manually captured PostHog push`() {
+        val sut = getPushOpenSut()
+
+        sut.captureManualPushOpen(mapOf("workflow_id" to "wf-1", "invocation_id" to "inv-1", "action_id" to "step-1"))
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+        assertEquals("Hello", pushOpens.single().properties!!["\$notification_title"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures a resend of the same workflow step`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-2")
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(2, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips a repeat report of the same delivery`() {
+        val sut = getPushOpenSut()
+
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-1")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened skips a resend when the first capture carried no delivery id`() {
+        val sut = getPushOpenSut()
+
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne, messageId = "m-2")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened keys PostHog pushes by invocation and action`() {
+        val sut = getPushOpenSut()
+        val noAction = """{"workflow_id":"wf-1","invocation_id":"inv-1"}"""
+        val otherRun = """{"workflow_id":"wf-1","invocation_id":"inv-2","action_id":"step-1"}"""
+
+        listOf(stepOne, stepTwo, noAction, otherRun).forEach { sut.captureAutomaticPushOpen(it) }
+        listOf(stepOne, stepTwo, noAction, otherRun).forEach { sut.captureManualPushOpen(it) }
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(
+            listOf("inv-1" to "step-1", "inv-1" to "step-2", "inv-1" to null, "inv-2" to "step-1"),
+            pushOpens.map {
+                it.properties!!["\$notification_invocation_id"] to it.properties!!["\$notification_action_id"]
+            },
+        )
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened never dedupes a push without a posthog entry`() {
+        val sut = getPushOpenSut()
+
+        sut.capturePushNotificationOpened(payload = mapOf("google.message_id" to "m-1"))
+        sut.capturePushNotificationOpened(title = "Hello", payload = mapOf("google.message_id" to "m-1"))
+        sut.capturePushNotificationOpened()
+        sut.capturePushNotificationOpened()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(4, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened never dedupes a push with a malformed posthog entry`() {
+        val sut = getPushOpenSut()
+        val malformed =
+            listOf(
+                "{not json",
+                """{"action_id":"step-1"}""",
+                """{"invocation_id":""}""",
+                """{"invocation_id":42}""",
+                """["inv-1"]""",
+                42,
+            )
+
+        malformed.forEach {
+            sut.captureAutomaticPushOpen(it)
+            sut.captureManualPushOpen(it)
+        }
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(malformed.size * 2, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures a repeat once the dedupe window has passed`() {
+        val sut = getPushOpenSut()
+        var millis = 0L
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun currentTimeMillis(): Long = millis
+            }
+
+        sut.captureAutomaticPushOpen(stepOne)
+        millis = TimeUnit.MINUTES.toMillis(5) - 1
+        sut.captureManualPushOpen(stepOne)
+        millis = TimeUnit.MINUTES.toMillis(5)
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf(null, "Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures a repeat once the wall clock has moved backwards`() {
+        val sut = getPushOpenSut()
+        var millis = TimeUnit.MINUTES.toMillis(5)
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun currentTimeMillis(): Long = millis
+            }
+
+        sut.captureAutomaticPushOpen(stepOne)
+        millis -= TimeUnit.SECONDS.toMillis(60)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf(null, "Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened captures once when two reports of one tap race`() {
+        val sut = getPushOpenSut()
+        val sampled = CountDownLatch(1)
+        val secondReportDone = CountDownLatch(1)
+        val clock = AtomicLong(TimeUnit.MINUTES.toMillis(5))
+        // Parks the first report between sampling the clock and admitting it, so the second report
+        // samples later but is admitted first — the inversion that would read as a backwards clock.
+        config.dateProvider =
+            object : PostHogDateProvider by PostHogDeviceDateProvider() {
+                override fun currentTimeMillis(): Long {
+                    val now = clock.getAndIncrement()
+                    if (sampled.count > 0) {
+                        sampled.countDown()
+                        secondReportDone.await(200, TimeUnit.MILLISECONDS)
+                    }
+                    return now
+                }
+            }
+
+        val firstReport = thread { sut.captureAutomaticPushOpen(stepOne) }
+        sampled.await()
+        thread { sut.captureManualPushOpen(stepOne) }.join()
+        secondReportDone.countDown()
+        firstReport.join()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, pushOpens.size)
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened evicts the oldest open at the cap`() {
+        val sut = getPushOpenSut()
+
+        repeat(21) {
+            sut.captureAutomaticPushOpen("""{"invocation_id":"inv-$it","action_id":"step-1"}""")
+        }
+        sut.captureManualPushOpen("""{"invocation_id":"inv-0","action_id":"step-1"}""")
+        sut.captureManualPushOpen("""{"invocation_id":"inv-20","action_id":"step-1"}""")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(22, pushOpens.size)
+        assertEquals("inv-0", pushOpens.last().properties!!["\$notification_invocation_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened does not record a push skipped while opted out`() {
+        val sut = getPushOpenSut(optOut = true)
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.optIn()
+        sut.captureManualPushOpen(stepOne)
+        sut.captureAutomaticPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(listOf<Any?>("Hello"), pushOpens.map { it.properties!!["\$notification_title"] })
+
+        sut.close()
+    }
+
+    @Test
+    fun `capturePushNotificationOpened is a no-op after close`() {
+        val sut = getPushOpenSut()
+        sut.close()
+
+        sut.captureAutomaticPushOpen(stepOne)
+        sut.captureManualPushOpen(stepOne)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, pushOpens.size)
     }
 
     @Test

@@ -453,6 +453,19 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Each key of `payload["posthog"]` (accepted as a `Map` or a JSON string) is attached as a
      * `$notification_<key>` property.
      *
+     * A notification sent by PostHog is captured once: when `payload["posthog"]` carries an
+     * `invocation_id`, a repeat with the same `invocation_id` and `action_id` within 5 minutes of the
+     * first capture is skipped, whether that first capture came from this method or from the SDK's
+     * automatic capture. Payloads without a `posthog.invocation_id` are always captured. Only the 20
+     * most recently captured notifications are remembered, so a host that reports more than that
+     * inside the window can capture a repeat of the oldest.
+     *
+     * A rerun of that workflow, or a loop back to its push step, sends the pair again as a new
+     * notification, and its open counts separately: a payload whose `google.message_id` differs from the
+     * one captured first is captured. Forward the tapped intent's extras (which carry that id) to keep
+     * those apart — a payload without one, such as an FCM foreground `message.data`, is treated as a
+     * repeat report of the tap already captured.
+     *
      * @param title the notification title, attached as `$notification_title` when non-empty
      * @param body the notification body, attached as `$notification_body` when non-empty
      * @param payload the notification data payload; its `posthog` entry is spread into `$notification_*` props

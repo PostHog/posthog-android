@@ -452,7 +452,7 @@ public class PostHogReplayIntegration(
             try {
                 val state = dispatch(motionEvent)
                 try {
-                    if (!isActive()) {
+                    if (!config.sessionReplayConfig.captureTouches || !isActive()) {
                         return@TouchEventInterceptor state
                     }
                     val timestamp = config.dateProvider.currentTimeMillis()
