@@ -6,6 +6,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.Survey
+import com.posthog.surveys.SurveyConditions
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
@@ -46,6 +47,14 @@ internal class PostHogSurveysLinkedFlagVariantTest(
     }
 
     @Test
+    fun `compatibility copy preserves linked flag variant`() {
+        val conditions = SurveyConditions(null, null, null, null, null, null, null, variant)
+        val copied = conditions.copy(selector = "updated")
+        assertEquals(variant, copied.linkedFlagVariant)
+        assertEquals("updated", copied.selector)
+    }
+
+    @Test
     fun `matches decoded variant without bypassing other targeting`() {
         val config =
             PostHogConfig("test-api-key").apply {
@@ -74,7 +83,7 @@ internal class PostHogSurveysLinkedFlagVariantTest(
                     """.trimIndent(),
                 ),
             )
-        assertEquals(variant, survey.conditions?.copy()?.linkedFlagVariant)
+        assertEquals(variant, survey.conditions?.linkedFlagVariant)
         val integration = PostHogSurveysIntegration(ApplicationProvider.getApplicationContext<Context>(), config)
         integration.install(postHog)
         try {
