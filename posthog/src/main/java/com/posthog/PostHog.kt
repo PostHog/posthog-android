@@ -770,8 +770,14 @@ public class PostHog private constructor(
 
     private fun sdkDebugProperties(): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
+        // Guarded separately from the session and queue keys below: those come from the session
+        // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
             props.putAll(sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled"))
+        } catch (e: Throwable) {
+            props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
+        }
+        try {
             val start = PostHogSessionManager.getSessionStartedAt()
             if (start > 0) {
                 props["\$sdk_debug_session_start"] = start

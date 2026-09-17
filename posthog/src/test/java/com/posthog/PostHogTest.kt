@@ -2955,6 +2955,10 @@ internal class PostHogTest {
         assertEquals(EVENT, theEvent.event)
         assertNotNull(theEvent.properties!!["\$sdk_debug_error_capturing_properties"])
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
+        // The session and queue keys do not come from the replay handler, so they survive its throw.
+        assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
+        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
 
         sut.close()
     }
