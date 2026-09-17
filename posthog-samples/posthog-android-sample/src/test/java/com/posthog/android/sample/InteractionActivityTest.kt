@@ -206,9 +206,33 @@ class InteractionActivityTest {
             assertEquals(1, ancestorClicks)
             assertEquals(6, events.count { it.event == "\$autocapture" })
             assertTrue(events.last().properties?.get("\$elements_chain").toString().startsWith("framelayout:"))
+            var enabledChildClicks = 0
+            compose.runOnIdle {
+                val parent =
+                    FrameLayout(compose.activity).apply {
+                        isClickable = true
+                        isEnabled = false
+                        addView(
+                            ComposeView(context).apply {
+                                setContent {
+                                    Button(onClick = { enabledChildClicks++ }, modifier = Modifier.testTag("enabled_child")) {
+                                        Text("Enabled child")
+                                    }
+                                }
+                            },
+                            FrameLayout.LayoutParams(-1, -1),
+                        )
+                    }
+                compose.activity.setContentView(parent)
+            }
+            compose.waitForIdle()
+            tapCompose("enabled_child")
+            assertEquals(1, enabledChildClicks)
+            assertEquals(7, events.count { it.event == "\$autocapture" })
+            assertTrue(events.last().properties?.get("\$elements_chain").toString().contains("enabled_child"))
             client!!.optOut()
-            tapCompose("native_child")
-            assertEquals(6, events.count { it.event == "\$autocapture" })
+            tapCompose("enabled_child")
+            assertEquals(7, events.count { it.event == "\$autocapture" })
         } finally {
             compose.runOnIdle { client?.close() }
         }
