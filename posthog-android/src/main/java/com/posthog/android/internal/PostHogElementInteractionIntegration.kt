@@ -3,6 +3,7 @@ package com.posthog.android.internal
 import android.os.Looper
 import android.view.View
 import android.view.Window
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
@@ -76,6 +77,7 @@ internal class PostHogElementInteractionIntegration(
     ) {
         if (interceptors.containsKey(window)) return
         val weakRoot = WeakReference(root)
+        val weakWindow = WeakReference(window)
         val tracker = InteractionTapTracker()
         val interceptor =
             TouchEventInterceptor { event, dispatch ->
@@ -83,7 +85,10 @@ internal class PostHogElementInteractionIntegration(
                     if (Looper.myLooper() != mainHandler.mainLooper) return@safely
                     val client = postHog
                     val view = weakRoot.get()
-                    if (client == null || client.isOptOut() || view == null || !config.captureElementInteractions) {
+                    val currentWindow = weakWindow.get()
+                    if (client == null || client.isOptOut() || view == null || currentWindow == null ||
+                        !config.captureElementInteractions || currentWindow.attributes.flags and FLAG_SECURE != 0
+                    ) {
                         tracker.reset()
                     } else {
                         tracker.onTouch(view, event)?.let { target ->

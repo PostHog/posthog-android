@@ -5,6 +5,7 @@ import android.app.Dialog
 import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.widget.Button
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -128,6 +129,57 @@ internal class PostHogElementInteractionIntegrationTest {
         assertEquals(1, fake.captures)
         sut.uninstall()
         assertFalse(activity.window.touchEventInterceptors.contains(interceptor))
+    }
+
+    @Test
+    fun `secure windows suppress capture and flags are rechecked after attachment`() {
+        activity.window.addFlags(FLAG_SECURE)
+        integration().install(fake)
+        val interceptor = activity.window.touchEventInterceptors.last()
+        var dispatches = 0
+
+        fun dispatch(event: MotionEvent): DispatchState {
+            dispatches++
+            return DispatchState.Consumed
+        }
+        tap(interceptor, ::dispatch)
+        assertEquals(0, fake.captures)
+        activity.window.clearFlags(FLAG_SECURE)
+        tap(interceptor, ::dispatch)
+        assertEquals(1, fake.captures)
+        activity.window.addFlags(FLAG_SECURE)
+        tap(interceptor, ::dispatch)
+        assertEquals(1, fake.captures)
+        assertEquals(6, dispatches)
+    }
+
+    @Test
+    fun `secure flag during a gesture resets tracking even if cleared before up`() {
+        integration().install(fake)
+        val interceptor = activity.window.touchEventInterceptors.last()
+        var dispatches = 0
+        tap(interceptor) { event ->
+            dispatches++
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                activity.window.addFlags(FLAG_SECURE)
+                val move = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_MOVE }
+                try {
+                    interceptor.intercept(move) { forwarded ->
+                        assertSame(move, forwarded)
+                        dispatches++
+                        DispatchState.Consumed
+                    }
+                } finally {
+                    move.recycle()
+                    activity.window.clearFlags(FLAG_SECURE)
+                }
+            }
+            DispatchState.Consumed
+        }
+        assertEquals(3, dispatches)
+        assertEquals(0, fake.captures)
+        tap(interceptor)
+        assertEquals(1, fake.captures)
     }
 
     @Test

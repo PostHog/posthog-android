@@ -24,7 +24,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.posthog.PostHogEvent
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
-import com.posthog.android.PostHogAutocaptureModifier.postHogAutocaptureNoCapture
+import com.posthog.android.postHogAutocaptureNoCapture
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

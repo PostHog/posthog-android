@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.posthog.android.PostHogAutocaptureModifier.postHogAutocaptureNoCapture
+import com.posthog.android.postHogAutocaptureNoCapture
 import android.widget.Button as NativeButton
 
 /** Static, non-sensitive identifiers for interaction testing, with replay independently configurable. */

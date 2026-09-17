@@ -11,7 +11,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureNoCapture
+import com.posthog.android.PostHogAutocaptureNoCapture
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import org.junit.runner.RunWith
 import org.mockito.Mockito

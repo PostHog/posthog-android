@@ -9,7 +9,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import com.posthog.android.PostHogAutocaptureModifier.PostHogAutocaptureNoCapture
+import com.posthog.android.PostHogAutocaptureNoCapture
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 
 /** Loaded only after checking for Compose; uses unmerged semantics to preserve subtree exclusions. */
