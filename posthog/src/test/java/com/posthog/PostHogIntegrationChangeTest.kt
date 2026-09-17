@@ -59,6 +59,15 @@ internal class PostHogIntegrationChangeTest {
     }
 
     @Test
+    fun `repeated opt out does not notify without a consent change`() {
+        client.optOut()
+        val before = changes
+        client.optOut()
+        assertEquals(before, changes)
+        assertTrue(client.isOptOut())
+    }
+
+    @Test
     fun `nested callback failures do not prevent consent changes`() {
         val before = changes
         var nested = false

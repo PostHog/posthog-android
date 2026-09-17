@@ -530,7 +530,7 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
-        config.notifyIntegrationsChanged()
+        if (isEnabled()) config.notifyIntegrationsChanged()
         synchronized(setupLock) {
             try {
                 if (!isEnabled()) {
@@ -1175,11 +1175,11 @@ public class PostHog private constructor(
     }
 
     public override fun optOut() {
-        config.notifyIntegrationsChanged()
         if (!isEnabled()) {
             return
         }
 
+        if (!isOptedOut()) config.notifyIntegrationsChanged()
         synchronized(optOutLock) {
             config?.optOut = true
             if (config?.persistOptOut != false) {
@@ -1219,7 +1219,6 @@ public class PostHog private constructor(
         screenTitle: String,
         properties: Map<String, Any>?,
     ) {
-        config.notifyIntegrationsChanged()
         if (!isEnabled()) {
             return
         }
@@ -1228,6 +1227,8 @@ public class PostHog private constructor(
         if (trimmedTitle.isEmpty()) {
             return
         }
+
+        if (lastScreenName != trimmedTitle) config.notifyIntegrationsChanged()
 
         // Cache for capture-time context snapshot on log records and for the
         // $screen_name auto-attach on subsequent events (see buildProperties).
@@ -1348,7 +1349,6 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        config.notifyIntegrationsChanged()
         if (!isEnabled()) {
             return
         }
@@ -1391,6 +1391,8 @@ public class PostHog private constructor(
                 isIdentified = true
             }
         }
+
+        if (shouldIdentify || shouldTransitionToIdentified) config.notifyIntegrationsChanged()
 
         if (shouldIdentify) {
             capture(
@@ -1953,11 +1955,11 @@ public class PostHog private constructor(
     }
 
     public override fun reset() {
-        config.notifyIntegrationsChanged()
         if (!isEnabled()) {
             return
         }
 
+        config.notifyIntegrationsChanged()
         // Capture the logging-out identity before preferences are cleared, so the push token can be
         // unregistered for it and re-registered under the new anonymous id (decision 5/6).
         val previousDistinctId = distinctId

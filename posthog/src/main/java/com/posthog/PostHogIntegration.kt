@@ -19,7 +19,7 @@ public interface PostHogIntegration {
     }
 
     /**
-     * Invalidates pending observations before identity, consent, screen, session or close changes.
+     * Invalidates pending observations when identity, consent, screen, session or close state changes.
      * Called synchronously on the caller's thread; calls may be nested or concurrent. This is a
      * one-shot notification, not a pause/resume boundary. Uninstall must independently clean up.
      */

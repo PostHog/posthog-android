@@ -140,6 +140,40 @@ internal class InteractionDetectorIntegrationTest {
     }
 
     @Test
+    fun `no-op identify and screen calls preserve pending dead taps`() {
+        client.identify("existing-user")
+        client.screen("Checkout")
+        shadowOf(Looper.getMainLooper()).idle()
+        val noOps: List<() -> Unit> =
+            listOf(
+                { client.identify("existing-user") },
+                { client.identify(" ") },
+                { client.identify("rejected-user-without-reset") },
+                { client.screen(" ") },
+                { client.screen(" Checkout ") },
+            )
+        val captured =
+            noOps.map { noOp ->
+                events.clear()
+                tap()
+                noOp()
+                waitForTimeout()
+                events.map { it.event }
+            }
+        assertEquals(List(noOps.size) { listOf("\$dead_click") }, captured)
+    }
+
+    @Test
+    fun `no-op identify preserves a rage burst`() {
+        client.identify("existing-user")
+        shadowOf(Looper.getMainLooper()).idle()
+        repeat(3) { tap() }
+        client.identify("existing-user")
+        tap()
+        assertEquals(listOf("\$rageclick"), events.map { it.event })
+    }
+
+    @Test
     fun `secure windows suppress detectors and clearing the flag allows new taps`() {
         activity.window.addFlags(FLAG_SECURE)
         repeat(4) { tap() }
