@@ -81,7 +81,11 @@ internal object ComposeInteractionTargetResolver {
                     nthOfType = siblings.take(index).count { it.interactionType() == node.interactionType() } + 1,
                 )
             } + viewPath.asReversed().map { it.interactionElement() }
-        return InteractionTarget(view, targetPath.last().id, elements.take(MAX_INTERACTION_ELEMENTS))
+        val config = targetPath.last().config
+        val repetitive =
+            config.contains(SemanticsActions.SetText) || config.contains(SemanticsProperties.EditableText) ||
+                config.contains(SemanticsActions.SetProgress) || config.contains(SemanticsActions.ScrollBy)
+        return InteractionTarget(view, targetPath.last().id, elements.take(MAX_INTERACTION_ELEMENTS), repetitive)
     }
 
     private fun SemanticsNode.interactionType(): String =

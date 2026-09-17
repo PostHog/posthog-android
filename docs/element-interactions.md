@@ -5,6 +5,8 @@ Enable before SDK setup (off by default):
 ```kotlin
 val config = PostHogAndroidConfig(apiKey).apply {
     captureElementInteractions = true
+    captureRageClicks = true
+    captureDeadClicks = true
     // Independent of replay; replay can remain disabled.
     sessionReplay = false
 }
@@ -96,12 +98,63 @@ uses its native ancestor chain; Compose-only targets include semantic and host V
   minimum touch-target regions outside semantic bounds are not inferred.
 - Hierarchies beyond the safety bounds and incompatible Compose implementations are skipped.
   Class names can change with app obfuscation; resource IDs/test tags are preferable identifiers.
-- Rage/dead-click detection is not part of this option.
+- `captureElementInteractions` does not enable the separate rage/dead options.
+
+## Rage and dead taps
+
+`captureRageClicks` and `captureDeadClicks` are independent, default-false siblings. Detector-only
+configuration does **not** emit `$autocapture` and works with replay disabled. They share tap
+recognition, target extraction, coordinates, exclusions and all common event properties above.
+Recognized editable, slider and scrolling controls are excluded from detectors because repetition
+is normal there (buttons inside scrolling containers remain eligible).
+
+- **`$rageclick`**: four taps on the same target/window within one second, with all tap locations
+  within 50dp of one another. Uses monotonic time, at most four history entries, and emits once
+  per continuous burst. A quiet second or target/window change starts a new burst. No extra
+  count/duration properties are sent.
+- **`$dead_click`**: the latest eligible tap has no observed meaningful response for three seconds.
+  The event retains the original tap timestamp and properties. Diagnostics are
+  `$dead_click_event_timestamp` (epoch ms), `$dead_click_absolute_delay_ms` (monotonic elapsed ms),
+  and `$dead_click_absolute_timeout = true`. Unsupported browser/DOM diagnostics are omitted.
+
+Dead detection observes supported native View and Compose semantic content/state, layout, scroll,
+focus and window changes. The baseline is taken **before** the app handler, then checked immediately
+after dispatch and at most ten times per second during observation. Pressed/ripple-only feedback
+is not a meaningful response. Only one pending candidate/timer is retained; later input replaces
+or cancels it. Snapshots share a total 512-node/32-level bound and a 16,384 UTF-16 code-unit content
+budget; incomplete walks, unknown native/custom View classes, SurfaceView, TextureView, WebView,
+detachment or observation gaps over 500ms skip detection. Changes anywhere in the observed window
+can conservatively suppress a dead event, even if unrelated to the tap.
+
+**Local content processing differs from event-property collection:** dead detection transiently
+reads unmasked, noneditable UI text/content/state solely to compare ephemeral, per-observation
+salted digests. No raw text is retained across walks. Neither text nor digests are serialized,
+logged or sent; digests are discarded when the bounded observation ends. Excluded, replay-masked,
+password and editable subtrees are observed structurally only; their content is not read. Global
+replay text masking is not an interaction-content-processing setting: if local processing is not
+acceptable, leave dead detection disabled or explicitly exclude the relevant subtrees.
+
+Dead taps are a **heuristic for absence of an observable response**, not proof that a handler failed.
+Semantics-backed Compose is supported, but Canvas/drawBehind or other drawing-only responses with
+unchanged semantics are unsupported and can produce false positives. Explicitly exclude those
+controls/subtrees with `postHogAutocaptureIgnore`. Arbitrary drawable internals and off-screen/network
+responses are not inferred. Known unsupported native trees and incomplete observations fail closed.
+
+Pending detections and rage history are invalidated on navigation (`screen`), backgrounding, root
+additions/removals (including unsupported popups), identity/reset, consent changes, sessions and close.
+Delayed emission rechecks targets/exclusions and uses a guarded enqueue so a reentrant `beforeSend`
+identity or consent change cannot send an old-user candidate. Hooks may drop detector events normally;
+rewriting a detector event into an exception/replay record is unsupported and drops it. Session checks also preserve the original non-null tap session and timestamp, and reject hook
+mutations of those values. In the inherited global-session architecture, session rotation is not
+atomically serialized with enqueue: a final-check/enqueue race can emit a late event attributed to
+its **original tap session**, never silently moved to the new session. This limitation is separate
+from the guarded identity/consent guarantees. Custom
+`PostHogInterface` implementations without the concrete SDK's internal guard skip detectors.
 
 ## Sample and checks
 
 The Android sample's **Element interactions** screen contains responsive, no-op and ignored
-View/Compose buttons with static identifiers. The sample opts in through `MyApp`; to verify
+View/Compose buttons with static identifiers, including an explicitly ignored drawing-only control. The sample opts in through `MyApp`; to verify
 independence, set `sessionReplay = false`. Supply your own local SDK credentials using the
 sample's existing setup; no new credential is needed in this screen.
 
@@ -109,7 +162,7 @@ Focused checks:
 
 ```shell
 ./gradlew :posthog-android:testDebugUnitTest --tests '*Interaction*Test'
-./gradlew :posthog-samples:posthog-android-sample:testDebugUnitTest --tests '*InteractionActivityTest'
+./gradlew :posthog-samples:posthog-android-sample:testDebugUnitTest --tests '*Interaction*Test'
 make test
 make checkFormat
 make api

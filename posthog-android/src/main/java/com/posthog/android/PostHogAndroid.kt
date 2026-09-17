@@ -223,7 +223,7 @@ public class PostHogAndroid private constructor() {
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
             config.addIntegration(PostHogTouchActivityIntegration(config))
-            if (config.captureElementInteractions) {
+            if (config.captureElementInteractions || config.captureRageClicks || config.captureDeadClicks) {
                 config.addIntegration(PostHogElementInteractionIntegration(config, mainHandler))
             }
             config.addIntegration(PostHogLogCatIntegration(config))

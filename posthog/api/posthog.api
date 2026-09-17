@@ -28,6 +28,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;)V
 	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
 	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun captureInteraction (JLjava/lang/String;Ljava/util/Map;Ljava/util/Date;)V
 	public fun captureLog (Ljava/lang/String;Lcom/posthog/logs/PostHogLogSeverity;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Integer;)V
 	public fun capturePushNotificationOpened (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)V
 	public fun close ()V
@@ -45,6 +46,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun getSessionId ()Ljava/util/UUID;
 	public fun group (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)V
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
+	public final fun interactionGeneration ()Ljava/lang/Long;
 	public fun isFeatureEnabled (Ljava/lang/String;ZLjava/lang/Boolean;)Z
 	public fun isOptOut ()Z
 	public fun isSessionActive ()Z
@@ -351,6 +353,10 @@ public final class com/posthog/PostHogIntegration$DefaultImpls {
 	public static fun onRemoteConfig (Lcom/posthog/PostHogIntegration;Z)V
 	public static synthetic fun onRemoteConfig$default (Lcom/posthog/PostHogIntegration;ZILjava/lang/Object;)V
 	public static fun uninstall (Lcom/posthog/PostHogIntegration;)V
+}
+
+public abstract interface class com/posthog/PostHogInteractionInvalidationReceiver {
+	public abstract fun onInteractionInvalidated ()V
 }
 
 public abstract interface class com/posthog/PostHogInterface : com/posthog/PostHogCoreInterface {
