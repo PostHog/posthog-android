@@ -1,5 +1,11 @@
 ## Next
 
+## 3.66.3
+
+### Patch Changes
+
+- 26b78ae: Fix automatic deep-link capture for warm `singleTop` and `singleTask` activity launches. Call `setIntent(intent)` in `onNewIntent` so the SDK can capture the new intent on resume. Repeated resumes do not duplicate the event, while distinct intents with the same URL are captured separately.
+
 ## 3.66.2
 
 ### Patch Changes
