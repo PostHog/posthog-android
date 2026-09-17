@@ -1,15 +1,14 @@
 package com.posthog
 
 /**
- * SDK-only, integration-owned guard for observations that must not cross capture-context changes.
- * Activate during install, deactivate during uninstall, and synchronously forward both phases of
- * [PostHogCaptureContextReceiver.onCaptureContextChange] to [onCaptureContextChange].
+ * SDK-only, integration-owned guard that rejects observations invalidated by capture-context changes.
+ * Activate during install, deactivate during uninstall, and synchronously forward
+ * [PostHogIntegration.onChange] to [invalidate].
  */
 @PostHogInternal
 public class PostHogCaptureGuard {
     private val lock = Any()
     private var epoch = 0L
-    private var transitions = 0
     private var active = false
 
     public fun setActive(active: Boolean) {
@@ -19,42 +18,20 @@ public class PostHogCaptureGuard {
         }
     }
 
-    public fun onCaptureContextChange(inProgress: Boolean) {
+    public fun invalidate() {
         synchronized(lock) {
             epoch++
-            transitions += if (inProgress) 1 else -1
         }
     }
 
-    public fun generation(): Long? = synchronized(lock) { epoch.takeIf { active && transitions == 0 } }
+    public fun generation(): Long? = synchronized(lock) { epoch.takeIf { active } }
 
     internal fun enqueueIfCurrent(
         expectedGeneration: Long,
         enqueue: () -> Boolean,
     ): Boolean =
         synchronized(lock) {
-            if (!active || transitions != 0 || epoch != expectedGeneration) return false
+            if (!active || epoch != expectedGeneration) return false
             enqueue()
         }
-}
-
-internal inline fun <T> PostHogConfig?.withCaptureContextChange(block: () -> T): T {
-    // Retain the same recipients through close(), which clears the SDK configuration.
-    val integrations = this?.integrations?.filterIsInstance<PostHogCaptureContextReceiver>().orEmpty()
-    integrations.notifyCaptureContextChange(true)
-    return try {
-        block()
-    } finally {
-        integrations.notifyCaptureContextChange(false)
-    }
-}
-
-internal fun List<PostHogCaptureContextReceiver>.notifyCaptureContextChange(inProgress: Boolean) {
-    forEach {
-        try {
-            it.onCaptureContextChange(inProgress)
-        } catch (_: Throwable) {
-            // Integration callbacks must never prevent identity or consent changes.
-        }
-    }
 }

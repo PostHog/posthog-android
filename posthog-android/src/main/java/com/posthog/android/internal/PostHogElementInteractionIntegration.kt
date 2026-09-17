@@ -10,7 +10,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.posthog.PostHog
-import com.posthog.PostHogCaptureContextReceiver
 import com.posthog.PostHogCaptureGuard
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
@@ -31,7 +30,7 @@ internal class PostHogElementInteractionIntegration(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler = MainHandler(),
     private val lifecycle: Lifecycle = ProcessLifecycleOwner.get().lifecycle,
-) : PostHogIntegration, DefaultLifecycleObserver, PostHogCaptureContextReceiver {
+) : PostHogIntegration, DefaultLifecycleObserver {
     private companion object {
         // All ownership and window work runs on main, including deferred setup and close.
         var owner: PostHogElementInteractionIntegration? = null
@@ -61,9 +60,8 @@ internal class PostHogElementInteractionIntegration(
             safely { resetDetectors() }
         }
 
-    override fun onCaptureContextChange(inProgress: Boolean) {
-        captureGuard.onCaptureContextChange(inProgress)
-        if (!inProgress) return
+    override fun onChange() {
+        captureGuard.invalidate()
         // Core calls this on any thread. Coalesce signals; never wait for main or touch UI here.
         if (invalidationScheduled.compareAndSet(false, true)) mainHandler.handler.post(invalidateOnMain)
     }

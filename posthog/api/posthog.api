@@ -139,14 +139,10 @@ public final class com/posthog/PostHogBootstrapConfig {
 	public final fun isIdentifiedId ()Z
 }
 
-public abstract interface class com/posthog/PostHogCaptureContextReceiver {
-	public abstract fun onCaptureContextChange (Z)V
-}
-
 public final class com/posthog/PostHogCaptureGuard {
 	public fun <init> ()V
 	public final fun generation ()Ljava/lang/Long;
-	public final fun onCaptureContextChange (Z)V
+	public final fun invalidate ()V
 	public final fun setActive (Z)V
 }
 
@@ -354,12 +350,14 @@ public abstract interface annotation class com/posthog/PostHogExperimental : jav
 
 public abstract interface class com/posthog/PostHogIntegration {
 	public abstract fun install (Lcom/posthog/PostHogInterface;)V
+	public abstract fun onChange ()V
 	public abstract fun onRemoteConfig (Z)V
 	public abstract fun uninstall ()V
 }
 
 public final class com/posthog/PostHogIntegration$DefaultImpls {
 	public static fun install (Lcom/posthog/PostHogIntegration;Lcom/posthog/PostHogInterface;)V
+	public static fun onChange (Lcom/posthog/PostHogIntegration;)V
 	public static fun onRemoteConfig (Lcom/posthog/PostHogIntegration;Z)V
 	public static synthetic fun onRemoteConfig$default (Lcom/posthog/PostHogIntegration;ZILjava/lang/Object;)V
 	public static fun uninstall (Lcom/posthog/PostHogIntegration;)V
@@ -550,6 +548,7 @@ public final class com/posthog/errortracking/PostHogErrorTrackingAutoCaptureInte
 	public fun <init> (Lcom/posthog/PostHogConfig;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public final fun installWith (Lcom/posthog/errortracking/PostHogErrorTrackingAutoCaptureIntegration$CaptureTarget;)V
+	public fun onChange ()V
 	public fun onRemoteConfig (Z)V
 	public fun uncaughtException (Ljava/lang/Thread;Ljava/lang/Throwable;)V
 	public fun uninstall ()V

@@ -338,7 +338,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
-                    config.withCaptureContextChange { }
+                    config.notifyIntegrationsChanged()
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
                     } catch (e: Throwable) {
@@ -530,55 +530,54 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
-        config.withCaptureContextChange {
-            synchronized(setupLock) {
-                try {
-                    if (!isEnabled()) {
-                        return
-                    }
+        config.notifyIntegrationsChanged()
+        synchronized(setupLock) {
+            try {
+                if (!isEnabled()) {
+                    return
+                }
 
-                    // flush pending events before tearing down so queued data isn't lost
-                    flush()
+                // flush pending events before tearing down so queued data isn't lost
+                flush()
 
-                    enabled = false
+                enabled = false
 
-                    config?.let { config ->
-                        apiKeys.remove(config.apiKey)
+                config?.let { config ->
+                    apiKeys.remove(config.apiKey)
 
-                        config.integrations.forEach {
-                            try {
-                                it.uninstall()
+                    config.integrations.forEach {
+                        try {
+                            it.uninstall()
 
-                                if (it is PostHogSessionReplayHandler) {
-                                    sessionReplayHandler = null
-                                } else if (it is PostHogSurveysHandler) {
-                                    surveysHandler = null
-                                }
-                            } catch (e: Throwable) {
-                                config.logger
-                                    .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
+                            if (it is PostHogSessionReplayHandler) {
+                                sessionReplayHandler = null
+                            } else if (it is PostHogSurveysHandler) {
+                                surveysHandler = null
                             }
+                        } catch (e: Throwable) {
+                            config.logger
+                                .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
                         }
                     }
-
-                    queue?.stop()
-                    replayQueue?.stop()
-                    logsQueue?.stop()
-                    pushSubscriptionManager?.close()
-                    pushSubscriptionManager = null
-
-                    featureFlagsCalled.clear()
-                    lastScreenName = null
-
-                    PostHogSessionManager.setOnSessionIdChangedListener(null)
-
-                    exceptionStepsBuffer?.clear()
-                    exceptionStepsBuffer = null
-
-                    endSession()
-                } catch (e: Throwable) {
-                    config?.logger?.log("Close failed: $e.")
                 }
+
+                queue?.stop()
+                replayQueue?.stop()
+                logsQueue?.stop()
+                pushSubscriptionManager?.close()
+                pushSubscriptionManager = null
+
+                featureFlagsCalled.clear()
+                lastScreenName = null
+
+                PostHogSessionManager.setOnSessionIdChangedListener(null)
+
+                exceptionStepsBuffer?.clear()
+                exceptionStepsBuffer = null
+
+                endSession()
+            } catch (e: Throwable) {
+                config?.logger?.log("Close failed: $e.")
             }
         }
     }
@@ -1220,23 +1219,22 @@ public class PostHog private constructor(
     }
 
     public override fun optOut() {
-        config.withCaptureContextChange {
-            if (!isEnabled()) {
-                return
-            }
-
-            synchronized(optOutLock) {
-                config?.optOut = true
-                if (config?.persistOptOut != false) {
-                    getPreferences().setValue(OPT_OUT, true)
-                }
-                optOutLoaded = true
-                exceptionStepsBuffer?.clear()
-            }
-            // Clear cached identity-token state so a stale token/401 flag isn't reused after
-            // re-opting-in; the send guard in the manager already blocks sends while opted out.
-            pushSubscriptionManager?.onOptOut()
+        config.notifyIntegrationsChanged()
+        if (!isEnabled()) {
+            return
         }
+
+        synchronized(optOutLock) {
+            config?.optOut = true
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, true)
+            }
+            optOutLoaded = true
+            exceptionStepsBuffer?.clear()
+        }
+        // Clear cached identity-token state so a stale token/401 flag isn't reused after
+        // re-opting-in; the send guard in the manager already blocks sends while opted out.
+        pushSubscriptionManager?.onOptOut()
     }
 
     /**
@@ -1265,29 +1263,28 @@ public class PostHog private constructor(
         screenTitle: String,
         properties: Map<String, Any>?,
     ) {
-        config.withCaptureContextChange {
-            if (!isEnabled()) {
-                return
-            }
-
-            val trimmedTitle = screenTitle.trim()
-            if (trimmedTitle.isEmpty()) {
-                return
-            }
-
-            // Cache for capture-time context snapshot on log records and for the
-            // $screen_name auto-attach on subsequent events (see buildProperties).
-            this.lastScreenName = trimmedTitle
-
-            val props = mutableMapOf<String, Any>()
-            props["\$screen_name"] = trimmedTitle
-
-            properties?.let {
-                props.putAll(it)
-            }
-
-            capture(PostHogEventName.SCREEN.event, properties = props)
+        config.notifyIntegrationsChanged()
+        if (!isEnabled()) {
+            return
         }
+
+        val trimmedTitle = screenTitle.trim()
+        if (trimmedTitle.isEmpty()) {
+            return
+        }
+
+        // Cache for capture-time context snapshot on log records and for the
+        // $screen_name auto-attach on subsequent events (see buildProperties).
+        this.lastScreenName = trimmedTitle
+
+        val props = mutableMapOf<String, Any>()
+        props["\$screen_name"] = trimmedTitle
+
+        properties?.let {
+            props.putAll(it)
+        }
+
+        capture(PostHogEventName.SCREEN.event, properties = props)
     }
 
     public override fun alias(alias: String) {
@@ -1395,128 +1392,127 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        config.withCaptureContextChange {
-            if (!isEnabled()) {
-                return
+        config.notifyIntegrationsChanged()
+        if (!isEnabled()) {
+            return
+        }
+
+        if (!requirePersonProcessing("identify")) {
+            return
+        }
+
+        if (distinctId.isBlank()) {
+            config?.logger?.log("identify call not allowed, distinctId is invalid: $distinctId.")
+            return
+        }
+
+        val previousDistinctId = this.distinctId
+
+        val props = mutableMapOf<String, Any>()
+
+        if (config?.reuseAnonymousId != true) {
+            val anonymousId = this.anonymousId
+            if (anonymousId.isNotBlank()) {
+                props["\$anon_distinct_id"] = anonymousId
+            } else {
+                config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
             }
+        }
 
-            if (!requirePersonProcessing("identify")) {
-                return
+        val hasDifferentDistinctId = previousDistinctId != distinctId
+
+        // Read isIdentified, decide the transition, and persist it atomically so two concurrent
+        // identify() calls on an anonymous user can't both observe isIdentified == false and each
+        // emit a person-processed event for the same identity transition. isIdentified must also be
+        // set before capture() below, which reads it during event enrichment.
+        val shouldIdentify: Boolean
+        val shouldTransitionToIdentified: Boolean
+        synchronized(identifiedLock) {
+            val alreadyIdentified = isIdentified
+            shouldIdentify = hasDifferentDistinctId && !alreadyIdentified
+            shouldTransitionToIdentified = !hasDifferentDistinctId && !alreadyIdentified
+            if (shouldIdentify || shouldTransitionToIdentified) {
+                isIdentified = true
             }
+        }
 
-            if (distinctId.isBlank()) {
-                config?.logger?.log("identify call not allowed, distinctId is invalid: $distinctId.")
-                return
-            }
-
-            val previousDistinctId = this.distinctId
-
-            val props = mutableMapOf<String, Any>()
+        if (shouldIdentify) {
+            capture(
+                PostHogEventName.IDENTIFY.event,
+                distinctId = distinctId,
+                properties = props,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+            )
 
             if (config?.reuseAnonymousId != true) {
-                val anonymousId = this.anonymousId
-                if (anonymousId.isNotBlank()) {
-                    props["\$anon_distinct_id"] = anonymousId
+                // We keep the AnonymousId to be used by flags calls and identify to link the previousId
+                if (previousDistinctId.isNotBlank()) {
+                    this.anonymousId = previousDistinctId
                 } else {
-                    config?.logger?.log("identify called with invalid anonymousId: $anonymousId.")
+                    config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
                 }
             }
+            this.distinctId = distinctId
 
-            val hasDifferentDistinctId = previousDistinctId != distinctId
+            // Automatically set person properties for feature flags during identify() call
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
-            // Read isIdentified, decide the transition, and persist it atomically so two concurrent
-            // identify() calls on an anonymous user can't both observe isIdentified == false and each
-            // emit a person-processed event for the same identity transition. isIdentified must also be
-            // set before capture() below, which reads it during event enrichment.
-            val shouldIdentify: Boolean
-            val shouldTransitionToIdentified: Boolean
-            synchronized(identifiedLock) {
-                val alreadyIdentified = isIdentified
-                shouldIdentify = hasDifferentDistinctId && !alreadyIdentified
-                shouldTransitionToIdentified = !hasDifferentDistinctId && !alreadyIdentified
-                if (shouldIdentify || shouldTransitionToIdentified) {
-                    isIdentified = true
-                }
+            // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+            isOptedOut()
+            pushSubscriptionManager?.resendIfDistinctIdChanged()
+
+            // only because of testing in isolation, this flag is always enabled
+            if (reloadFeatureFlags) {
+                reloadFeatureFlags(config?.onFeatureFlags)
+            }
+            // we need to make sure the user props update is for the same user
+            // otherwise they have to reset and identify again
+        } else if (shouldTransitionToIdentified) {
+            // Matching id while still anonymous (e.g. a non-identified bootstrap seeded the same
+            // id): upgrade to identified and emit one person-processed $set — there is no
+            // anonymous id to merge, so no $identify (matches posthog-js).
+            // isIdentified was already set above under identifiedLock.
+            this.distinctId = distinctId
+
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+
+            capture(
+                PostHogEventName.SET.event,
+                distinctId = distinctId,
+                userProperties = userProperties ?: emptyMap(),
+                userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
+            )
+
+            // The transition event must fire even when an identical property call was cached
+            // earlier; cache only after capture so deduplication cannot suppress it.
+            synchronized(cachedPersonPropertiesLock) {
+                cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
             }
 
-            if (shouldIdentify) {
-                capture(
-                    PostHogEventName.IDENTIFY.event,
-                    distinctId = distinctId,
-                    properties = props,
-                    userProperties = userProperties,
-                    userPropertiesSetOnce = userPropertiesSetOnce,
+            // The identified state itself is not part of the flags request; reload only when the
+            // caller supplied properties that can affect flag evaluation.
+            if ((userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true) && reloadFeatureFlags) {
+                reloadFeatureFlags(config?.onFeatureFlags)
+            }
+        } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
+            if (shouldCapturePersonPropertiesEvent(
+                    distinctId,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
                 )
-
-                if (config?.reuseAnonymousId != true) {
-                    // We keep the AnonymousId to be used by flags calls and identify to link the previousId
-                    if (previousDistinctId.isNotBlank()) {
-                        this.anonymousId = previousDistinctId
-                    } else {
-                        config?.logger?.log("identify called with invalid former distinctId: $previousDistinctId.")
-                    }
-                }
-                this.distinctId = distinctId
-
-                // Automatically set person properties for feature flags during identify() call
-                setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
-
-                // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
-                isOptedOut()
-                pushSubscriptionManager?.resendIfDistinctIdChanged()
-
-                // only because of testing in isolation, this flag is always enabled
-                if (reloadFeatureFlags) {
-                    reloadFeatureFlags(config?.onFeatureFlags)
-                }
-                // we need to make sure the user props update is for the same user
-                // otherwise they have to reset and identify again
-            } else if (shouldTransitionToIdentified) {
-                // Matching id while still anonymous (e.g. a non-identified bootstrap seeded the same
-                // id): upgrade to identified and emit one person-processed $set — there is no
-                // anonymous id to merge, so no $identify (matches posthog-js).
-                // isIdentified was already set above under identifiedLock.
-                this.distinctId = distinctId
-
-                setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
-
+            ) {
                 capture(
                     PostHogEventName.SET.event,
                     distinctId = distinctId,
-                    userProperties = userProperties ?: emptyMap(),
-                    userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
+                    userProperties = userProperties,
+                    userPropertiesSetOnce = userPropertiesSetOnce,
                 )
-
-                // The transition event must fire even when an identical property call was cached
-                // earlier; cache only after capture so deduplication cannot suppress it.
-                synchronized(cachedPersonPropertiesLock) {
-                    cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
-                }
-
-                // The identified state itself is not part of the flags request; reload only when the
-                // caller supplied properties that can affect flag evaluation.
-                if ((userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true) && reloadFeatureFlags) {
-                    reloadFeatureFlags(config?.onFeatureFlags)
-                }
-            } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-                if (shouldCapturePersonPropertiesEvent(
-                        distinctId,
-                        userProperties,
-                        userPropertiesSetOnce,
-                        "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
-                    )
-                ) {
-                    capture(
-                        PostHogEventName.SET.event,
-                        distinctId = distinctId,
-                        userProperties = userProperties,
-                        userPropertiesSetOnce = userPropertiesSetOnce,
-                    )
-                }
-                // Note we don't reload flags on property changes as these get processed async
-            } else {
-                config?.logger?.log("already identified with id: $distinctId.")
             }
+            // Note we don't reload flags on property changes as these get processed async
+        } else {
+            config?.logger?.log("already identified with id: $distinctId.")
         }
     }
 
@@ -2001,70 +1997,69 @@ public class PostHog private constructor(
     }
 
     public override fun reset() {
-        config.withCaptureContextChange {
-            if (!isEnabled()) {
-                return
-            }
+        config.notifyIntegrationsChanged()
+        if (!isEnabled()) {
+            return
+        }
 
-            // Capture the logging-out identity before preferences are cleared, so the push token can be
-            // unregistered for it and re-registered under the new anonymous id (decision 5/6).
-            val previousDistinctId = distinctId
+        // Capture the logging-out identity before preferences are cleared, so the push token can be
+        // unregistered for it and re-registered under the new anonymous id (decision 5/6).
+        val previousDistinctId = distinctId
 
-            // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
-            // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
-            // stable feature flag bucketing across identity changes.
-            // Preserve SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS (project-level config
-            // from /config, not user data) so each survives an identity change without an app restart.
-            // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
-            // notification tap being counted twice, so clearing it would re-enable a duplicate.
-            // Preserve PUSH_SUBSCRIPTION_REJECTED too: it records that the project API key names no
-            // project, which a logout does not change, and clearing it restarts the registration loop.
-            val except =
-                mutableListOf(
-                    VERSION,
-                    BUILD,
-                    DEVICE_ID,
-                    SESSION_REPLAY,
-                    ERROR_TRACKING,
-                    CAPTURE_PERFORMANCE,
-                    SURVEYS,
-                    PUSH_OPENED_MESSAGE_IDS,
-                    PUSH_SUBSCRIPTION_REJECTED,
-                )
-            // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
-            // account on the device)
-            if (config?.reuseAnonymousId == true) {
-                except.add(ANONYMOUS_ID)
-            }
-            getPreferences().clear(except = except.toList())
-            remoteConfig?.clear()
-            featureFlagsCalled.clear()
-            lastScreenName = null
-            synchronized(cachedPersonPropertiesLock) {
-                cachedPersonPropertiesHash = null
-            }
-            synchronized(identifiedLock) {
-                isIdentifiedLoaded = false
-            }
-            synchronized(personProcessingLock) {
-                isPersonProcessingLoaded = false
-            }
-            synchronized(anonymousLock) {
-                transientAnonymousId = null
-            }
+        // Preserve BUILD and VERSION to prevent over-sending "Application Installed" events
+        // and under-sending "Application Updated" events. Preserve DEVICE_ID to maintain
+        // stable feature flag bucketing across identity changes.
+        // Preserve SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS (project-level config
+        // from /config, not user data) so each survives an identity change without an app restart.
+        // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
+        // notification tap being counted twice, so clearing it would re-enable a duplicate.
+        // Preserve PUSH_SUBSCRIPTION_REJECTED too: it records that the project API key names no
+        // project, which a logout does not change, and clearing it restarts the registration loop.
+        val except =
+            mutableListOf(
+                VERSION,
+                BUILD,
+                DEVICE_ID,
+                SESSION_REPLAY,
+                ERROR_TRACKING,
+                CAPTURE_PERFORMANCE,
+                SURVEYS,
+                PUSH_OPENED_MESSAGE_IDS,
+                PUSH_SUBSCRIPTION_REJECTED,
+            )
+        // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
+        // account on the device)
+        if (config?.reuseAnonymousId == true) {
+            except.add(ANONYMOUS_ID)
+        }
+        getPreferences().clear(except = except.toList())
+        remoteConfig?.clear()
+        featureFlagsCalled.clear()
+        lastScreenName = null
+        synchronized(cachedPersonPropertiesLock) {
+            cachedPersonPropertiesHash = null
+        }
+        synchronized(identifiedLock) {
+            isIdentifiedLoaded = false
+        }
+        synchronized(personProcessingLock) {
+            isPersonProcessingLoaded = false
+        }
+        synchronized(anonymousLock) {
+            transientAnonymousId = null
+        }
 
-            endSession()
-            startSession()
+        endSession()
+        startSession()
 
-            // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
-            isOptedOut()
-            pushSubscriptionManager?.handleReset(previousDistinctId)
+        // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
+        isOptedOut()
+        pushSubscriptionManager?.handleReset(previousDistinctId)
 
-            // reload flags as anon user
-            // only because of testing in isolation, this flag is always enabled
-            if (reloadFeatureFlags) {
-                reloadFeatureFlags(config?.onFeatureFlags)
-            }
+        // reload flags as anon user
+        // only because of testing in isolation, this flag is always enabled
+        if (reloadFeatureFlags) {
+            reloadFeatureFlags(config?.onFeatureFlags)
         }
     }
 

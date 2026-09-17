@@ -24,12 +24,12 @@ internal class PostHogCaptureGuardTest {
     private lateinit var config: PostHogConfig
     private val guard = PostHogCaptureGuard()
     private val integration =
-        object : PostHogIntegration, PostHogCaptureContextReceiver {
+        object : PostHogIntegration {
             override fun install(postHog: PostHogInterface) = guard.setActive(true)
 
             override fun uninstall() = guard.setActive(false)
 
-            override fun onCaptureContextChange(inProgress: Boolean) = guard.onCaptureContextChange(inProgress)
+            override fun onChange() = guard.invalidate()
         }
 
     @Suppress("DEPRECATION")
@@ -186,23 +186,26 @@ internal class PostHogCaptureGuardTest {
     }
 
     @Test
-    fun `nested transition observers cannot begin observation and failed callbacks unwind`() {
+    fun `one-shot notifications invalidate without pausing and callback failures cannot block consent`() {
         val sut = setup()
+        val before = assertNotNull(guard.generation())
+        val generations = mutableListOf<Long?>()
         var calls = 0
         config.addIntegration(
-            object : PostHogIntegration, PostHogCaptureContextReceiver {
-                override fun onCaptureContextChange(inProgress: Boolean) {
-                    if (!inProgress) return
+            object : PostHogIntegration {
+                override fun onChange() {
                     calls++
-                    assertNull(guard.generation())
+                    generations += guard.generation()
                     if (calls == 1) sut.screen("Nested")
                     throw IllegalStateException("test")
                 }
             },
         )
         sut.optOut()
+        assertTrue(sut.isOptOut())
+        assertEquals(2, calls)
+        assertTrue(generations.all { it != null && it != before })
         sut.optIn()
-        assertTrue(calls >= 2)
         assertNotNull(guard.generation())
     }
 
@@ -249,23 +252,39 @@ internal class PostHogCaptureGuardTest {
     }
 
     @Test
-    fun `context change hooks remain paired when close removes config and callbacks throw`() {
+    fun `close notifies once and uninstalls even when callbacks throw`() {
         val sut = setup()
-        val phases = mutableListOf<Boolean>()
+        var changes = 0
+        var uninstalls = 0
         config.addIntegration(
-            object : PostHogIntegration, PostHogCaptureContextReceiver {
-                override fun onCaptureContextChange(inProgress: Boolean) {
-                    phases += inProgress
-                    if (inProgress) throw IllegalStateException("test")
+            object : PostHogIntegration {
+                override fun onChange() {
+                    changes++
+                    throw IllegalStateException("test")
+                }
+
+                override fun uninstall() {
+                    uninstalls++
                 }
             },
         )
         sut.close()
-        assertEquals(listOf(true, false), phases)
+        assertEquals(1, changes)
+        assertEquals(1, uninstalls)
         assertNull(guard.generation())
-        guard.setActive(true)
-        assertNotNull(guard.generation())
-        guard.setActive(false)
+    }
+
+    @Test
+    fun `uninstall independently invalidates pending observations`() {
+        val sut = setup()
+        val before = assertNotNull(guard.generation())
+        integration.uninstall()
+        assertNull(guard.generation())
+        integration.install(sut)
+        assertNotEquals(before, guard.generation())
+        emit(sut, before)
+        drain()
+        assertEquals(0, http.requestCount)
     }
 
     @Test
