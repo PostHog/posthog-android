@@ -130,12 +130,11 @@ internal class InteractionTargetResolver(
             return if (inside) listOf(view) else null
         }
         val path = hit(root, screenX - location[0], screenY - location[1], 0) ?: return null
-        if (incomplete || path.any { it.isInteractionIgnored() }) return null
-        if (path.any { it.isClickable && !it.isEnabled }) return null
+        if (incomplete) return null
         val targetIndex = path.indexOfLast { it.isClickable && it.isEnabled }
 
         fun nativeTarget(): InteractionTarget? {
-            if (targetIndex < 0) return null
+            if (targetIndex < 0 || path.any { it.isInteractionIgnored() || (it.isClickable && !it.isEnabled) }) return null
             val targetPath = path.take(targetIndex + 1)
             return InteractionTarget(
                 targetPath.last(),
@@ -151,12 +150,14 @@ internal class InteractionTargetResolver(
         if (composeIndex >= 0) {
             // AndroidViewsHandler and rendering layers can cover the entire Compose host. They
             // must not hide semantic targets, and native interop still needs Compose exclusions.
+            if (path.take(composeIndex + 1).any { it.isInteractionIgnored() || (it.isClickable && !it.isEnabled) }) return null
             return ComposeInteractionTargetResolver.resolve(
                 path[composeIndex],
                 screenX,
                 screenY,
                 path.take(composeIndex + 1),
-                nativeTarget = if (targetIndex > composeIndex) nativeTarget() else null,
+                nativeTarget = nativeTarget(),
+                nativeLayoutInfo = ComposeInteractionTargetResolver.interopLayoutInfo(path.drop(composeIndex + 1)),
             )
         }
         return nativeTarget()

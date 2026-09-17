@@ -2,6 +2,7 @@ package com.posthog.android.internal
 
 import android.view.View
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -20,6 +21,7 @@ internal object ComposeInteractionTargetResolver {
         screenY: Float,
         viewPath: List<View>,
         nativeTarget: InteractionTarget? = null,
+        nativeLayoutInfo: LayoutInfo? = null,
     ): InteractionTarget? {
         val owner = (view as? RootForTest)?.semanticsOwner ?: return null
         val screen = IntArray(2)
@@ -38,7 +40,6 @@ internal object ComposeInteractionTargetResolver {
                 incomplete = true
                 return null
             }
-            if (node.config.contains(SemanticsProperties.InvisibleToUser)) return null
             val children = node.children
             if (children.size > MAX_INTERACTION_NODES - visited) {
                 incomplete = true
@@ -61,13 +62,15 @@ internal object ComposeInteractionTargetResolver {
         ) {
             return null
         }
-        if (nativeTarget != null) return nativeTarget
+        if (nativeLayoutInfo != null && path.any { it.layoutInfo === nativeLayoutInfo }) return nativeTarget
+        val nativeAncestor = nativeTarget?.view?.get()?.let { candidate -> viewPath.any { it === candidate } } == true
+        if (nativeTarget != null && !nativeAncestor && nativeLayoutInfo == null) return null
         if (path.any { it.config.contains(SemanticsActions.OnClick) && it.config.contains(SemanticsProperties.Disabled) }) return null
         val targetIndex =
             path.indexOfLast {
                 it.config.contains(SemanticsActions.OnClick) && !it.config.contains(SemanticsProperties.Disabled)
             }
-        if (targetIndex < 0) return null
+        if (targetIndex < 0) return nativeTarget.takeIf { nativeAncestor }
         val targetPath = path.take(targetIndex + 1)
         val elements =
             targetPath.asReversed().map { node ->
@@ -83,6 +86,17 @@ internal object ComposeInteractionTargetResolver {
             } + viewPath.asReversed().map { it.interactionElement() }
         return InteractionTarget(view, targetPath.last().id, elements.take(MAX_INTERACTION_ELEMENTS))
     }
+
+    // The native child tree has no Compose paint order. Match its holder to the winning layout
+    // before returning a native target, so an overlaid Compose control cannot be misattributed.
+    fun interopLayoutInfo(path: List<View>): LayoutInfo? =
+        try {
+            val holderClass = Class.forName("androidx.compose.ui.viewinterop.AndroidViewHolder")
+            val holder = path.lastOrNull { holderClass.isInstance(it) }
+            holder?.let { holderClass.getMethod("getLayoutNode").invoke(it) as? LayoutInfo }
+        } catch (_: Throwable) {
+            null
+        }
 
     private fun SemanticsNode.interactionType(): String =
         when (config.getOrNull(SemanticsProperties.Role)) {

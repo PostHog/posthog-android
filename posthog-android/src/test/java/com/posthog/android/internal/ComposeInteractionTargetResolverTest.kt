@@ -91,9 +91,11 @@ internal class ComposeInteractionTargetResolverTest {
     @Test
     fun `Compose exclusion also gates native AndroidView interop`() {
         val native = InteractionTarget(view, elements = listOf(InteractionElement("button", "native_button")))
-        assertEquals(native, ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native))
+        val layout = mock<androidx.compose.ui.layout.LayoutInfo>()
+        whenever(child.layoutInfo).thenReturn(layout)
+        assertEquals(native, ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native, layout))
         rootConfig[PostHogAutocaptureIgnore] = true
-        assertNull(ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native))
+        assertNull(ComposeInteractionTargetResolver.resolve(view, 20f, 20f, emptyList(), native, layout))
     }
 
     @Test
