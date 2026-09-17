@@ -2,9 +2,11 @@ package com.posthog.android
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import com.posthog.PostHog
 import com.posthog.PostHogInterface
+import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.PostHogActivityLifecycleCallbackIntegration
@@ -42,6 +44,54 @@ public class PostHogAndroid private constructor() {
         private val lock = Any()
 
         /**
+         * Retained so a host can hand the SDK a launch intent after setup; see
+         * [capturePushNotificationOpened]. Never cleared in production — a `close()` leaves the last
+         * config here.
+         */
+        @Volatile
+        private var androidConfig: PostHogAndroidConfig? = null
+
+        @PostHogVisibleForTesting
+        internal fun resetAndroidConfig() {
+            androidConfig = null
+        }
+
+        /**
+         * Captures `$push_notification_opened` for a notification tap carried on [intent].
+         *
+         * The SDK reads the tray intent when the launch Activity is created. A host that configures
+         * PostHog from its own runtime — Flutter and React Native reach `setup()` from Dart/JS, after
+         * the launch Activity has already created, started and resumed — installs too late to see that
+         * callback, and should pass the Activity's intent here instead.
+         *
+         * Deduped by `google.message_id`, so calling it alongside the automatic path cannot
+         * double-count, including across a process-death restore: on this path recently opened ids are
+         * remembered on disk, because a caller with no `savedInstanceState` cannot otherwise tell a
+         * restore — which hands the Activity back its original intent — from a real second tap. The
+         * cost of that trade is that a genuine second tap of the *same* notification after a process
+         * restart reads as a restore and is dropped, until that id ages out of the remembered set.
+         *
+         * No-op when [intent] is null or carries no push id, when `capturePushNotificationOpened` is
+         * disabled, or before [setup]. Events go to the shared instance, so a host that only called
+         * [with] is not served.
+         *
+         * Covers launch intents only. A warm-start tap arrives through `Activity.onNewIntent`, which
+         * nothing here observes — pass that intent in yourself.
+         */
+        public fun capturePushNotificationOpened(intent: Intent?) {
+            val config = androidConfig ?: return
+            if (!config.capturePushNotificationOpened) return
+            val pushIntent = intent ?: return
+
+            PostHogActivityLifecycleCallbackIntegration.capturePushNotificationOpened(
+                intent = pushIntent,
+                postHog = PostHog,
+                config = config,
+                usePersistedDedupe = true,
+            )
+        }
+
+        /**
          * Sets up the SDK and stores it as the global singleton.
          *
          * @param context Android context; the application context is retained internally.
@@ -55,6 +105,15 @@ public class PostHogAndroid private constructor() {
                 setAndroidConfig(context.appContext(), config)
 
                 PostHog.setup(config)
+
+                // Only setup() arms the manual entry point: with() builds a secondary instance whose
+                // config must not decide the gate, or the preferences file, for events that are
+                // delivered to the shared one. The identity check is the other half of that: setup()
+                // no-ops when an instance is already active or the key was empty, and adopting a
+                // config it rejected would gate and persist under a project nothing is sent to.
+                if (PostHog.getConfig<PostHogAndroidConfig>() === config) {
+                    androidConfig = config
+                }
             }
         }
 
@@ -84,10 +143,9 @@ public class PostHogAndroid private constructor() {
             config.logger =
                 if (config.logger is PostHogNoOpLogger) PostHogAndroidLogger(config) else config.logger
 
-            val packageInfo = getPackageInfo(context, config)
-            val packageName = packageInfo?.packageName ?: ""
-            val versionName = packageInfo?.versionName ?: ""
-            val buildNumber = packageInfo?.versionCodeCompat() ?: 0L
+            val packageInfo by lazy { getPackageInfo(context, config) }
+            val packageInfoProvider = { packageInfo }
+            val packageName = context.packageName ?: ""
 
             // only frames coming from the package name will be considered inApp by default
             if (packageName.isNotEmpty() && !packageName.startsWith("android.")) {
@@ -105,6 +163,7 @@ public class PostHogAndroid private constructor() {
                     PostHogAndroidContext(
                         context,
                         config,
+                        packageInfoProvider,
                         contextNetworkStatus::getNetworkProperties,
                     )
                 if (config.networkStatus !== contextNetworkStatus) {
@@ -114,14 +173,12 @@ public class PostHogAndroid private constructor() {
                 config.networkStatus = PostHogAndroidNetworkStatus(context)
             }
 
-            val legacyPath = context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE)
-            val path = File(context.cacheDir, "posthog-disk-queue")
-            val replayPath = File(context.cacheDir, "posthog-disk-replay-queue")
-            val logsPath = File(context.cacheDir, "posthog-disk-logs-queue")
-            config.legacyStoragePrefix = config.legacyStoragePrefix ?: legacyPath.absolutePath
-            config.storagePrefix = config.storagePrefix ?: path.absolutePath
-            config.replayStoragePrefix = config.replayStoragePrefix ?: replayPath.absolutePath
-            config.logsStoragePrefix = config.logsStoragePrefix ?: logsPath.absolutePath
+            val cacheDir by lazy { context.cacheDir }
+            config.legacyStoragePrefix =
+                config.legacyStoragePrefix ?: context.getDir("app_posthog-disk-queue", Context.MODE_PRIVATE).absolutePath
+            config.storagePrefix = config.storagePrefix ?: File(cacheDir, "posthog-disk-queue").absolutePath
+            config.replayStoragePrefix = config.replayStoragePrefix ?: File(cacheDir, "posthog-disk-replay-queue").absolutePath
+            config.logsStoragePrefix = config.logsStoragePrefix ?: File(cacheDir, "posthog-disk-logs-queue").absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
@@ -151,9 +208,13 @@ public class PostHogAndroid private constructor() {
             // session before any UI exists is cleared rather than silently rotated.
             PostHogSessionManager.setAppInBackground(true)
 
-            val releaseIdentifierFallback = "$packageName@$versionName+$buildNumber"
             val metaPropertiesApplier = PostHogMetaPropertiesApplier()
-            metaPropertiesApplier.applyToConfig(context, config, releaseIdentifierFallback)
+            metaPropertiesApplier.applyToConfig(context, config) {
+                val info = packageInfo
+                val versionName = info?.versionName ?: ""
+                val buildNumber = info?.versionCodeCompat() ?: 0L
+                "$packageName@$versionName+$buildNumber"
+            }
 
             // Wire session replay sample rate provider so the core SDK can read the local value
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
@@ -175,9 +236,11 @@ public class PostHogAndroid private constructor() {
                 }
             }
             if (config.captureApplicationLifecycleEvents) {
-                config.addIntegration(PostHogAppInstallIntegration(context, config))
+                config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
             }
-            config.addIntegration(PostHogLifecycleObserverIntegration(context, config, mainHandler))
+            config.addIntegration(
+                PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider),
+            )
             if (config.surveys) {
                 config.addIntegration(PostHogSurveysIntegration(context, config))
             }

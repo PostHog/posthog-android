@@ -92,13 +92,14 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
     // tests
-    testImplementation("junit:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
     testImplementation("androidx.test.ext:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
     testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
     testImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:${PosthogBuildConfig.Dependencies.ANDROIDX_JUNIT}")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
 }
 
 project.publishingAndroidConfig()

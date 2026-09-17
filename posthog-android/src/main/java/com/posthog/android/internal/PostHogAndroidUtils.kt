@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Process
 import android.telephony.TelephonyManager
 import android.util.Base64
+import android.util.Base64OutputStream
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import com.posthog.PostHogInternal
@@ -216,6 +217,14 @@ private fun webpLosslessFormat(): Bitmap.CompressFormat =
         Bitmap.CompressFormat.WEBP
     }
 
+// Sizing this from allocationByteCount reserves a second uncompressed frame, about 10 MB on a
+// 1080x2400 screen, on every capture. A lossy frame of a UI needs well under a sixteenth of a byte
+// per pixel, and Base64 adds a third on top.
+private fun Bitmap.base64BufferSize(): Int =
+    (width.toLong() * height.toLong() / 12)
+        .coerceAtLeast(4L * 1024)
+        .toInt()
+
 @PostHogInternal
 @Suppress("DEPRECATION")
 public fun Bitmap.webpBase64(quality: Int = 30): String? {
@@ -249,11 +258,12 @@ public fun Bitmap.base64(
             else -> "jpeg"
         }
 
-    ByteArrayOutputStream(allocationByteCount).use {
+    ByteArrayOutputStream(base64BufferSize()).use { out ->
+        out.write("data:image/$htmlFormat;base64,".toByteArray(Charsets.US_ASCII))
         // we can make format and type configurable
-        compress(format, quality, it)
-        val byteArray = it.toByteArray()
-        val encoded = Base64.encodeToString(byteArray, Base64.DEFAULT) ?: return null
-        return "data:image/$htmlFormat;base64,$encoded"
+        Base64OutputStream(out, Base64.DEFAULT or Base64.NO_CLOSE).use {
+            compress(format, quality, it)
+        }
+        return out.toString("US-ASCII")
     }
 }

@@ -1,5 +1,17 @@
 ## Next
 
+## 2.17.0
+
+### Minor Changes
+
+- 853ec7d: Add the internal `persistOptOut` config so a wrapper SDK that owns consent can stop a persisted opt-out from overriding the value it passes to setup.
+
+## 2.16.1
+
+### Patch Changes
+
+- 5e3267b: Add `PostHogAndroid.capturePushNotificationOpened(intent)` to capture `$push_notification_opened` for a launch intent the SDK was installed too late to read. In the published test fixtures, `PostHogFake.optOut()` and `optIn()` now change what `isOptOut()` returns, where they were previously no-ops.
+
 ## 2.16.0
 
 ### Minor Changes

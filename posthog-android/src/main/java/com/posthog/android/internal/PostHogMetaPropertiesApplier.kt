@@ -34,7 +34,7 @@ internal class PostHogMetaPropertiesApplier() {
     fun applyToConfig(
         context: Context,
         config: PostHogAndroidConfig,
-        releaseIdentifierFallback: String,
+        releaseIdentifierFallback: () -> String,
     ) {
         // if releaseIdentifier is already set, we don't need to do anything
         if (!config.releaseIdentifier.isNullOrEmpty()) {
@@ -53,8 +53,9 @@ internal class PostHogMetaPropertiesApplier() {
             }
         }
 
-        config.logger.log("releaseIdentifier not found, using fallback: $releaseIdentifierFallback")
-        config.releaseIdentifier = releaseIdentifierFallback
+        val fallback = releaseIdentifierFallback()
+        config.logger.log("releaseIdentifier not found, using fallback: $fallback")
+        config.releaseIdentifier = fallback
     }
 
     companion object {
