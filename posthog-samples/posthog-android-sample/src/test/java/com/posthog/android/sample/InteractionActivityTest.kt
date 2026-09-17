@@ -120,6 +120,27 @@ class InteractionActivityTest {
             assertFalse(chains.any { it.contains("ignored") || it.contains("responses") })
             assertTrue(captures.all { it.properties?.containsKey("\$session_id") == true })
             assertTrue(captures.all { it.properties?.get("\$screen_name") == "Interaction" })
+            var nestedClicks = 0
+            compose.runOnIdle {
+                compose.activity.setContent {
+                    Column(Modifier.postHogAutocaptureIgnore()) {
+                        AndroidView(factory = { context ->
+                            ComposeView(context).apply {
+                                setContent {
+                                    Button(onClick = { nestedClicks++ }, modifier = Modifier.testTag("nested_target")) {
+                                        Text("Nested control")
+                                    }
+                                }
+                            }
+                        })
+                    }
+                }
+            }
+            compose.waitForIdle()
+            tapCompose("nested_target")
+            assertEquals(1, nestedClicks)
+            assertEquals(4, events.count { it.event == "\$autocapture" })
+
             var hiddenClicks = 0
             compose.runOnIdle {
                 compose.activity.setContent {
