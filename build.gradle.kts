@@ -39,6 +39,7 @@ subprojects {
         testLogging {
             exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
             showStackTraces = true
+            showStandardStreams = true
             events("passed", "skipped", "failed")
         }
     }

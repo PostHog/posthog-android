@@ -315,7 +315,17 @@ internal class PostHogAndroidEventSnapshotsTest {
 
         val resource = javaClass.getResource("/json/snapshots/$name")
         assertNotNull(resource, "Missing snapshot resource json/snapshots/$name")
-        val expected = config.serializer.deserializeString(resource.readText())
+        val text = resource.readText()
+        // TEMPORARY DIAGNOSTIC: CI's expected map contains keys the committed fixture does not,
+        // so print which bytes were actually loaded from the classpath. Revert once identified.
+        val sha =
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(text.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+        println("SNAPSHOT-DIAG name=$name sha256=$sha url=$resource")
+        val all = javaClass.classLoader?.getResources("json/snapshots/$name")?.toList().orEmpty()
+        println("SNAPSHOT-DIAG name=$name classpath-copies=${all.size} $all")
+        val expected = config.serializer.deserializeString(text)
         assertEquals(
             expected,
             actual,
