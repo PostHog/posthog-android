@@ -65,12 +65,9 @@ internal object ComposeInteractionTargetResolver {
         if (nativeLayoutInfo != null && path.any { it.layoutInfo === nativeLayoutInfo }) return nativeTarget
         val nativeAncestor = nativeTarget?.view?.get()?.let { candidate -> viewPath.any { it === candidate } } == true
         if (nativeTarget != null && !nativeAncestor && nativeLayoutInfo == null) return null
-        if (path.any { it.config.contains(SemanticsActions.OnClick) && it.config.contains(SemanticsProperties.Disabled) }) return null
-        val targetIndex =
-            path.indexOfLast {
-                it.config.contains(SemanticsActions.OnClick) && !it.config.contains(SemanticsProperties.Disabled)
-            }
+        val targetIndex = path.indexOfLast { it.config.contains(SemanticsActions.OnClick) }
         if (targetIndex < 0) return nativeTarget.takeIf { nativeAncestor }
+        if (path[targetIndex].config.contains(SemanticsProperties.Disabled)) return null
         val targetPath = path.take(targetIndex + 1)
         val elements =
             targetPath.asReversed().map { node ->

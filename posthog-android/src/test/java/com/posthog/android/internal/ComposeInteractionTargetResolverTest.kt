@@ -99,6 +99,25 @@ internal class ComposeInteractionTargetResolverTest {
     }
 
     @Test
+    fun `enabled child of disabled clickable parent is captured unless the path is excluded`() {
+        rootConfig[SemanticsActions.OnClick] = AccessibilityAction(null) { true }
+        rootConfig[SemanticsProperties.Disabled] = Unit
+        assertEquals(2, assertNotNull(resolve()).semanticsId)
+        rootConfig[PostHogAutocaptureNoCapture] = true
+        assertNull(resolve())
+        rootConfig[PostHogAutocaptureNoCapture] = false
+        rootConfig[PostHogReplayMask] = true
+        assertNull(resolve())
+    }
+
+    @Test
+    fun `disabled clickable child does not fall back to enabled parent`() {
+        childConfig[SemanticsActions.OnClick] = AccessibilityAction(null) { true }
+        childConfig[SemanticsProperties.Disabled] = Unit
+        assertNull(resolve())
+    }
+
+    @Test
     fun `disabled buttons and points outside clipped bounds are not targets`() {
         buttonConfig[SemanticsProperties.Disabled] = Unit
         assertNull(resolve())

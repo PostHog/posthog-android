@@ -229,9 +229,23 @@ internal class InteractionActivityTest {
             assertEquals(1, enabledChildClicks)
             assertEquals(7, events.count { it.event == "\$autocapture" })
             assertTrue(events.last().properties?.get("\$elements_chain").toString().contains("enabled_child"))
+            compose.runOnIdle {
+                compose.activity.setContent {
+                    Box(Modifier.clickable(enabled = false) {}) {
+                        Button(onClick = { enabledChildClicks++ }, modifier = Modifier.testTag("enabled_child")) {
+                            Text("Enabled child")
+                        }
+                    }
+                }
+            }
+            compose.waitForIdle()
+            tapCompose("enabled_child")
+            assertEquals(2, enabledChildClicks)
+            assertEquals(8, events.count { it.event == "\$autocapture" })
+            assertTrue(events.last().properties?.get("\$elements_chain").toString().contains("enabled_child"))
             client!!.optOut()
             tapCompose("enabled_child")
-            assertEquals(7, events.count { it.event == "\$autocapture" })
+            assertEquals(8, events.count { it.event == "\$autocapture" })
         } finally {
             compose.runOnIdle { client?.close() }
         }

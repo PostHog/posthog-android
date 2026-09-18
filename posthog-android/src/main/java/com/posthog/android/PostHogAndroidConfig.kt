@@ -71,7 +71,7 @@ public open class PostHogAndroidConfig
          * tags and window-local touch coordinates in dp, never text, content descriptions or input
          * values. Use only non-sensitive test tags.
          * Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_no_capture` set to
-         * true, or use [PostHogAutocaptureModifier.postHogAutocaptureNoCapture] for Compose.
+         * true, or use [postHogAutocaptureNoCapture] for Compose.
          */
         public var captureElementInteractions: Boolean = false
 
