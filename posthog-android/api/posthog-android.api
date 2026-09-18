@@ -54,7 +54,6 @@ public final class com/posthog/android/PostHogAutocaptureModifierKt {
 public final class com/posthog/android/errortracking/PostHogNativeCrashIntegration : com/posthog/PostHogIntegration {
 	public fun <init> (Landroid/content/Context;Lcom/posthog/android/PostHogAndroidConfig;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
-	public fun onChange ()V
 	public fun onRemoteConfig (Z)V
 	public fun uninstall ()V
 }
@@ -100,7 +99,6 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public final fun captureSessionReplaySnapshot (Landroid/view/View;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;)Z
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
-	public fun onChange ()V
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public fun onRemoteConfig (Z)V
 	public fun onSessionIdChanged ()V
@@ -175,9 +173,7 @@ public class com/posthog/android/replay/internal/LogcatParser {
 public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/posthog/PostHogIntegration, com/posthog/internal/surveys/PostHogSurveysHandler {
 	public fun <init> (Landroid/content/Context;Lcom/posthog/PostHogConfig;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
-	public fun onChange ()V
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
-	public fun onRemoteConfig (Z)V
 	public fun onSurveysLoaded (Ljava/util/List;)V
 	public fun uninstall ()V
 }
