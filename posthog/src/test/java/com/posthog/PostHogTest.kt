@@ -2636,6 +2636,20 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `reset clears saved survey progress`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        try {
+            config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, mapOf("survey" to "saved"))
+            sut.reset()
+            assertNull(config.cachePreferences?.getValue(PostHogPreferences.SURVEY_PROGRESS))
+        } finally {
+            sut.close()
+            http.shutdown()
+        }
+    }
+
+    @Test
     fun `reset reloads flags as anon user`() {
         val http = mockHttp()
         val url = http.url("/")

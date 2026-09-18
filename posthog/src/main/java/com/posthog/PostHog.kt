@@ -364,8 +364,7 @@ public class PostHog private constructor(
                             surveysHandler = it
                             // Immediately push any cached surveys from remote config
                             try {
-                                val surveys = remoteConfig?.getSurveys() ?: emptyList()
-                                it.onSurveysLoaded(surveys)
+                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
                             } catch (e: Throwable) {
                                 config.logger.log("Pushing cached surveys to integration failed: $e.")
                             }
@@ -1982,7 +1981,19 @@ public class PostHog private constructor(
         if (config?.reuseAnonymousId == true) {
             except.add(ANONYMOUS_ID)
         }
-        getPreferences().clear(except = except.toList())
+        val surveysConfig = config?.surveysConfig
+        if (surveysConfig != null) {
+            synchronized(surveysConfig) {
+                getPreferences().clear(except = except.toList())
+                try {
+                    surveysHandler?.onReset()
+                } catch (error: Throwable) {
+                    config?.logger?.log("Resetting survey presentation failed: $error")
+                }
+            }
+        } else {
+            getPreferences().clear(except = except.toList())
+        }
         remoteConfig?.clear()
         featureFlagsCalled.clear()
         lastScreenName = null
