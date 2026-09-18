@@ -582,6 +582,9 @@ internal class PostHogFeatureFlags(
                 etag = response.etag ?: etag
                 clearKnownMissingFlagKeys()
                 config.logger.log("Feature flags not modified, using cached definitions")
+                if (shouldFetch) {
+                    republishFlagDefinitionsWhenCacheEmpty()
+                }
                 return
             }
 
@@ -603,8 +606,15 @@ internal class PostHogFeatureFlags(
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
 
-            if (shouldFetch && cacheData != null) {
-                storeFlagDefinitionsInCache(cacheData)
+            // With a cache provider the ETag stands for what the shared cache holds, not for what
+            // this instance holds. Drop it whenever these definitions did not reach the cache,
+            // otherwise the next poll gets a 304 with nothing to publish and every follower keeps
+            // the old definitions.
+            if (flagDefinitionCacheProvider != null) {
+                val publishedToCache = shouldFetch && cacheData != null && storeFlagDefinitionsInCache(cacheData)
+                if (!publishedToCache) {
+                    etag = null
+                }
             }
 
             notifyFeatureFlagsLoaded()
@@ -698,13 +708,24 @@ internal class PostHogFeatureFlags(
         return config.serializer.deserialize(StringReader(writer.toString()))
     }
 
-    private fun buildFlagDefinitionCacheData(response: LocalEvaluationResponse): Map<String, Any?>? {
+    private fun buildFlagDefinitionCacheData(response: LocalEvaluationResponse): Map<String, Any?>? =
+        buildFlagDefinitionCacheData(
+            flags = response.flags,
+            groupTypeMapping = response.groupTypeMapping,
+            cohorts = response.cohorts,
+        )
+
+    private fun buildFlagDefinitionCacheData(
+        flags: List<FlagDefinition>?,
+        groupTypeMapping: Map<String, String>?,
+        cohorts: Map<String, PropertyGroup>?,
+    ): Map<String, Any?>? {
         return try {
             val cacheData: Map<String, Any?> =
                 mapOf(
-                    "flags" to (response.flags ?: emptyList<FlagDefinition>()),
-                    "group_type_mapping" to (response.groupTypeMapping ?: emptyMap<String, String>()),
-                    "cohorts" to (response.cohorts ?: emptyMap<String, PropertyGroup>()),
+                    "flags" to (flags ?: emptyList<FlagDefinition>()),
+                    "group_type_mapping" to (groupTypeMapping ?: emptyMap<String, String>()),
+                    "cohorts" to (cohorts ?: emptyMap<String, PropertyGroup>()),
                 )
             val writer = StringWriter()
             config.serializer.serialize(cacheData, writer)
@@ -715,13 +736,46 @@ internal class PostHogFeatureFlags(
         }
     }
 
-    private fun storeFlagDefinitionsInCache(data: Map<String, Any?>) {
+    /**
+     * A 304 leaves this instance with nothing to publish, so a cache key that was evicted or
+     * flushed would stay empty until the definitions change. Rewrite the definitions this
+     * instance already holds when the cache reports that it has none.
+     */
+    private fun republishFlagDefinitionsWhenCacheEmpty() {
         val provider = flagDefinitionCacheProvider ?: return
-        awaitFlagDefinitionCacheProvider(
+        val cachedData =
+            awaitFlagDefinitionCacheProvider(
+                errorDescription = "Error reading feature flag definitions from cache provider",
+            ) {
+                provider.getFlagDefinitions()
+            }
+        if (cachedData != null) {
+            return
+        }
+
+        val definitions =
+            synchronized(loadLock) {
+                if (definitionsLoaded) Triple(featureFlags, groupTypeMapping, cohorts) else null
+            } ?: return
+
+        val cacheData =
+            buildFlagDefinitionCacheData(
+                flags = definitions.first,
+                groupTypeMapping = definitions.second,
+                cohorts = definitions.third,
+            ) ?: return
+
+        config.logger.log("Flag definition cache empty on unmodified response, republishing definitions")
+        storeFlagDefinitionsInCache(cacheData)
+    }
+
+    private fun storeFlagDefinitionsInCache(data: Map<String, Any?>): Boolean {
+        val provider = flagDefinitionCacheProvider ?: return true
+        return awaitFlagDefinitionCacheProvider(
             errorDescription = "Error storing feature flag definitions in cache provider",
         ) {
-            provider.onFlagDefinitionsReceived(data)
-        }
+            provider.onFlagDefinitionsReceived(data).thenApply { true }
+        } ?: false
     }
 
     private fun applyFlagDefinitions(
