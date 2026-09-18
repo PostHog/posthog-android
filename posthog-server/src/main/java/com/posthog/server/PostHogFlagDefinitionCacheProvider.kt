@@ -18,7 +18,8 @@ import java.util.concurrent.CompletionStage
  *
  * Provider errors are handled defensively by the SDK: failed reads fall back to the
  * API only when no definitions are already loaded, and failed writes/shutdowns are
- * logged without failing flag evaluation.
+ * logged without failing flag evaluation. A failed write also makes the next fetch
+ * unconditional, so the SDK retries the write with a full set of definitions.
  */
 public interface PostHogFlagDefinitionCacheProvider {
     /**
