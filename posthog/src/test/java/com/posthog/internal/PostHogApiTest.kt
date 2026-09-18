@@ -11,8 +11,10 @@ import com.posthog.mockHttp
 import com.posthog.unGzip
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertThrows
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -22,6 +24,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.SocketException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,6 +35,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogApiTest {
+    private companion object {
+        // What the servers answer today when they cannot read a gzipped body: capture formats
+        // CaptureError::RequestDecodingError("invalid GZIP data"), feature flags wraps the same
+        // error in its own sentence. Pinned here so a wording change breaks a test instead of
+        // silently turning the uncompressed retry off.
+        private const val CAPTURE_DECODE_ERROR = "failed to decode request: invalid GZIP data"
+        private const val FLAGS_DECODE_ERROR =
+            "Failed to decode request: invalid gzip data. Please check your request format and try again."
+    }
+
     private class TestLogger : PostHogLogger {
         val messages = mutableListOf<String>()
 
@@ -115,7 +129,7 @@ internal class PostHogApiTest {
     fun `batch sends the body again uncompressed when the server rejects the gzipped body`() {
         val http = MockWebServer()
         http.start()
-        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setResponseCode(400).setBody(CAPTURE_DECODE_ERROR))
         http.enqueue(MockResponse().setBody(""))
         http.enqueue(MockResponse().setBody(""))
 
@@ -138,7 +152,7 @@ internal class PostHogApiTest {
 
     @Test
     fun `batch keeps compressing when the uncompressed body is rejected too`() {
-        val http = mockHttp(total = 3, response = MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        val http = mockHttp(total = 3, response = MockResponse().setResponseCode(400).setBody(CAPTURE_DECODE_ERROR))
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -162,9 +176,9 @@ internal class PostHogApiTest {
     fun `batch probes again when the uncompressed body fails for another reason`() {
         val http = MockWebServer()
         http.start()
-        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setResponseCode(400).setBody(CAPTURE_DECODE_ERROR))
         http.enqueue(MockResponse().setResponseCode(503))
-        http.enqueue(MockResponse().setResponseCode(400).setBody("invalid GZIP data"))
+        http.enqueue(MockResponse().setResponseCode(400).setBody(CAPTURE_DECODE_ERROR))
         http.enqueue(MockResponse().setBody(""))
         http.enqueue(MockResponse().setBody(""))
 
@@ -188,6 +202,38 @@ internal class PostHogApiTest {
         assertNull(http.takeRequest().headers["Content-Encoding"])
 
         http.shutdown()
+    }
+
+    @Test
+    fun `batch sends the body again uncompressed for the error the flags endpoint returns`() {
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(400).setBody(FLAGS_DECODE_ERROR))
+        http.enqueue(MockResponse().setBody(""))
+
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.batch(listOf(generateEvent()))
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertNull(http.takeRequest().headers["Content-Encoding"])
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `batch does not send the body again for a 400 that is not about compression`() {
+        val http = mockHttp(total = 2, response = MockResponse().setResponseCode(400).setBody("event name is missing"))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString())
+
+        assertThrows(PostHogApiError::class.java) {
+            sut.batch(listOf(generateEvent()))
+        }
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertEquals(1, http.requestCount)
     }
 
     @Test
