@@ -1,8 +1,9 @@
 package com.posthog;
 
 import org.junit.Test;
+import java.lang.reflect.Modifier;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 public class PostHogIntegrationJavaTest {
     private static class ExistingIntegration implements PostHogIntegration {
@@ -20,7 +21,7 @@ public class PostHogIntegrationJavaTest {
     public void existingJavaIntegrationInheritsOnChange() throws Exception {
         PostHogIntegration integration = new ExistingIntegration();
         integration.onChange();
-        assertTrue(PostHogIntegration.class.getMethod("onChange").isDefault());
+        assertFalse(Modifier.isAbstract(PostHogIntegration.class.getMethod("onChange").getModifiers()));
     }
 
     @Test
