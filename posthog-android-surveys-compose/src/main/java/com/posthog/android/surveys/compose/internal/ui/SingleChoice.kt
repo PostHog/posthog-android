@@ -20,6 +20,9 @@ import com.posthog.surveys.PostHogDisplayChoiceQuestion
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 
+internal val PostHogDisplayChoiceQuestion.shouldAutoSubmit: Boolean
+    get() = skipSubmitButton && !isMultipleChoice && !hasOpenChoice
+
 /**
  * Single-choice list renderer for [PostHogDisplayChoiceQuestion]s where
  * [PostHogDisplayChoiceQuestion.isMultipleChoice] is `false`.
@@ -41,9 +44,7 @@ internal fun SingleChoice(
 ) {
     val selectedSet = selectedChoice?.let { setOf(it) } ?: emptySet()
     ChoiceOptions(
-        options = question.choices,
-        hasOpenChoice = question.hasOpenChoice,
-        allowsMultipleSelection = false,
+        question = question,
         selectedOptions = selectedSet,
         onSelectedOptionsChange = { newSet -> onSelectedChoiceChange(newSet.firstOrNull()) },
         openChoiceInput = openChoiceInput,

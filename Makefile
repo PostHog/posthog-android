@@ -82,3 +82,9 @@ checkRelease:
 updateLocks:
 	./gradlew build :posthog-android-gradle-plugin:build --write-locks
 	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
+
+.PHONY: testSurveyUI
+
+# Compose interaction tests require the debug variant, which CI otherwise skips.
+testSurveyUI:
+	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest

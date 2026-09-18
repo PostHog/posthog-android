@@ -1,5 +1,6 @@
 package com.posthog.android
 
+import com.posthog.android.replay.PostHogScreenshotColorMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,6 +34,26 @@ internal class PostHogAndroidConfigTest {
     @Test
     fun `captureScreenViews should be enabled by default`() {
         assertTrue(config.captureScreenViews)
+    }
+
+    @Test
+    fun `screenshot settings preserve the default capture fidelity`() {
+        assertEquals(30, config.sessionReplayConfig.screenshotCompressionQuality)
+        assertEquals(1f, config.sessionReplayConfig.screenshotScale)
+        assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.sessionReplayConfig.screenshotColorMode)
+        assertFalse(config.sessionReplayConfig.screenshot)
+    }
+
+    @Test
+    fun `screenshot settings are independent of capture enablement`() {
+        config.sessionReplayConfig.screenshotScale = 0.5f
+        config.sessionReplayConfig.screenshotCompressionQuality = 60
+        config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+
+        assertEquals(0.5f, config.sessionReplayConfig.screenshotScale)
+        assertEquals(60, config.sessionReplayConfig.screenshotCompressionQuality)
+        assertEquals(PostHogScreenshotColorMode.RGB_565, config.sessionReplayConfig.screenshotColorMode)
+        assertFalse(config.sessionReplayConfig.screenshot)
     }
 
     @Test

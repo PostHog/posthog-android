@@ -6,7 +6,6 @@ import com.posthog.PostHogInternal
 import com.posthog.logs.PostHogLogRecord
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.UUID
 
 /**
  * Per-endpoint specification consumed by [PostHogQueue]. Carries
@@ -31,7 +30,6 @@ public class EndpointSpec<Record> internal constructor(
     internal val send: (List<Record>) -> Unit,
     internal val isRetriableStatusCode: (Int) -> Boolean,
     internal val isFatalRecord: (Record) -> Boolean = { false },
-    internal val recordUuid: (Record) -> UUID? = { null },
 ) {
     public companion object {
         @JvmStatic
@@ -57,7 +55,6 @@ public class EndpointSpec<Record> internal constructor(
                 send = { events -> api.batch(events) },
                 isRetriableStatusCode = ::isEventsRetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
-                recordUuid = { it.uuid },
             )
 
         @JvmStatic
@@ -83,7 +80,6 @@ public class EndpointSpec<Record> internal constructor(
                 send = { events -> api.snapshot(events) },
                 isRetriableStatusCode = ::isEventsRetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
-                recordUuid = { it.uuid },
             )
 
         /**

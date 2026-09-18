@@ -19,6 +19,8 @@ import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -46,6 +48,20 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
+
+// A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
+// after a cold start while the host's JS/Dart handlers register. Finite so that a re-send carrying no
+// delivery id to tell it apart still counts once the window has passed.
+private const val PUSH_OPEN_DEDUPE_WINDOW_MILLIS = 5 * 60 * 1000L
+
+// Only needs the opens of the last few minutes; the cap bounds memory for hosts that call this in bulk.
+private const val MAX_RECENT_PUSH_OPENS = 20
+
+// FCM stamps every message it delivers with its own id and puts it on the launch intent, so a payload
+// built from that intent's extras identifies the delivery, not just the workflow step. `RemoteMessage.getData()`
+// strips the `google.` prefix keys, so a foreground data message relayed by the host carries none — which is
+// exactly the repeat this dedupe exists for.
+private const val PUSH_DELIVERY_ID_KEY = "google.message_id"
 
 public class PostHog private constructor(
     private val queueExecutor: ExecutorService =
@@ -115,6 +131,15 @@ public class PostHog private constructor(
     private val logsRateCapLock = Any()
     private var logsRateCapWindowStartMillis: Long = 0
     private var logsRateCapWindowCount: Int = 0
+
+    // Recently captured PostHog push opens, keyed by `invocation_id/action_id`, oldest first. In memory
+    // only: both reports of one tap happen in the same launch.
+    private val recentPushOpens = LinkedHashMap<String, RecentPushOpen>()
+
+    private class RecentPushOpen(
+        val capturedAt: Long,
+        val deliveryId: String?,
+    )
 
     private val remoteConfig: PostHogRemoteConfig?
         get() = config?.remoteConfigHolder
@@ -1103,6 +1128,11 @@ public class PostHog private constructor(
 
     private fun isOptedOut(): Boolean {
         val config = this.config ?: return true
+        // The host owns consent: config.optOut is the truth, and a value this SDK stored on an
+        // earlier launch must not outrank it.
+        if (!config.persistOptOut) {
+            return config.optOut
+        }
         if (!optOutLoaded) {
             synchronized(optOutLock) {
                 if (!optOutLoaded && getPreferences().isAvailable()) {
@@ -1123,7 +1153,9 @@ public class PostHog private constructor(
 
         synchronized(optOutLock) {
             config?.optOut = false
-            getPreferences().setValue(OPT_OUT, false)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, false)
+            }
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
         }
@@ -1147,7 +1179,9 @@ public class PostHog private constructor(
 
         synchronized(optOutLock) {
             config?.optOut = true
-            getPreferences().setValue(OPT_OUT, true)
+            if (config?.persistOptOut != false) {
+                getPreferences().setValue(OPT_OUT, true)
+            }
             optOutLoaded = true
             exceptionStepsBuffer?.clear()
         }
@@ -1631,7 +1665,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        super.groupStateless(this.distinctId, type, key, groupProperties)
+        capture(PostHogEventName.GROUP_IDENTIFY.event, distinctId = this.distinctId, properties = props)
 
         // Automatically set group properties for feature flags
         setGroupPropertiesForFlagsIfNeeded(type, groupProperties)
@@ -1927,7 +1961,22 @@ public class PostHog private constructor(
         // stable feature flag bucketing across identity changes.
         // Preserve SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, and SURVEYS (project-level config
         // from /config, not user data) so each survives an identity change without an app restart.
-        val except = mutableListOf(VERSION, BUILD, DEVICE_ID, SESSION_REPLAY, ERROR_TRACKING, CAPTURE_PERFORMANCE, SURVEYS)
+        // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
+        // notification tap being counted twice, so clearing it would re-enable a duplicate.
+        // Preserve PUSH_SUBSCRIPTION_REJECTED too: it records that the project API key names no
+        // project, which a logout does not change, and clearing it restarts the registration loop.
+        val except =
+            mutableListOf(
+                VERSION,
+                BUILD,
+                DEVICE_ID,
+                SESSION_REPLAY,
+                ERROR_TRACKING,
+                CAPTURE_PERFORMANCE,
+                SURVEYS,
+                PUSH_OPENED_MESSAGE_IDS,
+                PUSH_SUBSCRIPTION_REJECTED,
+            )
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
         if (config?.reuseAnonymousId == true) {
@@ -2069,7 +2118,6 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
-            platform = "android",
         )
     }
 
@@ -2099,18 +2147,59 @@ public class PostHog private constructor(
             return
         }
 
+        val posthogPayload = payload?.get("posthog")?.let { posthogPayloadMap(it) }
+        if (!recordPushOpen(posthogPayload, payload?.get(PUSH_DELIVERY_ID_KEY) as? String)) {
+            return
+        }
+
         val props = mutableMapOf<String, Any>()
         title?.takeIf { it.isNotEmpty() }?.let { props["\$notification_title"] = it }
         body?.takeIf { it.isNotEmpty() }?.let { props["\$notification_body"] = it }
         action?.takeIf { it.isNotEmpty() }?.let { props["\$notification_action"] = it }
 
-        payload?.get("posthog")?.let { raw ->
-            posthogPayloadMap(raw)?.forEach { (key, value) ->
-                value?.let { props["\$notification_$key"] = it }
-            }
+        posthogPayload?.forEach { (key, value) ->
+            value?.let { props["\$notification_$key"] = it }
         }
 
         capture(PUSH_NOTIFICATION_OPENED_EVENT, properties = props)
+    }
+
+    private fun recordPushOpen(
+        posthogPayload: Map<String, Any?>?,
+        deliveryId: String?,
+    ): Boolean {
+        val invocationId = posthogPayload?.get("invocation_id") as? String
+        if (invocationId.isNullOrEmpty()) {
+            return true
+        }
+        // Every step of one workflow run shares the run's invocation_id, so action_id tells the steps apart.
+        val key = "$invocationId/${posthogPayload?.get("action_id") as? String ?: ""}"
+        val dateProvider = config?.dateProvider ?: return true
+
+        synchronized(recentPushOpens) {
+            // Sampled under the lock so two concurrent reports can't be admitted out of order and read
+            // the inversion as a backwards clock.
+            val now = dateProvider.currentTimeMillis()
+            val previous = recentPushOpens[key]
+            if (previous != null) {
+                // A negative gap means the wall clock moved back; capture rather than risk dropping an open.
+                val insideWindow = now - previous.capturedAt in 0 until PUSH_OPEN_DEDUPE_WINDOW_MILLIS
+                // A re-send of the same workflow step reuses the key, so only delivery ids that are present
+                // on both reports and disagree prove a second notification rather than a second report of
+                // one tap.
+                val resent = previous.deliveryId != null && deliveryId != null && previous.deliveryId != deliveryId
+                if (insideWindow && !resent) {
+                    config?.logger?.log("Skipped \$push_notification_opened: notification $key was already captured.")
+                    return false
+                }
+                recentPushOpens.remove(key)
+            }
+            recentPushOpens[key] = RecentPushOpen(now, deliveryId)
+            if (recentPushOpens.size > MAX_RECENT_PUSH_OPENS) {
+                recentPushOpens.remove(recentPushOpens.keys.first())
+            }
+            return true
+        }
     }
 
     /**
@@ -2209,14 +2298,7 @@ public class PostHog private constructor(
             return
         }
 
-        sessionReplayHandler?.let {
-            // already inactive
-            if (!it.isActive()) {
-                return
-            }
-
-            it.stop()
-        } ?: run {
+        sessionReplayHandler?.stop() ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }
     }

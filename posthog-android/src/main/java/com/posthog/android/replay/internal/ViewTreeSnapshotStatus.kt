@@ -127,6 +127,33 @@ internal class WindowDrawState {
     private var nextCaptureId: Long = 0
     private var activeCapture: ActiveMaskCapture? = null
 
+    // Independent of mask/snapshot resets: stopping or rotating a session must not allow
+    // another task while the old worker or a timed-out PixelCopy callback is still running.
+    private var captureScheduled = false
+    private var pixelCopyInFlight = false
+
+    fun tryScheduleCapture(): Boolean =
+        synchronized(captureLock) {
+            if (captureScheduled || pixelCopyInFlight) {
+                false
+            } else {
+                captureScheduled = true
+                true
+            }
+        }
+
+    fun finishScheduledCapture() {
+        synchronized(captureLock) { captureScheduled = false }
+    }
+
+    fun beginPixelCopy() {
+        synchronized(captureLock) { pixelCopyInFlight = true }
+    }
+
+    fun finishPixelCopy() {
+        synchronized(captureLock) { pixelCopyInFlight = false }
+    }
+
     fun reset() {
         isOnDrawnCalled = false
         isOnlyAnimationRedraw = false

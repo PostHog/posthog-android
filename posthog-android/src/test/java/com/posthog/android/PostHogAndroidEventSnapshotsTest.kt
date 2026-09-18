@@ -66,6 +66,8 @@ internal class PostHogAndroidEventSnapshotsTest {
     @Test
     fun `batch request and enriched event shapes match snapshot`() {
         val fixture = createFixture()
+        val flagsLoaded = CountDownLatch(1)
+        fixture.config.onFeatureFlags = PostHogOnFeatureFlags { flagsLoaded.countDown() }
         val sut = fixture.client
 
         sut.capture(
@@ -87,6 +89,7 @@ internal class PostHogAndroidEventSnapshotsTest {
             userPropertiesSetOnce = mapOf("signed_up_at" to "2020-01-01"),
         )
         sut.group("company", "posthog", mapOf("industry" to "analytics", "employees" to 100))
+        assertTrue(flagsLoaded.await(10, TimeUnit.SECONDS), "Identify-triggered flags reload did not finish")
         assertEquals("snapshot-variant", sut.getFeatureFlag("snapshot-flag"))
         sut.captureException(fixedThrowable(), mapOf("handled" to true, "component" to "checkout"))
         sut.flush()
@@ -253,6 +256,12 @@ internal class PostHogAndroidEventSnapshotsTest {
             event["uuid"] = "<uuid>"
             normalizeSdkVersion(event.map("properties"))
         }
+
+        val featureFlagEvent = batch.single { (it as Map<*, *>)["event"] == "\$feature_flag_called" } as Map<*, *>
+        val featureFlagProperties = featureFlagEvent["properties"] as Map<*, *>
+        assertEquals(123, featureFlagProperties["\$feature_flag_id"])
+        assertEquals(7, featureFlagProperties["\$feature_flag_version"])
+        assertEquals("", featureFlagProperties["\$feature_flag_reason"])
 
         val exceptionEvent = batch.last() as Map<*, *>
         val exceptionProperties = exceptionEvent["properties"] as Map<*, *>

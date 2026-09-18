@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
@@ -10,12 +11,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Captures app installed and updated events
- * @property context the App Context
  * @property config the Config
  */
 internal class PostHogAppInstallIntegration(
-    private val context: Context,
+    context: Context,
     private val config: PostHogAndroidConfig,
+    private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
 ) : PostHogIntegration {
     private var ownsInstallation = false
 
@@ -37,7 +38,7 @@ internal class PostHogAppInstallIntegration(
         }
         ownsInstallation = true
 
-        getPackageInfo(context, config)?.let { packageInfo ->
+        packageInfoProvider()?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
                 val versionCode = packageInfo.versionCodeCompat()

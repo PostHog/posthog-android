@@ -37,6 +37,7 @@ public class PostHogApi(
         private const val APP_JSON_UTF_8 = "application/json; charset=utf-8"
         private const val FLAGS_INITIAL_RETRY_DELAY_MS = 300L
         private const val FLAGS_MAX_RETRY_DELAY_MS = 30_000L
+        private const val ERROR_BODY_PEEK_BYTES = 2048L
     }
 
     private val mediaType by lazy {
@@ -137,26 +138,23 @@ public class PostHogApi(
     public fun pushSubscription(
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String? = null,
-    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, platform, appId, identityToken)
+    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     public fun pushUnsubscription(
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String? = null,
-    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, platform, appId, identityToken)
+    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     private fun sendPushSubscription(
         method: String,
         distinctId: String,
         deviceToken: String,
-        platform: String,
         appId: String,
         identityToken: String?,
     ) {
@@ -165,7 +163,6 @@ public class PostHogApi(
                 projectToken = config.apiKey,
                 distinctId = distinctId,
                 deviceToken = deviceToken,
-                platform = platform,
                 appId = appId,
                 identityToken = identityToken,
             )
@@ -183,19 +180,34 @@ public class PostHogApi(
                 config.serializer.serialize(pushSubscription, it.bufferedWriter())
             }
 
-        executeNoBody(request)
+        executeNoBody(request, readErrorCode = true)
     }
 
     @Throws(PostHogApiError::class, IOException::class)
-    private fun executeNoBody(request: Request) {
+    private fun executeNoBody(
+        request: Request,
+        readErrorCode: Boolean = false,
+    ) {
         logRequestHeaders(request)
 
         client.newCall(request).execute().use {
             val response = logResponse(it)
 
             if (!response.isSuccessful) {
-                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+                val errorCode = if (readErrorCode) parseErrorCode(response) else null
+                throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response), errorCode)
             }
+        }
+    }
+
+    // The status code alone cannot separate a rejection the app can recover from (a stale identity
+    // token) from one it cannot (a project token that resolves to nothing): both are 401.
+    private fun parseErrorCode(response: Response): String? {
+        return try {
+            val body = response.peekBody(ERROR_BODY_PEEK_BYTES).string()
+            (config.serializer.deserializeString(body) as? Map<*, *>)?.get("code") as? String
+        } catch (e: Throwable) {
+            null
         }
     }
 
