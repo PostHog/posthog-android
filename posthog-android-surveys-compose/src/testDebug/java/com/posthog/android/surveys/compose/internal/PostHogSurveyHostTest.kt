@@ -24,10 +24,7 @@ import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 import com.posthog.surveys.PostHogNextSurveyQuestion
-import com.posthog.surveys.PostHogSurveyPresentation
-import com.posthog.surveys.PostHogSurveyPresentationSession
 import com.posthog.surveys.PostHogSurveyResponse
-import com.posthog.surveys.PostHogSurveysConfig
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,9 +64,9 @@ internal class PostHogSurveyHostTest {
     private fun assertResetBeforeHostTransition(resetAfterFinish: Boolean) {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val config = resetConfig()
-        val sdk = PostHog.with(config)
         val integration = PostHogSurveysIntegration(application, config)
-        integration.install(sdk)
+        config.addIntegration(integration)
+        val sdk = PostHog.with(config)
         val delegate = config.surveysConfig.surveysDelegate
         val survey =
             PostHogDisplaySurvey(
@@ -138,8 +135,6 @@ internal class PostHogSurveyHostTest {
     fun `reset cancels queued and delayed shows while an older notification preserves fresh UI`() {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val delegate = PostHogSurveysComposeDelegate(application)
-        val owner = PostHogSurveyPresentationSession(PostHogSurveysConfig())
-        delegate.bindSurveySession(owner)
         val survey =
             PostHogDisplaySurvey(
                 "pending",
@@ -154,7 +149,7 @@ internal class PostHogSurveyHostTest {
                 // Enqueue a show from the SDK thread, then invalidate it before main executes it.
                 Thread {
                     delegate.renderSurvey(
-                        PostHogSurveyPresentation(survey, 0, owner),
+                        survey,
                         { shown++ },
                         { _, _, _ -> null },
                         { closed++ },
@@ -164,29 +159,25 @@ internal class PostHogSurveyHostTest {
                     join(2_000)
                     assertFalse(isAlive, "Queued render must finish without waiting for main")
                 }
-                delegate.onSurveyReset(1, owner.config)
+                delegate.cleanupSurveys()
             }
             compose.onNodeWithText("Fresh question?").assertDoesNotExist()
             assertEquals(0, shown)
             compose.runOnIdle {
                 delegate.renderSurvey(
-                    PostHogSurveyPresentation(
-                        survey.copy(appearance = PostHogDisplaySurveyAppearance(surveyPopupDelaySeconds = 2.0)),
-                        1,
-                        owner,
-                    ),
+                    survey.copy(appearance = PostHogDisplaySurveyAppearance(surveyPopupDelaySeconds = 2.0)),
                     {
                         shown++
                     },
                     { _, _, _ -> null },
                     { closed++ },
                 )
-                delegate.onSurveyReset(2, owner.config)
+                delegate.cleanupSurveys()
                 shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3))
             }
             compose.onNodeWithText("Fresh question?").assertDoesNotExist()
             assertEquals(0, shown)
-            assertFreshPresentationSurvivesStaleWork(delegate, survey, owner)
+            assertFreshPresentationSurvivesStaleWork(delegate, survey)
         } finally {
             compose.runOnUiThread { delegate.cleanupSurveys() }
         }
@@ -195,45 +186,20 @@ internal class PostHogSurveyHostTest {
     private fun assertFreshPresentationSurvivesStaleWork(
         delegate: PostHogSurveysComposeDelegate,
         survey: PostHogDisplaySurvey,
-        owner: PostHogSurveyPresentationSession,
     ) {
         var shown = 0
         var closed = 0
         compose.runOnIdle {
             // Cleanup is queued, but a fresh presentation reaches main first.
-            Thread { delegate.onSurveyReset(3, owner.config) }.apply {
+            Thread { delegate.cleanupSurveys() }.apply {
                 start()
                 join(2_000)
-                assertFalse(isAlive, "Reset notification must finish without waiting for main")
+                assertFalse(isAlive, "Cleanup must finish without waiting for main")
             }
-            delegate.renderSurvey(PostHogSurveyPresentation(survey, 4, owner), { shown++ }, { _, _, _ -> null }, { closed++ })
-            delegate.onSurveyReset(2, owner.config)
-            delegate.renderSurvey(
-                PostHogSurveyPresentation(survey.copy(questions = emptyList()), 3, owner),
-                {},
-                { _, _, _ -> null },
-                {},
-            )
+            delegate.renderSurvey(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
         }
         compose.onNodeWithText("Fresh question?").assertIsDisplayed()
-        val newOwner = PostHogSurveyPresentationSession(PostHogSurveysConfig())
-        compose.runOnIdle {
-            owner.invalidate()
-            delegate.cleanupSurveys()
-            delegate.bindSurveySession(newOwner)
-            delegate.renderSurvey(PostHogSurveyPresentation(survey, 0, newOwner), { shown++ }, { _, _, _ -> null }, { closed++ })
-            delegate.bindSurveySession(owner)
-            delegate.cleanupSurveys(owner)
-            delegate.onSurveyReset(10, owner.config)
-            delegate.renderSurvey(
-                PostHogSurveyPresentation(survey.copy(questions = emptyList()), 10, owner),
-                {},
-                { _, _, _ -> null },
-                {},
-            )
-        }
-        compose.onNodeWithText("Fresh question?").assertIsDisplayed()
-        assertEquals(2, shown)
+        assertEquals(1, shown)
         assertEquals(0, closed)
         compose.onNodeWithContentDescription("Close survey").performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.waitForIdle()

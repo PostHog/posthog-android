@@ -8,10 +8,7 @@ import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
-import com.posthog.surveys.PostHogSurveyPresentation
-import com.posthog.surveys.PostHogSurveyPresentationSession
-import com.posthog.surveys.PostHogSurveysConfig
-import com.posthog.surveys.PostHogSurveysResetAwareDelegate
+import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
 
 /**
  * Default Compose-based UI for PostHog surveys on Android.
@@ -66,7 +63,9 @@ import com.posthog.surveys.PostHogSurveysResetAwareDelegate
  * The constructor accepts any [Context] and resolves the [Application] from
  * it, so passing an activity context is safe.
  */
-public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysResetAwareDelegate {
+public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysResumeAwareDelegate {
+    override val supportsSurveyResume: Boolean = true
+
     private val application: Application = context.applicationContext as Application
     private val activityProvider: ActivityProvider = ActivityProvider()
     private val host: PostHogSurveyHost = PostHogSurveyHost(activityProvider)
@@ -87,30 +86,6 @@ public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysRes
             onSurveyResponse = onSurveyResponse,
             onSurveyClosed = onSurveyClosed,
         )
-    }
-
-    override fun renderSurvey(
-        presentation: PostHogSurveyPresentation,
-        onSurveyShown: OnPostHogSurveyShown,
-        onSurveyResponse: OnPostHogSurveyResponse,
-        onSurveyClosed: OnPostHogSurveyClosed,
-    ) {
-        host.show(presentation, onSurveyShown, onSurveyResponse, onSurveyClosed)
-    }
-
-    override fun bindSurveySession(session: PostHogSurveyPresentationSession) {
-        host.bindSession(session)
-    }
-
-    override fun onSurveyReset(
-        resetGeneration: Long,
-        config: PostHogSurveysConfig,
-    ) {
-        host.onReset(resetGeneration, config)
-    }
-
-    override fun cleanupSurveys(session: PostHogSurveyPresentationSession) {
-        host.cleanup(session)
     }
 
     override fun cleanupSurveys() {

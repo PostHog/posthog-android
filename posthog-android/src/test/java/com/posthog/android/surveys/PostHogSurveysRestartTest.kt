@@ -10,11 +10,15 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.PostHogSurveyResponse
+import com.posthog.surveys.PostHogSurveysDelegate
+import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
 import com.posthog.surveys.Survey
 import org.junit.runner.RunWith
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogSurveysRestartTest {
@@ -70,8 +74,63 @@ internal class PostHogSurveysRestartTest {
         }
     }
 
+    @Test
+    fun `legacy and opted out delegates start fresh and reset dismisses them`() {
+        for (explicitOptOut in listOf(false, true)) {
+            val preferences = PostHogSharedPreferences(context, PostHogAndroidConfig("survey-resume-test"))
+            preferences.clear()
+            sent.clear()
+            val survey = survey(true)
+            val (firstSdk, first) = setup("fr")
+            first.showSurvey(survey)
+            val shown = assertNotNull(delegate.shownSurvey)
+            assertNotNull(delegate.onSurveyShown).invoke(shown)
+            assertNotNull(delegate.onSurveyResponse).invoke(shown, 0, PostHogSurveyResponse.Text("Saved"))
+            val oldId = sent.single()["\$survey_submission_id"]
+            firstSdk.close()
+
+            var cleaned = 0
+            val legacy =
+                object : PostHogSurveysDelegate by delegate {
+                    override fun cleanupSurveys() {
+                        cleaned++
+                    }
+                }
+            val renderer =
+                if (explicitOptOut) {
+                    object : PostHogSurveysResumeAwareDelegate, PostHogSurveysDelegate by legacy {
+                        override val supportsSurveyResume: Boolean = false
+                    }
+                } else {
+                    legacy
+                }
+            val (sdk, fresh) = setup("es", renderer)
+            try {
+                fresh.showSurvey(survey)
+                val display = assertNotNull(delegate.shownSurvey)
+                assertEquals(0, display.initialQuestionIndex)
+                assertNotNull(delegate.onSurveyShown).invoke(display)
+                assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text(null))
+                val callback = assertNotNull(delegate.onSurveyResponse)
+                callback(display, 1, PostHogSurveyResponse.Text("Final"))
+                assertNotEquals(oldId, sent.last()["\$survey_submission_id"])
+                assertNull(sent.last()["\$survey_response_first"])
+                sdk.reset()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                assertEquals(1, cleaned)
+                assertNull(callback(display, 1, PostHogSurveyResponse.Text("Stale")))
+            } finally {
+                sdk.close()
+                preferences.clear()
+            }
+        }
+    }
+
     @Suppress("DEPRECATION")
-    private fun setup(language: String): Pair<PostHogInterface, PostHogSurveysIntegration> {
+    private fun setup(
+        language: String,
+        renderer: PostHogSurveysDelegate = delegate,
+    ): Pair<PostHogInterface, PostHogSurveysIntegration> {
         val config =
             PostHogConfig("survey-resume-test", "http://127.0.0.1:1").apply {
                 cachePreferences =
@@ -82,7 +141,7 @@ internal class PostHogSurveysRestartTest {
                 preloadFeatureFlags = false
                 remoteConfig = false
                 surveys = true
-                surveysConfig.surveysDelegate = delegate
+                surveysConfig.surveysDelegate = renderer
                 surveysConfig.overrideDisplayLanguage = language
                 addBeforeSend(
                     PostHogBeforeSend { event ->

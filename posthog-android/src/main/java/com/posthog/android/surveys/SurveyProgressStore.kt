@@ -50,10 +50,20 @@ internal data class StoredSurveyResponse(
 internal class SurveyProgressStore(private val config: PostHogConfig) {
     private val serializer = PostHogSerializer(config)
     private val lock = config.surveysConfig
+    var resetGeneration: Long = 0
+        private set
+
+    fun invalidate() = synchronized(lock) { resetGeneration++ }
+
+    fun reset() =
+        synchronized(lock) {
+            resetGeneration++
+            config.cachePreferences?.remove(PostHogPreferences.SURVEY_PROGRESS)
+        }
 
     private fun key(survey: Survey): String = "${survey.id}/${survey.currentIteration ?: 0}"
 
-    fun getOrCreate(survey: Survey): SurveyProgress = load(survey) ?: SurveyProgress(UUID.randomUUID().toString(), questionOrder(survey))
+    fun create(survey: Survey): SurveyProgress = SurveyProgress(UUID.randomUUID().toString(), questionOrder(survey))
 
     fun questionOrder(survey: Survey): List<String> = survey.questions.map { "${it.type}:${it.id.orEmpty()}" }
 
@@ -66,9 +76,9 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
 
     fun load(survey: Survey): SurveyProgress? =
         synchronized(lock) {
-            val generation = lock.resetGeneration
+            val generation = resetGeneration
             val json = records()[key(survey)] as? String ?: return@synchronized null
-            if (generation != lock.resetGeneration) return@synchronized null
+            if (generation != resetGeneration) return@synchronized null
             try {
                 val progress = serializer.deserialize<SurveyProgress>(StringReader(json))
                 if (progress.version == 1 && progress.submissionId.isNotEmpty() &&
@@ -77,12 +87,12 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
                     progress.responses.values.all { it.toResponse() != null } &&
                     progress.questionText.keys.all { it in survey.questions.indices }
                 ) {
-                    return@synchronized progress.takeIf { generation == lock.resetGeneration }
+                    return@synchronized progress.takeIf { generation == resetGeneration }
                 }
             } catch (_: Exception) {
                 config.logger.log("Discarding invalid saved survey progress")
             }
-            if (generation == lock.resetGeneration) remove(survey)
+            if (generation == resetGeneration) remove(survey)
             null
         }
 
@@ -90,7 +100,7 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
         survey: Survey,
         progress: SurveyProgress,
     ) = synchronized(lock) {
-        val generation = lock.resetGeneration
+        val generation = resetGeneration
         if (config.cachePreferences?.isAvailable() == false) return@synchronized
         val records = records()
         records[key(survey)] = serializer.serializeObject(progress) ?: return@synchronized
@@ -100,7 +110,7 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
 
     fun reconcile(surveys: List<Survey>) =
         synchronized(lock) {
-            val generation = lock.resetGeneration
+            val generation = resetGeneration
             if (config.cachePreferences?.isAvailable() == false) return@synchronized
             val keys = surveys.filter { it.startDate != null && it.endDate == null }.map(::key).toSet()
             writeRecords(records().filterKeys { it in keys }, generation)
@@ -109,7 +119,7 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
 
     fun remove(survey: Survey) =
         synchronized(lock) {
-            val generation = lock.resetGeneration
+            val generation = resetGeneration
             val records = records()
             records.remove(key(survey))
             writeRecords(records, generation)
@@ -120,7 +130,7 @@ internal class SurveyProgressStore(private val config: PostHogConfig) {
         records: Map<String, Any>,
         generation: Long,
     ) {
-        if (generation == lock.resetGeneration) {
+        if (generation == resetGeneration) {
             config.cachePreferences?.setValue(PostHogPreferences.SURVEY_PROGRESS, records)
         }
     }

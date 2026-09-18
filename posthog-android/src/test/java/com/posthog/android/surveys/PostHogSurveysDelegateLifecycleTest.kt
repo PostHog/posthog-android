@@ -10,12 +10,8 @@ import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
-import com.posthog.surveys.PostHogSurveyPresentation
-import com.posthog.surveys.PostHogSurveyPresentationSession
-import com.posthog.surveys.PostHogSurveysConfig
 import com.posthog.surveys.PostHogSurveysDefaultDelegate
 import com.posthog.surveys.PostHogSurveysDelegate
-import com.posthog.surveys.PostHogSurveysResetAwareDelegate
 import com.posthog.surveys.Survey
 import org.junit.runner.RunWith
 import java.io.StringReader
@@ -24,11 +20,6 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNotSame
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogSurveysDelegateLifecycleTest {
@@ -42,62 +33,31 @@ internal class PostHogSurveysDelegateLifecycleTest {
         )
 
     @Test
-    fun `replacement delegate is bound and retired integration cannot render again`() {
-        var generation: Long? = null
-        var boundSession: PostHogSurveyPresentationSession? = null
-        var renderedSession: PostHogSurveyPresentationSession? = null
-        var cleanedSession: PostHogSurveyPresentationSession? = null
-        val delegate =
-            object : PostHogSurveysResetAwareDelegate, PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
+    fun `retired integration cleans up and cannot render again`() {
+        var rendered = 0
+        var cleaned = 0
+        config.surveysConfig.surveysDelegate =
+            object : PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
                 override fun renderSurvey(
-                    presentation: PostHogSurveyPresentation,
+                    survey: PostHogDisplaySurvey,
                     onSurveyShown: OnPostHogSurveyShown,
                     onSurveyResponse: OnPostHogSurveyResponse,
                     onSurveyClosed: OnPostHogSurveyClosed,
                 ) {
-                    generation = presentation.resetGeneration
-                    renderedSession = presentation.session
+                    rendered++
                 }
 
-                override fun bindSurveySession(session: PostHogSurveyPresentationSession) {
-                    boundSession = session
+                override fun cleanupSurveys() {
+                    cleaned++
                 }
-
-                override fun cleanupSurveys(session: PostHogSurveyPresentationSession) {
-                    cleanedSession = session
-                }
-
-                override fun onSurveyReset(
-                    resetGeneration: Long,
-                    config: PostHogSurveysConfig,
-                ) = Unit
             }
         integration.install(PostHogFake())
-        config.surveysConfig.surveysDelegate = delegate
-        try {
-            integration.showSurvey(survey)
-            assertEquals(0L, generation)
-            val firstSession = assertNotNull(boundSession)
-            assertSame(config.surveysConfig, firstSession.config)
-            assertSame(firstSession, renderedSession)
-            assertTrue(firstSession.isActive)
-            integration.uninstall()
-            assertFalse(firstSession.isActive)
-            assertSame(firstSession, cleanedSession)
-            generation = null
-            boundSession = null
-            integration.showSurvey(survey)
-            assertNull(generation)
-            assertNull(boundSession)
-            integration.install(PostHogFake())
-            integration.showSurvey(survey)
-            val nextSession = assertNotNull(boundSession)
-            assertNotSame(firstSession, nextSession)
-            assertTrue(nextSession.isActive)
-            assertSame(nextSession, renderedSession)
-        } finally {
-            integration.uninstall()
-        }
+        integration.showSurvey(survey)
+        assertEquals(1, rendered)
+        integration.uninstall()
+        assertEquals(1, cleaned)
+        integration.showSurvey(survey)
+        assertEquals(1, rendered)
     }
 
     @Test
@@ -128,6 +88,38 @@ internal class PostHogSurveysDelegateLifecycleTest {
         } finally {
             handoff?.join(2_000)
             assertFalse(handoff?.isAlive == true)
+            integration.uninstall()
+        }
+    }
+
+    @Test
+    fun `queued reset cleanup preserves a new presentation before it reports shown`() {
+        var rendered = 0
+        var cleaned = 0
+        config.surveysConfig.surveysDelegate =
+            object : PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
+                override fun renderSurvey(
+                    survey: PostHogDisplaySurvey,
+                    onSurveyShown: OnPostHogSurveyShown,
+                    onSurveyResponse: OnPostHogSurveyResponse,
+                    onSurveyClosed: OnPostHogSurveyClosed,
+                ) {
+                    rendered++
+                }
+
+                override fun cleanupSurveys() {
+                    cleaned++
+                }
+            }
+        integration.install(PostHogFake())
+        try {
+            integration.showSurvey(survey)
+            integration.onReset()
+            integration.showSurvey(survey)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(2, rendered)
+            assertEquals(0, cleaned)
+        } finally {
             integration.uninstall()
         }
     }

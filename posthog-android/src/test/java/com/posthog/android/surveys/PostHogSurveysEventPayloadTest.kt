@@ -16,7 +16,6 @@ import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogSurveyResponse
-import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyType
@@ -610,7 +609,8 @@ internal class PostHogSurveysEventPayloadTest {
     }
 }
 
-internal class RecordingSurveyDelegate : PostHogSurveysDelegate {
+internal open class RecordingSurveyDelegate : com.posthog.surveys.PostHogSurveysResumeAwareDelegate {
+    override val supportsSurveyResume: Boolean = true
     var shownSurvey: PostHogDisplaySurvey? = null
     var onSurveyShown: OnPostHogSurveyShown? = null
     var onSurveyResponse: OnPostHogSurveyResponse? = null

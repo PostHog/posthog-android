@@ -1,20 +1,15 @@
 package com.posthog.android.surveys
 
 import android.content.Context
-import com.posthog.PostHog
 import com.posthog.PostHogConfig
-import com.posthog.PostHogInterface
 import com.posthog.android.FakeSharedPreferences
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.PostHogSharedPreferences
 import com.posthog.internal.PostHogMemoryPreferences
-import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogPreferences
 import com.posthog.internal.PostHogSerializer
 import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.Survey
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
@@ -128,7 +123,6 @@ internal class SurveyProgressStoreTest {
     ) {
         val backing = PostHogMemoryPreferences()
         var resetOnRead = false
-        lateinit var sdk: PostHogInterface
         lateinit var progressStore: SurveyProgressStore
         val preferences =
             object : PostHogPreferences by backing {
@@ -139,7 +133,7 @@ internal class SurveyProgressStoreTest {
                     val snapshot = backing.getValue(key, defaultValue)
                     if (key == PostHogPreferences.SURVEY_PROGRESS && resetOnRead) {
                         resetOnRead = false
-                        sdk.reset()
+                        progressStore.reset()
                         if (createNewAttempt) {
                             progressStore.save(survey, SurveyProgress("new-user", progressStore.questionOrder(survey)))
                         }
@@ -147,45 +141,23 @@ internal class SurveyProgressStoreTest {
                     return snapshot
                 }
             }
-        val http =
-            MockWebServer().apply {
-                repeat(3) { enqueue(MockResponse().setBody("{}")) }
-            }
-        val directory = java.nio.file.Files.createTempDirectory("survey-reset").toFile()
-        val config =
-            PostHogConfig("store-reset-$operation", http.url("/").toString()).apply {
-                cachePreferences = preferences
-                preloadFeatureFlags = false
-                storagePrefix = java.io.File(directory, "events").absolutePath
-                replayStoragePrefix = java.io.File(directory, "replay").absolutePath
-                networkStatus =
-                    object : PostHogNetworkStatus {
-                        override fun isConnected(): Boolean = false
-                    }
-            }
-        sdk = PostHog.with(config)
+        val config = PostHogConfig("store-reset-$operation").apply { cachePreferences = preferences }
         progressStore = SurveyProgressStore(config)
-        try {
-            val oldProgress = SurveyProgress("old-user", progressStore.questionOrder(survey))
-            progressStore.save(survey, oldProgress)
-            resetOnRead = true
+        val oldProgress = SurveyProgress("old-user", progressStore.questionOrder(survey))
+        progressStore.save(survey, oldProgress)
+        resetOnRead = true
 
-            when (operation) {
-                "load" -> assertNull(progressStore.load(survey))
-                "save" -> progressStore.save(survey, oldProgress)
-                "reconcile" -> progressStore.reconcile(listOf(survey))
-                "remove" -> progressStore.remove(survey)
-            }
+        when (operation) {
+            "load" -> assertNull(progressStore.load(survey))
+            "save" -> progressStore.save(survey, oldProgress)
+            "reconcile" -> progressStore.reconcile(listOf(survey))
+            "remove" -> progressStore.remove(survey)
+        }
 
-            if (createNewAttempt) {
-                assertEquals("new-user", assertNotNull(progressStore.load(survey)).submissionId)
-            } else {
-                assertNull(progressStore.load(survey))
-            }
-        } finally {
-            sdk.close()
-            http.shutdown()
-            directory.deleteRecursively()
+        if (createNewAttempt) {
+            assertEquals("new-user", assertNotNull(progressStore.load(survey)).submissionId)
+        } else {
+            assertNull(progressStore.load(survey))
         }
     }
 
