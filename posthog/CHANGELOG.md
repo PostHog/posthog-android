@@ -1,5 +1,17 @@
 ## Next
 
+## 6.40.0
+
+### Minor Changes
+
+- d0a59ab: Support survey targeting by a specific linked feature flag variant.
+
+## 6.39.0
+
+### Minor Changes
+
+- 9c83392: Support skipSubmitButton for survey rating and single-choice questions. The Compose renderer submits eligible selections immediately and hides the submit button; multiple-choice questions and single-choice questions with an open option retain explicit submission.
+
 ## 6.38.2
 
 ### Patch Changes

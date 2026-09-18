@@ -273,29 +273,7 @@ public class PostHogSurveysIntegration(
             if (!hasWaitPeriodPassed(survey, getLastSeenSurveyDate(), config.dateProvider.currentDate())) return@filter false
 
             // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
-            val allKeys = mutableListOf<String>()
-
-            // Linked flag key
-            survey.linkedFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
-
-            // Targeting flag key
-            survey.targetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
-
-            // Internal targeting flag key (only if survey cannot activate repeatedly)
-            if (!canActivateOrResume(survey)) {
-                survey.internalTargetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
-            }
-
-            // Feature flag keys
-            survey.featureFlagKeys?.forEach { keyVal ->
-                val flagValue = keyVal.value
-                if (keyVal.key.isNotEmpty() && !flagValue.isNullOrEmpty()) {
-                    allKeys.add(flagValue)
-                }
-            }
-
-            // All collected flag keys must be enabled
-            val featureFlagsMatch = allKeys.all { postHog.isFeatureEnabled(it) }
+            val featureFlagsMatch = matchesFeatureFlags(survey, postHog)
 
             // 5. For event-based surveys, check if they have been activated by the event
             val eventActivationCheck =
@@ -312,6 +290,45 @@ public class PostHogSurveysIntegration(
     private fun canActivateOrResume(survey: Survey): Boolean = canActivateRepeatedly(survey) || hasProgress(survey)
 
     private fun hasProgress(survey: Survey): Boolean = progressStore.load(survey) != null
+
+    private fun matchesFeatureFlags(
+        survey: Survey,
+        postHog: PostHogInterface,
+    ): Boolean {
+        val allKeys = mutableListOf<String>()
+
+        // Linked flag key
+        survey.linkedFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+
+        // Targeting flag key
+        survey.targetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+
+        // Internal targeting flag key (only if survey cannot activate repeatedly)
+        if (!canActivateOrResume(survey)) {
+            survey.internalTargetingFlagKey?.takeIf { it.isNotEmpty() }?.let { allKeys.add(it) }
+        }
+
+        // Feature flag keys
+        survey.featureFlagKeys?.forEach { keyVal ->
+            val flagValue = keyVal.value
+            if (keyVal.key.isNotEmpty() && !flagValue.isNullOrEmpty()) {
+                allKeys.add(flagValue)
+            }
+        }
+
+        // All collected flag keys must be enabled
+        return allKeys.all { postHog.isFeatureEnabled(it) } && matchesLinkedFlagVariant(survey, postHog)
+    }
+
+    private fun matchesLinkedFlagVariant(
+        survey: Survey,
+        postHog: PostHogInterface,
+    ): Boolean {
+        val variant = survey.conditions?.linkedFlagVariant
+        if (variant.isNullOrEmpty() || variant == "any") return true
+        val key = survey.linkedFlagKey?.takeIf { it.isNotEmpty() } ?: return true
+        return postHog.getFeatureFlag(key, sendFeatureFlagEvent = false) == variant
+    }
 
     /**
      * Shows a survey to the user using the configured delegate.
