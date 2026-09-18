@@ -59,6 +59,79 @@ internal class PostHogAndroidAppVersionTest {
     }
 
     @Test
+    fun `disabled client does not claim installation events from another project`() {
+        assertDisabledFirstDoesNotClaimEvents(false)
+    }
+
+    @Test
+    fun `disabled client does not claim update events from another project`() {
+        assertDisabledFirstDoesNotClaimEvents(true)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun assertDisabledFirstDoesNotClaimEvents(upgrade: Boolean) {
+        mockContextAppStart(context, tmpDir)
+        context.applicationContext.mockPackageInfo("2.0.0", 2)
+        context.applicationContext.mockDisplayMetrics()
+        context.applicationContext.mockAppInfo()
+        val disabledPreferences = PostHogMemoryPreferences()
+        val enabledPreferences = PostHogMemoryPreferences()
+        if (upgrade) {
+            enabledPreferences.setValue(VERSION, "1.0.0")
+            enabledPreferences.setValue(BUILD, 1L)
+        }
+        val disabledEvents = mutableListOf<PostHogEvent>()
+        val enabledEvents = mutableListOf<PostHogEvent>()
+        val disabled =
+            PostHogAndroid.with(
+                context,
+                PostHogAndroidConfig("disabled-project").apply {
+                    cachePreferences = disabledPreferences
+                    captureApplicationLifecycleEvents = false
+                    remoteConfig = false
+                    preloadFeatureFlags = false
+                    addBeforeSend {
+                        disabledEvents.add(it)
+                        null
+                    }
+                },
+            )
+        try {
+            val enabled =
+                PostHogAndroid.with(
+                    context,
+                    PostHogAndroidConfig("enabled-project").apply {
+                        cachePreferences = enabledPreferences
+                        captureApplicationLifecycleEvents = true
+                        remoteConfig = false
+                        preloadFeatureFlags = false
+                        addBeforeSend {
+                            enabledEvents.add(it)
+                            null
+                        }
+                    },
+                )
+            try {
+                assertTrue(disabledEvents.isEmpty())
+                assertEquals("2.0.0", disabledPreferences.getValue(VERSION))
+                assertEquals(2L, disabledPreferences.getValue(BUILD))
+                val event = enabledEvents.single()
+                assertEquals(if (upgrade) "Application Updated" else "Application Installed", event.event)
+                if (upgrade) {
+                    assertEquals("1.0.0", event.properties?.get("previous_version"))
+                    assertEquals(1L, event.properties?.get("previous_build"))
+                }
+                assertEquals("2.0.0", enabledPreferences.getValue(VERSION))
+                assertEquals(2L, enabledPreferences.getValue(BUILD))
+            } finally {
+                enabled.close()
+            }
+        } finally {
+            disabled.close()
+        }
+    }
+
+    @Test
     fun `disabled launch then upgrade with lifecycle enabled captures updated with previous values`() {
         val preferences = PostHogMemoryPreferences()
         assertTrue(launch(preferences, "1.0.0", 1, captureLifecycle = false).isEmpty())

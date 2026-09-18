@@ -33,10 +33,12 @@ internal class PostHogAppInstallIntegration(
         if (config.cachePreferences?.isAvailable() == false) {
             return
         }
-        if (!integrationInstalled.compareAndSet(false, true)) {
-            return
+        if (config.captureApplicationLifecycleEvents) {
+            if (!integrationInstalled.compareAndSet(false, true)) {
+                return
+            }
+            ownsInstallation = true
         }
-        ownsInstallation = true
 
         packageInfoProvider()?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->

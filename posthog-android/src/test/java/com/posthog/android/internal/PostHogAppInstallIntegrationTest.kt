@@ -146,21 +146,24 @@ internal class PostHogAppInstallIntegrationTest {
     }
 
     @Test
-    fun `disabled owner prevents secondary version writes and nonowner uninstall cannot release it`() {
+    fun `enabled owner prevents secondary version writes and disabled uninstall cannot release it`() {
         val ownerPreferences = PostHogMemoryPreferences()
         val secondaryPreferences = PostHogMemoryPreferences()
-        val owner = getSut(ownerPreferences, captureLifecycle = false)
+        val owner = getSut(ownerPreferences)
+        val disabled = getSut(PostHogMemoryPreferences(), captureLifecycle = false)
         val secondary = getSut(secondaryPreferences)
         val fake = createPostHogFake()
         context.mockPackageInfo("1.0.0", 1)
         try {
             owner.install(fake)
+            disabled.install(fake)
+            disabled.uninstall()
             secondary.install(fake)
             secondary.uninstall()
             secondary.install(fake)
             assertEquals(1L, ownerPreferences.getValue(BUILD))
             assertNull(secondaryPreferences.getValue(BUILD))
-            assertEquals(0, fake.captures)
+            assertEquals(1, fake.captures)
 
             owner.uninstall()
             secondary.install(fake)
@@ -168,6 +171,7 @@ internal class PostHogAppInstallIntegrationTest {
             assertEquals(1L, secondaryPreferences.getValue(BUILD))
         } finally {
             owner.uninstall()
+            disabled.uninstall()
             secondary.uninstall()
         }
     }
