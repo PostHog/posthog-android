@@ -2246,17 +2246,49 @@ public class PostHog private constructor(
     }
 
     /**
-     * Every automatic resume goes through here: [startSessionReplay] is the app asking for
-     * recording, which revokes an off state the app set earlier, so an automatic path must not
-     * call it while that off state stands.
+     * Every automatic resume goes through here instead of [startSessionReplay]: the handler's
+     * [PostHogSessionReplayHandler.startAutomatically] checks and revokes the app's off state
+     * atomically, so a host stop landing mid-check can't be wiped by a racing automatic resume.
      */
     private fun startSessionReplayAutomatically() {
         val handler = sessionReplayHandler ?: return
-        if (!isSessionReplayConfigEnabled() || handler.isStoppedByHost()) {
+        if (!isSessionReplayConfigEnabled() || !canRecordSession(resumeCurrent = true)) {
             return
         }
 
-        startSessionReplay(resumeCurrent = true)
+        handler.startAutomatically(true)
+    }
+
+    /**
+     * The gates [startSessionReplay] and [startSessionReplayAutomatically] share: the replay
+     * flag, the already-active check, and sampling. Rotates the session for a non-resuming start.
+     * `config.sessionReplay` is deliberately not checked here - only the automatic path gates on it.
+     */
+    private fun canRecordSession(resumeCurrent: Boolean): Boolean {
+        if (!isSessionReplayFlagEnabled()) {
+            config?.logger?.log(
+                "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
+            )
+            return false
+        }
+
+        val handler =
+            sessionReplayHandler ?: run {
+                config?.logger?.log("Could not start recording. Session replay isn't installed.")
+                return false
+            }
+
+        // already active
+        if (handler.isActive()) {
+            return false
+        }
+
+        if (!resumeCurrent) {
+            endSession()
+            startSession()
+        }
+
+        return shouldRecordSession()
     }
 
     override fun startSessionReplay(resumeCurrent: Boolean) {
@@ -2264,38 +2296,16 @@ public class PostHog private constructor(
             return
         }
 
-        if (!isSessionReplayFlagEnabled()) {
-            config?.logger?.log(
-                "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
-            )
+        // The app is asking for replay back: revoke the off state before evaluating any gate,
+        // so a start dropped by a gate below still clears it and doesn't block every later
+        // automatic resume for the rest of the process.
+        sessionReplayHandler?.startRequestedByHost()
+
+        if (!canRecordSession(resumeCurrent)) {
             return
         }
 
-        sessionReplayHandler?.let {
-            // already active
-            if (it.isActive()) {
-                return
-            }
-
-            if (resumeCurrent) {
-                if (!shouldRecordSession()) {
-                    return
-                }
-
-                it.start(true)
-            } else {
-                endSession()
-                startSession()
-
-                if (!shouldRecordSession()) {
-                    return
-                }
-
-                it.start(false)
-            }
-        } ?: run {
-            config?.logger?.log("Could not start recording. Session replay isn't installed.")
-        }
+        sessionReplayHandler?.start(resumeCurrent)
     }
 
     override fun stopSessionReplay() {

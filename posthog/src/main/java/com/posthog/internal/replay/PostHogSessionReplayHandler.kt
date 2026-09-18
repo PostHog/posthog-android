@@ -23,6 +23,22 @@ public interface PostHogSessionReplayHandler {
      */
     public fun isStoppedByHost(): Boolean = false
 
+    /**
+     * Called when the app asks for replay back, e.g. by calling startSessionReplay. Revokes the
+     * off state regardless of whether recording can actually start right now.
+     */
+    public fun startRequestedByHost() {}
+
+    /**
+     * An automatic resume, e.g. from a feature flag reload. Must never revoke an off state the
+     * app set with [stopRequestedByHost].
+     */
+    public fun startAutomatically(resumeCurrent: Boolean) {
+        if (!isStoppedByHost()) {
+            start(resumeCurrent)
+        }
+    }
+
     public fun isActive(): Boolean
 
     /**

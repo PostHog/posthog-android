@@ -1099,6 +1099,65 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `startRequestedByHost clears the off state without starting recording`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+            assertTrue(sut.isStoppedByHost())
+
+            sut.startRequestedByHost()
+
+            assertFalse(sut.isStoppedByHost())
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `startAutomatically does not start while the off state is set`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+
+            sut.startAutomatically(true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `startAutomatically starts once the off state is revoked`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+            sut.startRequestedByHost()
+
+            sut.startAutomatically(true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `an internal stop leaves replay free to record the next session`() {
         val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
         val postHog = mock<PostHogInterface>()

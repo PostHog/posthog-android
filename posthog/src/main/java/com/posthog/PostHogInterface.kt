@@ -321,7 +321,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Stops the current session replay if one is in progress.
      *
      * The app owns this decision: recording stays off until [startSessionReplay] asks for it back,
-     * so neither an event trigger nor a session rotation can restart it.
+     * so neither an event trigger nor a session rotation can restart it. This is an in-memory,
+     * per-process guarantee - it does not survive a process restart.
      *
      * Android only.
      */

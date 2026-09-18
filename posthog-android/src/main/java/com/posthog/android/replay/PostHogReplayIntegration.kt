@@ -2486,6 +2486,24 @@ public class PostHogReplayIntegration(
         startRecording(resumeCurrent)
     }
 
+    override fun startRequestedByHost() {
+        // Only revoke the off state. Core decides whether recording can actually start.
+        stoppedByHost = false
+    }
+
+    override fun startAutomatically(resumeCurrent: Boolean) {
+        // Check-and-act under the same lock startRecording() and stopRequestedByHost() use, so a
+        // host stop landing between the check and the start closes the race instead of narrowing it.
+        synchronized(pixelCopyBitmapBuffer) {
+            synchronized(decorViews) {
+                if (stoppedByHost) {
+                    return
+                }
+                startRecording(resumeCurrent)
+            }
+        }
+    }
+
     private fun startRecording(resumeCurrent: Boolean) {
         // Event triggers may change while an automatic start is queued on main.
         if (shouldWaitForEventTriggers()) {
@@ -2519,6 +2537,8 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun isAutomaticStartBlocked(): Boolean = stoppedByHost || (!config.sessionReplay && !startedWithAutomaticDisabled)
+
     private fun clearSnapshotStates() {
         // clear state so it starts with a full snapshot again
         synchronized(decorViews) {
@@ -2534,7 +2554,13 @@ public class PostHogReplayIntegration(
     }
 
     override fun stopRequestedByHost() {
-        stoppedByHost = true
+        // Same lock as startAutomatically()'s check-and-act, so the two calls fully serialize
+        // instead of interleaving.
+        synchronized(pixelCopyBitmapBuffer) {
+            synchronized(decorViews) {
+                stoppedByHost = true
+            }
+        }
         stop()
     }
 
@@ -2649,7 +2675,7 @@ public class PostHogReplayIntegration(
             // The app's own off state survives rotation: a new session must not undo it.
             // config.sessionReplay controls automatic starts. A recording started while it was
             // off must survive rotation, so it is preserved here too.
-            if (stoppedByHost || (!config.sessionReplay && !startedWithAutomaticDisabled)) {
+            if (isAutomaticStartBlocked()) {
                 if (isSessionReplayActive) stopRecording()
                 return@post
             }
@@ -2873,11 +2899,8 @@ public class PostHogReplayIntegration(
      * fresh config samples out.
      */
     private fun isRecordingPermittedForCurrentSession(): Boolean {
-        if (stoppedByHost) {
-            return false
-        }
         val remoteConfig = config.remoteConfigHolder ?: return false
-        if ((!config.sessionReplay && !startedWithAutomaticDisabled) || !remoteConfig.isSessionReplayFlagActive()) {
+        if (isAutomaticStartBlocked() || !remoteConfig.isSessionReplayFlagActive()) {
             return false
         }
         if (shouldWaitForEventTriggers()) {
@@ -2902,7 +2925,7 @@ public class PostHogReplayIntegration(
         val postHog = this.postHog ?: return
         val remoteConfig = config.remoteConfigHolder ?: return
 
-        if ((!config.sessionReplay && !startedWithAutomaticDisabled) || !remoteConfig.isSessionReplayFlagActive()) {
+        if (isAutomaticStartBlocked() || !remoteConfig.isSessionReplayFlagActive()) {
             if (!isFirstDelivery) {
                 stopIfActive("Remote config disabled recording. Stopping.")
             }

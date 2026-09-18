@@ -89,6 +89,7 @@ internal class PostHogTest {
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
         exceptionStepsEnabled: Boolean = true,
         exceptionStepsMaxBytes: Int = 32768,
+        sessionReplay: Boolean = false,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -117,6 +118,7 @@ internal class PostHogTest {
                 this.errorTrackingConfig.exceptionSteps.maxBytes = exceptionStepsMaxBytes
                 this.context = context
                 this.personProfiles = personProfiles
+                this.sessionReplay = sessionReplay
             }
         return PostHog.withInternal(
             config,
@@ -2914,7 +2916,11 @@ internal class PostHogTest {
                 cachePreferences = myPrefs,
                 preloadFeatureFlags = false,
                 integration = integration,
+                sessionReplay = true,
             )
+        // The cached SESSION_REPLAY config makes setup itself start recording automatically;
+        // reset the fake so the assertions below are about the reload, not the setup.
+        integration.reset()
 
         sut.stopSessionReplay()
 
@@ -2922,6 +2928,64 @@ internal class PostHogTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `loaded feature flags restart replay when the app did not ask to stop`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(responseFlagsApi),
+            )
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        // No SESSION_REPLAY cache entry yet, so setup itself does not start recording - the
+        // start below has to come from the reload, which is what this test is proving.
+        val myPrefs = PostHogMemoryPreferences()
+
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                cachePreferences = myPrefs,
+                preloadFeatureFlags = false,
+                integration = integration,
+                sessionReplay = true,
+            )
+        assertFalse(integration.startCalled)
+
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `startSessionReplay revokes the off state even when the replay flag is not active`() {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                sessionReplay = true,
+            )
+
+        sut.stopSessionReplay()
+        assertTrue(integration.isStoppedByHost())
+
+        // No SESSION_REPLAY cache entry, so the replay flag isn't active and start() never runs.
+        sut.startSessionReplay()
+
+        assertFalse(integration.startCalled)
+        assertFalse(integration.isStoppedByHost())
 
         sut.close()
     }
