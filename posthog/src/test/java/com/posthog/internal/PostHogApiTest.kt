@@ -205,6 +205,44 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `batch sends the body uncompressed while another request is probing`() {
+        val uncompressed = AtomicInteger(0)
+        val probeStarted = CountDownLatch(1)
+        val releaseProbe = CountDownLatch(1)
+        val http = MockWebServer()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.headers["Content-Encoding"] == "gzip") {
+                        return MockResponse().setResponseCode(400).setBody(CAPTURE_DECODE_ERROR)
+                    }
+                    if (uncompressed.incrementAndGet() == 1) {
+                        probeStarted.countDown()
+                        releaseProbe.await(10, TimeUnit.SECONDS)
+                    }
+                    return MockResponse().setBody("")
+                }
+            }
+        http.start()
+
+        val sut = getSut(host = http.url("/").toString())
+
+        val prober = Thread { sut.batch(listOf(generateEvent())) }
+        prober.start()
+        assertTrue(probeStarted.await(10, TimeUnit.SECONDS))
+
+        // this body was compressed before the probe landed, so it is rejected too. The queue
+        // deletes a rejected batch instead of retrying it, so it has to go out again here.
+        sut.batch(listOf(generateEvent()))
+
+        assertEquals(2, uncompressed.get())
+
+        releaseProbe.countDown()
+        prober.join(10_000)
+        http.shutdown()
+    }
+
+    @Test
     fun `batch sends the body again uncompressed for the error the flags endpoint returns`() {
         val http = MockWebServer()
         http.start()
