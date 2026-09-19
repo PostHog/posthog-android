@@ -1,5 +1,29 @@
 ## Next
 
+## 3.67.0
+
+### Minor Changes
+
+- d0a59ab: Support survey targeting by a specific linked feature flag variant.
+
+## 3.66.4
+
+### Patch Changes
+
+- 9c83392: Support skipSubmitButton for survey rating and single-choice questions. The Compose renderer submits eligible selections immediately and hides the submit button; multiple-choice questions and single-choice questions with an open option retain explicit submission.
+
+## 3.66.3
+
+### Patch Changes
+
+- 26b78ae: Fix automatic deep-link capture for warm `singleTop` and `singleTask` activity launches. Call `setIntent(intent)` in `onNewIntent` so the SDK can capture the new intent on resume. Repeated resumes do not duplicate the event, while distinct intents with the same URL are captured separately.
+
+## 3.66.2
+
+### Patch Changes
+
+- 1293056: Stop sending the unused `platform` field when registering a device for push notifications. The API resolves the provider from `app_id` alone and ignores `platform`, so the field was dead weight. It was also the only field in the request without `@SerializedName`, which meant R8 renamed it in minified release builds. Removing it drops that failure mode instead of working around it.
+
 ## 3.66.1
 
 ### Patch Changes

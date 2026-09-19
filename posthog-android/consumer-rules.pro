@@ -35,6 +35,9 @@
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { *; }
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { <init>(); }
 
+-keep class com.posthog.internal.PostHogPushSubscriptionRequest { *; }
+-keep class com.posthog.internal.PostHogPushSubscriptionRequest { <init>(); }
+
 # Session Replay
 -keep class com.posthog.internal.replay.** { *; }
 -keep class com.posthog.internal.replay.** { <init>(); }

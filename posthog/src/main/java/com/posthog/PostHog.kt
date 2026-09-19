@@ -2126,7 +2126,6 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
-            platform = "android",
         )
     }
 

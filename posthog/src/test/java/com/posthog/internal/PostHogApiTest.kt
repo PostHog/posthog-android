@@ -774,7 +774,6 @@ internal class PostHogApiTest {
         sut.pushSubscription(
             distinctId = "distinctId",
             deviceToken = "fcm-token-123",
-            platform = "android",
             appId = "firebase-project-id",
         )
 
@@ -791,7 +790,7 @@ internal class PostHogApiTest {
         assertEquals(API_KEY, parsed["api_key"])
         assertEquals("distinctId", parsed["distinct_id"])
         assertEquals("fcm-token-123", parsed["device_token"])
-        assertEquals("android", parsed["platform"])
+        assertFalse(parsed.containsKey("platform"))
         assertEquals("firebase-project-id", parsed["app_id"])
         // Vector 10: no identity token -> the key is omitted entirely, not serialized as null.
         assertFalse(body.contains("identity_token"))
@@ -807,7 +806,6 @@ internal class PostHogApiTest {
         sut.pushSubscription(
             distinctId = "distinctId",
             deviceToken = "fcm-token-123",
-            platform = "android",
             appId = "firebase-project-id",
             identityToken = "jwt-abc",
         )
@@ -829,7 +827,6 @@ internal class PostHogApiTest {
                 sut.pushSubscription(
                     distinctId = "distinctId",
                     deviceToken = "fcm-token-123",
-                    platform = "android",
                     appId = "firebase-project-id",
                 )
             }
@@ -846,7 +843,6 @@ internal class PostHogApiTest {
         sut.pushUnsubscription(
             distinctId = "distinctId",
             deviceToken = "fcm-token-123",
-            platform = "android",
             appId = "firebase-project-id",
         )
 
@@ -861,7 +857,7 @@ internal class PostHogApiTest {
         assertEquals(API_KEY, parsed["api_key"])
         assertEquals("distinctId", parsed["distinct_id"])
         assertEquals("fcm-token-123", parsed["device_token"])
-        assertEquals("android", parsed["platform"])
+        assertFalse(parsed.containsKey("platform"))
         assertEquals("firebase-project-id", parsed["app_id"])
         // Vector 10: no identity token -> the key is omitted entirely, not serialized as null.
         assertFalse(body.contains("identity_token"))
@@ -877,7 +873,6 @@ internal class PostHogApiTest {
         sut.pushUnsubscription(
             distinctId = "distinctId",
             deviceToken = "fcm-token-123",
-            platform = "android",
             appId = "firebase-project-id",
             identityToken = "jwt-abc",
         )
@@ -900,7 +895,6 @@ internal class PostHogApiTest {
                 sut.pushUnsubscription(
                     distinctId = "distinctId",
                     deviceToken = "fcm-token-123",
-                    platform = "android",
                     appId = "firebase-project-id",
                 )
             }
