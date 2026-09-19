@@ -225,7 +225,10 @@ internal class PostHogLifecycleObserverIntegrationTest {
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
 
-        assertEquals(1, fake.stopSessionReplayCalls)
+        // The SDK stopped replay, not the app, so this must not go through the app-owned
+        // stopSessionReplay() path.
+        assertEquals(1, fake.stopSessionReplayInternallyCalls)
+        assertEquals(0, fake.stopSessionReplayCalls)
         assertEquals(false, fake.sessionReplayActive)
         // Session was ended; the next onStart will create a fresh one.
         assertNull(PostHogSessionManager.getActiveSessionId())

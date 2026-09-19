@@ -65,6 +65,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun startSession ()V
 	public fun startSessionReplay (Z)V
 	public fun stopSessionReplay ()V
+	public fun stopSessionReplayInternally ()V
 	public fun unregister (Ljava/lang/String;)V
 	public fun unregisterPushNotificationToken ()V
 }
@@ -116,6 +117,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun startSession ()V
 	public fun startSessionReplay (Z)V
 	public fun stopSessionReplay ()V
+	public fun stopSessionReplayInternally ()V
 	public fun unregister (Ljava/lang/String;)V
 	public fun unregisterPushNotificationToken ()V
 	public final fun with (Lcom/posthog/PostHogConfig;)Lcom/posthog/PostHogInterface;
@@ -390,6 +392,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun startSession ()V
 	public abstract fun startSessionReplay (Z)V
 	public abstract fun stopSessionReplay ()V
+	public abstract fun stopSessionReplayInternally ()V
 	public abstract fun unregister (Ljava/lang/String;)V
 	public abstract fun unregisterPushNotificationToken ()V
 }
@@ -415,6 +418,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun setPersonProperties$default (Lcom/posthog/PostHogInterface;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun setPersonPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/util/Map;ZILjava/lang/Object;)V
 	public static synthetic fun startSessionReplay$default (Lcom/posthog/PostHogInterface;ZILjava/lang/Object;)V
+	public static fun stopSessionReplayInternally (Lcom/posthog/PostHogInterface;)V
 }
 
 public abstract interface annotation class com/posthog/PostHogInternal : java/lang/annotation/Annotation {
@@ -1202,14 +1206,22 @@ public final class com/posthog/internal/errortracking/ThrowableCoercer {
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
 	public abstract fun isActive ()Z
+	public abstract fun isStoppedByHost ()Z
 	public abstract fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public abstract fun onSessionIdChanged ()V
 	public abstract fun start (Z)V
+	public abstract fun startAutomatically (Z)V
+	public abstract fun startRequestedByHost ()V
 	public abstract fun stop ()V
+	public abstract fun stopRequestedByHost ()V
 }
 
 public final class com/posthog/internal/replay/PostHogSessionReplayHandler$DefaultImpls {
+	public static fun isStoppedByHost (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)Z
 	public static synthetic fun onEvent$default (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public static fun startAutomatically (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;Z)V
+	public static fun startRequestedByHost (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)V
+	public static fun stopRequestedByHost (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)V
 }
 
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {

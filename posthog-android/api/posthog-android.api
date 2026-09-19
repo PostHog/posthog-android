@@ -95,11 +95,15 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public final fun captureSessionReplaySnapshot (Landroid/view/View;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;)Z
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun isActive ()Z
+	public fun isStoppedByHost ()Z
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
 	public fun onRemoteConfig (Z)V
 	public fun onSessionIdChanged ()V
 	public fun start (Z)V
+	public fun startAutomatically (Z)V
+	public fun startRequestedByHost ()V
 	public fun stop ()V
+	public fun stopRequestedByHost ()V
 	public fun uninstall ()V
 }
 

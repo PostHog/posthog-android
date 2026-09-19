@@ -15,6 +15,7 @@ public class PostHogFake : PostHogInterface {
     public var sessionReplayActive: Boolean = false
     public var startSessionReplayCalls: Int = 0
     public var stopSessionReplayCalls: Int = 0
+    public var stopSessionReplayInternallyCalls: Int = 0
     public var pushDeviceToken: String? = null
     public var pushAppId: String? = null
     public var pushRegistrations: Int = 0
@@ -242,6 +243,11 @@ public class PostHogFake : PostHogInterface {
 
     override fun stopSessionReplay() {
         stopSessionReplayCalls++
+        sessionReplayActive = false
+    }
+
+    override fun stopSessionReplayInternally() {
+        stopSessionReplayInternallyCalls++
         sessionReplayActive = false
     }
 

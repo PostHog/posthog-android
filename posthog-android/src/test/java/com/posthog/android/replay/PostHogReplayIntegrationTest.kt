@@ -1019,6 +1019,169 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `event trigger does not restart replay the app asked to stop`() {
+        val config =
+            configWithSampling(
+                flagActive = true,
+                samplingPasses = true,
+                triggers = setOf("checkout_started"),
+            )
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            // The app read its own flag and turned replay off before any trigger matched.
+            sut.stopRequestedByHost()
+
+            sut.onEvent("checkout_started", null)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `session rotation and remote config do not restart replay the app asked to stop`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            sut.stopRequestedByHost()
+
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive())
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `an explicit start revokes the off state the app asked for`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `startRequestedByHost clears the off state without starting recording`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+            assertTrue(sut.isStoppedByHost())
+
+            sut.startRequestedByHost()
+
+            assertFalse(sut.isStoppedByHost())
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `startAutomatically does not start while the off state is set`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+
+            sut.startAutomatically(true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `startAutomatically starts once the off state is revoked`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.stopRequestedByHost()
+            sut.startRequestedByHost()
+
+            sut.startAutomatically(true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `an internal stop leaves replay free to record the next session`() {
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            // The session expired in the background: the SDK stopped recording, not the app.
+            sut.stop()
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `concurrent local disable does not give an event trigger manual start provenance`() {
         val samplingStarted = CountDownLatch(1)
         val continueSampling = CountDownLatch(1)
