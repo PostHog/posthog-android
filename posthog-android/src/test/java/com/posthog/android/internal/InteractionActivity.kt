@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -33,13 +35,21 @@ internal class InteractionActivity : ComponentActivity() {
 @Suppress("ktlint:standard:function-naming")
 internal fun InteractionProbeContent() {
     var responses by remember { mutableIntStateOf(0) }
+    var decoration by remember { mutableIntStateOf(0) }
     Column(Modifier.padding(24.dp)) {
         Text("Interaction capture probe")
         Text("Compose responses: $responses")
         Button(onClick = { responses++ }, modifier = Modifier.testTag("compose_responsive")) { Text("Compose responsive") }
         Button(onClick = {}, modifier = Modifier.testTag("compose_noop")) { Text("Compose no-op") }
         Column(Modifier.postHogAutocaptureNoCapture()) {
-            Button(onClick = { responses++ }, modifier = Modifier.testTag("compose_ignored")) { Text("Compose ignored") }
+            // Drawing-only responses have no observable semantic change: explicitly exclude them.
+            Button(
+                onClick = { decoration++ },
+                modifier =
+                    Modifier.testTag("compose_ignored").drawBehind {
+                        drawRect(if (decoration % 2 == 0) Color.Gray else Color.Blue)
+                    },
+            ) { Text("Compose ignored") }
         }
         AndroidView(factory = { context ->
             LinearLayout(context).apply {

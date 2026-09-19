@@ -31,6 +31,8 @@ class MyApp : Application() {
                 debug = true
                 flushAt = 1
                 captureElementInteractions = true
+                captureRageClicks = true
+                captureDeadClicks = true
                 captureDeepLinks = false
                 captureApplicationLifecycleEvents = false
                 captureScreenViews = false

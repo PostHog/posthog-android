@@ -141,4 +141,67 @@ internal class ComposeInteractionTargetResolverTest {
         whenever(root.children).thenReturn(List(MAX_INTERACTION_NODES + 1) { overlay })
         assertNull(resolve())
     }
+
+    private fun responseDigest(): ByteArray {
+        val sink = InteractionResponseDigest(ByteArray(16))
+        ComposeInteractionResponseSnapshot.append(view, sink, 0)
+        return sink.finish()
+    }
+
+    @Test
+    fun `response snapshots detect semantic content state layout and scroll without serializing them`() {
+        var previous = responseDigest()
+        val changes: List<() -> Unit> =
+            listOf(
+                { childConfig[SemanticsProperties.Text] = listOf(androidx.compose.ui.text.AnnotatedString("Changed")) },
+                { childConfig[SemanticsProperties.StateDescription] = "Changed state" },
+                { childConfig[SemanticsProperties.Selected] = true },
+                { whenever(child.boundsInWindow).thenReturn(Rect(0f, 0f, 150f, 100f)) },
+                {
+                    childConfig[SemanticsProperties.VerticalScrollAxisRange] =
+                        androidx.compose.ui.semantics.ScrollAxisRange(
+                            { 10f },
+                            { 100f },
+                            false,
+                        )
+                },
+            )
+        for (change in changes) {
+            change()
+            val current = responseDigest()
+            kotlin.test.assertFalse(previous.contentEquals(current))
+            previous = current
+        }
+        kotlin.test.assertFalse(resolve()!!.elements.toString().contains("Changed"))
+    }
+
+    @Test
+    fun `response snapshots never read excluded password or editable semantic content`() {
+        val oversized = listOf(androidx.compose.ui.text.AnnotatedString("x".repeat(20000)))
+        childConfig[SemanticsProperties.Text] = oversized
+        kotlin.test.assertFailsWith<IllegalStateException> { responseDigest() }
+        childConfig[PostHogAutocaptureNoCapture] = true
+        responseDigest()
+        childConfig[PostHogAutocaptureNoCapture] = false
+        childConfig[PostHogReplayMask] = true
+        responseDigest()
+        childConfig[PostHogReplayMask] = false
+        childConfig[SemanticsProperties.Password] = Unit
+        responseDigest()
+        val editable =
+            SemanticsConfiguration().apply {
+                this[SemanticsProperties.EditableText] = androidx.compose.ui.text.AnnotatedString("x".repeat(20000))
+                this[SemanticsProperties.Text] = oversized
+            }
+        whenever(child.config).thenReturn(editable)
+        responseDigest()
+    }
+
+    @Test
+    fun `editable slider and scroll semantic actions are repetitive for detectors only`() {
+        buttonConfig[SemanticsActions.SetProgress] = AccessibilityAction(null) { _: Float -> true }
+        kotlin.test.assertTrue(resolve()!!.repetitive)
+        // Ordinary semantic capture retains the same privacy-safe target.
+        assertEquals("checkout_button", resolve()!!.elements.first().identifier)
+    }
 }

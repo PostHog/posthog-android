@@ -19,6 +19,14 @@ public interface PostHogIntegration {
     }
 
     /**
+     * Invalidates pending observations when identity, consent, screen, session or close state changes.
+     * Called synchronously on the caller's thread; calls may be nested or concurrent. This is a
+     * one-shot notification, not a pause/resume boundary. Uninstall must independently clean up.
+     */
+    public fun onChange() {
+    }
+
+    /**
      * Called when the remote config attempt for the current identity resolves. Each integration is
      * responsible for enabling or disabling features based on the state of the remote config.
      *
@@ -28,5 +36,15 @@ public interface PostHogIntegration {
      *   live config should fall back to their cached state instead of waiting indefinitely.
      */
     public fun onRemoteConfig(loaded: Boolean = true) {
+    }
+}
+
+internal fun PostHogConfig?.notifyIntegrationsChanged() {
+    this?.integrations?.toList()?.forEach {
+        try {
+            it.onChange()
+        } catch (_: Throwable) {
+            // Integration failures must not prevent identity or consent changes.
+        }
     }
 }

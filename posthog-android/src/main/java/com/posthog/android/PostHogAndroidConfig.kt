@@ -80,5 +80,17 @@ public open class PostHogAndroidConfig
          */
         public var captureElementInteractions: Boolean = false
 
+        /** Captures `$rageclick` after four nearby taps on the same target within one second. Default: false.
+         * Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties.
+         */
+        public var captureRageClicks: Boolean = false
+
+        /** Captures `$dead_click` when a supported target has no observed meaningful UI response for three seconds.
+         * Default: false. Bounded local View/Compose change detection may transiently process unmasked UI text;
+         * raw text is not retained and neither text nor its ephemeral digest is sent. Unsupported/incomplete observations are skipped.
+         * Independent of semantic capture and replay; shares interaction exclusions.
+         */
+        public var captureDeadClicks: Boolean = false
+
         internal var replayQueueHolder: PostHogReplayQueue? = null
     }

@@ -73,6 +73,7 @@ publishing {
 
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.postHogConfig()
+    compilerOptions.freeCompilerArgs.add("-Xjvm-default=all-compatibility")
 }
 
 kotlin {

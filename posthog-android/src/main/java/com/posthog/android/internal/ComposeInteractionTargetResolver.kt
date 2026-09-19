@@ -81,14 +81,18 @@ internal object ComposeInteractionTargetResolver {
                     nthOfType = siblings.take(index).count { it.interactionType() == node.interactionType() } + 1,
                 )
             } + viewPath.asReversed().map { it.interactionElement() }
-        return InteractionTarget(view, targetPath.last().id, elements.take(MAX_INTERACTION_ELEMENTS))
+        val config = targetPath.last().config
+        val repetitive =
+            config.contains(SemanticsActions.SetText) || config.contains(SemanticsProperties.EditableText) ||
+                config.contains(SemanticsActions.SetProgress) || config.contains(SemanticsActions.ScrollBy)
+        return InteractionTarget(view, targetPath.last().id, elements.take(MAX_INTERACTION_ELEMENTS), repetitive)
     }
 
     // The native child tree has no Compose paint order. Match its holder to the winning layout
     // before returning a native target, so an overlaid Compose control cannot be misattributed.
     fun interopLayoutInfo(path: List<View>): LayoutInfo? =
         try {
-            val holderClass = Class.forName("androidx.compose.ui.viewinterop.AndroidViewHolder")
+            val holderClass = Class.forName(ANDROID_COMPOSE_VIEW_HOLDER_CLASS_NAME)
             val holder = path.lastOrNull { holderClass.isInstance(it) }
             holder?.let { holderClass.getMethod("getLayoutNode").invoke(it) as? LayoutInfo }
         } catch (_: Throwable) {

@@ -66,6 +66,7 @@ internal class InteractionTarget(
     view: View,
     val semanticsId: Int? = null,
     val elements: List<InteractionElement>,
+    val repetitive: Boolean = false,
 ) {
     val view = WeakReference(view)
 
@@ -140,6 +141,11 @@ internal class InteractionTargetResolver(
             return InteractionTarget(
                 targetPath.last(),
                 elements = targetPath.asReversed().take(MAX_INTERACTION_ELEMENTS).map { it.interactionElement() },
+                repetitive =
+                    targetPath.last().let {
+                        it is android.widget.EditText || it is android.widget.AbsSeekBar || it is android.widget.NumberPicker ||
+                            it is android.widget.AbsListView || it is android.widget.ScrollView || it is android.widget.HorizontalScrollView
+                    },
             )
         }
         val composeHosts =

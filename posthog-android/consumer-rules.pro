@@ -120,3 +120,12 @@
 # used in reflection to check if Firebase Messaging is available at runtime
 -keepnames class com.google.firebase.messaging.FirebaseMessaging
 ##---------------End: proguard configuration for Firebase Messaging (compileOnly)  ----------
+
+# Dead-tap response observation classifies only these known library View implementations.
+# Preserve names, not members or unused classes; app-defined custom drawing still fails closed.
+-keepnames class androidx.appcompat.widget.* extends android.view.View
+-keepnames class com.google.android.material.** extends android.view.View
+-keepnames class androidx.compose.ui.platform.* extends android.view.View
+-keepnames class androidx.compose.ui.viewinterop.* extends android.view.View
+-keepnames class androidx.compose.material.ripple.RippleContainer
+-keepnames class androidx.compose.material.ripple.RippleHostView
