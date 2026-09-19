@@ -100,6 +100,11 @@
 # used in reflection to check if compose is available at runtime
 -keepnames class androidx.compose.ui.platform.AndroidComposeView
 
+# Match native interop targets to the Compose layout that actually won the hit test.
+-keep class androidx.compose.ui.viewinterop.AndroidViewHolder {
+    public androidx.compose.ui.node.LayoutNode getLayoutNode();
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable

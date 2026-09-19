@@ -14,6 +14,11 @@
         tools:targetApi="34"
         android:name=".MyApp">
         <activity
+            android:name="com.posthog.android.sample.InteractionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PostHogAndroidSample" />
+
+        <activity
             android:name="com.posthog.android.sample.LogsActivity"
             android:exported="false"
             android:theme="@style/Theme.PostHogAndroidSample" />

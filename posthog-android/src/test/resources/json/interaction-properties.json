@@ -1,0 +1,20 @@
+{
+  "$event_type": "touch",
+  "$touch_x": 45.0,
+  "$touch_y": 60.0,
+  "$ce_version": 1,
+  "$elements": [
+    {
+      "tag_name": "button",
+      "attr__id": "checkout\"\\\"\\tail",
+      "nth_child": 2,
+      "nth_of_type": 1
+    },
+    {
+      "tag_name": "framelayout",
+      "nth_child": 1,
+      "nth_of_type": 1
+    }
+  ],
+  "$elements_chain": "button:attr__id=\"checkout\\\"\\\"\\tail\"attr_id=\"checkout\\\"\\\"\\tail\"nth-child=\"2\"nth-of-type=\"1\";framelayout:nth-child=\"1\"nth-of-type=\"1\""
+}

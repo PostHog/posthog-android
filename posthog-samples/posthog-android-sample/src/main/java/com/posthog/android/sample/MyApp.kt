@@ -30,6 +30,7 @@ class MyApp : Application() {
             ).apply {
                 debug = true
                 flushAt = 1
+                captureElementInteractions = true
                 captureDeepLinks = false
                 captureApplicationLifecycleEvents = false
                 captureScreenViews = false

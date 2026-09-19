@@ -52,6 +52,7 @@ android {
         unitTests.apply {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
+            all { it.maxHeapSize = "1g" }
         }
     }
 
@@ -82,8 +83,13 @@ kotlin {
     compilerOptions.postHogConfig()
 }
 
+val composeTestCompiler by configurations.creating
+
 tasks.withType<KotlinCompile>().configureEach {
     compilerOptions.postHogConfig(false)
+    if (name.endsWith("UnitTestKotlin")) {
+        pluginClasspath.from(composeTestCompiler)
+    }
 }
 
 animalsniffer {
@@ -120,6 +126,7 @@ dependencies {
     )
 
     // tests
+    composeTestCompiler("org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:${PosthogBuildConfig.Kotlin.KOTLIN}")
     testImplementation(testFixtures(project(":posthog")))
     // exercises the Firebase-present token fetch path via mockStatic
     testImplementation("com.google.firebase:firebase-messaging:${PosthogBuildConfig.Dependencies.FIREBASE_MESSAGING}")
@@ -134,7 +141,11 @@ dependencies {
     testImplementation("androidx.test:core-ktx:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     testImplementation("androidx.test:rules:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
-    testRuntimeOnly("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}") {
+    testImplementation("androidx.activity:activity-compose:1.13.0")
+    testImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    testImplementation("androidx.compose.material3:material3")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}") {
         exclude(group = "androidx.savedstate", module = "savedstate")
     }
 }
