@@ -10,7 +10,7 @@ import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Captures app installed and updated events
+ * Records app version/build and optionally captures app installed and updated events
  * @property config the Config
  */
 internal class PostHogAppInstallIntegration(
@@ -33,11 +33,6 @@ internal class PostHogAppInstallIntegration(
         if (config.cachePreferences?.isAvailable() == false) {
             return
         }
-        if (!integrationInstalled.compareAndSet(false, true)) {
-            return
-        }
-        ownsInstallation = true
-
         packageInfoProvider()?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
@@ -45,6 +40,16 @@ internal class PostHogAppInstallIntegration(
 
                 val previousVersion = preferences.getValue(VERSION) as? String
                 var previousBuild = preferences.getValue(BUILD)
+
+                // Remember this launch independently of event capture, using the previous values
+                // above to classify it. Consent still gates delivery in postHog.capture.
+                versionName?.let { preferences.setValue(VERSION, it) }
+                versionCode?.let { preferences.setValue(BUILD, it) }
+
+                if (!config.captureApplicationLifecycleEvents || !integrationInstalled.compareAndSet(false, true)) {
+                    return
+                }
+                ownsInstallation = true
 
                 val event: String
                 val props = mutableMapOf<String, Any>()
@@ -69,9 +74,6 @@ internal class PostHogAppInstallIntegration(
                 }
                 versionName?.let { props["version"] = it }
                 versionCode?.let { props["build"] = it }
-
-                versionName?.let { preferences.setValue(VERSION, it) }
-                versionCode?.let { preferences.setValue(BUILD, it) }
 
                 postHog.capture(event, properties = props)
             }

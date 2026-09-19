@@ -239,9 +239,8 @@ public class PostHogAndroid private constructor() {
                     )
                 }
             }
-            if (config.captureApplicationLifecycleEvents) {
-                config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
-            }
+            // Version accounting also runs when lifecycle event capture is disabled.
+            config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
             config.addIntegration(
                 PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider),
             )
