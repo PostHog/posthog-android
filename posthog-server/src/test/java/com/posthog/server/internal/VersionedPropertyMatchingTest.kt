@@ -200,6 +200,85 @@ internal class VersionedPropertyMatchingTest {
     }
 
     @Test
+    fun `unchanged provider refresh retains cached remote results`() {
+        assertRefreshResultCache(useProvider = true, updatedDefinitions = definitions(1), changed = false)
+    }
+
+    @Test
+    fun `unchanged HTTP 200 without ETag retains cached remote results`() {
+        assertRefreshResultCache(useProvider = false, updatedDefinitions = definitions(1), changed = false)
+    }
+
+    @Test
+    fun `changed provider definitions invalidate cached remote results`() {
+        assertChangedDefinitionsInvalidateResultCache(useProvider = true)
+    }
+
+    @Test
+    fun `changed HTTP definitions invalidate cached remote results`() {
+        assertChangedDefinitionsInvalidateResultCache(useProvider = false)
+    }
+
+    private fun assertChangedDefinitionsInvalidateResultCache(useProvider: Boolean) {
+        for (updated in listOf(
+            definitions(2),
+            definitions(null),
+            definitions(1).replace("\"version\": 42", "\"version\": 43"),
+            definitions(1).replace("\"company\"", "\"organization\""),
+            definitions(1).replace("\"type\": \"OR\"", "\"type\": \"AND\""),
+        )) {
+            assertRefreshResultCache(useProvider, updated, changed = true)
+        }
+    }
+
+    private fun assertRefreshResultCache(
+        useProvider: Boolean,
+        updatedDefinitions: String,
+        changed: Boolean,
+    ) {
+        var currentDefinitions = definitions(1)
+        val dispatcher =
+            CountingDispatcher(
+                { jsonResponse(currentDefinitions) },
+                { jsonResponse(createFlagsResponse("person", enabled = true)) },
+            )
+        val http = MockWebServer()
+        http.dispatcher = dispatcher
+        http.start()
+        val config = createTestConfig(host = http.url("/").toString())
+        var providerReads = 0
+        val provider =
+            object : PostHogBlockingFlagDefinitionCacheProvider() {
+                override fun shouldFetchFlagDefinitionsBlocking(): Boolean = false
+
+                override fun getFlagDefinitionsBlocking(): Map<String, Any?> {
+                    providerReads++
+                    return currentDefinitions.reader().use { config.serializer.deserialize(it) }
+                }
+
+                override fun onFlagDefinitionsReceivedBlocking(data: Map<String, Any?>) = Unit
+            }
+        val sut = createSut(config, if (useProvider) provider else null)
+        try {
+            sut.loadFeatureFlagDefinitions()
+            // Missing person properties force remote evaluation of a known flag, not a missing-key probe.
+            assertEquals(true, sut.getFeatureFlag("person", distinctId = "user"))
+            assertEquals(1, dispatcher.flagsCalls.get())
+
+            currentDefinitions = updatedDefinitions
+            sut.loadFeatureFlagDefinitions()
+            assertEquals(true, sut.getFeatureFlag("person", distinctId = "user"))
+            assertEquals(if (changed) 2 else 1, dispatcher.flagsCalls.get(), "Remote calls after definition refresh")
+            assertEquals(if (useProvider) 2 else 0, providerReads)
+            assertEquals(if (useProvider) 0 else 2, dispatcher.localEvaluationCalls.get())
+        } finally {
+            sut.clear()
+            sut.shutDown()
+            http.shutdown()
+        }
+    }
+
+    @Test
     fun `version only refresh prevents an in flight remote response from repopulating the cache`() {
         val responseStarted = CountDownLatch(1)
         val releaseResponse = CountDownLatch(1)

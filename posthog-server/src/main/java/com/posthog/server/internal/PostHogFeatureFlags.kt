@@ -58,6 +58,8 @@ internal class PostHogFeatureFlags(
         val groupTypeMapping: Map<String, String>?,
         val cohorts: Map<String, PropertyGroup>?,
         val evaluator: FlagEvaluator,
+        // Definition models use identity equality; compare their normalized endpoint data instead.
+        val cacheData: Map<String, Any?>?,
     )
 
     @Volatile
@@ -598,12 +600,7 @@ internal class PostHogFeatureFlags(
             etag = response.etag
 
             val cacheData = buildFlagDefinitionCacheData(apiResponse)
-            applyFlagDefinitions(
-                flags = apiResponse.flags,
-                groupTypeMapping = apiResponse.groupTypeMapping,
-                cohorts = apiResponse.cohorts,
-                propertyMatchingVersion = apiResponse.propertyMatchingVersion,
-            )
+            applyFlagDefinitions(apiResponse, cacheData)
 
             config.logger.log("Loaded ${apiResponse.flags?.size ?: 0} feature flags for local evaluation")
 
@@ -651,12 +648,7 @@ internal class PostHogFeatureFlags(
 
         return try {
             val response = parseFlagDefinitionCacheData(cachedData)
-            applyFlagDefinitions(
-                flags = response.flags,
-                groupTypeMapping = response.groupTypeMapping,
-                cohorts = response.cohorts,
-                propertyMatchingVersion = response.propertyMatchingVersion,
-            )
+            applyFlagDefinitions(response, buildFlagDefinitionCacheData(response))
             config.logger.log("Loaded ${response.flags?.size ?: 0} feature flags from flag definition cache")
             notifyFeatureFlagsLoaded()
             true
@@ -731,22 +723,23 @@ internal class PostHogFeatureFlags(
     }
 
     private fun applyFlagDefinitions(
-        flags: List<FlagDefinition>?,
-        groupTypeMapping: Map<String, String>?,
-        cohorts: Map<String, PropertyGroup>?,
-        propertyMatchingVersion: Int?,
+        response: LocalEvaluationResponse,
+        cacheData: Map<String, Any?>?,
     ) {
         val invalidated =
             synchronized(missingFlagKeysLock) {
                 synchronized(loadLock) {
-                    definitionSnapshot =
-                        DefinitionSnapshot(
-                            flags?.associateBy { it.key },
-                            groupTypeMapping,
-                            cohorts,
-                            FlagEvaluator(config, propertyMatchingVersion),
-                        )
-                    cache = PostHogFeatureFlagCache(maxSize = cacheMaxSize, maxAgeMs = cacheMaxAgeMs)
+                    if (cacheData == null || cacheData != definitionSnapshot?.cacheData) {
+                        definitionSnapshot =
+                            DefinitionSnapshot(
+                                response.flags?.associateBy { it.key },
+                                response.groupTypeMapping,
+                                response.cohorts,
+                                FlagEvaluator(config, response.propertyMatchingVersion),
+                                cacheData,
+                            )
+                        cache = PostHogFeatureFlagCache(maxSize = cacheMaxSize, maxAgeMs = cacheMaxAgeMs)
+                    }
                     definitionsLoaded = true
                     definitionsLoadedAt = System.currentTimeMillis()
                 }
