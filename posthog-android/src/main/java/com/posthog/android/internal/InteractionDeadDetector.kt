@@ -7,7 +7,10 @@ import com.posthog.android.PostHogAndroidConfig
 import java.lang.ref.WeakReference
 import java.util.Date
 
-/** One candidate and one timer globally per installation, with at most ten full snapshots/second. */
+/**
+ * One candidate and one timer per installation. Polling is limited to ten snapshots/second;
+ * each eligible tap additionally takes a baseline and an immediate post-dispatch snapshot.
+ */
 internal class InteractionDeadDetector(
     private val config: PostHogAndroidConfig,
     private val mainHandler: MainHandler,
