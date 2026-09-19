@@ -158,6 +158,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getBeforeSendList ()Ljava/util/List;
 	public final fun getBootstrap ()Lcom/posthog/PostHogBootstrapConfig;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
+	public final fun getCompressRequestBody ()Z
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
@@ -213,6 +214,7 @@ public class com/posthog/PostHogConfig {
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setBootstrap (Lcom/posthog/PostHogBootstrapConfig;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
+	public final fun setCompressRequestBody (Z)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V

@@ -291,6 +291,7 @@ fun main() {
                     config.httpClient = httpClient
 
                     req.max_retries?.let { config.maxRetries = it }
+                    req.enable_compression?.let { config.compressRequestBody = it }
 
                     // Set storage prefix for file-backed queue
                     config.storagePrefix = QUEUE_STORAGE_PREFIX
