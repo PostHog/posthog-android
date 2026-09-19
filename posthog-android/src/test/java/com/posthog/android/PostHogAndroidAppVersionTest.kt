@@ -25,7 +25,36 @@ internal class PostHogAndroidAppVersionTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
+    private fun prepareContext(
+        version: String,
+        build: Int,
+    ) {
+        mockContextAppStart(context, tmpDir)
+        context.applicationContext.mockPackageInfo(version, build)
+        context.applicationContext.mockDisplayMetrics()
+        context.applicationContext.mockAppInfo()
+    }
+
     @Suppress("DEPRECATION")
+    private fun createConfig(
+        apiKey: String,
+        preferences: PostHogPreferences,
+        captureLifecycle: Boolean,
+        events: MutableList<PostHogEvent>,
+        configure: PostHogAndroidConfig.() -> Unit = {},
+    ): PostHogAndroidConfig =
+        PostHogAndroidConfig(apiKey).apply {
+            cachePreferences = preferences
+            captureApplicationLifecycleEvents = captureLifecycle
+            remoteConfig = false
+            preloadFeatureFlags = false
+            configure()
+            addBeforeSend {
+                events.add(it)
+                null
+            }
+        }
+
     private fun launch(
         preferences: PostHogPreferences,
         version: String,
@@ -33,23 +62,9 @@ internal class PostHogAndroidAppVersionTest {
         captureLifecycle: Boolean,
         configure: PostHogAndroidConfig.() -> Unit = {},
     ): List<PostHogEvent> {
-        mockContextAppStart(context, tmpDir)
-        context.applicationContext.mockPackageInfo(version, build)
-        context.applicationContext.mockDisplayMetrics()
-        context.applicationContext.mockAppInfo()
+        prepareContext(version, build)
         val events = mutableListOf<PostHogEvent>()
-        val config =
-            PostHogAndroidConfig(API_KEY).apply {
-                cachePreferences = preferences
-                captureApplicationLifecycleEvents = captureLifecycle
-                remoteConfig = false
-                preloadFeatureFlags = false
-                configure()
-                addBeforeSend {
-                    events.add(it)
-                    null
-                }
-            }
+        val config = createConfig(API_KEY, preferences, captureLifecycle, events, configure)
         val client = PostHogAndroid.with(context, config)
         try {
             return events.toList()
@@ -68,12 +83,8 @@ internal class PostHogAndroidAppVersionTest {
         assertDisabledFirstDoesNotClaimEvents(true)
     }
 
-    @Suppress("DEPRECATION")
     private fun assertDisabledFirstDoesNotClaimEvents(upgrade: Boolean) {
-        mockContextAppStart(context, tmpDir)
-        context.applicationContext.mockPackageInfo("2.0.0", 2)
-        context.applicationContext.mockDisplayMetrics()
-        context.applicationContext.mockAppInfo()
+        prepareContext("2.0.0", 2)
         val disabledPreferences = PostHogMemoryPreferences()
         val enabledPreferences = PostHogMemoryPreferences()
         if (upgrade) {
@@ -85,31 +96,13 @@ internal class PostHogAndroidAppVersionTest {
         val disabled =
             PostHogAndroid.with(
                 context,
-                PostHogAndroidConfig("disabled-project").apply {
-                    cachePreferences = disabledPreferences
-                    captureApplicationLifecycleEvents = false
-                    remoteConfig = false
-                    preloadFeatureFlags = false
-                    addBeforeSend {
-                        disabledEvents.add(it)
-                        null
-                    }
-                },
+                createConfig("disabled-project", disabledPreferences, false, disabledEvents),
             )
         try {
             val enabled =
                 PostHogAndroid.with(
                     context,
-                    PostHogAndroidConfig("enabled-project").apply {
-                        cachePreferences = enabledPreferences
-                        captureApplicationLifecycleEvents = true
-                        remoteConfig = false
-                        preloadFeatureFlags = false
-                        addBeforeSend {
-                            enabledEvents.add(it)
-                            null
-                        }
-                    },
+                    createConfig("enabled-project", enabledPreferences, true, enabledEvents),
                 )
             try {
                 assertTrue(disabledEvents.isEmpty())
@@ -129,6 +122,44 @@ internal class PostHogAndroidAppVersionTest {
         } finally {
             disabled.close()
         }
+    }
+
+    private fun launchAsSecondary(
+        preferences: PostHogPreferences,
+        version: String,
+        build: Int,
+    ) {
+        prepareContext(version, build)
+        val owner = PostHogAndroid.with(context, createConfig("owner-project", PostHogMemoryPreferences(), true, mutableListOf()))
+        try {
+            val events = mutableListOf<PostHogEvent>()
+            val secondary = PostHogAndroid.with(context, createConfig(API_KEY, preferences, true, events))
+            try {
+                assertTrue(events.isEmpty())
+            } finally {
+                secondary.close()
+            }
+        } finally {
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `secondary project becoming first at same version does not fabricate installation`() {
+        val preferences = PostHogMemoryPreferences()
+        launchAsSecondary(preferences, "1.0.0", 1)
+        assertTrue(launch(preferences, "1.0.0", 1, captureLifecycle = true).isEmpty())
+    }
+
+    @Test
+    fun `secondary project records upgrades before becoming first`() {
+        val preferences = PostHogMemoryPreferences()
+        launch(preferences, "1.0.0", 1, captureLifecycle = true)
+        launchAsSecondary(preferences, "2.0.0", 2)
+        val event = launch(preferences, "3.0.0", 3, captureLifecycle = true).single()
+        assertEquals("Application Updated", event.event)
+        assertEquals("2.0.0", event.properties?.get("previous_version"))
+        assertEquals(2L, event.properties?.get("previous_build"))
     }
 
     @Test

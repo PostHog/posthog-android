@@ -33,13 +33,6 @@ internal class PostHogAppInstallIntegration(
         if (config.cachePreferences?.isAvailable() == false) {
             return
         }
-        if (config.captureApplicationLifecycleEvents) {
-            if (!integrationInstalled.compareAndSet(false, true)) {
-                return
-            }
-            ownsInstallation = true
-        }
-
         packageInfoProvider()?.let { packageInfo ->
             config.cachePreferences?.let { preferences ->
                 val versionName = packageInfo.versionName
@@ -53,9 +46,10 @@ internal class PostHogAppInstallIntegration(
                 versionName?.let { preferences.setValue(VERSION, it) }
                 versionCode?.let { preferences.setValue(BUILD, it) }
 
-                if (!config.captureApplicationLifecycleEvents) {
+                if (!config.captureApplicationLifecycleEvents || !integrationInstalled.compareAndSet(false, true)) {
                     return
                 }
+                ownsInstallation = true
 
                 val event: String
                 val props = mutableMapOf<String, Any>()

@@ -16,7 +16,6 @@ import org.mockito.kotlin.mock
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAppInstallIntegrationTest {
@@ -146,7 +145,7 @@ internal class PostHogAppInstallIntegrationTest {
     }
 
     @Test
-    fun `enabled owner prevents secondary version writes and disabled uninstall cannot release it`() {
+    fun `enabled owner suppresses secondary events but not bookkeeping and disabled uninstall cannot release it`() {
         val ownerPreferences = PostHogMemoryPreferences()
         val secondaryPreferences = PostHogMemoryPreferences()
         val owner = getSut(ownerPreferences)
@@ -162,13 +161,15 @@ internal class PostHogAppInstallIntegrationTest {
             secondary.uninstall()
             secondary.install(fake)
             assertEquals(1L, ownerPreferences.getValue(BUILD))
-            assertNull(secondaryPreferences.getValue(BUILD))
+            assertEquals(1L, secondaryPreferences.getValue(BUILD))
             assertEquals(1, fake.captures)
 
             owner.uninstall()
+            context.mockPackageInfo("2.0.0", 2)
             secondary.install(fake)
-            assertEquals("Application Installed", fake.event)
-            assertEquals(1L, secondaryPreferences.getValue(BUILD))
+            assertEquals("Application Updated", fake.event)
+            assertEquals(2, fake.captures)
+            assertEquals(2L, secondaryPreferences.getValue(BUILD))
         } finally {
             owner.uninstall()
             disabled.uninstall()

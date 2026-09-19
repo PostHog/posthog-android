@@ -2,4 +2,4 @@
 "posthog-android": patch
 ---
 
-Remember the app version and build even when application lifecycle capture is disabled, so enabling it on a later launch reports updates with the correct previous version instead of a false Application Installed event.
+Remember each project's app version and build even when lifecycle events are disabled or suppressed, including version-name changes with an unchanged build, so later launches report the correct previous version without false Application Installed events.
