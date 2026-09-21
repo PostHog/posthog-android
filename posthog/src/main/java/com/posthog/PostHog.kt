@@ -34,6 +34,7 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
+import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 import com.posthog.internal.sortMapRecursively
@@ -372,7 +373,7 @@ public class PostHog private constructor(
                             }
                         }
                     } catch (e: Throwable) {
-                        config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
+                        config.logIntegrationFailure(it.javaClass.name, e)
                     }
                 }
 
