@@ -1,5 +1,16 @@
 ## Next
 
+## 3.68.0
+
+### Minor Changes
+
+- a4468e0: Add opt-in rage and dead tap detection for Android Views and Jetpack Compose, independent of session replay.
+- 05bf361: Add opt-in `captureElementInteractions` for actionable View and Compose taps, independent of session replay. Emits privacy-safe `$autocapture` events with browser-compatible element properties (types, resource IDs/test tags and hierarchy positions), the mobile `touch` event type and window-local touch coordinates in dp, never text or input values. Add keyed View and Compose subtree exclusions and respect explicit replay masking.
+
+### Patch Changes
+
+- 8aedddd: Remember each project's app version and build even when lifecycle events are disabled or suppressed, including version-name changes with an unchanged build, so later launches report the correct previous version without false Application Installed events.
+
 ## 3.67.0
 
 ### Minor Changes
