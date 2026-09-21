@@ -493,13 +493,24 @@ public fun createMockIntegration(): com.posthog.PostHogIntegration {
  * Flag definition JSON for a flag local evaluation can always resolve: active, 100% rollout, no
  * property conditions.
  */
-public fun conclusiveFlagDefinition(key: String): String {
+public fun conclusiveFlagDefinition(
+    key: String,
+    evaluationRuntime: String? = null,
+): String {
+    val evaluationRuntimeJson =
+        if (evaluationRuntime != null) {
+            "\"evaluation_runtime\": \"$evaluationRuntime\","
+        } else {
+            ""
+        }
+
     return """
         {
             "id": 1,
             "name": "$key",
             "key": "$key",
             "active": true,
+            $evaluationRuntimeJson
             "filters": {
                 "groups": [
                     { "properties": [], "rollout_percentage": 100 }
@@ -514,13 +525,24 @@ public fun conclusiveFlagDefinition(key: String): String {
  * Flag definition JSON gated on `email icontains @acme.com`. Local evaluation is inconclusive for
  * this flag unless the caller supplies an `email` person property.
  */
-public fun emailGatedFlagDefinition(key: String): String {
+public fun emailGatedFlagDefinition(
+    key: String,
+    evaluationRuntime: String? = null,
+): String {
+    val evaluationRuntimeJson =
+        if (evaluationRuntime != null) {
+            "\"evaluation_runtime\": \"$evaluationRuntime\","
+        } else {
+            ""
+        }
+
     return """
         {
             "id": 2,
             "name": "$key",
             "key": "$key",
             "active": true,
+            $evaluationRuntimeJson
             "filters": {
                 "groups": [
                     {

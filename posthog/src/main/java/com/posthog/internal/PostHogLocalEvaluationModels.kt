@@ -33,6 +33,8 @@ public class FlagDefinition(
     public val ensureExperienceContinuity: Boolean = false,
     @SerializedName("has_experiment")
     public val hasExperiment: Boolean? = null,
+    @SerializedName("evaluation_runtime")
+    public val evaluationRuntime: String? = null,
 )
 
 /**

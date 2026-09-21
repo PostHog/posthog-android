@@ -264,6 +264,7 @@ public final class com/posthog/server/PostHogFeatureFlagEvaluations {
 	public final fun getDefinitionsLoadedAt ()Ljava/lang/Long;
 	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getEvaluatedAt ()Ljava/lang/Long;
+	public final fun getEvaluationRuntime (Ljava/lang/String;)Ljava/lang/String;
 	public final fun getFlag (Ljava/lang/String;)Ljava/lang/Object;
 	public final fun getFlagPayload (Ljava/lang/String;)Ljava/lang/String;
 	public final fun getFlagPayloadAs (Ljava/lang/String;Ljava/lang/Class;)Ljava/lang/Object;

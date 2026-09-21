@@ -574,6 +574,28 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `getEvaluationRuntime passes through the runtime of locally evaluated flags`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    conclusiveFlagDefinition("client-flag", evaluationRuntime = "client"),
+                    conclusiveFlagDefinition("server-flag", evaluationRuntime = "server"),
+                    conclusiveFlagDefinition("unreported-flag"),
+                    emailGatedFlagDefinition("remote-flag", evaluationRuntime = "all"),
+                ),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("remote-flag" to true)) },
+        ) { postHog, _, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
+            assertEquals("server", snapshot.getEvaluationRuntime("server-flag"))
+            assertNull(snapshot.getEvaluationRuntime("unreported-flag"))
+            assertNull(snapshot.getEvaluationRuntime("remote-flag"), "a flag filled from /flags has no runtime")
+            assertNull(snapshot.getEvaluationRuntime("missing-flag"))
+        }
+    }
+
+    @Test
     fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {
         withLocalEvaluation(
             definitions =

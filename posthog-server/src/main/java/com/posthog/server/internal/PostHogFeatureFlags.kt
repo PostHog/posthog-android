@@ -800,6 +800,7 @@ internal class PostHogFeatureFlags(
                     payload = payload,
                     version = flagDef.version,
                     hasExperiment = flagDef.hasExperiment,
+                    evaluationRuntime = flagDef.evaluationRuntime,
                 ),
             reason =
                 com.posthog.internal.EvaluationReason(

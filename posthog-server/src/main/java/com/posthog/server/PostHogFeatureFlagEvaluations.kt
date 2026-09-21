@@ -17,7 +17,7 @@ import java.util.Collections
  *     used by [PostHogInterface.getFeatureFlag]). Empty/blank distinctId short-circuits the event.
  *     Reads for unknown keys still fire a `$feature_flag_called` event with
  *     `$feature_flag_error: flag_missing` so dashboards see the lookup attempt.
- *   - [getFlagPayload] does not fire any event.
+ *   - [getFlagPayload] and [getEvaluationRuntime] do not fire any event.
  *
  * Filtered clones from [onlyAccessed] / [only] are independent of the parent — accessing flags on
  * the clone does not back-propagate into the parent's "accessed" set.
@@ -104,6 +104,22 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      */
     public fun getFlagPayload(key: String): String? {
         return flagMap[key]?.metadata?.payload
+    }
+
+    /**
+     * Returns the runtime the flag is configured for: "all", "client" or "server". Use it to
+     * choose which flags to forward to a client, for example when bootstrapping a browser SDK.
+     * The value is passed through as the server reports it. It is only available for flags that
+     * resolved locally. It is null when the flag is unknown, when the server does not report the
+     * field, or when the value came from `/flags`, which does not include it. That covers a flag
+     * with a local definition that could not resolve locally. Does not fire any event and does
+     * not record the access.
+     *
+     * @param key Feature flag key.
+     * @return The flag's evaluation runtime, or null when absent.
+     */
+    public fun getEvaluationRuntime(key: String): String? {
+        return flagMap[key]?.metadata?.evaluationRuntime
     }
 
     /**
