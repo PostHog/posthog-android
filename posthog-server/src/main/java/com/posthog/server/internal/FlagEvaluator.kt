@@ -26,6 +26,7 @@ import java.util.regex.PatternSyntaxException
  */
 internal class FlagEvaluator(
     private val config: PostHogConfig,
+    private val propertyMatchingVersion: Int? = null,
 ) {
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
@@ -240,7 +241,11 @@ internal class FlagEvaluator(
         propertyValue: Any?,
         overrideValue: Any?,
     ): Boolean {
-        if (isTruthyOrFalsyPropertyValue(propertyValue)) {
+        // Empty filters retain recursive ALL truthiness in both matching versions.
+        if (propertyValue is List<*> && propertyValue.isEmpty()) {
+            return isTruthyPropertyValue(overrideValue)
+        }
+        if (propertyMatchingVersion != 2 && isTruthyOrFalsyPropertyValue(propertyValue)) {
             return isTruthyPropertyValue(propertyValue) == isTruthyPropertyValue(overrideValue)
         }
 

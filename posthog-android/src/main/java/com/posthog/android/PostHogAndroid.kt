@@ -16,6 +16,7 @@ import com.posthog.android.internal.PostHogAndroidLogger
 import com.posthog.android.internal.PostHogAndroidNetworkStatus
 import com.posthog.android.internal.PostHogAndroidNetworkStatusIntegration
 import com.posthog.android.internal.PostHogAppInstallIntegration
+import com.posthog.android.internal.PostHogElementInteractionIntegration
 import com.posthog.android.internal.PostHogLifecycleObserverIntegration
 import com.posthog.android.internal.PostHogMetaPropertiesApplier
 import com.posthog.android.internal.PostHogPushSubscriptionIntegration
@@ -222,6 +223,9 @@ public class PostHogAndroid private constructor() {
             val mainHandler = MainHandler()
             config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
             config.addIntegration(PostHogTouchActivityIntegration(config))
+            if (config.captureElementInteractions || config.captureRageClicks || config.captureDeadClicks) {
+                config.addIntegration(PostHogElementInteractionIntegration(config, mainHandler))
+            }
             config.addIntegration(PostHogLogCatIntegration(config))
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay ||
@@ -235,9 +239,8 @@ public class PostHogAndroid private constructor() {
                     )
                 }
             }
-            if (config.captureApplicationLifecycleEvents) {
-                config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
-            }
+            // Version accounting also runs when lifecycle event capture is disabled.
+            config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
             config.addIntegration(
                 PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider),
             )

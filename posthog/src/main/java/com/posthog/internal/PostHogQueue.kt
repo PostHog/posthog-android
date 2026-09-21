@@ -51,6 +51,9 @@ public class PostHogQueue<Record>(
 
     private val delay: Long get() = (spec.flushIntervalSeconds(config) * 1000).toLong()
 
+    override val size: Int
+        get() = synchronized(dequeLock) { deque.size }
+
     public val queueDirectory: File?
         get() = spec.storagePrefix?.let { File(it, config.apiKey) }
 

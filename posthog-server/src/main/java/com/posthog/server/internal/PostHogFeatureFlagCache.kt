@@ -53,7 +53,7 @@ internal class PostHogFeatureFlagCache(
         requestId: String? = null,
         evaluatedAt: Long? = null,
         error: String? = null,
-    ) {
+    ): FeatureFlagCacheEntry {
         val currentTime = System.currentTimeMillis()
         val entry =
             FeatureFlagCacheEntry(
@@ -66,6 +66,7 @@ internal class PostHogFeatureFlagCache(
             )
 
         cache[key] = entry
+        return entry
     }
 
     /**

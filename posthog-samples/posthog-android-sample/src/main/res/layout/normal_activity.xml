@@ -66,6 +66,13 @@
         android:id="@+id/errorTrackingButton"
         />
 
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Element interactions"
+        android:id="@+id/interactionsButton"
+        />
+
     <EditText
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

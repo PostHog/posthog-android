@@ -30,6 +30,10 @@ class NormalActivity : ComponentActivity() {
 
         setContentView(R.layout.normal_activity)
 
+        findViewById<Button>(R.id.interactionsButton).setOnClickListener {
+            startActivity(Intent(this, InteractionActivity::class.java))
+        }
+
         findViewById<Button>(R.id.sessionReplayButton).setOnClickListener {
             startActivity(Intent(this, SessionReplayActivity::class.java))
         }

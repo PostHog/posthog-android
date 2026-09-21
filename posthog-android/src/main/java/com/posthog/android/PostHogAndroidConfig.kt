@@ -70,5 +70,27 @@ public open class PostHogAndroidConfig
                 }
             },
         ) {
+        /**
+         * Captures `$autocapture` for actionable View and Compose taps. Default: false.
+         * Configure before setup. Independent of session replay; sends types and resource IDs/test
+         * tags and window-local touch coordinates in dp, never text, content descriptions or input
+         * values. Use only non-sensitive test tags.
+         * Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_no_capture` set to
+         * true, or use [postHogAutocaptureNoCapture] for Compose.
+         */
+        public var captureElementInteractions: Boolean = false
+
+        /** Captures `$rageclick` after four nearby taps on the same target within one second. Default: false.
+         * Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties.
+         */
+        public var captureRageClicks: Boolean = false
+
+        /** Captures `$dead_click` when a supported target has no observed meaningful UI response for three seconds.
+         * Default: false. Bounded local View/Compose change detection may transiently process unmasked UI text;
+         * raw text is not retained and neither text nor its ephemeral digest is sent. Unsupported/incomplete observations are skipped.
+         * Independent of semantic capture and replay; shares interaction exclusions.
+         */
+        public var captureDeadClicks: Boolean = false
+
         internal var replayQueueHolder: PostHogReplayQueue? = null
     }

@@ -48,6 +48,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
+private const val MAX_DEBUG_ERROR_LENGTH = 500
 
 // A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
 // after a cold start while the host's JS/Dart handlers register. Finite so that a re-send carrying no
@@ -149,6 +150,7 @@ public class PostHog private constructor(
     // Used to deduplicate setPersonProperties calls
     private var cachedPersonPropertiesHash: String? = null
 
+    @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
     private var surveysHandler: PostHogSurveysHandler? = null
 
@@ -338,6 +340,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
+                    config.notifyIntegrationsChanged()
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
                     } catch (e: Throwable) {
@@ -528,6 +531,7 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
+        if (isEnabled()) config.notifyIntegrationsChanged()
         synchronized(setupLock) {
             try {
                 if (!isEnabled()) {
@@ -664,6 +668,7 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
+        timestamp: Date? = null,
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -748,6 +753,13 @@ public class PostHog private constructor(
             props.putAll(it)
         }
 
+        // After the caller merge so SDK-computed debug values win, matching posthog-js's
+        // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
+        // never precedes a rotation triggered by getActiveSessionId() above.
+        if (appendSharedProps) {
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp))
+        }
+
         // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged
         val propDistinctId = props["distinct_id"] as? String
@@ -757,6 +769,55 @@ public class PostHog private constructor(
         }
 
         return props
+    }
+
+    private fun sdkDebugProperties(
+        sessionId: String?,
+        timestamp: Date?,
+    ): Map<String, Any> {
+        val props = mutableMapOf<String, Any>()
+        val managerStart = PostHogSessionManager.getSessionStartedAt()
+        // The keys describe the SDK state when the event occurred. An explicit timestamp from before
+        // this session started (a previous-process crash reported on this launch) did not occur here.
+        if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
+            return props
+        }
+        // Guarded separately from the session and queue keys below: those come from the session
+        // manager and the queue, not from replay, so a handler that throws must not suppress them.
+        try {
+            props.putAll(sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled"))
+        } catch (e: Throwable) {
+            props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
+        }
+        try {
+            sessionStart(sessionId, managerStart)?.let { start ->
+                props["\$sdk_debug_session_start"] = start
+                props["\$sdk_debug_current_session_duration"] = PostHogSessionManager.currentTimeMillis() - start
+            }
+            queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+        } catch (e: Throwable) {
+            props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
+        }
+        return props
+    }
+
+    // The manager's clock for its own session. A caller-supplied id (the RN/Flutter bridges) carries
+    // its start in the UUIDv7 timestamp, the derivation posthog-js applies to a bootstrapped id.
+    private fun sessionStart(
+        sessionId: String?,
+        managerStart: Long,
+    ): Long? {
+        if (sessionId == null || sessionId == PostHogSessionManager.peekSessionId()?.toString()) {
+            return managerStart.takeIf { it > 0 }
+        }
+        val uuid =
+            try {
+                UUID.fromString(sessionId)
+            } catch (e: IllegalArgumentException) {
+                return null
+            }
+        if (uuid.version() != 7) return null
+        return uuid.mostSignificantBits ushr 16
     }
 
     /**
@@ -850,6 +911,7 @@ public class PostHog private constructor(
                     appendSharedProps = !isSnapshotEvent,
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
+                    timestamp = timestamp,
                 )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
@@ -1176,6 +1238,7 @@ public class PostHog private constructor(
             return
         }
 
+        if (!isOptedOut()) config.notifyIntegrationsChanged()
         synchronized(optOutLock) {
             config?.optOut = true
             if (config?.persistOptOut != false) {
@@ -1223,6 +1286,8 @@ public class PostHog private constructor(
         if (trimmedTitle.isEmpty()) {
             return
         }
+
+        if (lastScreenName != trimmedTitle) config.notifyIntegrationsChanged()
 
         // Cache for capture-time context snapshot on log records and for the
         // $screen_name auto-attach on subsequent events (see buildProperties).
@@ -1385,6 +1450,8 @@ public class PostHog private constructor(
                 isIdentified = true
             }
         }
+
+        if (shouldIdentify || shouldTransitionToIdentified) config.notifyIntegrationsChanged()
 
         if (shouldIdentify) {
             capture(
@@ -1951,6 +2018,7 @@ public class PostHog private constructor(
             return
         }
 
+        config.notifyIntegrationsChanged()
         // Capture the logging-out identity before preferences are cleared, so the push token can be
         // unregistered for it and re-registered under the new anonymous id (decision 5/6).
         val previousDistinctId = distinctId

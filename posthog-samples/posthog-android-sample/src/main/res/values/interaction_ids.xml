@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="interaction_view_responsive" type="id" />
+    <item name="interaction_view_noop" type="id" />
+    <item name="interaction_view_ignored" type="id" />
+</resources>
