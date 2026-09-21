@@ -1,5 +1,13 @@
 ## Next
 
+## 2.18.0
+
+### Minor Changes
+
+- 1a34c72: Attach `$recording_status` and `$sdk_debug_*` replay properties to captured events.
+  
+  `PostHogQueueInterface` gains `size` and `PostHogSessionReplayHandler` gains `debugProperties()`; custom implementations of these internal interfaces must add them.
+
 ## 2.17.1
 
 ### Patch Changes
