@@ -5382,4 +5382,95 @@ internal class PostHogTest {
         val content = http.takeRequest().body.unGzip()
         return serializer.deserialize<PostHogBatchEvent>(content.reader())!!.batch.first()
     }
+
+    @Test
+    fun `session debug keys follow a caller-provided session id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.startSession()
+        val managerStart = PostHogSessionManager.getSessionStartedAt()
+        assertTrue(managerStart > 0)
+
+        // A bridge-supplied id from an older session: uuid7 stamped one hour before the manager's.
+        val oneHourMs = 60L * 60 * 1000
+        TimeBasedEpochGenerator.setDateProvider(TestDateProvider(managerStart - oneHourMs))
+        val callerSessionId = TimeBasedEpochGenerator.generate()
+        TimeBasedEpochGenerator.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
+
+        sut.capture(EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to callerSessionId.toString()))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertEquals(callerSessionId.toString(), props["\$session_id"])
+        assertEquals(managerStart - oneHourMs, (props["\$sdk_debug_session_start"] as Number).toLong())
+        assertTrue((props["\$sdk_debug_current_session_duration"] as Number).toLong() >= oneHourMs)
+
+        sut.close()
+    }
+
+    @Test
+    fun `session debug keys are omitted for a non-v7 caller session id`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.startSession()
+
+        sut.capture(EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to java.util.UUID.randomUUID().toString()))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertEquals("disabled", props["\$recording_status"])
+        assertFalse(props.containsKey("\$sdk_debug_session_start"))
+        assertFalse(props.containsKey("\$sdk_debug_current_session_duration"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `a previous-run exception carries none of the debug keys`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration =
+            PostHogSessionReplayHandlerFake(true).apply {
+                debugProperties = mapOf("\$recording_status" to "active", "\$sdk_debug_replay_capture_mode" to "screenshot")
+            }
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        sut.startSession()
+        val launchSessionStart = PostHogSessionManager.getSessionStartedAt()
+
+        // The call PostHogNativeCrashIntegration makes on the next launch for a previous process's crash.
+        val crashedAt = java.util.Date(launchSessionStart - 24L * 60 * 60 * 1000)
+        sut.capture(PostHogEventName.EXCEPTION.event, properties = mapOf("\$exception_list" to emptyList<Any>()), timestamp = crashedAt)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertFalse(props.containsKey("\$recording_status"))
+        assertTrue(
+            props.keys.none {
+                it.startsWith("\$sdk_debug_")
+            },
+            "unexpected debug keys: ${props.keys.filter { it.startsWith("\$sdk_debug_") }}",
+        )
+
+        sut.close()
+    }
+
+    @Test
+    fun `a backdated event within the current session keeps the debug keys`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.startSession()
+        val start = PostHogSessionManager.getSessionStartedAt()
+
+        sut.capture(EVENT, DISTINCT_ID, timestamp = java.util.Date(start + 1))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertEquals("disabled", props["\$recording_status"])
+        assertEquals(start, (props["\$sdk_debug_session_start"] as Number).toLong())
+
+        sut.close()
+    }
 }

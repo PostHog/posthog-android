@@ -666,6 +666,7 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
+        timestamp: Date? = null,
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -754,7 +755,7 @@ public class PostHog private constructor(
         // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
         // never precedes a rotation triggered by getActiveSessionId() above.
         if (appendSharedProps) {
-            props.putAll(sdkDebugProperties())
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp))
         }
 
         // only Session replay needs distinct_id also in the props
@@ -768,8 +769,17 @@ public class PostHog private constructor(
         return props
     }
 
-    private fun sdkDebugProperties(): Map<String, Any> {
+    private fun sdkDebugProperties(
+        sessionId: String?,
+        timestamp: Date?,
+    ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
+        val managerStart = PostHogSessionManager.getSessionStartedAt()
+        // The keys describe the SDK state when the event occurred. An explicit timestamp from before
+        // this session started (a previous-process crash reported on this launch) did not occur here.
+        if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
+            return props
+        }
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
@@ -778,8 +788,7 @@ public class PostHog private constructor(
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         try {
-            val start = PostHogSessionManager.getSessionStartedAt()
-            if (start > 0) {
+            sessionStart(sessionId, managerStart)?.let { start ->
                 props["\$sdk_debug_session_start"] = start
                 props["\$sdk_debug_current_session_duration"] = PostHogSessionManager.currentTimeMillis() - start
             }
@@ -788,6 +797,25 @@ public class PostHog private constructor(
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         return props
+    }
+
+    // The manager's clock for its own session. A caller-supplied id (the RN/Flutter bridges) carries
+    // its start in the UUIDv7 timestamp, the derivation posthog-js applies to a bootstrapped id.
+    private fun sessionStart(
+        sessionId: String?,
+        managerStart: Long,
+    ): Long? {
+        if (sessionId == null || sessionId == PostHogSessionManager.peekSessionId()?.toString()) {
+            return managerStart.takeIf { it > 0 }
+        }
+        val uuid =
+            try {
+                UUID.fromString(sessionId)
+            } catch (e: IllegalArgumentException) {
+                return null
+            }
+        if (uuid.version() != 7) return null
+        return uuid.mostSignificantBits ushr 16
     }
 
     /**
@@ -881,6 +909,7 @@ public class PostHog private constructor(
                     appendSharedProps = !isSnapshotEvent,
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
+                    timestamp = timestamp,
                 )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)

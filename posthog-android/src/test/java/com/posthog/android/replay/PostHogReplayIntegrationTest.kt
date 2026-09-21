@@ -4411,15 +4411,15 @@ internal class PostHogReplayIntegrationTest {
         sut.install(fake)
         sut.start(resumeCurrent = true)
 
-        val statuses = Collections.synchronizedList(mutableListOf<Any?>())
+        val samples = Collections.synchronizedList(mutableListOf<Map<String, Any>>())
         val stopSignal = CountDownLatch(1)
         val done = CountDownLatch(1)
         val reader =
             Thread {
                 while (stopSignal.count > 0) {
-                    statuses.add(sut.debugProperties()["\$recording_status"])
+                    samples.add(sut.debugProperties())
                 }
-                repeat(50) { statuses.add(sut.debugProperties()["\$recording_status"]) }
+                repeat(50) { samples.add(sut.debugProperties()) }
                 done.countDown()
             }
         reader.start()
@@ -4432,8 +4432,22 @@ internal class PostHogReplayIntegrationTest {
         assertTrue(done.await(5, TimeUnit.SECONDS))
         reader.join(2000)
 
-        assertTrue(statuses.isNotEmpty())
-        assertTrue(statuses.all { it == "active" || it == "buffering" || it == "disabled" })
+        assertTrue(samples.isNotEmpty())
+        // Status and hold reason come from one bufferingLock snapshot, so their pairing holds by
+        // construction; the trigger fields are read under eventTriggersLock, featureFlagsLock and
+        // the volatile postHog reference, so the pending list is the cross-lock invariant here.
+        samples.forEach { props ->
+            val status = props["\$recording_status"]
+            assertTrue(status == "active" || status == "buffering" || status == "disabled", "status=$status")
+            assertEquals(status == "buffering", props.containsKey("\$sdk_debug_replay_flush_hold_reason"), "hold reason vs $status")
+            val pending =
+                listOfNotNull(
+                    "event_trigger".takeIf { props["\$sdk_debug_replay_event_trigger_status"] == "trigger_pending" },
+                    "linked_flag".takeIf { props["\$sdk_debug_replay_linked_flag_trigger_status"] == "trigger_pending" },
+                )
+            assertEquals(pending.ifEmpty { null }, props["\$sdk_debug_replay_pending_trigger_conditions"], "pending conditions vs statuses")
+            assertTrue(props.containsKey("\$sdk_debug_replay_capture_mode") && props.containsKey("\$sdk_debug_replay_throttle_delay_ms"))
+        }
         assertEquals("disabled", sut.debugProperties()["\$recording_status"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))
     }
