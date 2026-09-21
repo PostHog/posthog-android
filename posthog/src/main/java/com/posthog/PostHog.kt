@@ -20,6 +20,7 @@ import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
 import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -339,6 +340,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
+                    config.notifyIntegrationsChanged()
                     try {
                         sessionReplayHandler?.onSessionIdChanged()
                     } catch (e: Throwable) {
@@ -530,6 +532,7 @@ public class PostHog private constructor(
     }
 
     public override fun close() {
+        if (isEnabled()) config.notifyIntegrationsChanged()
         synchronized(setupLock) {
             try {
                 if (!isEnabled()) {
@@ -1236,6 +1239,7 @@ public class PostHog private constructor(
             return
         }
 
+        if (!isOptedOut()) config.notifyIntegrationsChanged()
         synchronized(optOutLock) {
             config?.optOut = true
             if (config?.persistOptOut != false) {
@@ -1283,6 +1287,8 @@ public class PostHog private constructor(
         if (trimmedTitle.isEmpty()) {
             return
         }
+
+        if (lastScreenName != trimmedTitle) config.notifyIntegrationsChanged()
 
         // Cache for capture-time context snapshot on log records and for the
         // $screen_name auto-attach on subsequent events (see buildProperties).
@@ -1445,6 +1451,8 @@ public class PostHog private constructor(
                 isIdentified = true
             }
         }
+
+        if (shouldIdentify || shouldTransitionToIdentified) config.notifyIntegrationsChanged()
 
         if (shouldIdentify) {
             capture(
@@ -2011,6 +2019,7 @@ public class PostHog private constructor(
             return
         }
 
+        config.notifyIntegrationsChanged()
         // Capture the logging-out identity before preferences are cleared, so the push token can be
         // unregistered for it and re-registered under the new anonymous id (decision 5/6).
         val previousDistinctId = distinctId
@@ -2022,6 +2031,8 @@ public class PostHog private constructor(
         // from /config, not user data) so each survives an identity change without an app restart.
         // Preserve PUSH_OPENED_MESSAGE_IDS for the same reason: it is device state that stops one
         // notification tap being counted twice, so clearing it would re-enable a duplicate.
+        // Preserve PUSH_SUBSCRIPTION_REJECTED too: it records that the project API key names no
+        // project, which a logout does not change, and clearing it restarts the registration loop.
         val except =
             mutableListOf(
                 VERSION,
@@ -2032,6 +2043,7 @@ public class PostHog private constructor(
                 CAPTURE_PERFORMANCE,
                 SURVEYS,
                 PUSH_OPENED_MESSAGE_IDS,
+                PUSH_SUBSCRIPTION_REJECTED,
             )
         // preserve the ANONYMOUS_ID if reuseAnonymousId is enabled (for preserving a guest user
         // account on the device)
@@ -2174,7 +2186,6 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
-            platform = "android",
         )
     }
 

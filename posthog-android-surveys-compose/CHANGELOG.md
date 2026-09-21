@@ -1,5 +1,17 @@
 # posthog-android-surveys-compose
 
+## 0.3.1
+
+### Patch Changes
+
+- 8090aee: Leave open-text survey inputs empty when no placeholder is configured.
+
+## 0.3.0
+
+### Minor Changes
+
+- 9c83392: Support skipSubmitButton for survey rating and single-choice questions. The Compose renderer submits eligible selections immediately and hides the submit button; multiple-choice questions and single-choice questions with an open option retain explicit submission.
+
 ## 0.2.2
 
 ### Patch Changes

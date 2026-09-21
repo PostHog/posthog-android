@@ -67,7 +67,6 @@ private val DefaultDescriptionTextColor = Color(0xFF8E8E93)
 // white) so it stays visible against the survey background; see resolve().
 private val DefaultInputBackgroundOnLight = Color(0xFFF8F8F8)
 
-private const val DEFAULT_PLACEHOLDER = "Start typing..."
 private const val DEFAULT_THANK_YOU_HEADER = "Thank you for your feedback!"
 private const val DEFAULT_THANK_YOU_CLOSE = "Close"
 private const val DEFAULT_INTRO_BUTTON = "Get started"
@@ -105,7 +104,7 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
     val inputTextColor =
         parseSurveyColorOrDefault(this?.inputTextColor, inputBackgroundColor.contrastingTextColor())
     val placeholderTextColor = inputTextColor.copy(alpha = 0.5f)
-    val placeholder = this?.placeholder?.takeIf { it.isNotBlank() } ?: DEFAULT_PLACEHOLDER
+    val placeholder = this?.placeholder?.takeIf { it.isNotBlank() }.orEmpty()
 
     val displayThankYouMessage = this?.displayThankYouMessage ?: false
     val thankYouMessageHeader =

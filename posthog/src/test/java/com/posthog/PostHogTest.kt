@@ -19,6 +19,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
+import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
@@ -2529,6 +2530,24 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `reset preserves the rejected push key marker`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val preferences = PostHogMemoryPreferences()
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = preferences)
+
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, "phc_key:1700000000")
+
+        sut.reset()
+
+        // A logout does not make an invalid project API key valid, so clearing this would put the
+        // device back to re-posting a doomed registration on every launch.
+        assertEquals("phc_key:1700000000", preferences.getValue(PUSH_SUBSCRIPTION_REJECTED))
+
+        sut.close()
+    }
+
+    @Test
     fun `reset session id when reset is called`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -4866,7 +4885,7 @@ internal class PostHogTest {
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals("fcm-token", parsed["device_token"])
         assertEquals("firebase-project", parsed["app_id"])
-        assertEquals("android", parsed["platform"])
+        assertFalse(parsed.containsKey("platform"))
         assertEquals(sut.distinctId(), parsed["distinct_id"])
 
         sut.close()

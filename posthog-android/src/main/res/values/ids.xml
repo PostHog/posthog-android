@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Set this keyed View tag to Boolean true to exclude an interaction subtree. -->
+    <item name="posthog_autocapture_no_capture" type="id" />
+</resources>

@@ -7,12 +7,16 @@ import com.posthog.PostHogInternal
  * Response from /api/feature_flag/local_evaluation/
  */
 @PostHogInternal
-public data class LocalEvaluationResponse(
-    val flags: List<FlagDefinition>?,
-    @SerializedName("group_type_mapping")
-    val groupTypeMapping: Map<String, String>?,
-    val cohorts: Map<String, PropertyGroup>?,
-)
+public data class LocalEvaluationResponse
+    @JvmOverloads
+    constructor(
+        val flags: List<FlagDefinition>?,
+        @SerializedName("group_type_mapping")
+        val groupTypeMapping: Map<String, String>?,
+        val cohorts: Map<String, PropertyGroup>?,
+        @SerializedName("property_matching_version")
+        val propertyMatchingVersion: Int? = null,
+    )
 
 /**
  * Complete feature flag definition for local evaluation

@@ -27,17 +27,28 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZ)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCaptureApplicationLifecycleEvents ()Z
+	public final fun getCaptureDeadClicks ()Z
 	public final fun getCaptureDeepLinks ()Z
+	public final fun getCaptureElementInteractions ()Z
 	public final fun getCapturePushNotificationOpened ()Z
 	public final fun getCapturePushNotificationSubscriptions ()Z
+	public final fun getCaptureRageClicks ()Z
 	public final fun getCaptureScreenViews ()Z
 	public final fun getSessionReplayConfig ()Lcom/posthog/android/replay/PostHogSessionReplayConfig;
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
+	public final fun setCaptureDeadClicks (Z)V
 	public final fun setCaptureDeepLinks (Z)V
+	public final fun setCaptureElementInteractions (Z)V
 	public final fun setCapturePushNotificationOpened (Z)V
 	public final fun setCapturePushNotificationSubscriptions (Z)V
+	public final fun setCaptureRageClicks (Z)V
 	public final fun setCaptureScreenViews (Z)V
 	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
+}
+
+public final class com/posthog/android/PostHogAutocaptureModifierKt {
+	public static final fun postHogAutocaptureNoCapture (Landroidx/compose/ui/Modifier;Z)Landroidx/compose/ui/Modifier;
+	public static synthetic fun postHogAutocaptureNoCapture$default (Landroidx/compose/ui/Modifier;ZILjava/lang/Object;)Landroidx/compose/ui/Modifier;
 }
 
 public final class com/posthog/android/errortracking/PostHogNativeCrashIntegration : com/posthog/PostHogIntegration {
@@ -164,7 +175,6 @@ public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/p
 	public fun <init> (Landroid/content/Context;Lcom/posthog/PostHogConfig;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
-	public fun onRemoteConfig (Z)V
 	public fun onSurveysLoaded (Ljava/util/List;)V
 	public fun uninstall ()V
 }

@@ -15,6 +15,11 @@ import com.posthog.internal.PostHogQueue
  * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
  *   automatically, including app installed, app updated, app opened, and app backgrounded.
  * @property captureDeepLinks Whether to capture `Deep Link Opened` events automatically.
+ *   For warm links delivered to `singleTop` or `singleTask` activities, call `setIntent(intent)`
+ *   in `Activity.onNewIntent` after `super.onNewIntent(intent)`. The SDK checks the current intent
+ *   on resume and captures each new Intent instance, even if its URL is unchanged. Ordinary
+ *   resumes do not recapture the same intent. Creation capture, including activity recreation,
+ *   is unchanged. Default: `true`.
  * @property captureScreenViews Whether to capture a `$screen` event whenever a foreground
  *   Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most
  *   recent screen name is also attached as `$screen_name` to every subsequent event captured by
@@ -65,5 +70,27 @@ public open class PostHogAndroidConfig
                 }
             },
         ) {
+        /**
+         * Captures `$autocapture` for actionable View and Compose taps. Default: false.
+         * Configure before setup. Independent of session replay; sends types and resource IDs/test
+         * tags and window-local touch coordinates in dp, never text, content descriptions or input
+         * values. Use only non-sensitive test tags.
+         * Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_no_capture` set to
+         * true, or use [postHogAutocaptureNoCapture] for Compose.
+         */
+        public var captureElementInteractions: Boolean = false
+
+        /** Captures `$rageclick` after four nearby taps on the same target within one second. Default: false.
+         * Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties.
+         */
+        public var captureRageClicks: Boolean = false
+
+        /** Captures `$dead_click` when a supported target has no observed meaningful UI response for three seconds.
+         * Default: false. Bounded local View/Compose change detection may transiently process unmasked UI text;
+         * raw text is not retained and neither text nor its ephemeral digest is sent. Unsupported/incomplete observations are skipped.
+         * Independent of semantic capture and replay; shares interaction exclusions.
+         */
+        public var captureDeadClicks: Boolean = false
+
         internal var replayQueueHolder: PostHogReplayQueue? = null
     }

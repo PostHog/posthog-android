@@ -3045,7 +3045,9 @@ public class PostHogReplayIntegration(
     internal companion object {
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
         const val PH_NO_MASK_LABEL: String = "ph-no-mask"
-        const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = "androidx.compose.ui.platform.AndroidComposeView"
+
+        // Retained for JVM binary compatibility.
+        const val ANDROID_COMPOSE_VIEW_CLASS_NAME: String = com.posthog.android.internal.ANDROID_COMPOSE_VIEW_CLASS_NAME
         const val ANDROID_COMPOSE_VIEW: String = "AndroidComposeView"
 
         // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt

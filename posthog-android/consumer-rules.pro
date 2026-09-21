@@ -35,6 +35,9 @@
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { *; }
 -keep class com.posthog.internal.PostHogRemoteConfigResponse { <init>(); }
 
+-keep class com.posthog.internal.PostHogPushSubscriptionRequest { *; }
+-keep class com.posthog.internal.PostHogPushSubscriptionRequest { <init>(); }
+
 # Session Replay
 -keep class com.posthog.internal.replay.** { *; }
 -keep class com.posthog.internal.replay.** { <init>(); }
@@ -97,6 +100,11 @@
 # used in reflection to check if compose is available at runtime
 -keepnames class androidx.compose.ui.platform.AndroidComposeView
 
+# Match native interop targets to the Compose layout that actually won the hit test.
+-keep class androidx.compose.ui.viewinterop.AndroidViewHolder {
+    public androidx.compose.ui.node.LayoutNode getLayoutNode();
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable
@@ -112,3 +120,12 @@
 # used in reflection to check if Firebase Messaging is available at runtime
 -keepnames class com.google.firebase.messaging.FirebaseMessaging
 ##---------------End: proguard configuration for Firebase Messaging (compileOnly)  ----------
+
+# Dead-tap response observation classifies only these known library View implementations.
+# Preserve names, not members or unused classes; app-defined custom drawing still fails closed.
+-keepnames class androidx.appcompat.widget.* extends android.view.View
+-keepnames class com.google.android.material.** extends android.view.View
+-keepnames class androidx.compose.ui.platform.* extends android.view.View
+-keepnames class androidx.compose.ui.viewinterop.* extends android.view.View
+-keepnames class androidx.compose.material.ripple.RippleContainer
+-keepnames class androidx.compose.material.ripple.RippleHostView

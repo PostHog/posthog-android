@@ -159,7 +159,7 @@ internal class PostHogAndroidSetupLookupsTest {
     }
 
     @Test
-    fun `package info is not resolved when no consumer needs it`() {
+    fun `version accounting resolves package info even when lifecycle capture is disabled`() {
         val config =
             config().apply {
                 releaseIdentifier = "manual-id"
@@ -168,19 +168,19 @@ internal class PostHogAndroidSetupLookupsTest {
             }
         setup(config)
 
-        verifyPackageInfoCalls(0)
+        verifyPackageInfoCalls(1)
         verify(assets, never()).open(any())
         assertEquals("manual-id", config.releaseIdentifier)
         assertEquals(true, config.errorTrackingConfig.inAppIncludes.contains("com.package"))
     }
 
     @Test
-    fun `mapping id avoids package lookup until static context is read`() {
+    fun `mapping id and static context share package lookup with version accounting`() {
         whenever(assets.open(any())).thenReturn(ByteArrayInputStream("io.posthog.proguard.mapid=map-id".toByteArray()))
         val config = config().apply { captureApplicationLifecycleEvents = false }
         setup(config)
 
-        verifyPackageInfoCalls(0)
+        verifyPackageInfoCalls(1)
         assertEquals("map-id", config.releaseIdentifier)
         config.context!!.getStaticContext()
         config.context!!.getStaticContext()

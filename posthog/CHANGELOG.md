@@ -1,5 +1,43 @@
 ## Next
 
+## 6.41.0
+
+### Minor Changes
+
+- a4468e0: Add opt-in rage and dead tap detection for Android Views and Jetpack Compose, independent of session replay.
+
+### Patch Changes
+
+- 0bd9042: Retain `property_matching_version` in local-evaluation definitions and shared caches. Server-side local evaluation now uses explicit boolean matching for version 2, preserves legacy matching for missing/1, and keeps one definition snapshot through group, cohort, and dependency evaluation and version-only refreshes. In-flight remote evaluations retain their response errors and request metadata when definitions refresh, without repopulating the new result cache. Unchanged provider polls and HTTP 200 definition responses retain cached remote results; changes to definitions or matching version still invalidate them.
+
+## 6.40.0
+
+### Minor Changes
+
+- d0a59ab: Support survey targeting by a specific linked feature flag variant.
+
+## 6.39.0
+
+### Minor Changes
+
+- 9c83392: Support skipSubmitButton for survey rating and single-choice questions. The Compose renderer submits eligible selections immediately and hides the submit button; multiple-choice questions and single-choice questions with an open option retain explicit submission.
+
+## 6.38.2
+
+### Patch Changes
+
+- 1293056: Stop sending the unused `platform` field when registering a device for push notifications. The API resolves the provider from `app_id` alone and ignores `platform`, so the field was dead weight. It was also the only field in the request without `@SerializedName`, which meant R8 renamed it in minified release builds. Removing it drops that failure mode instead of working around it.
+
+## 6.38.1
+
+### Patch Changes
+
+- 57ae6ed: fix: stop retrying push registration when the project API key is not valid
+  
+  A device that gets `401 invalid_api_key` from the registration endpoint stops sending push
+  registrations for that key instead of re-posting on every app open. Adds the internal
+  `PostHogPreferences.PUSH_SUBSCRIPTION_REJECTED` key, which holds that verdict and survives `reset()`.
+
 ## 6.38.0
 
 ### Minor Changes
