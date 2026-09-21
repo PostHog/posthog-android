@@ -587,6 +587,100 @@ internal class PostHogRemoteConfigTest {
         http.shutdown()
     }
 
+    private fun linkedFlagSnapshotAfterFlagsLoad(flagsFixture: String): PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot {
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
+        val http = mockHttp(response = MockResponse().setBody(File(flagsFixture).readText()))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        val snapshot = sut.sessionReplayLinkedFlagSnapshot()
+
+        sut.clear()
+        http.shutdown()
+        return snapshot
+    }
+
+    @Test
+    fun `linked flag snapshot is configured but not activated while the linked flag is off`() {
+        assertEquals(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = false),
+            linkedFlagSnapshotAfterFlagsLoad("src/test/resources/json/basic-flags-recording-bool-linked-disabled.json"),
+        )
+    }
+
+    @Test
+    fun `linked flag snapshot is activated once the linked flag matches`() {
+        assertEquals(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = true),
+            linkedFlagSnapshotAfterFlagsLoad("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json"),
+        )
+    }
+
+    @Test
+    fun `linked flag snapshot is not configured when remote config has no linkedFlag`() {
+        val response = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.sessionReplayLinkedFlagSnapshot().configured)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `linked flag snapshot is preloaded from the cache and reset by a boolean sessionRecording`() {
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
+        val disabled = File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(disabled))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertEquals(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = false),
+            sut.sessionReplayLinkedFlagSnapshot(),
+        )
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertEquals(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = false, activated = false),
+            sut.sessionReplayLinkedFlagSnapshot(),
+        )
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `linked flag snapshot is reset by clear`() {
+        preferences.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "session-replay-flag"))
+
+        val enabled = File("src/test/resources/json/basic-flags-recording-bool-linked-enabled.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(enabled))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+        assertTrue(sut.sessionReplayLinkedFlagSnapshot().activated)
+
+        sut.clear()
+
+        assertEquals(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = false, activated = false),
+            sut.sessionReplayLinkedFlagSnapshot(),
+        )
+
+        http.shutdown()
+    }
+
     @Test
     fun `re-arm survives the Gson round-trip for a variant linked flag`() {
         val http =

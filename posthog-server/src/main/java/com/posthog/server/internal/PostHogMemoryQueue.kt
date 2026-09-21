@@ -53,6 +53,9 @@ internal class PostHogMemoryQueue(
 
     private val delay: Long get() = (config.flushIntervalSeconds * 1000).toLong()
 
+    override val size: Int
+        get() = synchronized(eventsLock) { events.size }
+
     override fun add(record: PostHogEvent) {
         // Same fatal-record marker the core PostHogQueue keys on: a fatal $exception event is about
         // to take the process down with it, so it must not take the regular async path.
