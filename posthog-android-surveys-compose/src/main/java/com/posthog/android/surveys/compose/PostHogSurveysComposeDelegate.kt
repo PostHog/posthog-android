@@ -8,7 +8,7 @@ import com.posthog.surveys.OnPostHogSurveyClosed
 import com.posthog.surveys.OnPostHogSurveyResponse
 import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
-import com.posthog.surveys.PostHogSurveysDelegate
+import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
 
 /**
  * Default Compose-based UI for PostHog surveys on Android.
@@ -63,7 +63,9 @@ import com.posthog.surveys.PostHogSurveysDelegate
  * The constructor accepts any [Context] and resolves the [Application] from
  * it, so passing an activity context is safe.
  */
-public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysDelegate {
+public class PostHogSurveysComposeDelegate(context: Context) : PostHogSurveysResumeAwareDelegate {
+    override val supportsSurveyResume: Boolean = true
+
     private val application: Application = context.applicationContext as Application
     private val activityProvider: ActivityProvider = ActivityProvider()
     private val host: PostHogSurveyHost = PostHogSurveyHost(activityProvider)

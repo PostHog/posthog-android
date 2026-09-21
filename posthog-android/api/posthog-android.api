@@ -175,6 +175,7 @@ public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/p
 	public fun <init> (Landroid/content/Context;Lcom/posthog/PostHogConfig;)V
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun onEvent (Ljava/lang/String;Ljava/util/Map;)V
+	public fun onReset ()V
 	public fun onSurveysLoaded (Ljava/util/List;)V
 	public fun uninstall ()V
 }

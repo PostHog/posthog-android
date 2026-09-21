@@ -5,6 +5,9 @@ import com.posthog.surveys.Survey
 
 @PostHogInternal
 public interface PostHogSurveysHandler {
+    /** Invalidates survey state when the SDK identity is reset. */
+    public fun onReset()
+
     /**
      * To be called by Posthog when an event is captured
      */
