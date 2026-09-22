@@ -31,6 +31,11 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
         // and
         // https://docs.gradle.org/current/userguide/incremental_build.html#sec:custom_up_to_date_logic
         outputs.upToDateWhen { true }
+
+        // Off unless a build opts in. posthog-cli then fails a content mismatch,
+        // which is the CLI default.
+        skipOnConflict.convention(false)
+        force.convention(false)
     }
 
     @get:InputFile
@@ -57,6 +62,27 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
     @get:Input
     @get:Optional
     public abstract val releaseMode: Property<String>
+
+    /**
+     * Passes `--skip-on-conflict` to `posthog-cli exp proguard upload` when
+     * set. An existing symbol set with the same map id but different content
+     * is left unchanged and the upload succeeds. Off by default, which fails
+     * that upload.
+     *
+     * Mutually exclusive with [force]. Requires posthog-cli >= 0.7.12.
+     */
+    @get:Input
+    public abstract val skipOnConflict: Property<Boolean>
+
+    /**
+     * Passes `--force` to `posthog-cli exp proguard upload` when set, so an
+     * existing symbol set whose content has changed is overwritten. Off by
+     * default, which fails that upload.
+     *
+     * Mutually exclusive with [skipOnConflict]. Requires posthog-cli >= 0.7.12.
+     */
+    @get:Input
+    public abstract val force: Property<Boolean>
 
     override fun exec() {
         if (!mappingsFiles.isPresent || mappingsFiles.get().isEmpty) {
@@ -129,6 +155,20 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
         build.orNull?.takeIf { it > 0 }?.let {
             args.add("--build")
             args.add(it.toString())
+        }
+        // The CLI rejects both flags together (clap conflicts_with). Fail here so the
+        // build error names the task properties instead of a parse error from the CLI.
+        if (skipOnConflict.get() && force.get()) {
+            error(
+                "[PostHog] skipOnConflict and force cannot both be set. " +
+                    "posthog-cli accepts only one of --skip-on-conflict and --force.",
+            )
+        }
+        if (skipOnConflict.get()) {
+            args.add("--skip-on-conflict")
+        }
+        if (force.get()) {
+            args.add("--force")
         }
     }
 
