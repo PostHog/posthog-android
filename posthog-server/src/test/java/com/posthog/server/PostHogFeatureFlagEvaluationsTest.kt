@@ -47,12 +47,20 @@ internal class PostHogFeatureFlagEvaluationsTest {
         payload: String? = null,
         reason: EvaluationReason? = EvaluationReason("condition_match", "Condition matched", 0),
         hasExperiment: Boolean? = null,
+        evaluationRuntime: String? = null,
     ): FeatureFlag =
         FeatureFlag(
             key = key,
             enabled = enabled,
             variant = variant,
-            metadata = FeatureFlagMetadata(id = id, payload = payload, version = version, hasExperiment = hasExperiment),
+            metadata =
+                FeatureFlagMetadata(
+                    id = id,
+                    payload = payload,
+                    version = version,
+                    hasExperiment = hasExperiment,
+                    evaluationRuntime = evaluationRuntime,
+                ),
             reason = reason,
         )
 
@@ -204,18 +212,23 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `getFlagPayload returns the raw payload string and does not fire an event`() {
+    fun `getFlagPayload and getEvaluationRuntime do not fire an event or record access`() {
         val host = FakeHost()
         val snapshot =
             snapshot(
                 host = host,
-                flags = mapOf("payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}")),
+                flags =
+                    mapOf(
+                        "payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}"),
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                    ),
             )
 
-        val payload = snapshot.getFlagPayload("payload-flag")
+        assertEquals("{\"a\":1}", snapshot.getFlagPayload("payload-flag"))
+        assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
 
-        assertEquals("{\"a\":1}", payload)
-        assertTrue(host.captures.isEmpty(), "payload reads should be event-free")
+        assertTrue(host.captures.isEmpty(), "payload and runtime reads should be event-free")
+        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "neither read records access")
     }
 
     @Test

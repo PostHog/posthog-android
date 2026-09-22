@@ -1114,6 +1114,17 @@ internal class PostHogFeatureFlags(
         // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
         // `false`, and that now beats the server's answer — pass `groups` when gating on one.
         val merged = LinkedHashMap(entry?.flags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
+        // `/flags` does not report the runtime, but the definition in memory does. A flag that fell
+        // back to `/flags` keeps the runtime it is configured for, so a caller filtering flags to
+        // forward does not drop a client flag because one person property was missing.
+        val definitions = flagDefinitions
+        if (definitions != null) {
+            for (slot in merged.entries) {
+                if (slot.value.metadata.evaluationRuntime != null) continue
+                val runtime = definitions[slot.key]?.evaluationRuntime ?: continue
+                slot.setValue(slot.value.copy(metadata = slot.value.metadata.copy(evaluationRuntime = runtime)))
+            }
+        }
         return EvaluateFlagsResult(
             flags = merged,
             locallyEvaluated = merged.mapValues { it.key in localFlags },

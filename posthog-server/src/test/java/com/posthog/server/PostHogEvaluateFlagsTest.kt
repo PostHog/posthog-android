@@ -581,16 +581,24 @@ internal class PostHogEvaluateFlagsTest {
                     conclusiveFlagDefinition("client-flag", evaluationRuntime = "client"),
                     conclusiveFlagDefinition("server-flag", evaluationRuntime = "server"),
                     conclusiveFlagDefinition("unreported-flag"),
-                    emailGatedFlagDefinition("remote-flag", evaluationRuntime = "all"),
+                    emailGatedFlagDefinition("gated-flag", evaluationRuntime = "all"),
                 ),
-            flagsResponse = { jsonResponse(createMultipleFlagsResponse("remote-flag" to true)) },
+            flagsResponse = {
+                jsonResponse(createMultipleFlagsResponse("gated-flag" to true, "undefined-flag" to true))
+            },
         ) { postHog, _, _ ->
             val snapshot = postHog.evaluateFlags("user-1")
 
             assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
             assertEquals("server", snapshot.getEvaluationRuntime("server-flag"))
             assertNull(snapshot.getEvaluationRuntime("unreported-flag"))
-            assertNull(snapshot.getEvaluationRuntime("remote-flag"), "a flag filled from /flags has no runtime")
+            assertTrue(snapshot.isEnabled("gated-flag"), "the gated flag is filled from /flags")
+            assertEquals(
+                "all",
+                snapshot.getEvaluationRuntime("gated-flag"),
+                "a flag filled from /flags keeps the runtime of its local definition",
+            )
+            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "no definition, and /flags reports none")
             assertNull(snapshot.getEvaluationRuntime("missing-flag"))
         }
     }

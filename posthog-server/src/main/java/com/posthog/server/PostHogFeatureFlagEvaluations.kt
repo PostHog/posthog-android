@@ -109,11 +109,11 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     /**
      * Returns the runtime the flag is configured for: "all", "client" or "server". Use it to
      * choose which flags to forward to a client, for example when bootstrapping a browser SDK.
-     * The value is passed through as the server reports it. It is only available for flags that
-     * resolved locally. It is null when the flag is unknown, when the server does not report the
-     * field, or when the value came from `/flags`, which does not include it. That covers a flag
-     * with a local definition that could not resolve locally. Does not fire any event and does
-     * not record the access.
+     * The value is passed through as `/local_evaluation` reports it, for every flag that has a
+     * definition in memory, whether its value resolved locally or came from `/flags`. It is null
+     * when the flag is unknown, when the server does not report the field, or when the flag has no
+     * local definition, because `/flags` does not include it. Does not fire any event and does not
+     * record the access.
      *
      * @param key Feature flag key.
      * @return The flag's evaluation runtime, or null when absent.
