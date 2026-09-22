@@ -1,5 +1,11 @@
 ## Next
 
+## 1.7.0
+
+### Minor Changes
+
+- f7e585a: Add `skipOnConflict` and `force` properties on `PostHogUploadProguardMappingsTask`. When set, the proguard mapping upload passes `--skip-on-conflict` or `--force` to `posthog-cli` (>= 0.7.12). The two properties cannot be set together.
+
 ## 1.6.0
 
 ### Minor Changes
