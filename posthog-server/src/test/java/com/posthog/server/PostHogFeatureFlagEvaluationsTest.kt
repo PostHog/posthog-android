@@ -281,6 +281,56 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
+    fun `only with a runtime filter keeps the listed runtimes and drops unknown ones`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                        "all-flag" to flag("all-flag", evaluationRuntime = "all"),
+                        "server-flag" to flag("server-flag", evaluationRuntime = "server"),
+                        "unknown-flag" to flag("unknown-flag"),
+                    ),
+            )
+
+        val forBrowser = snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all")))
+
+        assertEquals(listOf("client-flag", "all-flag"), forBrowser.keys)
+        assertTrue(host.captures.isEmpty(), "filtering fires no event")
+        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "filtering records no access")
+        assertTrue(host.warnings.isEmpty())
+    }
+
+    @Test
+    fun `only combines key and runtime criteria`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                        "server-flag" to flag("server-flag", evaluationRuntime = "server"),
+                        "other-client-flag" to flag("other-client-flag", evaluationRuntime = "client"),
+                    ),
+            )
+
+        val filtered =
+            snapshot.only(
+                PostHogFeatureFlagFilter.builder()
+                    .keys("client-flag", "server-flag", "missing")
+                    .evaluationRuntimes("client")
+                    .build(),
+            )
+
+        assertEquals(listOf("client-flag"), filtered.keys)
+        assertEquals(1, host.warnings.size)
+        assertTrue(host.warnings.single().contains("missing"))
+    }
+
+    @Test
     fun `onlyAccessed returns an empty snapshot when nothing has been accessed`() {
         val host = FakeHost()
         val snapshot =

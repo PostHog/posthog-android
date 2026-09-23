@@ -271,12 +271,40 @@ public final class com/posthog/server/PostHogFeatureFlagEvaluations {
 	public final fun getKeys ()Ljava/util/List;
 	public final fun getRequestId ()Ljava/lang/String;
 	public final fun isEnabled (Ljava/lang/String;)Z
+	public final fun only (Lcom/posthog/server/PostHogFeatureFlagFilter;)Lcom/posthog/server/PostHogFeatureFlagEvaluations;
 	public final fun only (Ljava/util/Collection;)Lcom/posthog/server/PostHogFeatureFlagEvaluations;
 	public final fun only ([Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagEvaluations;
 	public final fun onlyAccessed ()Lcom/posthog/server/PostHogFeatureFlagEvaluations;
 }
 
 public final class com/posthog/server/PostHogFeatureFlagEvaluations$Companion {
+}
+
+public final class com/posthog/server/PostHogFeatureFlagFilter {
+	public static final field Companion Lcom/posthog/server/PostHogFeatureFlagFilter$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/util/Collection;Ljava/util/Collection;)V
+	public synthetic fun <init> (Ljava/util/Collection;Ljava/util/Collection;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun builder ()Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
+	public final fun getEvaluationRuntimes ()Ljava/util/Collection;
+	public final fun getKeys ()Ljava/util/Collection;
+}
+
+public final class com/posthog/server/PostHogFeatureFlagFilter$Builder {
+	public fun <init> ()V
+	public final fun build ()Lcom/posthog/server/PostHogFeatureFlagFilter;
+	public final fun evaluationRuntimes (Ljava/util/List;)Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
+	public final fun evaluationRuntimes ([Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
+	public final fun getEvaluationRuntimes ()Ljava/util/List;
+	public final fun getKeys ()Ljava/util/List;
+	public final fun keys (Ljava/util/List;)Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
+	public final fun keys ([Ljava/lang/String;)Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
+	public final fun setEvaluationRuntimes (Ljava/util/List;)V
+	public final fun setKeys (Ljava/util/List;)V
+}
+
+public final class com/posthog/server/PostHogFeatureFlagFilter$Companion {
+	public final fun builder ()Lcom/posthog/server/PostHogFeatureFlagFilter$Builder;
 }
 
 public final class com/posthog/server/PostHogFeatureFlagOptions {

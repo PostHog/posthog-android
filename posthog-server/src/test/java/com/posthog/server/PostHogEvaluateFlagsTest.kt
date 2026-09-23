@@ -600,6 +600,11 @@ internal class PostHogEvaluateFlagsTest {
             )
             assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "no definition, and /flags reports none")
             assertNull(snapshot.getEvaluationRuntime("missing-flag"))
+            // The filter a server uses to pick the flags it forwards to a browser.
+            assertEquals(
+                setOf("client-flag", "gated-flag"),
+                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.toSet(),
+            )
         }
     }
 
