@@ -609,6 +609,39 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `the local definition's runtime wins over one reported by flags`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    emailGatedFlagDefinition("gated-server-flag", evaluationRuntime = "server"),
+                    emailGatedFlagDefinition("gated-unreported-flag"),
+                ),
+            // `/flags` does not report the field today. If it ever does, or a response is tampered
+            // with, it must not reclassify a server-only flag as client-safe.
+            flagsResponse = {
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "gated-server-flag" to true,
+                        "gated-unreported-flag" to true,
+                        "undefined-flag" to true,
+                        evaluationRuntime = "client",
+                    ),
+                )
+            },
+        ) { postHog, _, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertEquals("server", snapshot.getEvaluationRuntime("gated-server-flag"))
+            assertNull(snapshot.getEvaluationRuntime("gated-unreported-flag"), "a definition without the field stays unknown")
+            assertEquals("client", snapshot.getEvaluationRuntime("undefined-flag"), "no definition to override the response")
+            assertEquals(
+                listOf("undefined-flag"),
+                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys,
+            )
+        }
+    }
+
+    @Test
     fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {
         withLocalEvaluation(
             definitions =

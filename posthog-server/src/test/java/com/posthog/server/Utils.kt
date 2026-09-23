@@ -269,7 +269,10 @@ public fun createFlagsResponse(
 /**
  * Creates a JSON response with multiple feature flags
  */
-public fun createMultipleFlagsResponse(vararg flags: Pair<String, Boolean>): String {
+public fun createMultipleFlagsResponse(
+    vararg flags: Pair<String, Boolean>,
+    evaluationRuntime: String? = null,
+): String {
     val flagsJson =
         flags.joinToString(",\n") { (key, enabled) ->
             """
@@ -280,6 +283,7 @@ public fun createMultipleFlagsResponse(vararg flags: Pair<String, Boolean>): Str
                 "metadata": {
                     "version": 1,
                     "payload": null,
+                    ${evaluationRuntimeJson(evaluationRuntime)}
                     "id": 1
                 },
                 "reason": {
