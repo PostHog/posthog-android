@@ -275,6 +275,50 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `flags does not send the body again when the server rejects the gzipped body`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(400).setBody(FLAGS_DECODE_ERROR))
+        http.enqueue(MockResponse().setBody(file.readText()))
+
+        val sut = getSut(host = http.url("/").toString(), featureFlagRequestMaxRetries = 0)
+
+        assertThrows(PostHogApiError::class.java) {
+            sut.flags("distinctId")
+        }
+
+        assertEquals("gzip", http.takeRequest().headers["Content-Encoding"])
+        assertEquals(1, http.requestCount)
+
+        http.shutdown()
+    }
+
+    @Test
+    fun `flags go out uncompressed once a batch turned compression off`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val http = MockWebServer()
+        http.start()
+        http.enqueue(MockResponse().setResponseCode(400).setBody(FLAGS_DECODE_ERROR))
+        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(MockResponse().setBody(file.readText()))
+
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.batch(listOf(generateEvent()))
+        sut.flags("distinctId")
+
+        http.takeRequest()
+        http.takeRequest()
+        val flagsRequest = http.takeRequest()
+
+        assertEquals("/flags/?v=2", flagsRequest.path)
+        assertNull(flagsRequest.headers["Content-Encoding"])
+
+        http.shutdown()
+    }
+
+    @Test
     fun `batch includes custom request headers`() {
         val http = mockHttp()
         val url = http.url("/")

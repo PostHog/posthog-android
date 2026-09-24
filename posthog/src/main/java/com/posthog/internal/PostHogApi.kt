@@ -264,7 +264,9 @@ public class PostHogApi(
         val request =
             makeRequest(url) {
                 config.serializer.serialize(flagsRequest, it.bufferedWriter())
-            }
+            }.newBuilder()
+                .tag(NoUncompressedRetry::class.java, NoUncompressedRetry)
+                .build()
 
         return executeFlagsWithRetry(request)
     }

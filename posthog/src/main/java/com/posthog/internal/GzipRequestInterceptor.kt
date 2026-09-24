@@ -35,6 +35,12 @@ import java.util.concurrent.atomic.AtomicReference
 // https://square.github.io/okhttp/features/interceptors/
 
 /**
+ * Tags a request that [GzipRequestInterceptor] must not send again uncompressed after the server
+ * rejects its gzipped body.
+ */
+internal object NoUncompressedRetry
+
+/**
  * This interceptor compresses the HTTP request body. Many webservers can't handle this!
  * @property config The Config
  */
@@ -94,6 +100,11 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
             val response = chain.proceed(compressedRequest)
 
             if (!isCompressionRejected(response)) {
+                return response
+            }
+
+            // Some endpoints, e.g. flags, own their retry policy, so this interceptor must not re-send them.
+            if (originalRequest.tag(NoUncompressedRetry::class.java) != null) {
                 return response
             }
 
