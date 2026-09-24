@@ -446,15 +446,18 @@ public open class PostHogConfig(
      *
      * The SDK recovers on its own in one case only: the server answers `400` with a body that
      * reports it could not read the gzipped payload, and the same body then succeeds uncompressed.
-     * Compression stays off for the rest of the process. Any other rejection keeps compression on,
-     * so set this to `false` when the server rejects compressed bodies some other way.
+     * Compression then stays off for the rest of this SDK instance. Any other rejection keeps
+     * compression on, so set this to `false` when the server rejects compressed bodies some
+     * other way.
+     *
+     * Feature flag requests are not sent again uncompressed: they stay compressed until another
+     * request has turned compression off.
      *
      * Has no effect when [httpClient] is set, because the SDK only installs the compressing
      * interceptor on the client it builds itself.
      *
      * Default: `true`.
      */
-    @Volatile
     public var compressRequestBody: Boolean = true
 
     /**
