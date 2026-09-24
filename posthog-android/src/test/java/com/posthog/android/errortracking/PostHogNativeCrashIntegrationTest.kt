@@ -10,6 +10,7 @@ import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TestProtoWriter
+import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogRemoteConfig
 import org.junit.After
 import org.junit.Before
@@ -78,10 +79,24 @@ internal class PostHogNativeCrashIntegrationTest {
         }
     }
 
+    private class FixedDateProvider(var nowMs: Long) : PostHogDateProvider {
+        override fun currentDate(): Date = Date(nowMs)
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = Date(nowMs + seconds * 1000L)
+
+        override fun currentTimeMillis(): Long = nowMs
+
+        override fun nanoTime(): Long = System.nanoTime()
+    }
+
+    private val wallClockMs = 1_000_000L
+    private val dateProvider = FixedDateProvider(wallClockMs)
+
     @Before
     fun setUp() {
         config =
             PostHogAndroidConfig(API_KEY).apply {
+                dateProvider = this@PostHogNativeCrashIntegrationTest.dateProvider
                 errorTrackingConfig.captureNativeCrashes = true
                 remoteConfigHolder =
                     mock<PostHogRemoteConfig> {
@@ -100,7 +115,7 @@ internal class PostHogNativeCrashIntegrationTest {
     }
 
     private fun install(executor: DirectExecutorService = DirectExecutorService()): PostHogNativeCrashIntegration {
-        val integration = PostHogNativeCrashIntegration(context, config, { executor })
+        val integration = PostHogNativeCrashIntegration(context, config, { executor }, { wallClockMs })
         installed.add(integration)
         integration.install(postHog)
         return integration
@@ -159,6 +174,25 @@ internal class PostHogNativeCrashIntegrationTest {
             eq(Date(200)),
         )
         assertEquals(200, watermark())
+    }
+
+    @Test
+    fun `stamps crashes on the date provider clock and acknowledges the raw exit timestamp`() {
+        dateProvider.nowMs = wallClockMs - 200_000
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 900_000, trace = tombstoneBytes())
+
+        install()
+
+        verify(postHog).capture(
+            eq("\$exception"),
+            anyOrNull(),
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            eq(Date(700_000)),
+        )
+        assertEquals(900_000, watermark())
     }
 
     @Test

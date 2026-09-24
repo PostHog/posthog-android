@@ -42,6 +42,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     private val context: Context
     private val config: PostHogAndroidConfig
     private val executorFactory: () -> ExecutorService
+    private val wallClockMs: () -> Long
     private var executor: ExecutorService? = null
     private var postHog: PostHogInterface? = null
 
@@ -56,10 +57,16 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         { Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNativeCrashThread")) },
     )
 
-    internal constructor(context: Context, config: PostHogAndroidConfig, executorFactory: () -> ExecutorService) {
+    internal constructor(
+        context: Context,
+        config: PostHogAndroidConfig,
+        executorFactory: () -> ExecutorService,
+        wallClockMs: () -> Long = System::currentTimeMillis,
+    ) {
         this.context = context
         this.config = config
         this.executorFactory = executorFactory
+        this.wallClockMs = wallClockMs
     }
 
     private companion object {
@@ -207,6 +214,10 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                     ) + (applicationInfo.splitSourceDirs?.toList() ?: emptyList()),
             )
         var captured = 0
+        // Exit records carry wall-clock time, but the batch's sent_at comes from config.dateProvider,
+        // which is network-corrected on API 33+. Ingestion shifts each event by timestamp - sent_at,
+        // so a timestamp left on the wall clock moves by however far the two clocks disagree.
+        val clockOffsetMs = config.dateProvider.currentTimeMillis() - wallClockMs()
 
         for ((index, exitInfo) in crashes.withIndex()) {
             // uninstall interrupts the scanner; stop before acknowledging more records
@@ -240,7 +251,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 postHog.capture(
                     PostHogEventName.EXCEPTION.event,
                     properties = it,
-                    timestamp = Date(exitInfo.timestamp),
+                    timestamp = Date(exitInfo.timestamp + clockOffsetMs),
                 )
                 captured++
             }
