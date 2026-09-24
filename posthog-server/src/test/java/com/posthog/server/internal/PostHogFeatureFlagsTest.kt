@@ -3163,6 +3163,115 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `loadFeatureFlagDefinitions retries a failed cache write on the next poll`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        mockServer.enqueue(jsonResponseWithEtag(createLocalEvaluationResponse("write-retry-flag-v1"), "\"rev-1\""))
+        mockServer.enqueue(jsonResponseWithEtag(createLocalEvaluationResponse("write-retry-flag-v2"), "\"rev-2\""))
+
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true, throwOnReceived = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        provider.throwOnReceived = false
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(2, mockServer.requestCount)
+        mockServer.takeRequest()
+        assertNull(mockServer.takeRequest().getHeader("If-None-Match"))
+        assertEquals(2, provider.onReceivedCalls)
+        assertTrue(serializeFlagDefinitionCacheData(config, provider.cacheData).contains("\"key\":\"write-retry-flag-v2\""))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions seeds the cache after a cold API fallback becomes leader`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        mockServer.enqueue(jsonResponseWithEtag(createLocalEvaluationResponse("seed-flag"), "\"rev-1\""))
+        mockServer.enqueue(jsonResponseWithEtag(createLocalEvaluationResponse("seed-flag"), "\"rev-1\""))
+
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = false)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        assertEquals(0, provider.onReceivedCalls)
+
+        provider.shouldFetch = true
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(2, mockServer.requestCount)
+        mockServer.takeRequest()
+        assertNull(mockServer.takeRequest().getHeader("If-None-Match"))
+        assertEquals(1, provider.onReceivedCalls)
+        assertTrue(serializeFlagDefinitionCacheData(config, provider.cacheData).contains("\"key\":\"seed-flag\""))
+
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loadFeatureFlagDefinitions republishes definitions when the cache key is gone on 304`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        mockServer.enqueue(jsonResponseWithEtag(createLocalEvaluationResponse("evicted-flag"), "\"rev-1\""))
+        mockServer.enqueue(notModifiedResponse("\"rev-1\""))
+
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val api = PostHogApi(config)
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+
+        featureFlags.loadFeatureFlagDefinitions()
+        provider.cacheData = null
+        featureFlags.loadFeatureFlagDefinitions()
+
+        assertEquals(2, mockServer.requestCount)
+        assertEquals(2, provider.onReceivedCalls)
+        assertTrue(logger.containsLog("republishing definitions"))
+        assertTrue(serializeFlagDefinitionCacheData(config, provider.cacheData).contains("\"key\":\"evicted-flag\""))
+
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `loadFeatureFlagDefinitions picks up updated cached definitions on subsequent polls`() {
         val logger = TestLogger()
         val mockServer = MockWebServer()
@@ -3780,6 +3889,7 @@ internal class PostHogFeatureFlagsTest {
             if (throwOnReceived) {
                 throw IllegalStateException("write failed")
             }
+            cacheData = data
         }
 
         override fun shutdownBlocking() {
