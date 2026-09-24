@@ -439,16 +439,17 @@ public open class PostHogConfig(
     public var requestHeaders: Map<String, String> = emptyMap()
 
     /**
-     * Compresses the request body with gzip before sending it to the PostHog API.
+     * How the SDK compresses request bodies before sending them to the PostHog API.
      *
-     * Set this to `false` when the network between the app and PostHog changes or re-encodes the
-     * compressed body, e.g. on a managed work profile, which makes the server reject the request.
+     * Set this to [PostHogCompression.NONE] when the network between the app and PostHog changes
+     * or re-encodes the compressed body, e.g. on a managed work profile, which makes the server
+     * reject the request.
      *
      * The SDK recovers on its own in one case only: the server answers `400` with a body that
      * reports it could not read the gzipped payload, and the same body then succeeds uncompressed.
      * Compression then stays off for the rest of this SDK instance. Any other rejection keeps
-     * compression on, so set this to `false` when the server rejects compressed bodies some
-     * other way.
+     * compression on, so set this to [PostHogCompression.NONE] when the server rejects compressed
+     * bodies some other way.
      *
      * Feature flag requests are not sent again uncompressed: they stay compressed until another
      * request has turned compression off.
@@ -456,9 +457,9 @@ public open class PostHogConfig(
      * Has no effect when [httpClient] is set, because the SDK only installs the compressing
      * interceptor on the client it builds itself.
      *
-     * Default: `true`.
+     * Default: [PostHogCompression.GZIP].
      */
-    public var compressRequestBody: Boolean = true
+    public var compression: PostHogCompression = PostHogCompression.GZIP
 
     /**
      * The PostHog project API key, trimmed of leading and trailing whitespace.

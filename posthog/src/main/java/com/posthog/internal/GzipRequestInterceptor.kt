@@ -18,6 +18,7 @@
 
 package com.posthog.internal
 
+import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import okhttp3.Interceptor
@@ -55,7 +56,7 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
         private val DECODE_ERROR_HINTS = listOf("gzip", "decompress", "unexpected end of file")
     }
 
-    private enum class Compression {
+    private enum class CompressionState {
         ON,
 
         // One thread is finding out whether the server can read a compressed body. Bodies that were
@@ -70,15 +71,15 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
         OFF,
     }
 
-    private val compression = AtomicReference(Compression.ON)
+    private val compressionState = AtomicReference(CompressionState.ON)
 
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val body = originalRequest.body
 
-        return if (!config.compressRequestBody ||
-            compression.get() == Compression.OFF ||
+        return if (config.compression != PostHogCompression.GZIP ||
+            compressionState.get() == CompressionState.OFF ||
             body == null ||
             originalRequest.header("Content-Encoding") != null ||
             body is MultipartBody
@@ -111,11 +112,11 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
             // Claim the probe atomically. Every executor shares this interceptor, so two rejected
             // bodies must not probe twice, and a late claim must not put the state back to PROBING
             // after another thread turned compression off.
-            if (!compression.compareAndSet(Compression.ON, Compression.PROBING)) {
+            if (!compressionState.compareAndSet(CompressionState.ON, CompressionState.PROBING)) {
                 // Another thread owns the answer. Unless it already found the server rejects the
                 // uncompressed body too, send this one again uncompressed: a rejected batch is
                 // deleted rather than retried, so returning the rejection here loses those events.
-                if (compression.get() == Compression.KEEP) {
+                if (compressionState.get() == CompressionState.KEEP) {
                     return response
                 }
                 response.close()
@@ -135,12 +136,12 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
                     throw e
                 }
             if (uncompressedResponse.isSuccessful) {
-                compression.set(Compression.OFF)
+                compressionState.set(CompressionState.OFF)
                 config.logger.log("The server rejected a gzipped request body, compression is now off.")
             } else if (isEventsRetriableStatusCode(uncompressedResponse.code)) {
                 releaseProbe()
             } else {
-                compression.set(Compression.KEEP)
+                compressionState.set(CompressionState.KEEP)
             }
             uncompressedResponse
         }
@@ -149,7 +150,7 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
     // A thrown error or a transient answer says nothing about whether the server can read a
     // compressed body, so give the claim back instead of spending it.
     private fun releaseProbe() {
-        compression.set(Compression.ON)
+        compressionState.set(CompressionState.ON)
         config.logger.log("The uncompressed request failed for another reason, the SDK will probe again.")
     }
 

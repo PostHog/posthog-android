@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.BuildConfig
 import com.posthog.DISTINCT_ID
+import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.logs.PostHogLogRecord
@@ -64,10 +65,10 @@ internal class PostHogApiTest {
         maxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
         requestHeaders: Map<String, String>? = null,
-        compressRequestBody: Boolean = true,
+        compression: PostHogCompression = PostHogCompression.GZIP,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
-        config.compressRequestBody = compressRequestBody
+        config.compression = compression
         config.proxy = proxy
         config.debug = debug
         if (!requestHeaders.isNullOrEmpty()) {
@@ -115,7 +116,7 @@ internal class PostHogApiTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(host = url.toString(), compressRequestBody = false)
+        val sut = getSut(host = url.toString(), compression = PostHogCompression.NONE)
 
         sut.batch(listOf(generateEvent()))
 
