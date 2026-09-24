@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogInterface
 import com.posthog.android.API_KEY
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.internal.errortracking.NativeCrashClockOffsetStore
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TestProtoWriter
 import com.posthog.internal.PostHogDateProvider
@@ -193,6 +194,34 @@ internal class PostHogNativeCrashIntegrationTest {
             eq(Date(700_000)),
         )
         assertEquals(900_000, watermark())
+    }
+
+    @Test
+    fun `stamps crashes with the offset recorded by the run they crashed in`() {
+        NativeCrashClockOffsetStore(context).record(runStartWallClockMs = 800_000, offsetMs = -50_000)
+        dateProvider.nowMs = wallClockMs - 200_000
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 900_000, trace = tombstoneBytes())
+
+        install()
+
+        verify(postHog).capture(
+            eq("\$exception"),
+            anyOrNull(),
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            eq(Date(850_000)),
+        )
+    }
+
+    @Test
+    fun `records the current run's clock offset`() {
+        dateProvider.nowMs = wallClockMs - 200_000
+
+        install()
+
+        assertEquals(-200_000, NativeCrashClockOffsetStore(context).offsetAt(wallClockMs))
     }
 
     @Test

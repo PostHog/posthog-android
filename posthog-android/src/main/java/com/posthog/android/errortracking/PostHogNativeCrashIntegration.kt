@@ -10,6 +10,7 @@ import com.posthog.PostHogEventName
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.internal.errortracking.NativeCrashClockOffsetStore
 import com.posthog.android.internal.errortracking.NativeCrashEventCoercer
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TombstoneParser
@@ -184,6 +185,25 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
 
     @RequiresApi(Build.VERSION_CODES.S)
     private fun scan(postHog: PostHogInterface) {
+        // Exit records carry wall-clock time, but the batch's sent_at comes from config.dateProvider,
+        // which is network-corrected on API 33+. Ingestion shifts each event by timestamp - sent_at,
+        // so each crash is moved onto the provider's clock with the offset of the run it crashed in.
+        val runStartWallClockMs = wallClockMs()
+        val currentClockOffsetMs = config.dateProvider.currentTimeMillis() - runStartWallClockMs
+        val clockOffsets = NativeCrashClockOffsetStore(context)
+        try {
+            scanCrashes(postHog, clockOffsets, currentClockOffsetMs)
+        } finally {
+            clockOffsets.record(runStartWallClockMs, currentClockOffsetMs)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun scanCrashes(
+        postHog: PostHogInterface,
+        clockOffsets: NativeCrashClockOffsetStore,
+        currentClockOffsetMs: Long,
+    ) {
         val activityManager = getActivityManager(context) ?: return
         val watermarkStore = NativeCrashWatermarkStore(context)
         val watermark = watermarkStore.get()
@@ -214,10 +234,6 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                     ) + (applicationInfo.splitSourceDirs?.toList() ?: emptyList()),
             )
         var captured = 0
-        // Exit records carry wall-clock time, but the batch's sent_at comes from config.dateProvider,
-        // which is network-corrected on API 33+. Ingestion shifts each event by timestamp - sent_at,
-        // so a timestamp left on the wall clock moves by however far the two clocks disagree.
-        val clockOffsetMs = config.dateProvider.currentTimeMillis() - wallClockMs()
 
         for ((index, exitInfo) in crashes.withIndex()) {
             // uninstall interrupts the scanner; stop before acknowledging more records
@@ -251,7 +267,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 postHog.capture(
                     PostHogEventName.EXCEPTION.event,
                     properties = it,
-                    timestamp = Date(exitInfo.timestamp + clockOffsetMs),
+                    timestamp = Date(exitInfo.timestamp + (clockOffsets.offsetAt(exitInfo.timestamp) ?: currentClockOffsetMs)),
                 )
                 captured++
             }
