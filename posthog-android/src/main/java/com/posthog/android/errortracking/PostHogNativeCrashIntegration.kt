@@ -2,8 +2,12 @@ package com.posthog.android.errortracking
 
 import android.app.Application
 import android.app.ApplicationExitInfo
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
+import android.os.Process
 import android.os.UserManager
 import androidx.annotation.RequiresApi
 import com.posthog.PostHogEventName
@@ -46,6 +50,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     private val wallClockMs: () -> Long
     private var executor: ExecutorService? = null
     private var postHog: PostHogInterface? = null
+    private var timeChangedReceiver: BroadcastReceiver? = null
 
     // Whether this instance owns the process-wide scanner guard, so only the
     // owner can release it on uninstall.
@@ -137,6 +142,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
             val executor = executorFactory()
             this.executor = executor
             executor.submit { scanSafely(postHog) }
+            registerTimeChangedReceiver(executor)
         } catch (e: Throwable) {
             config.logger.log("Native crash scan could not be scheduled: $e.")
             installedByThisInstance = false
@@ -148,6 +154,14 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         if (!installedByThisInstance) {
             return
         }
+        timeChangedReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+            } catch (e: Throwable) {
+                config.logger.log("Unregistering the time change receiver failed: $e.")
+            }
+        }
+        timeChangedReceiver = null
         // Stop the scanner before releasing the process-wide guard, so a new
         // install cannot start a second scanner while this one is still running.
         executor?.shutdownNow()
@@ -183,18 +197,57 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
     }
 
+    // The wall clock can change while the app runs (the user sets it, or automatic
+    // time corrects it), so the run's recorded offset is refreshed each time it does.
+    private fun registerTimeChangedReceiver(executor: ExecutorService) {
+        val receiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(
+                    context: Context,
+                    intent: Intent,
+                ) {
+                    try {
+                        // off the main thread: the date provider may do a Binder IPC
+                        executor.submit { recordCurrentClockOffset() }
+                    } catch (e: Throwable) {
+                        config.logger.log("Recording the clock offset failed: $e.")
+                    }
+                }
+            }
+        val filter = IntentFilter(Intent.ACTION_TIME_CHANGED)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, filter)
+            }
+            timeChangedReceiver = receiver
+        } catch (e: Throwable) {
+            config.logger.log("Registering the time change receiver failed: $e.")
+        }
+    }
+
+    // Exit records carry wall-clock time, but the batch's sent_at comes from config.dateProvider,
+    // which is network-corrected on API 33+. Ingestion shifts each event by timestamp - sent_at,
+    // so each crash is moved onto the provider's clock with the offset of the run it crashed in.
+    private fun currentClockOffsetMs(): Long = config.dateProvider.currentTimeMillis() - wallClockMs()
+
+    private fun recordCurrentClockOffset() {
+        try {
+            NativeCrashClockOffsetStore(context).record(Process.myPid(), currentClockOffsetMs())
+        } catch (e: Throwable) {
+            config.logger.log("Recording the clock offset failed: $e.")
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.S)
     private fun scan(postHog: PostHogInterface) {
-        // Exit records carry wall-clock time, but the batch's sent_at comes from config.dateProvider,
-        // which is network-corrected on API 33+. Ingestion shifts each event by timestamp - sent_at,
-        // so each crash is moved onto the provider's clock with the offset of the run it crashed in.
-        val runStartWallClockMs = wallClockMs()
-        val currentClockOffsetMs = config.dateProvider.currentTimeMillis() - runStartWallClockMs
-        val clockOffsets = NativeCrashClockOffsetStore(context)
+        val currentClockOffsetMs = currentClockOffsetMs()
         try {
-            scanCrashes(postHog, clockOffsets, currentClockOffsetMs)
+            scanCrashes(postHog, NativeCrashClockOffsetStore(context), currentClockOffsetMs)
         } finally {
-            clockOffsets.record(runStartWallClockMs, currentClockOffsetMs)
+            // after the scan: a pid reused from a crashed run must not overwrite that run's offset first
+            recordCurrentClockOffset()
         }
     }
 
@@ -267,7 +320,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 postHog.capture(
                     PostHogEventName.EXCEPTION.event,
                     properties = it,
-                    timestamp = Date(exitInfo.timestamp + (clockOffsets.offsetAt(exitInfo.timestamp) ?: currentClockOffsetMs)),
+                    timestamp = Date(exitInfo.timestamp + (clockOffsets.offsetFor(exitInfo.pid) ?: currentClockOffsetMs)),
                 )
                 captured++
             }

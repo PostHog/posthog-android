@@ -16,28 +16,33 @@ internal class NativeCrashClockOffsetStoreTest {
     private val store = NativeCrashClockOffsetStore(context)
 
     @Test
-    fun `returns null before any run is recorded`() {
-        assertNull(store.offsetAt(1_000))
+    fun `returns null for a pid with no recorded run`() {
+        assertNull(store.offsetFor(1))
     }
 
     @Test
-    fun `returns the offset of the latest run started at or before the time`() {
-        store.record(runStartWallClockMs = 100, offsetMs = -1)
-        store.record(runStartWallClockMs = 300, offsetMs = -3)
-        store.record(runStartWallClockMs = 200, offsetMs = -2)
+    fun `returns the offset recorded by each pid`() {
+        store.record(pid = 1, offsetMs = -1)
+        store.record(pid = 2, offsetMs = -2)
 
-        assertNull(store.offsetAt(99))
-        assertEquals(-1, store.offsetAt(100))
-        assertEquals(-2, store.offsetAt(250))
-        assertEquals(-3, store.offsetAt(10_000))
+        assertEquals(-1, store.offsetFor(1))
+        assertEquals(-2, store.offsetFor(2))
+    }
+
+    @Test
+    fun `a later record for the same pid replaces the earlier one`() {
+        store.record(pid = 1, offsetMs = -1)
+        store.record(pid = 1, offsetMs = 0)
+
+        assertEquals(0, store.offsetFor(1))
     }
 
     @Test
     fun `keeps only the most recent runs`() {
-        (1L..20L).forEach { store.record(runStartWallClockMs = it * 100, offsetMs = -it) }
+        (1..20).forEach { store.record(pid = it, offsetMs = -it.toLong()) }
 
-        assertNull(store.offsetAt(400))
-        assertEquals(-5, store.offsetAt(500))
-        assertEquals(-20, store.offsetAt(2_000))
+        assertNull(store.offsetFor(4))
+        assertEquals(-5, store.offsetFor(5))
+        assertEquals(-20, store.offsetFor(20))
     }
 }

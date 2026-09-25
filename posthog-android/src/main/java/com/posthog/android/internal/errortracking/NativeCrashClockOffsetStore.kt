@@ -9,38 +9,42 @@ import android.content.Context
  * later run whose clocks may disagree differently (the user changed the time, or
  * network time became available). Recovering with the crashed run's offset puts
  * the crash on the SDK's clock as it was when the crash happened.
+ *
+ * Runs are keyed by pid, which the exit record carries, rather than by start
+ * time: the wall clock can move backwards, so start times do not order runs.
  */
 internal class NativeCrashClockOffsetStore(context: Context) {
     private val preferences =
         context.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
 
-    /** The offset of the latest run that started at or before [wallClockMs], or null if none is known. */
-    fun offsetAt(wallClockMs: Long): Long? = runs().lastOrNull { (startMs, _) -> startMs <= wallClockMs }?.second
+    /** The offset last recorded by the run with [pid], or null if none is known. */
+    fun offsetFor(pid: Int): Long? = runs().lastOrNull { it.first == pid }?.second
 
     fun record(
-        runStartWallClockMs: Long,
+        pid: Int,
         offsetMs: Long,
     ) {
-        val runs = (runs() + (runStartWallClockMs to offsetMs)).sortedBy { it.first }.takeLast(MAX_RUNS)
+        // a reused pid belongs to the newer run, so drop the older entry
+        val runs = (runs().filter { it.first != pid } + (pid to offsetMs)).takeLast(MAX_RUNS)
         preferences.edit().putString(KEY, runs.joinToString(";") { "${it.first}:${it.second}" }).apply()
     }
 
-    private fun runs(): List<Pair<Long, Long>> =
+    // oldest first
+    private fun runs(): List<Pair<Int, Long>> =
         preferences.getString(KEY, null)
             ?.split(';')
             ?.mapNotNull { entry ->
                 val parts = entry.split(':')
-                val start = parts.getOrNull(0)?.toLongOrNull()
+                val pid = parts.getOrNull(0)?.toIntOrNull()
                 val offset = parts.getOrNull(1)?.toLongOrNull()
-                if (start != null && offset != null) start to offset else null
+                if (pid != null && offset != null) pid to offset else null
             }
-            ?.sortedBy { it.first }
             ?: emptyList()
 
     private companion object {
         private const val KEY = "clockOffsets"
 
-        // Crashes older than this many runs fall back to the oldest known offset,
+        // Crashes from runs older than this fall back to the current offset,
         // which is fine: the OS only keeps a handful of exit records anyway.
         private const val MAX_RUNS = 16
     }

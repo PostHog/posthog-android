@@ -3,6 +3,9 @@ package com.posthog.android.errortracking
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.content.Intent
+import android.os.Looper
+import android.os.Process
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogInterface
@@ -90,7 +93,7 @@ internal class PostHogNativeCrashIntegrationTest {
         override fun nanoTime(): Long = System.nanoTime()
     }
 
-    private val wallClockMs = 1_000_000L
+    private var wallClockMs = 1_000_000L
     private val dateProvider = FixedDateProvider(wallClockMs)
 
     @Before
@@ -198,9 +201,9 @@ internal class PostHogNativeCrashIntegrationTest {
 
     @Test
     fun `stamps crashes with the offset recorded by the run they crashed in`() {
-        NativeCrashClockOffsetStore(context).record(runStartWallClockMs = 800_000, offsetMs = -50_000)
+        NativeCrashClockOffsetStore(context).record(pid = 7, offsetMs = -50_000)
         dateProvider.nowMs = wallClockMs - 200_000
-        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 900_000, trace = tombstoneBytes())
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 900_000, pid = 7, trace = tombstoneBytes())
 
         install()
 
@@ -216,12 +219,58 @@ internal class PostHogNativeCrashIntegrationTest {
     }
 
     @Test
+    fun `picks the crashed run by pid even after the wall clock moved back`() {
+        // run 7 started with a fast wall clock at 800_000; run 8 started after
+        // the clock was corrected back to 400_000, then crashed at 900_000
+        NativeCrashClockOffsetStore(context).record(pid = 7, offsetMs = -500_000)
+        NativeCrashClockOffsetStore(context).record(pid = 8, offsetMs = 0)
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 900_000, pid = 8, trace = tombstoneBytes())
+
+        install()
+
+        verify(postHog).capture(
+            eq("\$exception"),
+            anyOrNull(),
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            eq(Date(900_000)),
+        )
+    }
+
+    @Test
     fun `records the current run's clock offset`() {
         dateProvider.nowMs = wallClockMs - 200_000
 
         install()
 
-        assertEquals(-200_000, NativeCrashClockOffsetStore(context).offsetAt(wallClockMs))
+        assertEquals(-200_000, NativeCrashClockOffsetStore(context).offsetFor(Process.myPid()))
+    }
+
+    @Test
+    fun `re-records the current run's clock offset when the wall clock changes`() {
+        dateProvider.nowMs = wallClockMs - 200_000
+        install()
+
+        // the wall clock is corrected to match the provider while the app runs
+        wallClockMs = dateProvider.nowMs
+        context.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, NativeCrashClockOffsetStore(context).offsetFor(Process.myPid()))
+    }
+
+    @Test
+    fun `stops re-recording the clock offset after uninstall`() {
+        dateProvider.nowMs = wallClockMs - 200_000
+        install().uninstall()
+
+        wallClockMs = dateProvider.nowMs
+        context.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(-200_000, NativeCrashClockOffsetStore(context).offsetFor(Process.myPid()))
     }
 
     @Test
