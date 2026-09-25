@@ -31,15 +31,8 @@ import okio.BufferedSink
 import okio.GzipSink
 import okio.buffer
 import java.io.IOException
-import java.util.concurrent.atomic.AtomicReference
 
 // https://square.github.io/okhttp/features/interceptors/
-
-/**
- * Tags a request that [GzipRequestInterceptor] must not send again uncompressed after the server
- * rejects its gzipped body.
- */
-internal object NoUncompressedRetry
 
 /**
  * This interceptor compresses the HTTP request body. Many webservers can't handle this!
@@ -47,39 +40,12 @@ internal object NoUncompressedRetry
  */
 @PostHogInternal
 public class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
-    private companion object {
-        private const val HTTP_BAD_REQUEST = 400
-        private const val MAX_ERROR_BODY_BYTES = 512L
-
-        // What the server answers when it cannot read the compressed body, e.g. because a managed
-        // work profile decompressed or re-encoded it but kept the Content-Encoding header.
-        private val DECODE_ERROR_HINTS = listOf("gzip", "decompress", "unexpected end of file")
-    }
-
-    private enum class CompressionState {
-        ON,
-
-        // One thread is finding out whether the server can read a compressed body. Bodies that were
-        // already compressed and rejected meanwhile go out again uncompressed, rather than failing.
-        PROBING,
-
-        // The server rejected the uncompressed body too, so compression is not the problem. The SDK
-        // keeps compressing instead of sending every rejected body twice.
-        KEEP,
-
-        // The server cannot read compressed bodies, e.g. because the network alters them in transit.
-        OFF,
-    }
-
-    private val compressionState = AtomicReference(CompressionState.ON)
-
     @Throws(IOException::class)
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val body = originalRequest.body
 
         return if (config.compression != PostHogCompression.GZIP ||
-            compressionState.get() == CompressionState.OFF ||
             body == null ||
             originalRequest.header("Content-Encoding") != null ||
             body is MultipartBody
@@ -95,78 +61,10 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
                 } catch (e: Throwable) {
                     config.logger.log("Failed to gzip the request body: $e.")
 
-                    return chain.proceed(originalRequest)
+                    originalRequest
                 }
-
-            val response = chain.proceed(compressedRequest)
-
-            if (!isCompressionRejected(response)) {
-                return response
-            }
-
-            // Some endpoints, e.g. flags, own their retry policy, so this interceptor must not re-send them.
-            if (originalRequest.tag(NoUncompressedRetry::class.java) != null) {
-                return response
-            }
-
-            // Claim the probe atomically. Every executor shares this interceptor, so two rejected
-            // bodies must not probe twice, and a late claim must not put the state back to PROBING
-            // after another thread turned compression off.
-            if (!compressionState.compareAndSet(CompressionState.ON, CompressionState.PROBING)) {
-                // Another thread owns the answer. Unless it already found the server rejects the
-                // uncompressed body too, send this one again uncompressed: a rejected batch is
-                // deleted rather than retried, so returning the rejection here loses those events.
-                if (compressionState.get() == CompressionState.KEEP) {
-                    return response
-                }
-                response.close()
-
-                return chain.proceed(originalRequest)
-            }
-            response.close()
-
-            // Send the body again uncompressed, to find out whether compression is what the
-            // server could not read.
-            val uncompressedResponse =
-                try {
-                    chain.proceed(originalRequest)
-                } catch (e: IOException) {
-                    releaseProbe()
-
-                    throw e
-                }
-            if (uncompressedResponse.isSuccessful) {
-                compressionState.set(CompressionState.OFF)
-                config.logger.log("The server rejected a gzipped request body, compression is now off.")
-            } else if (isEventsRetriableStatusCode(uncompressedResponse.code)) {
-                releaseProbe()
-            } else {
-                compressionState.set(CompressionState.KEEP)
-            }
-            uncompressedResponse
+            chain.proceed(compressedRequest)
         }
-    }
-
-    // A thrown error or a transient answer says nothing about whether the server can read a
-    // compressed body, so give the claim back instead of spending it.
-    private fun releaseProbe() {
-        compressionState.set(CompressionState.ON)
-        config.logger.log("The uncompressed request failed for another reason, the SDK will probe again.")
-    }
-
-    private fun isCompressionRejected(response: Response): Boolean {
-        if (response.code != HTTP_BAD_REQUEST) {
-            return false
-        }
-        val body =
-            try {
-                response.peekBody(MAX_ERROR_BODY_BYTES).string().lowercase()
-            } catch (e: Throwable) {
-                config.logger.log("Failed to read the error response body: $e.")
-
-                return false
-            }
-        return DECODE_ERROR_HINTS.any { it in body }
     }
 
     private fun gzip(body: RequestBody): RequestBody {
