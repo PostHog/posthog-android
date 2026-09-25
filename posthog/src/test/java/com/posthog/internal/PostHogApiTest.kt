@@ -2,6 +2,8 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.BuildConfig
+import com.posthog.DISTINCT_ID
+import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.generateEvent
 import com.posthog.logs.PostHogLogRecord
@@ -49,8 +51,10 @@ internal class PostHogApiTest {
         maxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
         requestHeaders: Map<String, String>? = null,
+        compression: PostHogCompression = PostHogCompression.GZIP,
     ): PostHogApi {
         val config = PostHogConfig(API_KEY, host)
+        config.compression = compression
         config.proxy = proxy
         config.debug = debug
         if (!requestHeaders.isNullOrEmpty()) {
@@ -91,6 +95,36 @@ internal class PostHogApiTest {
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `batch does not compress the body when compression is off`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), compression = PostHogCompression.NONE)
+
+        sut.batch(listOf(generateEvent()))
+
+        val request = http.takeRequest()
+
+        assertNull(request.headers["Content-Encoding"])
+        assertTrue(request.body.readUtf8().contains(DISTINCT_ID))
+    }
+
+    @Test
+    fun `flags does not compress the body when compression is off`() {
+        val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
+        val http = mockHttp(response = MockResponse().setBody(file.readText()))
+        val url = http.url("/")
+
+        val sut = getSut(host = url.toString(), compression = PostHogCompression.NONE)
+
+        sut.flags("distinctId")
+
+        val request = http.takeRequest()
+
+        assertNull(request.headers["Content-Encoding"])
     }
 
     @Test

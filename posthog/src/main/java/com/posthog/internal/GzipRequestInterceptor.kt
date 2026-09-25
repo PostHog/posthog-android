@@ -18,6 +18,7 @@
 
 package com.posthog.internal
 
+import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import okhttp3.Interceptor
@@ -44,7 +45,8 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
         val originalRequest = chain.request()
         val body = originalRequest.body
 
-        return if (body == null ||
+        return if (config.compression != PostHogCompression.GZIP ||
+            body == null ||
             originalRequest.header("Content-Encoding") != null ||
             body is MultipartBody
         ) {

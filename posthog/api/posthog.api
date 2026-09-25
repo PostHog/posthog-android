@@ -138,6 +138,14 @@ public final class com/posthog/PostHogBootstrapConfig {
 	public final fun isIdentifiedId ()Z
 }
 
+public final class com/posthog/PostHogCompression : java/lang/Enum {
+	public static final field GZIP Lcom/posthog/PostHogCompression;
+	public static final field NONE Lcom/posthog/PostHogCompression;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogCompression;
+	public static fun values ()[Lcom/posthog/PostHogCompression;
+}
+
 public class com/posthog/PostHogConfig {
 	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
 	public static final field DEFAULT_EU_ASSETS_HOST Ljava/lang/String;
@@ -158,6 +166,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getBeforeSendList ()Ljava/util/List;
 	public final fun getBootstrap ()Lcom/posthog/PostHogBootstrapConfig;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
+	public final fun getCompression ()Lcom/posthog/PostHogCompression;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
@@ -213,6 +222,7 @@ public class com/posthog/PostHogConfig {
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun setBootstrap (Lcom/posthog/PostHogBootstrapConfig;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
+	public final fun setCompression (Lcom/posthog/PostHogCompression;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V

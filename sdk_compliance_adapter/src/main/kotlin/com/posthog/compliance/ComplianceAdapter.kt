@@ -1,6 +1,7 @@
 package com.posthog.compliance
 
 import com.posthog.PostHog
+import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
 import com.posthog.internal.PostHogApi
@@ -291,6 +292,9 @@ fun main() {
                     config.httpClient = httpClient
 
                     req.max_retries?.let { config.maxRetries = it }
+                    req.enable_compression?.let {
+                        config.compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
+                    }
 
                     // Set storage prefix for file-backed queue
                     config.storagePrefix = QUEUE_STORAGE_PREFIX
