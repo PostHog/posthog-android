@@ -1,5 +1,11 @@
 ## Next
 
+## 3.71.0
+
+### Minor Changes
+
+- 51ec9cb: Add the `compression` config (`PostHogCompression.GZIP` / `NONE`) so an app can send request bodies uncompressed, e.g. when a managed Android work profile alters the compressed body in transit.
+
 ## 3.70.0
 
 ### Minor Changes
