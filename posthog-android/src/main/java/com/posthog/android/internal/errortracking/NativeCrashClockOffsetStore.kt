@@ -24,9 +24,13 @@ internal class NativeCrashClockOffsetStore(context: Context) {
         pid: Int,
         offsetMs: Long,
     ) {
-        // a reused pid belongs to the newer run, so drop the older entry
-        val runs = (runs().filter { it.first != pid } + (pid to offsetMs)).takeLast(MAX_RUNS)
-        preferences.edit().putString(KEY, runs.joinToString(";") { "${it.first}:${it.second}" }).apply()
+        // Scans on different executors can overlap after an uninstall and
+        // re-enable, so the read-modify-write must not lose either run's entry.
+        synchronized(lock) {
+            // a reused pid belongs to the newer run, so drop the older entry
+            val runs = (runs().filter { it.first != pid } + (pid to offsetMs)).takeLast(MAX_RUNS)
+            preferences.edit().putString(KEY, runs.joinToString(";") { "${it.first}:${it.second}" }).apply()
+        }
     }
 
     // oldest first
@@ -43,6 +47,9 @@ internal class NativeCrashClockOffsetStore(context: Context) {
 
     private companion object {
         private const val KEY = "clockOffsets"
+
+        // every instance shares one SharedPreferences file, so the lock is shared too
+        private val lock = Any()
 
         // Crashes from runs older than this fall back to the current offset,
         // which is fine: the OS only keeps a handful of exit records anyway.
