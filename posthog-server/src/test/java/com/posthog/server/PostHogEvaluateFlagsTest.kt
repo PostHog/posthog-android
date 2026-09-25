@@ -605,19 +605,26 @@ internal class PostHogEvaluateFlagsTest {
                 setOf("client-flag", "gated-flag"),
                 snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.toSet(),
             )
+
+            // A local-only read never goes through the `/flags` merge, so the runtime must come
+            // from the flag built at evaluation time.
+            val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+            assertEquals("client", localOnly.getEvaluationRuntime("client-flag"))
+            assertEquals("server", localOnly.getEvaluationRuntime("server-flag"))
         }
     }
 
     @Test
-    fun `the local definition's runtime wins over one reported by flags`() {
+    fun `an evaluation runtime reported by flags is ignored`() {
         withLocalEvaluation(
             definitions =
                 createLocalEvaluationResponseFrom(
                     emailGatedFlagDefinition("gated-server-flag", evaluationRuntime = "server"),
                     emailGatedFlagDefinition("gated-unreported-flag"),
                 ),
-            // `/flags` does not report the field today. If it ever does, or a response is tampered
-            // with, it must not reclassify a server-only flag as client-safe.
+            // `/flags` does not report the field. If it ever does, or a response is tampered with,
+            // the local definition stays the only source, so a response cannot reclassify a
+            // server-only flag as client-safe.
             flagsResponse = {
                 jsonResponse(
                     createMultipleFlagsResponse(
@@ -633,10 +640,9 @@ internal class PostHogEvaluateFlagsTest {
 
             assertEquals("server", snapshot.getEvaluationRuntime("gated-server-flag"))
             assertNull(snapshot.getEvaluationRuntime("gated-unreported-flag"), "a definition without the field stays unknown")
-            assertEquals("client", snapshot.getEvaluationRuntime("undefined-flag"), "no definition to override the response")
-            assertEquals(
-                listOf("undefined-flag"),
-                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys,
+            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "the response is not a source for the runtime")
+            assertTrue(
+                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.isEmpty(),
             )
         }
     }

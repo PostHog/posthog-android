@@ -12,7 +12,8 @@ import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
  * @property hasExperiment whether the flag is linked to an experiment; null when the server
  * does not report the field (older deployments)
  * @property evaluationRuntime the runtime the flag is configured for ("all", "client" or
- * "server"), as reported by the server; null when the server does not report the field
+ * "server"), set from the flag's local definition; null when the definition does not report the
+ * field. Transient so that `/flags`, which does not report it, is never a source for it
  */
 @IgnoreJRERequirement
 @PostHogInternal
@@ -22,6 +23,6 @@ public data class FeatureFlagMetadata(
     val version: Int,
     @SerializedName("has_experiment")
     val hasExperiment: Boolean? = null,
-    @SerializedName("evaluation_runtime")
+    @Transient
     val evaluationRuntime: String? = null,
 )

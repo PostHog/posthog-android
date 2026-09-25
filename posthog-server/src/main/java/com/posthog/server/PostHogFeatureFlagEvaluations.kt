@@ -111,9 +111,11 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * choose which flags to forward to a client, for example when bootstrapping a browser SDK.
      * The value is passed through as `/local_evaluation` reports it, for every flag that has a
      * definition in memory, whether its value resolved locally or came from `/flags`. It is null
-     * when the flag is unknown, when the server does not report the field, or when the flag has no
-     * local definition, because `/flags` does not include it. Does not fire any event and does not
-     * record the access.
+     * when the flag is unknown, when the definition does not report the field, or when the flag
+     * has no local definition, because `/flags` never reports the runtime. Note that `/flags`
+     * answers this SDK as a server runtime and leaves "client" flags out, so a "client" flag that
+     * does not resolve locally, for example because a person property is missing, is not in the
+     * snapshot at all. Does not fire any event and does not record the access.
      *
      * @param key Feature flag key.
      * @return The flag's evaluation runtime, or null when absent.
@@ -210,7 +212,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
                 continue
             }
             val runtimes = filter.evaluationRuntimes
-            if (runtimes != null && flag.metadata.evaluationRuntime !in runtimes) continue
+            // Checked before the lookup: a JDK immutable collection throws on `contains(null)`.
+            val runtime = flag.metadata.evaluationRuntime
+            if (runtimes != null && (runtime == null || runtime !in runtimes)) continue
             resolved.add(key)
         }
         return cloneWith(resolved)

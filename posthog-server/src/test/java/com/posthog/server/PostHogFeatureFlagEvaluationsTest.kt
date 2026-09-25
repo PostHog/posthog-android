@@ -226,6 +226,8 @@ internal class PostHogFeatureFlagEvaluationsTest {
 
         assertEquals("{\"a\":1}", snapshot.getFlagPayload("payload-flag"))
         assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
+        // An unknown key is where isEnabled and getFlag fire `flag_missing`.
+        assertNull(snapshot.getEvaluationRuntime("missing"))
 
         assertTrue(host.captures.isEmpty(), "payload and runtime reads should be event-free")
         assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "neither read records access")
@@ -301,6 +303,30 @@ internal class PostHogFeatureFlagEvaluationsTest {
         assertTrue(host.captures.isEmpty(), "filtering fires no event")
         assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "filtering records no access")
         assertTrue(host.warnings.isEmpty())
+        // An empty criterion keeps nothing, while an unset one does not constrain the result.
+        assertTrue(snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = emptySet())).keys.isEmpty())
+        assertEquals(snapshot.keys, snapshot.only(PostHogFeatureFlagFilter()).keys)
+    }
+
+    @Test
+    fun `only with a runtime filter never asks the collection about a null runtime`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "unknown-flag" to flag("unknown-flag"),
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                    ),
+            )
+        // Like the JDK's immutable collections (`Set.of`, `List.of`), a TreeSet throws on
+        // `contains(null)`. Java 8 has no `Set.of`, so the TreeSet stands in for it here.
+        val runtimes = java.util.TreeSet(listOf("client"))
+
+        val filtered = snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = runtimes))
+
+        assertEquals(listOf("client-flag"), filtered.keys)
     }
 
     @Test
