@@ -836,6 +836,7 @@ internal class PostHogFeatureFlags(
                     payload = payload,
                     version = flagDef.version,
                     hasExperiment = flagDef.hasExperiment,
+                    evaluationRuntime = flagDef.evaluationRuntime,
                 ),
             reason =
                 com.posthog.internal.EvaluationReason(
@@ -1149,6 +1150,7 @@ internal class PostHogFeatureFlags(
         // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
         // `false`, and that now beats the server's answer — pass `groups` when gating on one.
         val merged = LinkedHashMap(entry?.flags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
+        applyDefinitionRuntimes(merged)
         return EvaluateFlagsResult(
             flags = merged,
             locallyEvaluated = merged.mapValues { it.key in localFlags },
@@ -1157,6 +1159,24 @@ internal class PostHogFeatureFlags(
             definitionsLoadedAt = definitionsLoadedAt,
             responseError = entry?.error,
         )
+    }
+
+    /**
+     * The definition in memory is the only source of the runtime, so a flag that fell back to
+     * `/flags` keeps the runtime it is configured for and a caller filtering flags to forward does
+     * not drop it because one person property was missing. This only reaches "all" and "server"
+     * flags: `/flags` answers this SDK as a server runtime and leaves "client" flags out, so a
+     * "client" flag that does not resolve locally is not in [flags] at all.
+     */
+    private fun applyDefinitionRuntimes(flags: MutableMap<String, FeatureFlag>) {
+        val definitions = flagDefinitions ?: return
+        for (slot in flags.entries) {
+            val runtime = (definitions[slot.key] ?: continue).evaluationRuntime
+            val flag = slot.value
+            if (flag.metadata.evaluationRuntime != runtime) {
+                slot.setValue(flag.copy(metadata = flag.metadata.copy(evaluationRuntime = runtime)))
+            }
+        }
     }
 
     private fun evaluateMissingFlagsRemotely(

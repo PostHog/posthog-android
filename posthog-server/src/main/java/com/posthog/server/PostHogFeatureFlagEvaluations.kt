@@ -17,7 +17,7 @@ import java.util.Collections
  *     used by [PostHogInterface.getFeatureFlag]). Empty/blank distinctId short-circuits the event.
  *     Reads for unknown keys still fire a `$feature_flag_called` event with
  *     `$feature_flag_error: flag_missing` so dashboards see the lookup attempt.
- *   - [getFlagPayload] does not fire any event.
+ *   - [getFlagPayload] and [getEvaluationRuntime] do not fire any event.
  *
  * Filtered clones from [onlyAccessed] / [only] are independent of the parent — accessing flags on
  * the clone does not back-propagate into the parent's "accessed" set.
@@ -107,6 +107,24 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     }
 
     /**
+     * Returns the runtime the flag is configured for: "all", "client" or "server". Use it to
+     * choose which flags to forward to a client, for example when bootstrapping a browser SDK.
+     * The value is passed through as `/local_evaluation` reports it, for every flag that has a
+     * definition in memory, whether its value resolved locally or came from `/flags`. It is null
+     * when the flag is unknown, when the definition does not report the field, or when the flag
+     * has no local definition, because `/flags` never reports the runtime. Note that `/flags`
+     * answers this SDK as a server runtime and leaves "client" flags out, so a "client" flag that
+     * does not resolve locally, for example because a person property is missing, is not in the
+     * snapshot at all. Does not fire any event and does not record the access.
+     *
+     * @param key Feature flag key.
+     * @return The flag's evaluation runtime, or null when absent.
+     */
+    public fun getEvaluationRuntime(key: String): String? {
+        return flagMap[key]?.metadata?.evaluationRuntime
+    }
+
+    /**
      * Returns the flag payload deserialized from JSON to type [T], or null when the flag is
      * unknown, has no payload, or deserialization fails.
      *
@@ -157,20 +175,7 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * @param keys Feature flag keys to keep.
      * @return A new snapshot containing only the requested known flags.
      */
-    public fun only(keys: Collection<String>): PostHogFeatureFlagEvaluations {
-        val resolved = LinkedHashSet<String>()
-        for (key in keys) {
-            if (flagMap.containsKey(key)) {
-                resolved.add(key)
-            } else {
-                host.logWarning(
-                    "PostHogFeatureFlagEvaluations.only(...) called with unknown flag key '$key'; " +
-                        "dropping it from the filtered snapshot.",
-                )
-            }
-        }
-        return cloneWith(resolved)
-    }
+    public fun only(keys: Collection<String>): PostHogFeatureFlagEvaluations = only(PostHogFeatureFlagFilter(keys = keys))
 
     /**
      * Java-friendly varargs alias of [only].
@@ -179,6 +184,41 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * @return A new snapshot containing only the requested known flags.
      */
     public fun only(vararg keys: String): PostHogFeatureFlagEvaluations = only(keys.toList())
+
+    /**
+     * Returns a filtered snapshot containing only the flags that satisfy every criterion set on
+     * [filter]. Use it to pick the flags to forward to a client, for example:
+     *
+     * ```kotlin
+     * val forBrowser = snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all")))
+     * ```
+     *
+     * A flag whose evaluation runtime is unknown does not satisfy a runtime criterion. Filtering
+     * is in memory: it does not evaluate flags, fire any event, or record access.
+     *
+     * @param filter Criteria a flag must satisfy to be kept.
+     * @return A new snapshot containing only the matching flags.
+     */
+    public fun only(filter: PostHogFeatureFlagFilter): PostHogFeatureFlagEvaluations {
+        val resolved = LinkedHashSet<String>()
+        val candidates = filter.keys ?: flagMap.keys
+        for (key in candidates) {
+            val flag = flagMap[key]
+            if (flag == null) {
+                host.logWarning(
+                    "PostHogFeatureFlagEvaluations.only(...) called with unknown flag key '$key'; " +
+                        "dropping it from the filtered snapshot.",
+                )
+                continue
+            }
+            val runtimes = filter.evaluationRuntimes
+            // Checked before the lookup: a JDK immutable collection throws on `contains(null)`.
+            val runtime = flag.metadata.evaluationRuntime
+            if (runtimes != null && (runtime == null || runtime !in runtimes)) continue
+            resolved.add(key)
+        }
+        return cloneWith(resolved)
+    }
 
     private fun cloneWith(keep: Collection<String>): PostHogFeatureFlagEvaluations {
         val filtered = LinkedHashMap<String, FeatureFlag>()

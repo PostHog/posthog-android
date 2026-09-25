@@ -574,6 +574,80 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `getEvaluationRuntime passes through the runtime of locally evaluated flags`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    conclusiveFlagDefinition("client-flag", evaluationRuntime = "client"),
+                    conclusiveFlagDefinition("server-flag", evaluationRuntime = "server"),
+                    conclusiveFlagDefinition("unreported-flag"),
+                    emailGatedFlagDefinition("gated-flag", evaluationRuntime = "all"),
+                ),
+            flagsResponse = {
+                jsonResponse(createMultipleFlagsResponse("gated-flag" to true, "undefined-flag" to true))
+            },
+        ) { postHog, _, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
+            assertEquals("server", snapshot.getEvaluationRuntime("server-flag"))
+            assertNull(snapshot.getEvaluationRuntime("unreported-flag"))
+            assertTrue(snapshot.isEnabled("gated-flag"), "the gated flag is filled from /flags")
+            assertEquals(
+                "all",
+                snapshot.getEvaluationRuntime("gated-flag"),
+                "a flag filled from /flags keeps the runtime of its local definition",
+            )
+            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "no definition, and /flags reports none")
+            assertNull(snapshot.getEvaluationRuntime("missing-flag"))
+            // The filter a server uses to pick the flags it forwards to a browser.
+            assertEquals(
+                setOf("client-flag", "gated-flag"),
+                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.toSet(),
+            )
+
+            // A local-only read never goes through the `/flags` merge, so the runtime must come
+            // from the flag built at evaluation time.
+            val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+            assertEquals("client", localOnly.getEvaluationRuntime("client-flag"))
+            assertEquals("server", localOnly.getEvaluationRuntime("server-flag"))
+        }
+    }
+
+    @Test
+    fun `an evaluation runtime reported by flags is ignored`() {
+        withLocalEvaluation(
+            definitions =
+                createLocalEvaluationResponseFrom(
+                    emailGatedFlagDefinition("gated-server-flag", evaluationRuntime = "server"),
+                    emailGatedFlagDefinition("gated-unreported-flag"),
+                ),
+            // `/flags` does not report the field. If it ever does, or a response is tampered with,
+            // the local definition stays the only source, so a response cannot reclassify a
+            // server-only flag as client-safe.
+            flagsResponse = {
+                jsonResponse(
+                    createMultipleFlagsResponse(
+                        "gated-server-flag" to true,
+                        "gated-unreported-flag" to true,
+                        "undefined-flag" to true,
+                        evaluationRuntime = "client",
+                    ),
+                )
+            },
+        ) { postHog, _, _ ->
+            val snapshot = postHog.evaluateFlags("user-1")
+
+            assertEquals("server", snapshot.getEvaluationRuntime("gated-server-flag"))
+            assertNull(snapshot.getEvaluationRuntime("gated-unreported-flag"), "a definition without the field stays unknown")
+            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "the response is not a source for the runtime")
+            assertTrue(
+                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.isEmpty(),
+            )
+        }
+    }
+
+    @Test
     fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {
         withLocalEvaluation(
             definitions =

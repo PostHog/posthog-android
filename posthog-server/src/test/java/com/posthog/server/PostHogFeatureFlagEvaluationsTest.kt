@@ -47,12 +47,20 @@ internal class PostHogFeatureFlagEvaluationsTest {
         payload: String? = null,
         reason: EvaluationReason? = EvaluationReason("condition_match", "Condition matched", 0),
         hasExperiment: Boolean? = null,
+        evaluationRuntime: String? = null,
     ): FeatureFlag =
         FeatureFlag(
             key = key,
             enabled = enabled,
             variant = variant,
-            metadata = FeatureFlagMetadata(id = id, payload = payload, version = version, hasExperiment = hasExperiment),
+            metadata =
+                FeatureFlagMetadata(
+                    id = id,
+                    payload = payload,
+                    version = version,
+                    hasExperiment = hasExperiment,
+                    evaluationRuntime = evaluationRuntime,
+                ),
             reason = reason,
         )
 
@@ -204,18 +212,25 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `getFlagPayload returns the raw payload string and does not fire an event`() {
+    fun `getFlagPayload and getEvaluationRuntime do not fire an event or record access`() {
         val host = FakeHost()
         val snapshot =
             snapshot(
                 host = host,
-                flags = mapOf("payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}")),
+                flags =
+                    mapOf(
+                        "payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}"),
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                    ),
             )
 
-        val payload = snapshot.getFlagPayload("payload-flag")
+        assertEquals("{\"a\":1}", snapshot.getFlagPayload("payload-flag"))
+        assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
+        // An unknown key is where isEnabled and getFlag fire `flag_missing`.
+        assertNull(snapshot.getEvaluationRuntime("missing"))
 
-        assertEquals("{\"a\":1}", payload)
-        assertTrue(host.captures.isEmpty(), "payload reads should be event-free")
+        assertTrue(host.captures.isEmpty(), "payload and runtime reads should be event-free")
+        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "neither read records access")
     }
 
     @Test
@@ -263,6 +278,80 @@ internal class PostHogFeatureFlagEvaluationsTest {
         val filtered = snapshot.only(listOf("a", "missing"))
 
         assertEquals(listOf("a"), filtered.keys)
+        assertEquals(1, host.warnings.size)
+        assertTrue(host.warnings.single().contains("missing"))
+    }
+
+    @Test
+    fun `only with a runtime filter keeps the listed runtimes and drops unknown ones`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                        "all-flag" to flag("all-flag", evaluationRuntime = "all"),
+                        "server-flag" to flag("server-flag", evaluationRuntime = "server"),
+                        "unknown-flag" to flag("unknown-flag"),
+                    ),
+            )
+
+        val forBrowser = snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all")))
+
+        assertEquals(listOf("client-flag", "all-flag"), forBrowser.keys)
+        assertTrue(host.captures.isEmpty(), "filtering fires no event")
+        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "filtering records no access")
+        assertTrue(host.warnings.isEmpty())
+        // An empty criterion keeps nothing, while an unset one does not constrain the result.
+        assertTrue(snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = emptySet())).keys.isEmpty())
+        assertEquals(snapshot.keys, snapshot.only(PostHogFeatureFlagFilter()).keys)
+    }
+
+    @Test
+    fun `only with a runtime filter never asks the collection about a null runtime`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "unknown-flag" to flag("unknown-flag"),
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                    ),
+            )
+        // Like the JDK's immutable collections (`Set.of`, `List.of`), a TreeSet throws on
+        // `contains(null)`. Java 8 has no `Set.of`, so the TreeSet stands in for it here.
+        val runtimes = java.util.TreeSet(listOf("client"))
+
+        val filtered = snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = runtimes))
+
+        assertEquals(listOf("client-flag"), filtered.keys)
+    }
+
+    @Test
+    fun `only combines key and runtime criteria`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags =
+                    mapOf(
+                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
+                        "server-flag" to flag("server-flag", evaluationRuntime = "server"),
+                        "other-client-flag" to flag("other-client-flag", evaluationRuntime = "client"),
+                    ),
+            )
+
+        val filtered =
+            snapshot.only(
+                PostHogFeatureFlagFilter.builder()
+                    .keys("client-flag", "server-flag", "missing")
+                    .evaluationRuntimes("client")
+                    .build(),
+            )
+
+        assertEquals(listOf("client-flag"), filtered.keys)
         assertEquals(1, host.warnings.size)
         assertTrue(host.warnings.single().contains("missing"))
     }
