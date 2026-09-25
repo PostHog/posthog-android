@@ -1,5 +1,11 @@
 ## Next
 
+## 3.71.1
+
+### Patch Changes
+
+- 11c1121: Fix native (NDK) crash events being stamped at the wrong time when the device clock disagrees with network time
+
 ## 3.71.0
 
 ### Minor Changes
