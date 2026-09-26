@@ -5,6 +5,7 @@ import com.posthog.BuildConfig
 import com.posthog.DISTINCT_ID
 import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
+import com.posthog.TestHttpServers
 import com.posthog.generateEvent
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
@@ -13,16 +14,16 @@ import com.posthog.unGzip
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertThrows
+import org.junit.Rule
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import java.io.File
 import java.io.IOException
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.SocketException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,6 +33,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogApiTest {
+    @get:Rule
+    val httpServers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = httpServers.mockHttp(total, response)
+
     private class TestLogger : PostHogLogger {
         val messages = mutableListOf<String>()
 
@@ -467,25 +476,19 @@ internal class PostHogApiTest {
         val file = File("src/test/resources/json/basic-remote-config.json")
         val responseApi = file.readText()
 
-        val hostname = "localhost"
-        val port = 6375
-        val proxyAddress = InetSocketAddress(hostname, port)
-        val proxy = Proxy(Proxy.Type.HTTP, proxyAddress)
+        val server = httpServers.create()
+        server.start()
+        try {
+            server.enqueue(MockResponse().setBody(responseApi))
+            val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress(server.hostName, server.port))
+            val sut = getSut(host = "http://origin.invalid", proxy = proxy)
 
-        val server = MockWebServer()
-        val inetAddress = InetAddress.getByName(hostname)
-        server.start(inetAddress, port)
-        server.enqueue(MockResponse().setBody(responseApi))
-
-        val url = server.url("/")
-        val sut = getSut(host = url.toString(), proxy = proxy)
-        val response = sut.remoteConfig()
-        val request = server.takeRequest()
-
-        assertNotNull(response)
-        assertEquals(port, request.requestUrl?.port)
-        assertEquals(hostname, request.requestUrl?.host)
-        server.shutdown()
+            assertNotNull(sut.remoteConfig())
+            val request = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            assertEquals("GET http://origin.invalid/array/$API_KEY/config HTTP/1.1", request.requestLine)
+        } finally {
+            server.shutdown()
+        }
     }
 
     // Local Evaluation ETag Tests

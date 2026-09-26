@@ -4,11 +4,12 @@ import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogEventName
+import com.posthog.TestHttpServers
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.internal.errortracking.ThrowableCoercer
-import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.unGzip
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -26,11 +27,30 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class PostHogQueueTest {
+    @get:Rule
+    val httpServers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = httpServers.mockHttp(total, response)
+
+    private val queues = mutableListOf<PostHogQueue<PostHogEvent>>()
+
+    @AfterTest
+    fun cleanup() {
+        queues.forEach { it.stop() }
+        executor.shutdownAndAwaitTermination()
+        queues.forEach { it.clear() }
+    }
+
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     @get:Rule
@@ -59,7 +79,7 @@ internal class PostHogQueueTest {
                 this.httpClient = httpClient
             }
         val api = PostHogApi(config)
-        return PostHogQueue(config, EndpointSpec.batch(config, api, config.storagePrefix), executor)
+        return PostHogQueue(config, EndpointSpec.batch(config, api, config.storagePrefix), executor).also { queues.add(it) }
     }
 
     @Test
@@ -80,6 +100,13 @@ internal class PostHogQueueTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(2, sut.dequeList.size)
+        val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+        assertEquals(
+            listOf("2", "3"),
+            sut.dequeList.map { file ->
+                file.reader().use { serializer.deserialize<PostHogEvent>(it).event }
+            },
+        )
     }
 
     @Test
@@ -912,8 +939,16 @@ internal class PostHogQueueTest {
 
         sut.add(event)
 
-        // we dont call shutdownAndAwaitTermination here
-
+        // Assert delivery before draining the executor: fatal capture must send synchronously.
+        assertEquals(1, http.requestCount)
+        val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        val batch = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+        assertEquals(PostHogEventName.EXCEPTION.event, batch.batch.single().event)
+        assertEquals("123", batch.batch.single().distinctId)
+        assertEquals(
+            ThrowableCoercer.EXCEPTION_LEVEL_FATAL,
+            batch.batch.single().properties?.get(ThrowableCoercer.EXCEPTION_LEVEL_ATTRIBUTE),
+        )
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
     }

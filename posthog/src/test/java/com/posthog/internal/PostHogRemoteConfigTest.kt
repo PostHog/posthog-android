@@ -4,20 +4,25 @@ import com.posthog.API_KEY
 import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
+import com.posthog.TestHttpServers
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
-import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
+import com.posthog.unGzip
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.Rule
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,6 +32,39 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogRemoteConfigTest {
+    @get:Rule
+    val servers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = servers.mockHttp(total, response)
+
+    private val clients = mutableListOf<PostHogRemoteConfig>()
+    private val extraExecutors = mutableListOf<java.util.concurrent.ExecutorService>()
+    private val responseGates = mutableListOf<CountDownLatch>()
+
+    @AfterTest
+    fun cleanup() {
+        responseGates.forEach { it.countDown() }
+        extraExecutors.forEach { it.shutdownAndAwaitTermination() }
+        executor.shutdownAndAwaitTermination()
+        clients.forEach { it.clear() }
+    }
+
+    private fun gatedFlagsServer(release: CountDownLatch) =
+        servers.create().apply {
+            responseGates.add(release)
+            dispatcher =
+                object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (!release.await(5, TimeUnit.SECONDS)) return MockResponse().setResponseCode(500)
+                        return MockResponse().setBody(responseFlagsApi)
+                    }
+                }
+            start()
+        }
+
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
@@ -57,7 +95,7 @@ internal class PostHogRemoteConfigTest {
             executor = executor,
             defaultPersonPropertiesProvider = { emptyMap() },
             onRemoteConfigLoaded = onRemoteConfigLoaded,
-        )
+        ).also { clients.add(it) }
     }
 
     @BeforeTest
@@ -1079,17 +1117,9 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `pending reload contains correct parameters including anonymousId`() {
-        // Use a multi-threaded executor to allow concurrent execution
-        val multiThreadExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("Test"))
-
-        val http =
-            mockHttp(
-                total = 2,
-                response =
-                    MockResponse()
-                        .setBody(responseFlagsApi)
-                        .setBodyDelay(100, TimeUnit.MILLISECONDS),
-            )
+        val multiThreadExecutor = Executors.newFixedThreadPool(2, PostHogThreadFactory("Test")).also { extraExecutors.add(it) }
+        val release = CountDownLatch(1)
+        val http = gatedFlagsServer(release)
         val url = http.url("/")
 
         val localConfig =
@@ -1108,7 +1138,7 @@ internal class PostHogRemoteConfigTest {
             groups = emptyMap(),
         )
 
-        Thread.sleep(20)
+        assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
 
         // Call loadFeatureFlags with anonymousId (simulating identify() call)
         // This is the critical case - the anonymousId should NOT be dropped
@@ -1122,6 +1152,10 @@ internal class PostHogRemoteConfigTest {
                 },
         )
 
+        // The other worker has queued the pending reload while the first response is held.
+        multiThreadExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        release.countDown()
+
         // Wait for the pending reload to complete
         assertTrue(
             secondCallbackLatch.await(5, TimeUnit.SECONDS),
@@ -1130,9 +1164,11 @@ internal class PostHogRemoteConfigTest {
 
         assertEquals(2, http.requestCount, "Both requests should be made")
 
-        // Take both requests (we just verify the count above)
-        http.takeRequest()
-        http.takeRequest()
+        val pending = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        val body = PostHogSerializer(localConfig).deserialize<Map<String, Any>>(pending.body.unGzip().reader())
+        assertEquals("identified_user", body["distinct_id"])
+        assertEquals("anon_id_for_hash_key", body["\$anon_distinct_id"])
+        assertEquals(mapOf("company" to "posthog"), body["groups"])
 
         multiThreadExecutor.shutdownAndAwaitTermination()
         sut.clear()
@@ -1795,7 +1831,7 @@ internal class PostHogRemoteConfigTest {
 
         val http =
             mockHttp(
-                total = 2,
+                total = 1,
                 response =
                     MockResponse()
                         .setBody(remoteConfigFile.readText()),
@@ -1828,7 +1864,11 @@ internal class PostHogRemoteConfigTest {
 
         executor.shutdownAndAwaitTermination()
 
-        // Should fire exactly once — loadRemoteConfig fires it, executeFeatureFlags does not
+        assertEquals(2, http.requestCount)
+        assertTrue(assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).path!!.contains("/config"))
+        assertTrue(assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).path!!.startsWith("/flags"))
+        assertEquals(mapOf("4535-funnel-bar-viz" to true), sut.getFeatureFlags())
+        // Only the outer load notifies remote-config listeners.
         assertEquals(1, callbackCount)
 
         sut.clear()
@@ -1839,15 +1879,23 @@ internal class PostHogRemoteConfigTest {
     fun `loadRemoteConfig does not overwrite remote config values when executeFeatureFlags is called`() {
         // Remote config API says errorTracking enabled, capturePerformance enabled
         val remoteConfigFile = File("src/test/resources/json/basic-remote-config-features-enabled.json")
-        // but basic-remote-config-features-enabled.json has hasFeatureFlags=false,
-        // so executeFeatureFlags won't be called — this test just checks remote config path
-
         val http =
             mockHttp(
                 response =
-                    MockResponse()
-                        .setBody(remoteConfigFile.readText()),
+                    MockResponse().setBody(
+                        remoteConfigFile.readText().replace("\"hasFeatureFlags\": false", "\"hasFeatureFlags\": true"),
+                    ),
             )
+        http.enqueue(
+            MockResponse().setBody(
+                """{
+            "featureFlags":{"conflicting-flag":true},
+            "errorTracking":{"autocaptureExceptions":false},
+            "capturePerformance":false,
+            "sessionRecording":{"consoleLogRecordingEnabled":true}
+        }""",
+            ),
+        )
         val url = http.url("/")
 
         val sut = getSut(host = url.toString())
@@ -1859,6 +1907,8 @@ internal class PostHogRemoteConfigTest {
 
         assertTrue(sut.isAutocaptureExceptionsEnabled())
         assertTrue(sut.isCaptureNetworkTimingEnabled())
+        assertEquals(2, http.requestCount)
+        assertEquals(mapOf("conflicting-flag" to true), sut.getFeatureFlags())
         // sessionRecording is boolean false in features-enabled.json
         assertFalse(sut.isConsoleLogRecordingEnabled())
 
@@ -2885,11 +2935,9 @@ internal class PostHogRemoteConfigTest {
 
     @Test
     fun `a listener reused across queued reloads is notified once per response`() {
-        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
-        repeat(9) {
-            http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(300, TimeUnit.MILLISECONDS))
-        }
-        val overlapping = Executors.newFixedThreadPool(4, PostHogThreadFactory("TestShared"))
+        val release = CountDownLatch(1)
+        val http = gatedFlagsServer(release)
+        val overlapping = Executors.newFixedThreadPool(2, PostHogThreadFactory("TestShared"))
         val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
         val sut =
             PostHogRemoteConfig(
@@ -2902,16 +2950,30 @@ internal class PostHogRemoteConfigTest {
 
         // the SDK passes the same listener instance on every automatic reload
         val invocations = AtomicInteger(0)
-        val shared = PostHogOnFeatureFlags { invocations.incrementAndGet() }
-        repeat(10) {
+        val completed = CountDownLatch(2)
+        val shared =
+            PostHogOnFeatureFlags {
+                invocations.incrementAndGet()
+                completed.countDown()
+            }
+        try {
             sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = shared)
+            assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+            repeat(9) {
+                sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = shared)
+            }
+            // One worker is blocked in HTTP; this barrier runs after all nine pending reloads.
+            overlapping.submit {}.get(5, TimeUnit.SECONDS)
+            release.countDown()
+            assertTrue(completed.await(5, TimeUnit.SECONDS), "both response callbacks must run")
+            overlapping.shutdownAndAwaitTermination()
+            assertEquals(2, http.requestCount)
+            assertEquals(2, invocations.get())
+        } finally {
+            release.countDown()
+            overlapping.shutdownAndAwaitTermination()
+            sut.clear()
         }
-
-        Thread.sleep(3000)
-        assertTrue(
-            invocations.get() <= http.requestCount,
-            "shared listener fired ${invocations.get()} times for ${http.requestCount} responses",
-        )
 
         sut.clear()
         overlapping.shutdownAndAwaitTermination()
@@ -2952,7 +3014,7 @@ internal class PostHogRemoteConfigTest {
                     throw IllegalStateException("callback blew up")
                 },
         )
-        first.await(5, TimeUnit.SECONDS)
+        assertTrue(first.await(5, TimeUnit.SECONDS), "the throwing callback never ran")
         val afterFirst = http.requestCount
 
         val second = CountDownLatch(1)

@@ -164,7 +164,7 @@ internal class PostHogSessionManagerTest {
         fakeDate.nowMs = baseTime + (1000L * 60 * 31)
         PostHogSessionManager.touchSession()
 
-        val rotatedSessionId = PostHogSessionManager.getActiveSessionId()
+        val rotatedSessionId = PostHogSessionManager.peekSessionId()
         assertNotNull(rotatedSessionId)
         assertNotEquals(originalSessionId, rotatedSessionId)
     }
@@ -288,6 +288,7 @@ internal class PostHogSessionManagerTest {
         PostHogSessionManager.startSession()
         val firstSessionId = PostHogSessionManager.getActiveSessionId()
         assertNotNull(firstSessionId)
+        keepSessionActiveForNearly24Hours(fakeDate, baseTime, firstSessionId)
 
         fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
 
@@ -304,7 +305,8 @@ internal class PostHogSessionManagerTest {
         PostHogSessionManager.setDateProvider(fakeDate)
 
         PostHogSessionManager.startSession()
-        assertNotNull(PostHogSessionManager.getActiveSessionId())
+        val firstSessionId = assertNotNull(PostHogSessionManager.getActiveSessionId())
+        keepSessionActiveForNearly24Hours(fakeDate, baseTime, firstSessionId)
 
         PostHogSessionManager.setAppInBackground(true)
         fakeDate.nowMs = baseTime + (1000L * 60 * 60 * 24) + 1
@@ -443,6 +445,18 @@ internal class PostHogSessionManagerTest {
         PostHogSessionManager.setOnSessionIdChangedListener(null)
         PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
+    }
+
+    private fun keepSessionActiveForNearly24Hours(
+        fakeDate: FakeDateProvider,
+        baseTime: Long,
+        sessionId: UUID,
+    ) {
+        for (quarterHour in 1..95) {
+            fakeDate.nowMs = baseTime + quarterHour * 15 * 60 * 1000L
+            PostHogSessionManager.touchSession()
+            assertEquals(sessionId, PostHogSessionManager.peekSessionId())
+        }
     }
 
     private class FakeDateProvider(var nowMs: Long) : PostHogDateProvider {

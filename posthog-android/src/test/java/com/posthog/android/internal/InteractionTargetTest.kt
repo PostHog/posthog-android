@@ -70,6 +70,7 @@ internal class InteractionTargetTest {
     fun `optional Compose runtime can be absent`() {
         if (java.lang.Boolean.getBoolean("posthog.test.noCompose")) {
             assertFailsWith<ClassNotFoundException> { Class.forName("androidx.compose.ui.node.RootForTest") }
+            assertFailsWith<ClassNotFoundException> { Class.forName("androidx.compose.runtime.Composer") }
         }
         button()
         val location = IntArray(2)

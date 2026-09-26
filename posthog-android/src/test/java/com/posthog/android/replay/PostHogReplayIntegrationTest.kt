@@ -323,11 +323,16 @@ internal class PostHogReplayIntegrationTest {
         val secondWindow = WindowDrawState()
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
+        val workerFailure = AtomicReference<Throwable>()
         try {
             assertTrue(
                 sut.submitCapture(firstWindow) {
-                    entered.countDown()
-                    assertTrue(release.await(2, TimeUnit.SECONDS))
+                    try {
+                        entered.countDown()
+                        assertTrue(release.await(5, TimeUnit.SECONDS), "Capture worker was not released")
+                    } catch (failure: Throwable) {
+                        workerFailure.set(failure)
+                    }
                 },
             )
             assertTrue(entered.await(2, TimeUnit.SECONDS))
@@ -338,6 +343,7 @@ internal class PostHogReplayIntegrationTest {
             release.countDown()
             awaitReplayExecutors()
         }
+        workerFailure.get()?.let { throw AssertionError("Capture worker failed", it) }
         assertTrue(sut.submitCapture(firstWindow) {})
         assertTrue(sut.submitCapture(secondWindow) {})
         awaitReplayExecutors()
@@ -595,14 +601,18 @@ internal class PostHogReplayIntegrationTest {
         sut.install(fake)
         try {
             PostHogSessionManager.startSession()
-            // Pre-activate replay so we can verify it's stopped+restarted, not just left running.
             sut.start(resumeCurrent = true)
             assertTrue(sut.isActive())
+            val view = View(ApplicationProvider.getApplicationContext())
+            val status = ViewTreeSnapshotStatus(mock<NextDrawListener>(), sentFullSnapshot = true, sentMetaEvent = true)
+            sut.decorViews[view] = status
 
             sut.onSessionIdChanged()
             shadowOf(Looper.getMainLooper()).idle()
 
             assertTrue(sut.isActive())
+            assertFalse(status.sentFullSnapshot, "Restart must require a new keyframe")
+            assertFalse(status.sentMetaEvent)
         } finally {
             sut.uninstall()
         }
@@ -1082,7 +1092,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `migrates buffered snapshots on background thread when minimum duration is met`() {
+    fun `attempts buffer migration on background thread when minimum duration is met`() {
         val logger = RecordingLogger()
         val remoteConfig = mock<PostHogRemoteConfig>()
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
@@ -1196,7 +1206,7 @@ internal class PostHogReplayIntegrationTest {
             )
         val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
         config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler())
+        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler(), createReplayExecutor())
         return RealQueueFixture(sut, replayQueue, innerQueue, config, remoteConfig)
     }
 
@@ -1458,10 +1468,12 @@ internal class PostHogReplayIntegrationTest {
         fx.sut.start(resumeCurrent = true)
         try {
             fx.replayQueue.add(createTestEvent("snapshot_1"))
+            awaitReplayExecutors()
             Thread.sleep(30)
             fx.replayQueue.add(createTestEvent("snapshot_2"))
             awaitReplayExecutors()
             assertEquals(2, fx.replayQueue.bufferDepth)
+            assertTrue(assertNotNull(fx.replayQueue.bufferDurationMs) >= 10L)
 
             fx.sut.onRemoteConfig()
 
@@ -1548,11 +1560,15 @@ internal class PostHogReplayIntegrationTest {
                 minimumDurationMs = 1L,
             )
         fx.sut.install(mock<PostHogInterface>())
+        fx.sut.start(resumeCurrent = true)
         try {
+            assertTrue(fx.sut.isActive())
             fx.replayQueue.add(createTestEvent("snapshot_1"))
+            awaitReplayExecutors()
             Thread.sleep(10)
             fx.replayQueue.add(createTestEvent("snapshot_2"))
             awaitReplayExecutors()
+            assertTrue(assertNotNull(fx.replayQueue.bufferDurationMs) >= 1L)
 
             // Min duration (1ms) has elapsed, but the migrate trigger must stay gated until the
             // first remote config resolves — otherwise the stale-cache buffer leaks to the queue.
@@ -1869,27 +1885,29 @@ internal class PostHogReplayIntegrationTest {
                 } catch (e: Throwable) {
                     readerFailure.set(e)
                 }
-            }
+            }.apply { isDaemon = true }
         reader.start()
-
-        repeat(5_000) { i ->
-            // Unreferenced views become stale entries for the reader's get() to expunge.
-            sut.decorViews[View(appContext)] = ViewTreeSnapshotStatus(listener)
-            if (i % 500 == 0) {
-                System.gc()
+        try {
+            repeat(5_000) { i ->
+                // Unreferenced views become stale entries for the reader's get() to expunge.
+                sut.decorViews[View(appContext)] = ViewTreeSnapshotStatus(listener)
+                if (i % 500 == 0) {
+                    System.gc()
+                }
             }
+            assertNotNull(sut.decorViews[probe])
+
+            // Exercise uninstall while the reader races map iteration and clearing.
+            sut.uninstall()
+            assertTrue(sut.decorViews.isEmpty())
+        } finally {
+            stopReading.set(true)
+            reader.interrupt()
+            reader.join(2_000)
+            sut.uninstall()
+            assertFalse(reader.isAlive, "Capture reader did not terminate")
         }
-
-        assertNotNull(sut.decorViews[probe])
-
-        // uninstall() iterates and clears the map while the reader races get(); cleanup must
-        // complete and leave the map empty (a mid-iteration expunge would abort it early).
-        sut.uninstall()
-        assertTrue(sut.decorViews.isEmpty())
-
-        stopReading.set(true)
-        reader.join()
-        readerFailure.get()?.let { throw it }
+        readerFailure.get()?.let { throw AssertionError("Capture reader failed", it) }
     }
 
     @Test
@@ -2386,6 +2404,9 @@ internal class PostHogReplayIntegrationTest {
 
             assertEquals(1, fake.captures)
             assertEquals("\$snapshot", fake.event)
+            val events = fake.properties!!["\$snapshot_data"] as List<*>
+            assertTrue(events[0] is RRMetaEvent)
+            assertTrue(events[1] is RRFullSnapshotEvent)
         } finally {
             fx.sut.uninstall()
         }
@@ -3218,6 +3239,7 @@ internal class PostHogReplayIntegrationTest {
         companion object {
             const val SOURCE_ALLOCATION_FAILURE_WIDTH = 823476
             const val ALLOCATION_FAILURE_WIDTH = SOURCE_ALLOCATION_FAILURE_WIDTH / 2
+            var allocationFailures = 0
 
             @JvmStatic
             @Implementation
@@ -3227,7 +3249,8 @@ internal class PostHogReplayIntegrationTest {
                 config: Bitmap.Config,
             ): Bitmap {
                 if (width == ALLOCATION_FAILURE_WIDTH) {
-                    throw IllegalArgumentException("width and height must be > 0")
+                    allocationFailures++
+                    throw IllegalArgumentException("Injected screenshot allocation failure")
                 }
                 return ReflectionHelpers.callStaticMethod(
                     ShadowLegacyBitmap::class.java,
@@ -3245,6 +3268,11 @@ internal class PostHogReplayIntegrationTest {
     fun `bitmap allocation failure feeds the discard counter`() {
         val messages = Collections.synchronizedList(mutableListOf<String>())
         val (fx, _) = screenshotFixture()
+        fx.config.sessionReplayConfig.screenshotScale = 0.5f
+        ThrowingShadowBitmap.allocationFailures = 0
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val decorView = View(context)
         fx.config.logger =
             object : PostHogLogger {
                 override fun log(message: String) {
@@ -3258,12 +3286,7 @@ internal class PostHogReplayIntegrationTest {
             // real attached, visible view without going through theme drawable inflation, which
             // would otherwise route unrelated Bitmap allocations through the sentinel-gated
             // shadow below.
-            val context = ApplicationProvider.getApplicationContext<Context>()
-            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val decorView =
-                View(context).apply {
-                    layout(0, 0, ThrowingShadowBitmap.SOURCE_ALLOCATION_FAILURE_WIDTH, 10)
-                }
+            decorView.layout(0, 0, ThrowingShadowBitmap.SOURCE_ALLOCATION_FAILURE_WIDTH, 10)
             windowManager.addView(
                 decorView,
                 WindowManager.LayoutParams(WindowManager.LayoutParams.TYPE_APPLICATION),
@@ -3277,10 +3300,16 @@ internal class PostHogReplayIntegrationTest {
                 fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
 
-            assertTrue(messages.any { it.contains("screenshot setup failed") })
+            assertEquals(3, ThrowingShadowBitmap.allocationFailures)
+            assertEquals(
+                3,
+                messages.count { it.contains("screenshot setup failed") && it.contains("Injected screenshot allocation failure") },
+            )
             assertEquals(1, messages.count { it.contains("screenshots in a row") })
         } finally {
             fx.sut.uninstall()
+            if (decorView.isAttachedToWindow) windowManager.removeViewImmediate(decorView)
+            ThrowingShadowBitmap.allocationFailures = 0
         }
     }
 

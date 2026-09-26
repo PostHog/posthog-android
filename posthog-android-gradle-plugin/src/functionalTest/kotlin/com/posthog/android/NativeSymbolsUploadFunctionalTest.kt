@@ -250,7 +250,8 @@ internal class NativeSymbolsUploadFunctionalTest(
             ).build()
         assertTrue(first.output.contains("Configuration cache entry stored"), first.output)
         assertEquals(TaskOutcome.SUCCESS, first.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
-        assertTrue(fakeCliLog.exists(), "the CLI must run for a successful hooked build")
+        assertEquals(1, fakeCliLog.readLines().size, "the CLI must run once for a successful hooked build")
+        File(projectDir.root, "app/src/main/jniLibs/arm64-v8a/libfake.so").appendBytes(byteArrayOf(1))
 
         val second =
             runner(
@@ -259,6 +260,8 @@ internal class NativeSymbolsUploadFunctionalTest(
                 "--configuration-cache-problems=fail",
             ).build()
         assertTrue(second.output.contains("Reusing configuration cache"), second.output)
+        assertEquals(TaskOutcome.SUCCESS, second.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        assertEquals(2, fakeCliLog.readLines().size, "changed native libraries must upload on the reused configuration")
     }
 
     @Test

@@ -39,6 +39,52 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
+    private val workers = mutableListOf<Thread>()
+    private val workerErrors = Collections.synchronizedList(mutableListOf<Throwable>())
+    private val gates = mutableListOf<CountDownLatch>()
+    private val cleanup = mutableListOf<() -> Unit>()
+
+    private fun worker(block: () -> Unit): Thread =
+        Thread {
+            try {
+                block()
+            } catch (error: Throwable) {
+                workerErrors.add(error)
+            }
+        }.also { workers.add(it) }
+
+    private fun gate(): CountDownLatch = CountDownLatch(1).also { gates.add(it) }
+
+    private fun awaitWaiting(
+        thread: Thread,
+        method: String,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (thread.state in listOf(Thread.State.WAITING, Thread.State.TIMED_WAITING) &&
+                thread.stackTrace.any { it.methodName == method }
+            ) {
+                return
+            }
+            if (!thread.isAlive) break
+            Thread.yield()
+        }
+        assertTrue(false, "Worker did not wait inside $method: ${thread.stackTrace.toList()}")
+    }
+
+    @org.junit.After
+    fun cleanUpWorkers() {
+        gates.forEach { it.countDown() }
+        try {
+            workers.forEach { it.join(5_000) }
+            assertTrue(workers.none { it.isAlive }, "Workers must terminate")
+            assertTrue(workerErrors.isEmpty(), "Worker failures: $workerErrors")
+        } finally {
+            workers.filter { it.isAlive }.forEach { it.interrupt() }
+            cleanup.asReversed().forEach { it() }
+        }
+    }
+
     @Test
     fun `getFeatureFlag returns variant when available via API`() {
         val flagsResponse = createFlagsResponse("test-flag", enabled = true, variant = "variant-a")
@@ -622,7 +668,11 @@ internal class PostHogFeatureFlagsTest {
             pollerEnabled = false,
             missingFlagKeysMaxSize = missingFlagKeysMaxSize,
             missingFlagProbeWaitTimeoutMs = missingFlagProbeWaitTimeoutMs,
-        ).also { it.loadFeatureFlagDefinitions() }
+        ).also { featureFlags ->
+            cleanup.add { mockServer.shutdown() }
+            cleanup.add { featureFlags.shutDown() }
+            featureFlags.loadFeatureFlagDefinitions()
+        }
     }
 
     private fun evaluateMissingFlag(
@@ -1203,7 +1253,7 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `delayed non-owned omission does not overwrite newer positive evidence`() {
         val delayedProbeStarted = CountDownLatch(1)
-        val releaseDelayedProbe = CountDownLatch(1)
+        val releaseDelayedProbe = gate()
         val responseNumber = AtomicInteger(0)
         val dispatcher =
             CountingDispatcher(
@@ -1236,7 +1286,7 @@ internal class PostHogFeatureFlagsTest {
 
         evaluateMissingFlag(featureFlags, "user-1", missingKey = "previously-missing")
         val delayed =
-            Thread {
+            worker {
                 featureFlags.evaluateFlags(
                     distinctId = "user-2",
                     groups = null,
@@ -1274,7 +1324,7 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `concurrent missing key calls share one clean probe`() {
         val firstProbeStarted = CountDownLatch(1)
-        val releaseProbe = CountDownLatch(1)
+        val releaseProbe = gate()
         val duplicateProbe = CountDownLatch(1)
         val responseNumber = AtomicInteger(0)
         val dispatcher =
@@ -1297,19 +1347,20 @@ internal class PostHogFeatureFlagsTest {
             }
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
         val errors = Collections.synchronizedList(mutableListOf<Throwable>())
-        val owner = Thread { runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add) }
+        val owner = worker { runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add) }
         owner.start()
         assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
 
         val entered = CountDownLatch(10)
         val waiters =
             (1..10).map { index ->
-                Thread {
+                worker {
                     entered.countDown()
                     runCatching { evaluateMissingFlag(featureFlags, "waiter-$index") }.exceptionOrNull()?.let(errors::add)
                 }.also { it.start() }
             }
         assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        waiters.forEach { awaitWaiting(it, "evaluateMissingFlagsRemotely") }
         val sawDuplicate = duplicateProbe.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
         releaseProbe.countDown()
         (waiters + owner).forEach { it.join(5_000) }
@@ -1325,7 +1376,7 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `interrupted waiter does not start a duplicate probe`() {
         val firstProbeStarted = CountDownLatch(1)
-        val releaseFirstProbe = CountDownLatch(1)
+        val releaseFirstProbe = gate()
         val duplicateProbe = CountDownLatch(1)
         val responseNumber = AtomicInteger(0)
         val dispatcher =
@@ -1347,16 +1398,18 @@ internal class PostHogFeatureFlagsTest {
                 start()
             }
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
-        val owner = Thread { evaluateMissingFlag(featureFlags, "owner") }.also { it.start() }
+        val owner = worker { evaluateMissingFlag(featureFlags, "owner") }.also { it.start() }
         assertTrue(firstProbeStarted.await(5, TimeUnit.SECONDS))
         val waiterEntered = CountDownLatch(1)
         val waiter =
-            Thread {
+            worker {
                 waiterEntered.countDown()
-                evaluateMissingFlag(featureFlags, "waiter")
+                val result = evaluateMissingFlag(featureFlags, "waiter")
+                assertEquals(setOf("known-flag"), result.flags.keys)
+                assertTrue(Thread.currentThread().isInterrupted)
             }.also { it.start() }
         assertTrue(waiterEntered.await(5, TimeUnit.SECONDS))
-        Thread.sleep(100)
+        awaitWaiting(waiter, "evaluateMissingFlagsRemotely")
 
         waiter.interrupt()
         waiter.join(5_000)
@@ -1375,7 +1428,7 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `timed out waiter does not block indefinitely or start a duplicate probe`() {
         val firstProbeStarted = CountDownLatch(1)
-        val releaseFirstProbe = CountDownLatch(1)
+        val releaseFirstProbe = gate()
         val duplicateProbe = CountDownLatch(1)
         val responseNumber = AtomicInteger(0)
         val dispatcher =
@@ -1399,12 +1452,12 @@ internal class PostHogFeatureFlagsTest {
         val featureFlags = manuallyLoadedFeatureFlags(mockServer, missingFlagProbeWaitTimeoutMs = 100)
         val errors = Collections.synchronizedList(mutableListOf<Throwable>())
         val owner =
-            Thread {
+            worker {
                 runCatching { evaluateMissingFlag(featureFlags, "owner") }.exceptionOrNull()?.let(errors::add)
             }.also { it.start() }
         assertTrue(firstProbeStarted.await(5, TimeUnit.SECONDS))
         val waiter =
-            Thread {
+            worker {
                 runCatching { evaluateMissingFlag(featureFlags, "waiter") }.exceptionOrNull()?.let(errors::add)
             }.also { it.start() }
 
@@ -1427,7 +1480,7 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `unrelated missing keys probe concurrently`() {
         val probesStarted = CountDownLatch(2)
-        val releaseProbes = CountDownLatch(1)
+        val releaseProbes = gate()
         val dispatcher =
             CountingDispatcher(
                 { jsonResponse(createLocalEvaluationResponse("known-flag")) },
@@ -1445,7 +1498,7 @@ internal class PostHogFeatureFlagsTest {
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
         val callers =
             listOf("missing-a", "missing-b").map { key ->
-                Thread { evaluateMissingFlag(featureFlags, "user-$key", missingKey = key) }.also { it.start() }
+                worker { evaluateMissingFlag(featureFlags, "user-$key", missingKey = key) }.also { it.start() }
             }
 
         val ranConcurrently = probesStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -1462,10 +1515,10 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `failed owner coalesces waiters behind one retry`() {
         val firstProbeStarted = CountDownLatch(1)
-        val releaseFirst = CountDownLatch(1)
+        val releaseFirst = gate()
         val retryStarted = CountDownLatch(1)
         val extraRetry = CountDownLatch(1)
-        val releaseRetry = CountDownLatch(1)
+        val releaseRetry = gate()
         val responseNumber = AtomicInteger(0)
         val dispatcher =
             CountingDispatcher(
@@ -1495,17 +1548,18 @@ internal class PostHogFeatureFlagsTest {
                 start()
             }
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
-        val owner = Thread { evaluateMissingFlag(featureFlags, "failed-owner") }.also { it.start() }
+        val owner = worker { evaluateMissingFlag(featureFlags, "failed-owner") }.also { it.start() }
         assertTrue(firstProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
         val entered = CountDownLatch(8)
         val waiters =
             (1..8).map { index ->
-                Thread {
+                worker {
                     entered.countDown()
                     evaluateMissingFlag(featureFlags, "retry-waiter-$index")
                 }.also { it.start() }
             }
         assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        waiters.forEach { awaitWaiting(it, "evaluateMissingFlagsRemotely") }
 
         releaseFirst.countDown()
         val retried = retryStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -1524,9 +1578,9 @@ internal class PostHogFeatureFlagsTest {
     @Test
     fun `refresh invalidates an in-flight probe generation`() {
         val oldProbeStarted = CountDownLatch(1)
-        val releaseOldProbe = CountDownLatch(1)
+        val releaseOldProbe = gate()
         val newProbeStarted = CountDownLatch(1)
-        val releaseNewProbe = CountDownLatch(1)
+        val releaseNewProbe = gate()
         val flagsCalls = AtomicInteger(0)
         val definitions = createLocalEvaluationResponse("known-flag")
         val dispatcher =
@@ -1549,9 +1603,10 @@ internal class PostHogFeatureFlagsTest {
                 start()
             }
         val featureFlags = manuallyLoadedFeatureFlags(mockServer)
-        val owner = Thread { evaluateMissingFlag(featureFlags, "old-owner") }.also { it.start() }
+        val owner = worker { evaluateMissingFlag(featureFlags, "old-owner") }.also { it.start() }
         assertTrue(oldProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS))
-        val waiter = Thread { evaluateMissingFlag(featureFlags, "new-waiter") }.also { it.start() }
+        val waiter = worker { evaluateMissingFlag(featureFlags, "new-waiter") }.also { it.start() }
+        awaitWaiting(waiter, "evaluateMissingFlagsRemotely")
 
         featureFlags.loadFeatureFlagDefinitions()
         val newGenerationProbed = newProbeStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -1994,9 +2049,9 @@ internal class PostHogFeatureFlagsTest {
                 defaultValue = false,
                 distinctId = "user-123",
                 groups = mapOf("organization" to "org-456"),
-                groupProperties = mapOf("org-456" to mapOf("plan" to "enterprise")),
             )
 
+        // This fixture has no property filters: it tests group presence and mapping only.
         // Debug logging
         if (result != true) {
             println("Logger output: ${logger.logs.joinToString("\n")}")
@@ -2182,10 +2237,12 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
 
-        // Give the poller time to load definitions (async operation)
-        Thread.sleep(1000)
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { remoteConfig.shutDown() }
+        remoteConfig.loadFeatureFlagDefinitions()
 
         val result =
             remoteConfig.getFeatureFlag(
@@ -2228,10 +2285,12 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
 
-        // Give the poller time to load definitions (async operation)
-        Thread.sleep(1000)
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { remoteConfig.shutDown() }
+        remoteConfig.loadFeatureFlagDefinitions()
 
         val result =
             remoteConfig.getFeatureFlag(
@@ -2299,9 +2358,12 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
 
-        Thread.sleep(1000)
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { remoteConfig.shutDown() }
+        remoteConfig.loadFeatureFlagDefinitions()
 
         val personProperties = mapOf<String, Any?>("region" to "USA")
         val result =
@@ -2356,12 +2418,14 @@ internal class PostHogFeatureFlagsTest {
                 100,
                 localEvaluation = true,
                 personalApiKey = "test-personal-key",
+                pollerEnabled = false,
             )
 
-        // Wait for initial poller load to complete (loads flag-v1)
-        Thread.sleep(1000)
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { featureFlags.shutDown() }
+        featureFlags.loadFeatureFlagDefinitions()
 
-        // Verify first flag is available (loaded by poller)
+        // Verify first flag is available before reload
         val firstResult =
             featureFlags.getFeatureFlag(
                 key = "flag-v1",
@@ -2391,7 +2455,7 @@ internal class PostHogFeatureFlagsTest {
             )
         assertEquals(false, firstResultAfterReload)
 
-        // Verify we made at least 2 API calls (poller's initial load + our manual loads)
+        // Initial load and explicit reload must both fetch definitions.
         assertTrue(
             mockServer.requestCount >= 2,
             "Expected at least 2 requests, got ${mockServer.requestCount}",
@@ -2412,13 +2476,17 @@ internal class PostHogFeatureFlagsTest {
                 aggregationGroupTypeIndex = null,
             )
 
-        // Provide multiple responses in case duplicate requests happen (we want to verify they don't)
-        val mockServer =
-            createMockHttp(
-                jsonResponse(localEvalResponse),
-                jsonResponse(localEvalResponse),
-                jsonResponse(localEvalResponse),
-            )
+        val requestStarted = CountDownLatch(1)
+        val releaseResponse = gate()
+        val mockServer = MockWebServer()
+        mockServer.dispatcher =
+            CountingDispatcher({
+                requestStarted.countDown()
+                check(releaseResponse.await(10, TimeUnit.SECONDS))
+                jsonResponse(localEvalResponse)
+            }, { jsonResponse(createEmptyFlagsResponse()) })
+        mockServer.start()
+        cleanup.add { mockServer.shutdown() }
         val url = mockServer.url("/")
 
         val config = createTestConfig(logger, url.toString())
@@ -2437,20 +2505,16 @@ internal class PostHogFeatureFlagsTest {
                 personalApiKey = "test-personal-key",
             )
 
-        // Immediately trigger flag evaluation (which checks definitions and loads if needed)
-        // This happens concurrently with poller's initial load
-        val result =
-            featureFlags.getFeatureFlag(
-                key = "test-flag",
-                defaultValue = false,
-                distinctId = "test-user",
-            )
-
-        // Wait a bit to ensure both potential loads have time to complete
-        Thread.sleep(1000)
-
-        // Verify the flag works (definitions were loaded successfully)
-        assertEquals(true, result)
+        cleanup.add { featureFlags.shutDown() }
+        assertTrue(requestStarted.await(5, TimeUnit.SECONDS), "Poller must own the initial load")
+        val caller =
+            worker {
+                assertEquals(true, featureFlags.getFeatureFlag("test-flag", false, "test-user"))
+            }.also { it.start() }
+        awaitWaiting(caller, "loadFeatureFlagDefinitions")
+        releaseResponse.countDown()
+        caller.join(5_000)
+        assertFalse(caller.isAlive)
 
         // Critical assertion: only 1 API request should have been made
         // The second thread should have waited for the first to complete
@@ -2460,12 +2524,7 @@ internal class PostHogFeatureFlagsTest {
             "Expected exactly 1 API request due to concurrent load deduplication, got ${mockServer.requestCount}",
         )
 
-        // Verify we logged the skip message
-        assertTrue(
-            logger.containsLog("Definitions loaded by another thread, skipping duplicate request") ||
-                mockServer.requestCount == 1,
-            "Should either log skip message or only make 1 request",
-        )
+        assertTrue(logger.containsLog("Definitions loaded by another thread, skipping duplicate request"))
 
         featureFlags.shutDown()
         mockServer.shutdown()
@@ -2480,11 +2539,13 @@ internal class PostHogFeatureFlagsTest {
                 aggregationGroupTypeIndex = null,
             )
 
-        // Create mock server with DELAYED response (1 second) to ensure all threads enter wait state
+        val requestStarted = CountDownLatch(1)
+        val releaseResponse = gate()
         val dispatcher =
             object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
-                    Thread.sleep(1000) // Simulate slow API
+                    requestStarted.countDown()
+                    check(releaseResponse.await(10, TimeUnit.SECONDS))
                     return MockResponse()
                         .setResponseCode(200)
                         .setBody(localEvalResponse)
@@ -2508,24 +2569,19 @@ internal class PostHogFeatureFlagsTest {
                 pollerEnabled = false,
             )
 
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { featureFlags.shutDown() }
         val threadCount = 5
-        val startLatch = CountDownLatch(threadCount)
-        val threads =
-            List(threadCount) {
-                Thread {
-                    // Wait for all threads to be ready before proceeding. This should reduce
-                    // any timing issues where one thread completes before others start - particularly
-                    // in CI.
-                    startLatch.countDown()
-                    startLatch.await()
-                    featureFlags.loadFeatureFlagDefinitions()
-                }
+        val owner = worker { featureFlags.loadFeatureFlagDefinitions() }.also { it.start() }
+        assertTrue(requestStarted.await(5, TimeUnit.SECONDS))
+        val waiters =
+            List(threadCount - 1) {
+                worker { featureFlags.loadFeatureFlagDefinitions() }.also { it.start() }
             }
-
-        threads.forEach { it.start() }
-
-        // Wait for all to complete
-        threads.forEach { it.join(5000) }
+        waiters.forEach { awaitWaiting(it, "loadFeatureFlagDefinitions") }
+        releaseResponse.countDown()
+        val threads = waiters + owner
+        threads.forEach { it.join(5_000) }
 
         // All threads should have completed successfully
         threads.forEach { thread ->
@@ -3338,7 +3394,6 @@ internal class PostHogFeatureFlagsTest {
                 defaultValue = false,
                 distinctId = "user-123",
                 groups = mapOf("organization" to "org-456"),
-                groupProperties = mapOf("org-456" to mapOf("plan" to "enterprise")),
             )
 
         assertEquals(true, result)
@@ -3488,14 +3543,9 @@ internal class PostHogFeatureFlagsTest {
         val mockServer = MockWebServer()
         mockServer.start()
         val config = createTestConfig(logger, mockServer.url("/").toString())
-        val data = createFlagDefinitionCacheData(config, "roundtrip-cache-flag")
-        val json = serializeFlagDefinitionCacheData(config, data)
+        mockServer.enqueue(jsonResponse(createLocalEvaluationResponse("roundtrip-cache-flag", aggregationGroupTypeIndex = 2)))
         val api = PostHogApi(config)
-        val provider =
-            TestFlagDefinitionCacheProvider(
-                cacheData = data,
-                shouldFetch = false,
-            )
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
         val featureFlags =
             PostHogFeatureFlags(
                 config,
@@ -3508,14 +3558,29 @@ internal class PostHogFeatureFlagsTest {
                 flagDefinitionCacheProvider = provider,
             )
 
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { featureFlags.shutDown() }
         featureFlags.loadFeatureFlagDefinitions()
-
-        assertTrue(json.contains("group_type_mapping"))
-        assertFalse(json.contains("groupTypeMapping"))
-        assertEquals(true, featureFlags.getFeatureFlag("roundtrip-cache-flag", false, "test-user"))
-        assertEquals(0, mockServer.requestCount)
-
-        mockServer.shutdown()
+        val stored = kotlin.test.assertNotNull(provider.lastReceivedData)
+        assertEquals(mapOf("0" to "account", "1" to "instance", "2" to "organization", "3" to "project"), stored["group_type_mapping"])
+        assertFalse(stored.containsKey("groupTypeMapping"))
+        provider.cacheData = roundTripFlagDefinitionCacheData(config, stored)
+        provider.shouldFetch = false
+        val follower =
+            PostHogFeatureFlags(
+                config,
+                api,
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        cleanup.add { follower.shutDown() }
+        follower.loadFeatureFlagDefinitions()
+        assertEquals(true, follower.getFeatureFlag("roundtrip-cache-flag", false, "test-user", groups = mapOf("organization" to "org-456")))
+        assertEquals(1, mockServer.requestCount, "Follower must use the producer's stored mapping without HTTP")
     }
 
     @Test
@@ -3525,11 +3590,16 @@ internal class PostHogFeatureFlagsTest {
         mockServer.start()
         val config = createTestConfig(logger, mockServer.url("/").toString())
         val api = PostHogApi(config)
+        val readStarted = CountDownLatch(1)
+        val releaseRead = gate()
         val provider =
             TestFlagDefinitionCacheProvider(
                 cacheData = createFlagDefinitionCacheData(config, "concurrent-cache-flag"),
                 shouldFetch = false,
-                delayOnGetMs = 300,
+                onGet = {
+                    readStarted.countDown()
+                    check(releaseRead.await(10, TimeUnit.SECONDS))
+                },
             )
         val featureFlags =
             PostHogFeatureFlags(
@@ -3542,25 +3612,15 @@ internal class PostHogFeatureFlagsTest {
                 pollerEnabled = false,
                 flagDefinitionCacheProvider = provider,
             )
-        val startLatch = CountDownLatch(1)
-        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
-        val threads =
-            (1..5).map {
-                Thread {
-                    try {
-                        startLatch.await()
-                        featureFlags.loadFeatureFlagDefinitions()
-                    } catch (e: Throwable) {
-                        errors.add(e)
-                    }
-                }
-            }
-
-        threads.forEach { it.start() }
-        startLatch.countDown()
-        threads.forEach { it.join() }
-
-        assertTrue(errors.isEmpty(), "Unexpected errors: $errors")
+        cleanup.add { mockServer.shutdown() }
+        cleanup.add { featureFlags.shutDown() }
+        val owner = worker { featureFlags.loadFeatureFlagDefinitions() }.also { it.start() }
+        assertTrue(readStarted.await(5, TimeUnit.SECONDS))
+        val waiters = List(4) { worker { featureFlags.loadFeatureFlagDefinitions() }.also { it.start() } }
+        waiters.forEach { awaitWaiting(it, "loadFeatureFlagDefinitions") }
+        releaseRead.countDown()
+        (waiters + owner).forEach { it.join(5_000) }
+        assertTrue((waiters + owner).none { it.isAlive })
         assertEquals(0, mockServer.requestCount)
         assertEquals(1, provider.shouldFetchCalls)
         assertEquals(1, provider.getCalls)
@@ -3857,6 +3917,7 @@ internal class PostHogFeatureFlagsTest {
         var throwOnReceived: Boolean = false,
         var throwOnShutdown: Boolean = false,
         var delayOnGetMs: Long = 0,
+        val onGet: () -> Unit = {},
     ) : PostHogBlockingFlagDefinitionCacheProvider() {
         var shouldFetchCalls = 0
         var getCalls = 0
@@ -3865,6 +3926,7 @@ internal class PostHogFeatureFlagsTest {
         var lastReceivedData: Map<String, Any?>? = null
 
         override fun getFlagDefinitionsBlocking(): Map<String, Any?>? {
+            onGet()
             getCalls += 1
             if (delayOnGetMs > 0) {
                 Thread.sleep(delayOnGetMs)

@@ -4,6 +4,7 @@ import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,10 +12,18 @@ import kotlin.test.assertTrue
 
 internal class PostHogPrintLoggerTest {
     private val outputStreamCaptor = ByteArrayOutputStream()
+    private val originalOut = System.out
+    private val capturedOut = PrintStream(outputStreamCaptor)
 
     @BeforeTest
     fun `set up`() {
-        System.setOut(PrintStream(outputStreamCaptor))
+        System.setOut(capturedOut)
+    }
+
+    @AfterTest
+    fun tearDown() {
+        System.setOut(originalOut)
+        capturedOut.close()
     }
 
     private fun getSut(debug: Boolean = false): PostHogPrintLogger {

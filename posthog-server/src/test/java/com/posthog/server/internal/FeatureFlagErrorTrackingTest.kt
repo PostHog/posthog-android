@@ -178,25 +178,35 @@ internal class FeatureFlagErrorTrackingTest {
 
     @Test
     fun `getFeatureFlagError returns connection_error when DNS lookup fails`() {
-        // Use an invalid hostname to trigger UnknownHostException
-        val config = createTestConfig(host = "http://invalid.invalid.invalid")
+        val config = createTestConfig(host = "http://flags.test")
+        config.featureFlagRequestMaxRetries = 0
+        var dnsCalls = 0
+        val httpClient =
+            okhttp3.OkHttpClient.Builder()
+                .proxy(java.net.Proxy.NO_PROXY)
+                .dns(
+                    object : okhttp3.Dns {
+                        override fun lookup(hostname: String): List<java.net.InetAddress> {
+                            assertEquals("flags.test", hostname)
+                            dnsCalls++
+                            throw java.net.UnknownHostException("Injected DNS failure: $hostname")
+                        }
+                    },
+                )
+                .build()
+        config.httpClient = httpClient
         val api = PostHogApi(config)
         val remoteConfig = PostHogFeatureFlags(config, api, 60000, 100)
 
-        // Trigger flag evaluation - this will fail DNS lookup
-        remoteConfig.getFeatureFlag(
-            key = "test-flag",
-            defaultValue = "default",
-            distinctId = "test-user",
-        )
-
-        val error =
-            remoteConfig.getFeatureFlagError(
-                key = "test-flag",
-                distinctId = "test-user",
-            )
-
-        assertEquals(FeatureFlagError.CONNECTION_ERROR, error)
+        try {
+            assertEquals("default", remoteConfig.getFeatureFlag("test-flag", "default", "test-user"))
+            assertEquals(FeatureFlagError.CONNECTION_ERROR, remoteConfig.getFeatureFlagError("test-flag", "test-user"))
+            assertEquals(1, dnsCalls)
+        } finally {
+            remoteConfig.shutDown()
+            httpClient.connectionPool.evictAll()
+            httpClient.dispatcher.executorService.shutdownNow()
+        }
     }
 
     @Test

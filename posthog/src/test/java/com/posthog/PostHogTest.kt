@@ -55,6 +55,15 @@ internal class PostHogTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
+    @get:Rule
+    val httpServers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = httpServers.mockHttp(total, response)
+
+    private val clients = mutableListOf<PostHogInterface>()
     private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
@@ -82,7 +91,7 @@ internal class PostHogTest {
         integration: PostHogIntegration? = null,
         remoteConfig: Boolean = false,
         surveys: Boolean = false,
-        cachePreferences: PostHogPreferences = PostHogMemoryPreferences(),
+        cachePreferences: PostHogPreferences? = PostHogMemoryPreferences(),
         propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
@@ -126,11 +135,15 @@ internal class PostHogTest {
             remoteConfigExecutor,
             cachedEventsExecutor,
             reloadFeatureFlags,
-        )
+        ).also { clients.add(it) }
     }
 
     @AfterTest
     fun `set down`() {
+        clients.forEach { it.close() }
+        listOf(queueExecutor, replayQueueExecutor, remoteConfigExecutor, cachedEventsExecutor).forEach {
+            it.shutdownAndAwaitTermination()
+        }
         pushOpenHttp?.shutdown()
         tmpDir.root.deleteRecursively()
     }
@@ -343,7 +356,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString())
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = null)
 
         assertTrue(config.cachePreferences is PostHogMemoryPreferences)
 
@@ -1780,7 +1793,7 @@ internal class PostHogTest {
 
     @Test
     fun `does not capture duplicate set event if identify called with same properties`() {
-        val http = mockHttp()
+        val http = mockHttp(total = 3)
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
@@ -1804,6 +1817,7 @@ internal class PostHogTest {
             userPropertiesSetOnce = userPropsOnce,
         )
 
+        sut.flush()
         queueExecutor.shutdownAndAwaitTermination()
 
         val request = http.takeRequest()
@@ -1811,6 +1825,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
+        assertEquals(1, http.requestCount)
         // Should only have 2 events: $identify and $set (the duplicate $set should be ignored)
         assertEquals(2, batch.batch.size)
         assertEquals("\$identify", batch.batch[0].event)
@@ -4164,7 +4179,7 @@ internal class PostHogTest {
 
     @Test
     fun `does not capture duplicate set event if setPersonProperties called with same properties`() {
-        val http = mockHttp()
+        val http = mockHttp(total = 3)
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 1)
@@ -4188,6 +4203,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
+        assertEquals(1, http.requestCount)
         // Should only have 1 event - the duplicate $set events should be ignored
         assertEquals(1, batch.batch.size)
         assertEquals("\$set", batch.batch[0].event)
