@@ -9,7 +9,6 @@ import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNetworkStatus
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.server.awaitExecution
-import com.posthog.server.createMockHttp
 import com.posthog.server.generateEvent
 import com.posthog.server.shutdownAndAwaitTermination
 import com.posthog.server.unGzip
@@ -29,6 +28,50 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 
 internal class PostHogMemoryQueueTest {
+    private val queues = mutableListOf<PostHogMemoryQueue>()
+    private val servers = mutableListOf<MockWebServer>()
+    private val gates = mutableListOf<CountDownLatch>()
+    private val workers = mutableListOf<Thread>()
+    private val workerErrors = CopyOnWriteArrayList<Throwable>()
+
+    private fun worker(block: () -> Unit): Thread =
+        Thread {
+            try {
+                block()
+            } catch (error: Throwable) {
+                workerErrors.add(error)
+            }
+        }.also { workers.add(it) }
+
+    private fun createMockHttp(vararg responses: MockResponse): MockWebServer {
+        val server = if (responses.isEmpty()) com.posthog.server.createMockHttp() else com.posthog.server.createMockHttp(*responses)
+        return server.also { servers.add(it) }
+    }
+
+    @org.junit.After
+    fun cleanup() {
+        gates.forEach { it.countDown() }
+        try {
+            workers.forEach { it.join(5_000) }
+            assertTrue("Workers must terminate", workers.none { it.isAlive })
+            assertTrue("Worker errors: $workerErrors", workerErrors.isEmpty())
+        } finally {
+            workers.filter { it.isAlive }.forEach { it.interrupt() }
+            try {
+                if (!executor.isShutdown) {
+                    queues.forEach {
+                        it.stop()
+                        it.clear()
+                    }
+                    executor.awaitExecution()
+                    executor.shutdownAndAwaitTermination()
+                }
+            } finally {
+                servers.forEach { it.shutdown() }
+            }
+        }
+    }
+
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private class MutableDateProvider(
@@ -71,7 +114,7 @@ internal class PostHogMemoryQueueTest {
             executor = executor,
             retryDelaySeconds = retryDelaySeconds,
             fatalFlushTimeoutMs = fatalFlushTimeoutMs,
-        )
+        ).also { queues.add(it) }
     }
 
     // A fatal $exception event, i.e. one PostHogEvent.isFatalExceptionEvent() marks for the
@@ -170,23 +213,26 @@ internal class PostHogMemoryQueueTest {
     fun `respects max batch size`() {
         val http = createMockHttp(MockResponse().setBody("{}"), MockResponse().setBody("{}"))
         val sut = getSut(http.url("/").toString(), maxBatchSize = 2, flushAt = 3)
-        val event = generateEvent()
-
-        sut.add(event)
-        sut.add(event.copy())
-        sut.add(event.copy())
+        (1..3).forEach { index ->
+            sut.add(generateEvent("event-$index", java.util.UUID(0, index.toLong())))
+        }
         executor.awaitExecution()
 
         // Should make one request with 2 events (maxBatchSize)
-        val request1 = http.takeRequest()
+        val request1 = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         assertEquals("POST", request1.method)
+        val firstBatch = com.google.gson.JsonParser.parseString(request1.body.unGzip()).asJsonObject.getAsJsonArray("batch")
+        assertEquals(listOf("event-1", "event-2"), firstBatch.map { it.asJsonObject["event"].asString })
 
         // Flush the remaining event
         sut.flush()
         executor.awaitExecution()
 
-        val request2 = http.takeRequest()
+        val request2 = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         assertEquals("POST", request2.method)
+        val secondBatch = com.google.gson.JsonParser.parseString(request2.body.unGzip()).asJsonObject.getAsJsonArray("batch")
+        assertEquals(listOf("event-3"), secondBatch.map { it.asJsonObject["event"].asString })
+        assertEquals(0, sut.size)
 
         http.shutdown()
         executor.shutdownAndAwaitTermination()
@@ -351,7 +397,7 @@ internal class PostHogMemoryQueueTest {
 
     @Test
     fun `retries on network error`() {
-        val http = createMockHttp(MockResponse().setResponseCode(500))
+        val http = createMockHttp(MockResponse().setResponseCode(500), MockResponse().setBody("{}"))
         val sut =
             getSut(
                 http.url("/").toString(),
@@ -367,17 +413,15 @@ internal class PostHogMemoryQueueTest {
 
         assertEquals(1, http.requestCount)
 
-        // Retry will be allowed after one second.
-        // Flush will occur every second.
-        // We wait a bit more than 2 seconds to ensure both have occurred.
-        Thread.sleep(2100)
-        executor.awaitExecution()
-
-        // Should have made both requests (original + retry)
+        val original = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        val retry = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        val originalEvents = com.google.gson.JsonParser.parseString(original.body.unGzip()).asJsonObject["batch"]
+        val retryEvents = com.google.gson.JsonParser.parseString(retry.body.unGzip()).asJsonObject["batch"]
+        assertEquals(originalEvents, retryEvents)
         assertEquals(2, http.requestCount)
-
-        http.shutdown()
-        executor.shutdownAndAwaitTermination()
+        sut.stop()
+        executor.awaitExecution()
+        assertEquals("Retried events must leave the queue", 0, sut.size)
     }
 
     @Test
@@ -404,15 +448,23 @@ internal class PostHogMemoryQueueTest {
 
     @Test
     fun `starts and stops timer`() {
-        val http = createMockHttp()
-        val sut = getSut(http.url("/").toString())
+        val http = createMockHttp(MockResponse().setBody("{}"), MockResponse().setBody("{}"))
+        val sut = getSut(http.url("/").toString(), flushAt = 100, flushIntervalSeconds = 1)
         sut.start()
-        sut.stop()
-        // If we get here without deadlock, the timer management works
-        assertTrue(true)
+        sut.add(generateEvent("timer-event"))
+        executor.awaitExecution()
+        val timedRequest = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        assertTrue(timedRequest.body.unGzip().contains("timer-event"))
 
-        http.shutdown()
-        executor.shutdownAndAwaitTermination()
+        sut.stop()
+        executor.awaitExecution()
+        sut.add(generateEvent("after-stop"))
+        executor.awaitExecution()
+        kotlin.test.assertNull(http.takeRequest(1500, TimeUnit.MILLISECONDS), "A stopped timer must not send")
+        assertEquals(1, sut.size)
+        sut.flush()
+        val explicitRequest = kotlin.test.assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        assertTrue(explicitRequest.body.unGzip().contains("after-stop"))
     }
 
     @Test
@@ -439,13 +491,13 @@ internal class PostHogMemoryQueueTest {
 
         // Park the single queue thread so the enqueue below is provably still pending: the
         // crash-path race, made deterministic without any sleeping.
-        val blocked = CountDownLatch(1)
+        val blocked = CountDownLatch(1).also { gates.add(it) }
         executor.execute { blocked.await() }
 
         sut.add(generateEvent("earlier_event"))
 
         // The fatal add has to wait for the parked thread, so nothing can have been sent yet.
-        val sender = Thread { sut.add(generateFatalEvent()) }
+        val sender = worker { sut.add(generateFatalEvent()) }
         sender.start()
         assertEquals(0, http.requestCount)
 
@@ -515,10 +567,10 @@ internal class PostHogMemoryQueueTest {
     fun `the fatal path waits out a flush already in progress instead of giving up`() {
         // A periodic-timer flush racing the crash used to make the fatal drain a silent no-op: the
         // drain saw no progress and returned with the crash event still queued.
-        val gate = CountDownLatch(1)
+        val gate = CountDownLatch(1).also { gates.add(it) }
         val firstRequestReceived = CountDownLatch(1)
         val requestBodies = CopyOnWriteArrayList<String>()
-        val http = MockWebServer()
+        val http = MockWebServer().also { servers.add(it) }
         http.dispatcher =
             object : Dispatcher() {
                 private val requests = AtomicInteger(0)
@@ -540,17 +592,20 @@ internal class PostHogMemoryQueueTest {
 
         // A stand-in for the periodic timer: flush() runs inline on this thread and parks in the
         // gated request while holding the isFlushing flag.
-        val flusher = Thread { sut.flush() }
+        val flusher = worker { sut.flush() }
         flusher.start()
         assertTrue(
             "Expected the concurrent flush to reach the server and hold the flag",
             firstRequestReceived.await(5, TimeUnit.SECONDS),
         )
 
-        val sender = Thread { sut.add(generateFatalEvent()) }
+        val sender = worker { sut.add(generateFatalEvent()) }
         sender.start()
-        // Let the drain observe the held flag before the gate opens.
-        Thread.sleep(100)
+        val waitingBy = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (sender.isAlive && sender.state != Thread.State.TIMED_WAITING && System.nanoTime() < waitingBy) {
+            Thread.yield()
+        }
+        assertEquals(Thread.State.TIMED_WAITING, sender.state)
         gate.countDown()
 
         sender.join(5_000)
@@ -708,7 +763,7 @@ internal class PostHogMemoryQueueTest {
         val sut = getSut(http.url("/").toString(), flushAt = 100, fatalFlushTimeoutMs = 200)
 
         // Occupy the single queue thread so the fatal enqueue-and-drain task can never run.
-        val blocked = CountDownLatch(1)
+        val blocked = CountDownLatch(1).also { gates.add(it) }
         executor.execute { blocked.await() }
 
         val startedAt = System.nanoTime()

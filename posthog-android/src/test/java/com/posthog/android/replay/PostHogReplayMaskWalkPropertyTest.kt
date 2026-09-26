@@ -115,9 +115,15 @@ internal class PostHogReplayMaskWalkPropertyTest {
             val value = random.nextInt()
             assertEquals(grownOracle.add(value), grown.add(value), "growth: value=$value")
         }
-        // clear() must forget everything, including the zero sentinel.
+        val retainedKeys = listOf(0, 42) + grownOracle.take(10)
+        retainedKeys.forEach {
+            grown.add(it)
+            assertEquals(false, grown.add(it))
+        }
         grown.clear()
-        assertTrue(grown.add(0))
-        assertTrue(grown.add(42))
+        retainedKeys.forEach {
+            assertTrue(grown.add(it))
+            assertEquals(false, grown.add(it))
+        }
     }
 }

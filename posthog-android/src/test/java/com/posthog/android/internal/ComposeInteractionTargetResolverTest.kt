@@ -119,9 +119,10 @@ internal class ComposeInteractionTargetResolverTest {
 
     @Test
     fun `disabled buttons and points outside clipped bounds are not targets`() {
+        assertNotNull(resolve())
+        assertNull(ComposeInteractionTargetResolver.resolve(view, 200f, 200f, emptyList()))
         buttonConfig[SemanticsProperties.Disabled] = Unit
         assertNull(resolve())
-        assertNull(ComposeInteractionTargetResolver.resolve(view, 200f, 200f, emptyList()))
     }
 
     @Test

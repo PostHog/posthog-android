@@ -24,10 +24,13 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.Robolectric
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogActivityLifecycleCallbackIntegrationTest {
@@ -79,22 +82,34 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         val fake = createPostHogFake()
         val ready = CountDownLatch(threadCount)
         val start = CountDownLatch(1)
+        val failure = AtomicReference<Throwable>()
         val threads =
             integrations.map { integration ->
                 Thread {
-                    ready.countDown()
-                    start.await()
-                    integration.install(fake)
-                }.apply { start() }
+                    try {
+                        ready.countDown()
+                        assertTrue(start.await(5, TimeUnit.SECONDS))
+                        integration.install(fake)
+                    } catch (error: Throwable) {
+                        failure.compareAndSet(null, error)
+                    }
+                }.apply {
+                    isDaemon = true
+                    start()
+                }
             }
 
-        ready.await()
-        start.countDown()
-        threads.forEach { it.join() }
-
         try {
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "Install workers did not become ready")
+            start.countDown()
+            threads.forEach { it.join(2_000) }
+            assertTrue(threads.none { it.isAlive }, "Install workers did not terminate")
+            failure.get()?.let { throw AssertionError("Concurrent install failed", it) }
             verify(application, times(1)).registerActivityLifecycleCallbacks(any())
         } finally {
+            start.countDown()
+            threads.forEach { it.interrupt() }
+            threads.forEach { it.join(2_000) }
             integrations.forEach { it.uninstall() }
         }
     }

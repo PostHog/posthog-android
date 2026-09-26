@@ -7,15 +7,18 @@ import com.posthog.PostHogInterface
 import com.posthog.TestPostHogContext
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.mockHttp
+import com.posthog.shutdownAndAwaitTermination
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class PostHogLogsCaptureTest {
@@ -28,10 +31,14 @@ internal class PostHogLogsCaptureTest {
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
 
+    private val clients = mutableListOf<PostHogInterface>()
+    private val servers = mutableListOf<MockWebServer>()
+
     private fun getSut(
         http: MockWebServer,
         configure: PostHogConfig.() -> Unit = {},
     ): PostHogInterface {
+        servers.add(http)
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config =
             PostHogConfig(API_KEY, http.url("/").toString()).apply {
@@ -51,11 +58,16 @@ internal class PostHogLogsCaptureTest {
             cachedEventsExecutor,
             reloadFeatureFlags = false,
             logsExecutor = logsExecutor,
-        )
+        ).also { clients.add(it) }
     }
 
     @AfterTest
     fun cleanup() {
+        clients.forEach { it.close() }
+        listOf(queueExecutor, replayQueueExecutor, logsExecutor, remoteConfigExecutor, cachedEventsExecutor).forEach {
+            it.shutdownAndAwaitTermination()
+        }
+        servers.forEach { it.shutdown() }
         tmpDir.root.deleteRecursively()
     }
 
@@ -66,11 +78,9 @@ internal class PostHogLogsCaptureTest {
 
         sut.logger.info("hello logs", mapOf("source" to "test"))
 
-        // Wait for the executors to drain the queue and ship the batch.
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val request = http.takeRequest()
+        val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         assertTrue(request.path!!.startsWith("/i/v1/logs?token="), "path was ${request.path}")
         val unzipped = request.body.unGzip()
         assertTrue(unzipped.contains("\"stringValue\":\"hello logs\""), unzipped)
@@ -101,10 +111,9 @@ internal class PostHogLogsCaptureTest {
             traceFlags = 1,
         )
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val unzipped = http.takeRequest().body.unGzip()
+        val unzipped = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).body.unGzip()
         // trace_flags is renamed to `flags` on the OTLP wire.
         assertTrue(unzipped.contains("\"traceId\":\"4bf92f3577b34da6a3ce929d0e0e4736\""), unzipped)
         assertTrue(unzipped.contains("\"spanId\":\"00f067aa0ba902b7\""), unzipped)
@@ -126,10 +135,9 @@ internal class PostHogLogsCaptureTest {
         // the three `traceFlags?.let` sites.
         sut.captureLog("zero flags", traceFlags = 0)
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val unzipped = http.takeRequest().body.unGzip()
+        val unzipped = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).body.unGzip()
         assertTrue(unzipped.contains("\"flags\":0"), unzipped)
 
         sut.close()
@@ -143,10 +151,9 @@ internal class PostHogLogsCaptureTest {
 
         sut.captureLog("plain log")
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val unzipped = http.takeRequest().body.unGzip()
+        val unzipped = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).body.unGzip()
         assertEquals(false, unzipped.contains("\"traceId\""), unzipped)
         assertEquals(false, unzipped.contains("\"spanId\""), unzipped)
         assertEquals(false, unzipped.contains("\"flags\""), unzipped)
@@ -166,7 +173,7 @@ internal class PostHogLogsCaptureTest {
         sut.logger.info("")
         sut.logger.info("\t")
 
-        Thread.sleep(150)
+        logsExecutor.shutdownAndAwaitTermination()
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -180,7 +187,7 @@ internal class PostHogLogsCaptureTest {
 
         sut.logger.error("should not ship")
 
-        Thread.sleep(150)
+        logsExecutor.shutdownAndAwaitTermination()
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -199,10 +206,9 @@ internal class PostHogLogsCaptureTest {
 
         sut.logger.info("secret token: abc")
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val unzipped = http.takeRequest().body.unGzip()
+        val unzipped = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).body.unGzip()
         assertTrue(unzipped.contains("\"stringValue\":\"redacted\""), unzipped)
         assertEquals(false, unzipped.contains("secret token"), "raw body leaked: $unzipped")
 
@@ -220,7 +226,7 @@ internal class PostHogLogsCaptureTest {
 
         sut.logger.warn("never ships")
 
-        Thread.sleep(150)
+        logsExecutor.shutdownAndAwaitTermination()
         assertEquals(0, http.requestCount)
 
         sut.close()
@@ -239,8 +245,7 @@ internal class PostHogLogsCaptureTest {
         // 5 calls, cap is 3 → 3 should ship, 2 should drop.
         repeat(5) { sut.logger.info("msg $it") }
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
         assertEquals(3, http.requestCount)
 
@@ -259,8 +264,7 @@ internal class PostHogLogsCaptureTest {
 
         repeat(10) { sut.logger.info("msg $it") }
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
         assertEquals(10, http.requestCount)
 
@@ -279,10 +283,9 @@ internal class PostHogLogsCaptureTest {
 
         sut.logger.info("ping")
 
-        logsExecutor.shutdown()
-        logsExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)
+        logsExecutor.shutdownAndAwaitTermination()
 
-        val unzipped = http.takeRequest().body.unGzip()
+        val unzipped = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).body.unGzip()
         // User-supplied serviceName wins over PostHogContext.$app_namespace.
         assertTrue(unzipped.contains("\"stringValue\":\"user-override\""), unzipped)
         assertTrue(unzipped.contains("\"key\":\"deployment.environment\""), unzipped)

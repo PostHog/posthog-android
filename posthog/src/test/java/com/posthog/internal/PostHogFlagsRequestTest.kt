@@ -52,7 +52,7 @@ internal class PostHogFlagsRequestTest {
 
         assertEquals(API_KEY, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
-        assertEquals(null, request["evaluation_contexts"])
+        assertFalse(request.containsKey("evaluation_contexts"))
     }
 
     @Test
@@ -66,7 +66,7 @@ internal class PostHogFlagsRequestTest {
 
         assertEquals(API_KEY, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
-        assertEquals(null, request["evaluation_contexts"])
+        assertFalse(request.containsKey("evaluation_contexts"))
     }
 
     @Test
@@ -85,7 +85,7 @@ internal class PostHogFlagsRequestTest {
     fun `excludes device_id when null`() {
         val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
 
-        assertEquals(null, request["\$device_id"])
+        assertFalse(request.containsKey("\$device_id"))
     }
 
     @Test
@@ -97,7 +97,7 @@ internal class PostHogFlagsRequestTest {
                 deviceId = "",
             )
 
-        assertEquals(null, request["\$device_id"])
+        assertFalse(request.containsKey("\$device_id"))
     }
 
     @Test

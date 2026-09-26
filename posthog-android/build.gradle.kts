@@ -1,6 +1,7 @@
 @file:Suppress("ktlint:standard:max-line-length")
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.util.zip.ZipFile
 
 
 version = properties["androidVersion"].toString()
@@ -148,6 +149,36 @@ dependencies {
     testImplementation("androidx.compose.ui:ui:${PosthogBuildConfig.Dependencies.ANDROIDX_COMPOSE}") {
         exclude(group = "androidx.savedstate", module = "savedstate")
     }
+}
+
+// Compile against Compose as usual, but prove the optional runtime is genuinely absent.
+// Inspect jar contents rather than AGP's transformed filenames (which may be classes.jar).
+val testWithoutCompose by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs native interaction resolution with Compose removed from the runtime classpath."
+    val source = tasks.named<Test>("testReleaseUnitTest").get()
+    testClassesDirs = source.testClassesDirs
+    classpath =
+        source.classpath.filter { file ->
+            !file.isFile || file.extension != "jar" ||
+                ZipFile(file).use { jar ->
+                    jar.entries().asSequence().none { entry ->
+                        // Keep AGP's merged R jar: it also contains our own SDK resource IDs.
+                        entry.name.startsWith("androidx/compose/") && entry.name.endsWith(".class") &&
+                            !entry.name.endsWith("/R.class") && !entry.name.substringAfterLast('/').startsWith("R$")
+                    }
+                }
+        }
+    javaLauncher.set(source.javaLauncher)
+    systemProperties(source.systemProperties)
+    systemProperty("posthog.test.noCompose", "true")
+    maxHeapSize = "1g"
+    useJUnit()
+    filter.includeTestsMatching("com.posthog.android.internal.InteractionTargetTest")
+}
+
+tasks.named("check") {
+    dependsOn(testWithoutCompose)
 }
 
 project.publishingAndroidConfig()

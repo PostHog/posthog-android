@@ -320,10 +320,11 @@ internal class PostHogFeatureFlagEvaluationsTest {
             )
         parent.isEnabled("a")
 
-        val child = parent.onlyAccessed()
-        child.isEnabled("a") // accessing on the child should not change parent's accessed set
+        val child = parent.only(listOf("a", "b"))
+        assertEquals(emptyList(), child.onlyAccessed().keys)
+        child.isEnabled("b")
 
-        // Parent re-filtering should still only show "a"
+        assertEquals(listOf("b"), child.onlyAccessed().keys)
         assertEquals(listOf("a"), parent.onlyAccessed().keys)
     }
 

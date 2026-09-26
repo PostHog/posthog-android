@@ -55,6 +55,7 @@ internal class PostHogLoggerTest {
                 PostHogLogSeverity.FATAL,
             )
         assertEquals(expected, c.records.map { it.severity })
+        assertEquals(listOf("t", "d", "i", "w", "e", "f"), c.records.map { it.message })
         // Attributes pass through verbatim on every shortcut.
         c.records.forEach { assertEquals(attrs, it.attributes) }
     }
@@ -67,9 +68,8 @@ internal class PostHogLoggerTest {
     }
 
     @Test
-    fun `a no-op logger swallows every call without invoking any capture`() {
-        // The interface-default logger must not crash and must not invoke
-        // SDK plumbing for callers that don't have a configured SDK.
+    fun `logger accepts a no-op callback`() {
+        // Facade smoke coverage only; SDK disabled behavior belongs to capture tests.
         val noOp: PostHogLogger = PostHogLogger { _, _, _ -> }
         noOp.log("hi")
         noOp.info("ok", mapOf("k" to 1))

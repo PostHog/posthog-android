@@ -2,10 +2,10 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.TestHttpServers
 import com.posthog.TestPostHogContext
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
-import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
@@ -13,8 +13,11 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -28,6 +31,21 @@ import kotlin.test.assertTrue
 internal class EndpointSpecTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
+
+    @get:Rule
+    val servers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = servers.mockHttp(total, response)
+
+    private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+
+    @AfterTest
+    fun cleanup() {
+        executor.shutdownAndAwaitTermination()
+    }
 
     private data class SyntheticRecord(val value: String)
 
@@ -69,7 +87,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `add persists the record encoded by spec encode`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config = PostHogConfig(API_KEY)
         val spec = syntheticSpec(storagePrefix)
@@ -88,7 +105,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `flush invokes spec send with decoded records and pops files`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config = PostHogConfig(API_KEY)
         val sender = CapturingSender()
@@ -111,7 +127,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `spec isRetriableStatusCode retains files on retriable error`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config = PostHogConfig(API_KEY)
         val sender = CapturingSender()
@@ -130,6 +145,7 @@ internal class EndpointSpecTest {
 
         executor.awaitExecution()
 
+        assertEquals(listOf(listOf(SyntheticRecord("a"))), sender.batches)
         // file retained because 999 is retriable per spec
         assertEquals(1, File(storagePrefix, API_KEY).listFiles()!!.size)
 
@@ -138,7 +154,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `spec isRetriableStatusCode deletes files on non-retriable error`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config = PostHogConfig(API_KEY)
         val sender = CapturingSender()
@@ -152,6 +167,7 @@ internal class EndpointSpecTest {
 
         executor.awaitExecution()
 
+        assertEquals(listOf(listOf(SyntheticRecord("a"))), sender.batches)
         // file dropped because 999 is not retriable per spec
         assertEquals(0, File(storagePrefix, API_KEY).listFiles()!!.size)
 
@@ -160,7 +176,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `encode failure deletes the file and does not crash`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config = PostHogConfig(API_KEY)
         val spec = syntheticSpec(storagePrefix, encodeFails = true)
@@ -180,7 +195,6 @@ internal class EndpointSpecTest {
         // are honored. If maxQueueSize were snapshotted at construction,
         // raising config.maxQueueSize after setup would have no effect
         // and the deque would still cap at the original value.
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config =
             PostHogConfig(API_KEY, "http://localhost:9999").apply {
@@ -211,7 +225,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `EndpointSpec logs factory writes to slash i v1 logs`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
@@ -275,7 +288,6 @@ internal class EndpointSpecTest {
         // The logs factory should translate those into OTLP os.name / os.version
         // on the wire so log payloads carry device context without needing
         // PostHogLogsConfig (lands in the public-capture PR).
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
@@ -305,7 +317,6 @@ internal class EndpointSpecTest {
     fun `logs factory omits os attributes when PostHogContext is null`() {
         // Pure-JVM consumers without the Android overlay have config.context == null.
         // The factory must not crash and must not emit os.* keys.
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
@@ -331,7 +342,6 @@ internal class EndpointSpecTest {
 
     @Test
     fun `EndpointSpec batch factory preserves events on-wire behavior`() {
-        val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
@@ -348,8 +358,12 @@ internal class EndpointSpecTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(1, http.requestCount)
-        val request = http.takeRequest()
+        val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         assertTrue(request.path!!.startsWith("/batch"))
+        val batch = PostHogSerializer(config).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+        assertEquals("event-via-spec", batch.batch.single().event)
+        assertEquals(com.posthog.DISTINCT_ID, batch.batch.single().distinctId)
+        assertEquals(com.posthog.props, batch.batch.single().properties?.toMap())
 
         http.shutdown()
     }

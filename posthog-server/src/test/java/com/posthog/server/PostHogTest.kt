@@ -19,225 +19,211 @@ import kotlin.test.assertTrue
 
 @Suppress("DEPRECATION")
 internal class PostHogTest {
-    private fun createMockStateless(): PostHog {
-        return spy(PostHog())
+    private fun withClient(
+        flags: String = createEmptyFlagsResponse(),
+        configure: (PostHogConfig) -> Unit = {},
+        create: (PostHogConfig) -> PostHogInterface = { PostHog.with(it) },
+        block: (PostHogInterface, MockWebServer) -> Unit,
+    ) {
+        val server = MockWebServer()
+        server.dispatcher = CountingDispatcher({ MockResponse().setResponseCode(404) }, { jsonResponse(flags) })
+        server.start()
+        var client: PostHogInterface? = null
+        try {
+            val config = PostHogConfig(TEST_API_KEY, host = server.url("/").toString(), flushIntervalSeconds = 3600)
+            configure(config)
+            client = create(config)
+            block(client, server)
+        } finally {
+            try {
+                client?.close()
+            } finally {
+                server.shutdown()
+            }
+        }
     }
 
-    private fun createPostHogWithMock(mockInstance: PostHog): PostHog {
-        return mockInstance
+    private fun assertFlagRequest(server: MockWebServer) {
+        val request = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+        assertEquals("/flags/?v=2", request.path)
+        val body = com.google.gson.JsonParser.parseString(request.body.unGzip()).asJsonObject
+        assertEquals("user123", body["distinct_id"].asString)
+        assertEquals("org_123", body.getAsJsonObject("groups")["organization"].asString)
+        assertEquals("premium", body.getAsJsonObject("person_properties")["plan"].asString)
+        assertEquals("large", body.getAsJsonObject("group_properties").getAsJsonObject("organization")["size"].asString)
     }
 
     @Test
     fun `setup creates PostHogStateless instance with core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-
-        postHog.setup(config)
-
-        // Verify that setup doesn't throw and the instance is configured
-        // The actual functionality is tested in PostHogStateless tests
+        withClient(create = { config -> PostHog().apply { setup(config) } }) { client, server ->
+            client.capture("user123", "setup-event")
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals("setup-event", batch.firstEvent?.get("event")?.asString)
+            assertEquals("posthog-server", batch.firstEventProperties()["\$lib"])
+        }
     }
 
     @Test
     fun `with companion method creates and sets up PostHog instance`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY, debug = true)
-
-        val postHogInterface = PostHog.with(config)
-
-        // Verify that we get a PostHogInterface back
-        assertEquals(PostHog::class, postHogInterface::class)
-
-        // The instance should be set up (we can't easily verify internal state,
-        // but the method should complete without throwing)
+        withClient(configure = { it.debug = true }) { client, server ->
+            assertEquals(PostHog::class, client::class)
+            client.capture("user123", "factory-event")
+            client.flush()
+            assertNotNull(assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch().findEvent("factory-event"))
+        }
     }
 
     @Test
     fun `with companion method works with different config types`() {
-        val config =
-            PostHogConfig(
-                apiKey = "custom-key",
-                host = "https://custom.host.com",
-                debug = false,
-                flushAt = 5,
-            )
-
-        val postHogInterface = PostHog.with(config)
-
-        assertEquals(PostHog::class, postHogInterface::class)
+        withClient(configure = { it.flushAt = 2 }) { client, server ->
+            client.capture("user123", "first")
+            client.capture("user123", "second")
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals(listOf("first", "second"), batch.batch.map { it["event"].asString })
+        }
     }
 
     @Test
     fun `all methods work correctly after setup`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-
-        postHog.setup(config)
-
-        // These should all complete without throwing exceptions
-        postHog.identify("user123")
-        postHog.capture("user123", "test_event")
-        postHog.group("user123", "org", "test")
-        postHog.alias("user123", "alias")
-        postHog.flush()
-        postHog.debug(true)
-
-        // Feature flag methods should work
-        val featureEnabled = postHog.isFeatureEnabled("user123", "test_flag")
-        val featureFlag = postHog.getFeatureFlag("user123", "test_flag")
-        val flagPayload = postHog.getFeatureFlagPayload("user123", "test_flag")
-
-        // With no remote config, these should return defaults
-        assertFalse(featureEnabled)
-        assertNull(featureFlag)
-        assertNull(flagPayload)
-
-        postHog.close()
+        withClient { client, server ->
+            client.identify("user123", mapOf("plan" to "premium"))
+            client.capture("user123", "test_event")
+            client.group("user123", "org", "test")
+            client.alias("user123", "alias")
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals(listOf("\$identify", "test_event", "\$groupidentify", "\$create_alias"), batch.batch.map { it["event"].asString })
+            assertTrue(batch.batch.all { it["distinct_id"].asString == "user123" })
+            assertEquals("alias", batch.eventProperties("\$create_alias")["alias"])
+            assertEquals("test", batch.eventProperties("\$groupidentify")["\$group_key"])
+            assertFalse(client.isFeatureEnabled("user123", "missing"))
+            assertNull(client.getFeatureFlag("user123", "missing"))
+            assertNull(client.getFeatureFlagPayload("user123", "missing"))
+        }
     }
 
     @Test
     fun `capture with timestamp passes timestamp through`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val timestamp = java.util.Date(1234567890L)
-
-        // Should not throw
-        postHog.capture(
-            distinctId = "user123",
-            event = "test_event",
-            properties = mapOf("key" to "value"),
-            timestamp = timestamp,
-        )
-
-        postHog.close()
+        withClient { client, server ->
+            client.capture("user123", "test_event", properties = mapOf("key" to "value"), timestamp = java.util.Date(1234567890L))
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals("1970-01-15T06:56:07.890Z", batch.firstEvent?.get("timestamp")?.asString)
+            assertEquals("value", batch.firstEventProperties()["key"])
+        }
     }
 
     @Test
     fun `capture with PostHogCaptureOptions works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val options =
-            PostHogCaptureOptions.builder()
-                .property("page", "home")
-                .userProperty("plan", "premium")
-                .build()
-
-        // Should not throw
-        postHog.capture("user123", "page_view", options)
-
-        postHog.close()
+        withClient { client, server ->
+            val options =
+                PostHogCaptureOptions.builder()
+                    .property("page", "home")
+                    .userProperty("plan", "premium")
+                    .userPropertySetOnce("signup", "docs")
+                    .group("organization", "org_123")
+                    .timestamp(1234567890L)
+                    .build()
+            client.capture("user123", "page_view", options)
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals("page_view", batch.firstEvent?.get("event")?.asString)
+            assertEquals("user123", batch.firstEvent?.get("distinct_id")?.asString)
+            assertEquals("1970-01-15T06:56:07.890Z", batch.firstEvent?.get("timestamp")?.asString)
+            val props = batch.firstEventProperties()
+            assertEquals("home", props["page"])
+            assertEquals(mapOf("plan" to "premium"), props["\$set"])
+            assertEquals(mapOf("signup" to "docs"), props["\$set_once"])
+            assertEquals(mapOf("organization" to "org_123"), props["\$groups"])
+        }
     }
 
     @Test
     fun `isFeatureEnabled with PostHogFeatureFlagOptions works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val options =
-            PostHogFeatureFlagOptions.builder()
-                .defaultValue(true)
-                .group("organization", "org_123")
-                .personProperty("plan", "premium")
-                .groupProperty("org_123", "size", "large")
-                .build()
-
-        val result = postHog.isFeatureEnabled("user123", "feature_key", options)
-
-        // Result depends on whether feature flags are loaded, but should not throw
-        assertNotNull(result)
-
-        postHog.close()
+        withClient { client, server ->
+            val options =
+                PostHogFeatureFlagOptions.builder()
+                    .defaultValue(true)
+                    .group("organization", "org_123")
+                    .personProperty("plan", "premium")
+                    .groupProperty("organization", "size", "large")
+                    .build()
+            assertTrue(client.isFeatureEnabled("user123", "feature_key", options))
+            assertFlagRequest(server)
+        }
     }
 
     @Test
     fun `getFeatureFlag with PostHogFeatureFlagOptions works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val options =
-            PostHogFeatureFlagOptions.builder()
-                .defaultValue("default")
-                .group("organization", "org_123")
-                .personProperty("plan", "premium")
-                .groupProperty("org_123", "size", "large")
-                .build()
-
-        // Should not throw
-        postHog.getFeatureFlag("user123", "feature_key", options)
-
-        postHog.close()
+        withClient(flags = createFlagsResponse("feature_key", variant = "blue")) { client, server ->
+            val options =
+                PostHogFeatureFlagOptions.builder()
+                    .defaultValue("default")
+                    .group("organization", "org_123")
+                    .personProperty("plan", "premium")
+                    .groupProperty("organization", "size", "large")
+                    .build()
+            assertEquals("blue", client.getFeatureFlag("user123", "feature_key", options))
+            assertEquals("default", client.getFeatureFlag("user123", "missing", options))
+            assertFlagRequest(server)
+        }
     }
 
     @Test
     fun `getFeatureFlagPayload with PostHogFeatureFlagOptions works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val options =
-            PostHogFeatureFlagOptions.builder()
-                .defaultValue(null)
-                .group("organization", "org_123")
-                .personProperty("plan", "premium")
-                .groupProperty("org_123", "size", "large")
-                .build()
-
-        // Should not throw
-        postHog.getFeatureFlagPayload("user123", "feature_key", options)
-
-        postHog.close()
+        withClient(flags = createFlagsResponse("feature_key", payload = "42")) { client, server ->
+            val options =
+                PostHogFeatureFlagOptions.builder()
+                    .defaultValue("fallback")
+                    .group("organization", "org_123")
+                    .personProperty("plan", "premium")
+                    .groupProperty("organization", "size", "large")
+                    .build()
+            assertEquals("42", client.getFeatureFlagPayload("user123", "feature_key", options))
+            assertEquals("fallback", client.getFeatureFlagPayload("user123", "missing", options))
+            assertFlagRequest(server)
+        }
     }
 
     @Test
     fun `getFeatureFlagResult works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        // With no remote config, should return null
-        val result = postHog.getFeatureFlagResult("user123", "test_flag")
-        assertNull(result)
-
-        postHog.close()
+        withClient(flags = createFlagsResponse("test_flag", variant = "blue", payload = "42")) { client, _ ->
+            val result = assertNotNull(client.getFeatureFlagResult("user123", "test_flag"))
+            assertEquals("test_flag", result.key)
+            assertTrue(result.enabled)
+            assertEquals("blue", result.variant)
+            assertEquals("42", result.payload)
+            assertNull(client.getFeatureFlagResult("user123", "missing"))
+        }
     }
 
     @Test
     fun `getFeatureFlagResult with PostHogFeatureFlagOptions works correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHog = PostHog()
-        postHog.setup(config)
-
-        val options =
-            PostHogFeatureFlagResultOptions.builder()
-                .group("organization", "org_123")
-                .personProperty("plan", "premium")
-                .groupProperty("org_123", "size", "large")
-                .build()
-
-        // Should not throw
-        val result = postHog.getFeatureFlagResult("user123", "feature_key", options)
-
-        // With no remote config, should return null
-        assertNull(result)
-
-        postHog.close()
+        withClient(flags = createFlagsResponse("feature_key", enabled = false, payload = "42")) { client, server ->
+            val options =
+                PostHogFeatureFlagResultOptions.builder()
+                    .group("organization", "org_123")
+                    .personProperty("plan", "premium")
+                    .groupProperty("organization", "size", "large")
+                    .sendFeatureFlagEvent(false)
+                    .build()
+            val result = assertNotNull(client.getFeatureFlagResult("user123", "feature_key", options))
+            assertFalse(result.enabled)
+            assertEquals("42", result.payload)
+            assertFlagRequest(server)
+            client.capture("user123", "control")
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals(listOf("control"), batch.batch.map { it["event"].asString })
+        }
     }
 
     @Test
     fun `PostHog implements PostHogInterface correctly`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
-        val postHogInterface: PostHogInterface = PostHog.with(config)
-
-        // Verify the interface is implemented correctly and we get the right type
-        val postHog = postHogInterface as? PostHog
-        assertNotNull(postHog)
-
-        postHogInterface.close()
+        withClient { client, _ ->
+            assertTrue(client is PostHog)
+        }
     }
 
     @Test
@@ -1095,41 +1081,25 @@ internal class PostHogTest {
 
     @Test
     fun `captureException with options does not evaluate flags for an ignored throwable`() {
-        val mockServer = MockWebServer()
-        mockServer.enqueue(MockResponse().setResponseCode(200))
-        mockServer.start()
+        withClient(create = { config ->
+            val core = config.asCoreConfig()
+            core.errorTrackingConfig.ignoredExceptionTypes.add(IllegalStateException::class.java)
+            PostHog().apply { setup(core) }
+        }) { client, server ->
+            val options = PostHogCaptureOptions.builder().appendFeatureFlags(true).build()
+            client.captureException(IllegalStateException("suppressed"), "user123", options)
+            client.flush()
+            assertEquals(0, server.requestCount, "Ignored exceptions must not evaluate flags or enqueue events")
 
-        val postHog = postHogWithIgnoredTypes(mockServer.url("/").toString(), IllegalStateException::class.java)
-
-        postHog.captureException(
-            IllegalStateException("suppressed"),
-            "user123",
-            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
-        )
-
-        assertNull(
-            mockServer.takeRequest(500, TimeUnit.MILLISECONDS),
-            "An ignored exception must not fire a /flags request nor a \$exception event",
-        )
-
-        // control: the same overload with the same options still enriches and ships a kept type,
-        // so the assertion above is about the ignore gate and not about a dead client
-        postHog.captureException(
-            RuntimeException("kept"),
-            "user123",
-            PostHogCaptureOptions.builder().appendFeatureFlags(true).build(),
-        )
-
-        val flagsRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(flagsRequest, "Expected /flags request for the kept exception")
-        assertTrue(flagsRequest.path?.contains("/flags") == true, "First request should be /flags")
-
-        val batchRequest = mockServer.takeRequest(5, TimeUnit.SECONDS)
-        assertNotNull(batchRequest, "Expected /batch request within 5 seconds")
-        assertNotNull(batchRequest.parseBatch().findEvent("\$exception"), "Expected \$exception event in batch")
-
-        postHog.close()
-        mockServer.shutdown()
+            // A positive control distinguishes the ignore gate from a dead client.
+            client.captureException(RuntimeException("kept"), "user123", options)
+            client.flush()
+            val flagsRequest = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            assertEquals("/flags/?v=2", flagsRequest.path)
+            val batchRequest = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            assertEquals("/batch", batchRequest.path)
+            assertEquals(listOf("\$exception"), batchRequest.parseBatch().batch.map { it["event"].asString })
+        }
     }
 
     @Test

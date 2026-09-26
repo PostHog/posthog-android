@@ -13,6 +13,7 @@ import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,6 +24,7 @@ import kotlin.test.assertNotNull
 internal class PostHogAndroidContextTest {
     private val context = mock<Context>()
     private lateinit var config: PostHogAndroidConfig
+    private val originalUserAgent = System.getProperty("http.agent")
 
     private fun getSut(networkProperties: Map<String, Any> = emptyMap()): PostHogAndroidContext {
         config = PostHogAndroidConfig(API_KEY)
@@ -32,6 +34,15 @@ internal class PostHogAndroidContextTest {
     @BeforeTest
     fun `set up`() {
         System.setProperty("http.agent", "value")
+    }
+
+    @AfterTest
+    fun tearDown() {
+        if (originalUserAgent == null) {
+            System.clearProperty("http.agent")
+        } else {
+            System.setProperty("http.agent", originalUserAgent)
+        }
     }
 
     @Test
