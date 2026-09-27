@@ -453,7 +453,7 @@ internal class PostHogSessionManagerTest {
         sessionId: UUID,
     ) {
         for (quarterHour in 1..95) {
-            fakeDate.nowMs = baseTime + quarterHour * 15 * 60 * 1000L
+            fakeDate.nowMs = baseTime + quarterHour * 15L * 60 * 1000
             PostHogSessionManager.touchSession()
             assertEquals(sessionId, PostHogSessionManager.peekSessionId())
         }

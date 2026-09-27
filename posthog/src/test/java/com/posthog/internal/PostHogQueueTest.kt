@@ -47,11 +47,16 @@ internal class PostHogQueueTest {
     @AfterTest
     fun cleanup() {
         queues.forEach { it.stop() }
-        executor.shutdownAndAwaitTermination()
         queues.forEach { it.clear() }
+        executor.shutdownAndAwaitTermination()
+        queues.forEach { assertTrue(it.dequeList.isEmpty(), "Queue cleanup must finish before executor shutdown") }
     }
 
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
+
+    private fun awaitQueue() {
+        executor.submit {}.get(60, TimeUnit.SECONDS)
+    }
 
     @get:Rule
     val tmpDir = TemporaryFolder()
@@ -97,7 +102,7 @@ internal class PostHogQueueTest {
         sut.add(event2)
         sut.add(event3)
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(2, sut.dequeList.size)
         val serializer = PostHogSerializer(PostHogConfig(API_KEY))
@@ -119,7 +124,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertTrue(File(path, API_KEY).exists())
     }
@@ -134,7 +139,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, File(path, API_KEY).listFiles()!!.size)
     }
@@ -148,7 +153,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(0, http.requestCount)
     }
@@ -162,7 +167,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, http.requestCount)
     }
@@ -188,7 +193,7 @@ internal class PostHogQueueTest {
         )
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         // only 1 since the second won't be triggered
         assertEquals(1, http.requestCount)
@@ -211,7 +216,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(0, http.requestCount)
     }
@@ -240,7 +245,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, http.requestCount)
     }
@@ -280,7 +285,7 @@ internal class PostHogQueueTest {
         connected = true
         onAvailableCallback?.invoke()
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
@@ -334,7 +339,7 @@ internal class PostHogQueueTest {
         } finally {
             sut.stop()
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -387,7 +392,7 @@ internal class PostHogQueueTest {
             assertEquals(0, File(path, API_KEY).listFiles()!!.size)
         } finally {
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -426,7 +431,7 @@ internal class PostHogQueueTest {
             assertEquals(1, sut.dequeList.size)
         } finally {
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -491,7 +496,7 @@ internal class PostHogQueueTest {
             assertEquals(1, File(path, API_KEY).listFiles()!!.size)
         } finally {
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -514,7 +519,7 @@ internal class PostHogQueueTest {
             assertEquals(2, File(path, API_KEY).listFiles()!!.size)
         } finally {
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -616,7 +621,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, API_KEY).listFiles()!!.size)
@@ -632,7 +637,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, API_KEY).listFiles()!!.size)
@@ -648,7 +653,7 @@ internal class PostHogQueueTest {
 
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
@@ -672,7 +677,7 @@ internal class PostHogQueueTest {
 
         sut.clear()
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
@@ -702,7 +707,7 @@ internal class PostHogQueueTest {
 
         sut.flush()
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
@@ -742,7 +747,7 @@ internal class PostHogQueueTest {
 
         sut.flush()
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
         assertEquals(0, File(path, API_KEY).listFiles()!!.size)
@@ -833,7 +838,7 @@ internal class PostHogQueueTest {
         assertEquals(4, sut.dequeList.size)
 
         sut.clear()
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
     }
 
     @Test
@@ -978,7 +983,7 @@ internal class PostHogQueueTest {
         // trigger lazy loading via add
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         // 3 cached + 1 new
         assertEquals(4, sut.dequeList.size)
@@ -1009,7 +1014,7 @@ internal class PostHogQueueTest {
             assertEquals(2, dir.listFiles()!!.size)
         } finally {
             sut.clear()
-            executor.shutdownAndAwaitTermination()
+            awaitQueue()
             http.shutdown()
         }
     }
@@ -1036,7 +1041,7 @@ internal class PostHogQueueTest {
         // add triggers ensureCachedEventsLoaded (1 cached) + new event, hitting flushAt
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
@@ -1056,7 +1061,7 @@ internal class PostHogQueueTest {
         // trigger lazy loading, should not fail
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         // only the new event
         assertEquals(1, sut.dequeList.size)
@@ -1090,7 +1095,7 @@ internal class PostHogQueueTest {
         // trigger lazy loading via add
         sut.add(generateEvent())
 
-        executor.shutdownAndAwaitTermination()
+        awaitQueue()
 
         val dequeFiles = sut.dequeList
         // cached files first (sorted by last modified), then the new event

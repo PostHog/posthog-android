@@ -71,7 +71,9 @@ android {
     }
 
     androidComponents.beforeVariants {
-        it.enable = !PosthogBuildConfig.shouldSkipDebugVariant(it.name)
+        it.enable =
+            !PosthogBuildConfig.shouldSkipDebugVariant(it.name) ||
+            providers.gradleProperty("enableDebugTests").orNull.toBoolean()
     }
 
     buildFeatures {
