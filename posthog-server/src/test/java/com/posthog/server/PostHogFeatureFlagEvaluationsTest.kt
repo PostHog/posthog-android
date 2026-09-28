@@ -212,25 +212,18 @@ internal class PostHogFeatureFlagEvaluationsTest {
     }
 
     @Test
-    fun `getFlagPayload and getEvaluationRuntime do not fire an event or record access`() {
+    fun `getFlagPayload does not fire an event or record access`() {
         val host = FakeHost()
         val snapshot =
             snapshot(
                 host = host,
-                flags =
-                    mapOf(
-                        "payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}"),
-                        "client-flag" to flag("client-flag", evaluationRuntime = "client"),
-                    ),
+                flags = mapOf("payload-flag" to flag("payload-flag", enabled = true, payload = "{\"a\":1}")),
             )
 
         assertEquals("{\"a\":1}", snapshot.getFlagPayload("payload-flag"))
-        assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
-        // An unknown key is where isEnabled and getFlag fire `flag_missing`.
-        assertNull(snapshot.getEvaluationRuntime("missing"))
 
-        assertTrue(host.captures.isEmpty(), "payload and runtime reads should be event-free")
-        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "neither read records access")
+        assertTrue(host.captures.isEmpty(), "payload reads should be event-free")
+        assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "a payload read does not record access")
     }
 
     @Test

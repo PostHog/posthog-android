@@ -574,7 +574,7 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
-    fun `getEvaluationRuntime passes through the runtime of locally evaluated flags`() {
+    fun `only filter keeps the runtime of the local definition for every flag it covers`() {
         withLocalEvaluation(
             definitions =
                 createLocalEvaluationResponseFrom(
@@ -588,29 +588,23 @@ internal class PostHogEvaluateFlagsTest {
             },
         ) { postHog, _, _ ->
             val snapshot = postHog.evaluateFlags("user-1")
-
-            assertEquals("client", snapshot.getEvaluationRuntime("client-flag"))
-            assertEquals("server", snapshot.getEvaluationRuntime("server-flag"))
-            assertNull(snapshot.getEvaluationRuntime("unreported-flag"))
             assertTrue(snapshot.isEnabled("gated-flag"), "the gated flag is filled from /flags")
+
+            // The filter a server uses to pick the flags it forwards to a browser. A flag filled
+            // from /flags keeps the runtime of its local definition.
+            assertEquals(setOf("client-flag", "gated-flag"), snapshot.runtimes("client", "all"))
+            assertEquals(setOf("server-flag"), snapshot.runtimes("server"))
             assertEquals(
-                "all",
-                snapshot.getEvaluationRuntime("gated-flag"),
-                "a flag filled from /flags keeps the runtime of its local definition",
-            )
-            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "no definition, and /flags reports none")
-            assertNull(snapshot.getEvaluationRuntime("missing-flag"))
-            // The filter a server uses to pick the flags it forwards to a browser.
-            assertEquals(
-                setOf("client-flag", "gated-flag"),
-                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.toSet(),
+                setOf("client-flag", "server-flag", "gated-flag"),
+                snapshot.runtimes("client", "server", "all"),
+                "a definition without the field, and a flag without a definition, never match a runtime",
             )
 
             // A local-only read never goes through the `/flags` merge, so the runtime must come
             // from the flag built at evaluation time.
             val localOnly = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
-            assertEquals("client", localOnly.getEvaluationRuntime("client-flag"))
-            assertEquals("server", localOnly.getEvaluationRuntime("server-flag"))
+            assertEquals(setOf("client-flag"), localOnly.runtimes("client", "all"))
+            assertEquals(setOf("server-flag"), localOnly.runtimes("server"))
         }
     }
 
@@ -638,14 +632,18 @@ internal class PostHogEvaluateFlagsTest {
         ) { postHog, _, _ ->
             val snapshot = postHog.evaluateFlags("user-1")
 
-            assertEquals("server", snapshot.getEvaluationRuntime("gated-server-flag"))
-            assertNull(snapshot.getEvaluationRuntime("gated-unreported-flag"), "a definition without the field stays unknown")
-            assertNull(snapshot.getEvaluationRuntime("undefined-flag"), "the response is not a source for the runtime")
-            assertTrue(
-                snapshot.only(PostHogFeatureFlagFilter(evaluationRuntimes = setOf("client", "all"))).keys.isEmpty(),
+            assertTrue(snapshot.runtimes("client", "all").isEmpty())
+            assertEquals(setOf("gated-server-flag"), snapshot.runtimes("server"))
+            assertEquals(
+                setOf("gated-server-flag"),
+                snapshot.runtimes("client", "server", "all"),
+                "a definition without the field, and the response's runtime, stay unknown",
             )
         }
     }
+
+    private fun PostHogFeatureFlagEvaluations.runtimes(vararg runtimes: String): Set<String> =
+        only(PostHogFeatureFlagFilter(evaluationRuntimes = runtimes.toSet())).keys.toSet()
 
     @Test
     fun `an error thrown while evaluating one flag falls back for that flag instead of crashing`() {

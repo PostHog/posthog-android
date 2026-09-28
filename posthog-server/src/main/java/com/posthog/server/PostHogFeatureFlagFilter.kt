@@ -10,7 +10,7 @@ package com.posthog.server
  * @property keys Flag keys to keep. Unknown keys are dropped with a warning, as in `only(keys)`.
  * @property evaluationRuntimes Evaluation runtimes to keep, as reported by `/local_evaluation`:
  *   `"all"`, `"client"` or `"server"`. A flag whose runtime is unknown (null) is dropped, because
- *   unknown does not mean client-safe. See [PostHogFeatureFlagEvaluations.getEvaluationRuntime].
+ *   unknown does not mean client-safe.
  */
 public class PostHogFeatureFlagFilter(
     public val keys: Collection<String>? = null,
