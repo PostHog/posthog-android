@@ -137,6 +137,7 @@ internal class PostHogPersonProfilesTest {
         assertEquals(false, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
+        http.shutdown()
     }
 
     @Test
@@ -264,6 +265,7 @@ internal class PostHogPersonProfilesTest {
         assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
+        http.shutdown()
     }
 
     @Test
@@ -433,5 +435,6 @@ internal class PostHogPersonProfilesTest {
         assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
 
         sut.close()
+        http.shutdown()
     }
 }
