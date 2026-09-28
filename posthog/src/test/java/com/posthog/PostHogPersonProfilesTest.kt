@@ -114,6 +114,33 @@ internal class PostHogPersonProfilesTest {
     }
 
     @Test
+    fun `capture ignores caller person processing properties if identified only and not identified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString())
+
+        sut.capture(
+            "test event",
+            properties = mapOf("\$process_person_profile" to true, "\$is_identified" to true),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val event = batch.batch.first()
+
+        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.properties!!["\$is_identified"] as Boolean)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `capture sets process person to true if identified only and with user props`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -210,6 +237,35 @@ internal class PostHogPersonProfilesTest {
         assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
 
         sut.close()
+    }
+
+    @Test
+    fun `capture ignores caller person processing properties if identified only and identified`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), flushAt = 2)
+
+        sut.identify("distinctId")
+
+        sut.capture(
+            "test event",
+            properties = mapOf("\$process_person_profile" to false, "\$is_identified" to false),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val event = batch.batch.last()
+
+        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
+
+        sut.close()
+        http.shutdown()
     }
 
     @Test
@@ -357,5 +413,28 @@ internal class PostHogPersonProfilesTest {
 
         sut.reset()
         sut.close()
+    }
+
+    @Test
+    fun `capture ignores caller process person override if never`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), personProfiles = PersonProfiles.NEVER)
+
+        sut.capture("test event", properties = mapOf("\$process_person_profile" to true))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val content = request.body.unGzip()
+        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
+
+        val event = batch.batch.first()
+
+        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+
+        sut.close()
+        http.shutdown()
     }
 }

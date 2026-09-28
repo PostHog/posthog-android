@@ -720,8 +720,6 @@ public class PostHog private constructor(
                 }
             }
 
-            props["\$is_identified"] = isIdentified
-            props["\$process_person_profile"] = hasPersonProcessing()
             stampCachedScreenName(props)
         }
 
@@ -751,6 +749,13 @@ public class PostHog private constructor(
 
         properties?.let {
             props.putAll(it)
+        }
+
+        // After the caller merge so the SDK's person-processing state can't be overridden per event
+        // (e.g. a caller `true` bypassing PersonProfiles.NEVER), matching posthog-js and posthog-ios.
+        if (appendSharedProps) {
+            props["\$is_identified"] = isIdentified
+            props["\$process_person_profile"] = hasPersonProcessing()
         }
 
         // After the caller merge so SDK-computed debug values win, matching posthog-js's
