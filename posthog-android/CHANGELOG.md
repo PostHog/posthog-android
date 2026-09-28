@@ -1,5 +1,11 @@
 ## Next
 
+## 3.71.2
+
+### Patch Changes
+
+- 32d2898: Stop event properties from overriding `$process_person_profile` and `$is_identified`, so a caller-supplied `true` can no longer create person profiles when `personProfiles` is `NEVER` or the user is anonymous under `IDENTIFIED_ONLY`, matching posthog-ios and posthog-js. Per-event values for these two properties are now ignored; use `beforeSend` if you need to rewrite them
+
 ## 3.71.1
 
 ### Patch Changes
