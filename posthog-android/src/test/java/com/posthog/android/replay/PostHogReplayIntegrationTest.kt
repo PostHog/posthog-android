@@ -1382,12 +1382,13 @@ internal class PostHogReplayIntegrationTest {
     private fun installStopRacingSut(
         samplingPasses: AtomicBoolean,
         stopDuringGate: AtomicReference<PostHogReplayIntegration?>,
+        triggers: Set<String> = emptySet(),
         sessionId: () -> UUID?,
     ): PostHogReplayIntegration {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
                 on { isSessionReplayFlagActive() } doReturn true
-                on { getEventTriggers() } doReturn emptySet()
+                on { getEventTriggers() } doReturn triggers
                 on { hasRemoteConfigFetched() } doReturn true
             }
         whenever(remoteConfig.makeSamplingDecision(any())).thenAnswer {
@@ -1449,6 +1450,28 @@ internal class PostHogReplayIntegrationTest {
             sut.onSessionIdChanged()
             stopDuringGate.set(sut)
             shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `explicit stop racing an event trigger start wins when automatic replay is disabled`() {
+        val samplingPasses = AtomicBoolean(true)
+        val stopDuringGate = AtomicReference<PostHogReplayIntegration?>(null)
+        val sut =
+            installStopRacingSut(samplingPasses, stopDuringGate, triggers = setOf("checkout_started")) {
+                PostHogSessionManager.peekSessionId()
+            }
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertFalse(sut.isActive())
+
+            stopDuringGate.set(sut)
+            sut.onEvent("checkout_started", null)
 
             assertFalse(sut.isActive())
         } finally {
