@@ -2494,12 +2494,21 @@ public class PostHogReplayIntegration(
         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
         // Keep producer commits and the bitmap buffer lifecycle on the same recording run.
-        synchronized(pixelCopyBitmapBuffer) {
-            synchronized(decorViews) {
-                pixelCopyBitmapBuffer.open()
-                isSessionReplayActive = true
+        val claimed =
+            synchronized(pixelCopyBitmapBuffer) {
+                synchronized(decorViews) {
+                    // Re-check under the lock: callers gate outside it, and stop() can clear the
+                    // manual-start marker in between, which would otherwise leave this start live.
+                    if (isSessionReplayActive || (!config.sessionReplay && !startedWithAutomaticDisabled)) {
+                        false
+                    } else {
+                        pixelCopyBitmapBuffer.open()
+                        isSessionReplayActive = true
+                        true
+                    }
+                }
             }
-        }
+        if (!claimed) return
 
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
