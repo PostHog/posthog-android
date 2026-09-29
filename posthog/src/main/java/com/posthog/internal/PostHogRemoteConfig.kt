@@ -319,7 +319,16 @@ public class PostHogRemoteConfig(
 
                 response?.let {
                     synchronized(remoteConfigLock) {
-                        processSessionRecordingConfig(it.sessionRecording)
+                        // The server keeps sessionRecording enabled here because web recording is still allowed.
+                        if (it.quotaLimited?.contains("mobile_recordings") == true) {
+                            config.logger.log(
+                                """Session replay is quota limited, recordings are disabled.
+                                    Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
+                            )
+                            processSessionRecordingConfig(false)
+                        } else {
+                            processSessionRecordingConfig(it.sessionRecording)
+                        }
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
                         processCapturePerformanceConfig(it.capturePerformance)

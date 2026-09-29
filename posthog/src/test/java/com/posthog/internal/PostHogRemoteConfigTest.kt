@@ -808,6 +808,39 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `mobile_recordings quota limit disables replay until a later remote config drops it`() {
+        val enabled = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val quotaLimited =
+            enabled.replace(
+                "\"hasFeatureFlags\": false,",
+                "\"hasFeatureFlags\": false, \"quotaLimited\": [\"mobile_recordings\"],",
+            )
+        val http = mockHttp(response = MockResponse().setBody(quotaLimited))
+        http.enqueue(MockResponse().setBody(enabled))
+        val sut = getSut(host = http.url("/").toString())
+
+        val latch = CountDownLatch(1)
+        sut.loadRemoteConfig(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "quota limited remote config load should complete")
+
+        assertFalse(sut.isSessionReplayFlagActive())
+        assertNull(preferences.getValue(SESSION_REPLAY))
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.isSessionReplayFlagActive())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
     fun `explicit errorTracking false from remote config caches the disabled stance`() {
         // Stale cache from when the project had autocapture enabled.
         preferences.setValue(ERROR_TRACKING, mapOf("autocaptureExceptions" to true))

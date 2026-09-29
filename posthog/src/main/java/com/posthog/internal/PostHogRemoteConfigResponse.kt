@@ -21,4 +21,6 @@ public open class PostHogRemoteConfigResponse(
     // same as a project with none configured. See docs/internal/push-subscription-registration.md
     // in PostHog/posthog.
     public val push: Any? = null,
+    // quota limited products, e.g. "mobile_recordings" or "feature_flags"
+    public val quotaLimited: List<String>? = null,
 )
