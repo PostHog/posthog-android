@@ -1041,7 +1041,7 @@ internal class FlagEvaluatorTest {
     @Test
     internal fun testMixedConditionsFlag() {
         val flag = createMixedConditionsFlag()
-        val withoutSpaces = mapOf("email" to "example@example.com")
+        val withoutSpaces = matchingMixedProperties()
         val resultWithoutSpaces =
             evaluator.matchFeatureFlagProperties(flag, "user-123", withoutSpaces)
         assertEquals(true, resultWithoutSpaces)
@@ -1051,8 +1051,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagExactMismatch() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email does not match exact condition
-        val properties = mapOf("email" to "other@example.com")
+        val properties = matchingMixedProperties().apply { put("exact", "other@example.com") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1061,8 +1060,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagIsNotViolation() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email matches is_not exclusion list
-        val properties = mapOf("email" to "not_example@example.com")
+        val properties = matchingMixedProperties().apply { put("is_not", "not_example@example.com") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1071,8 +1069,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagIcontainsMismatch() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email does not contain "example"
-        val properties = mapOf("email" to "test@test.com")
+        val properties = matchingMixedProperties().apply { put("icontains", "test@test.com") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1081,8 +1078,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagNotIcontainsViolation() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email contains ".net"
-        val properties = mapOf("email" to "example@example.net")
+        val properties = matchingMixedProperties().apply { put("not_icontains", "example@example.net") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1091,8 +1087,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagRegexMismatch() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email does not match regex pattern (invalid format)
-        val properties = mapOf("email" to "invalid-email-format")
+        val properties = matchingMixedProperties().apply { put("regex", "invalid-email-format") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1101,8 +1096,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagNotRegexViolation() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email matches not_regex exclusion pattern
-        val properties = mapOf("email" to "example@example.com@yahoo.com")
+        val properties = matchingMixedProperties().apply { put("not_regex", "example@example.com@yahoo.com") }
         val result = evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
         assertEquals(false, result)
     }
@@ -1111,8 +1105,7 @@ internal class FlagEvaluatorTest {
     internal fun testAllConditionsFlagIsSetViolation() {
         val flag = createMixedConditionsFlag()
 
-        // Negative case: email is not set
-        val properties = mapOf("name" to "Test User")
+        val properties = matchingMixedProperties().apply { remove("is_set") }
         try {
             evaluator.matchFeatureFlagProperties(flag, "user-123", properties)
             assertTrue("Should have thrown InconclusiveMatchException", false)
@@ -1229,6 +1222,10 @@ internal class FlagEvaluatorTest {
         assertEquals(true, result)
     }
 
+    private fun matchingMixedProperties(): MutableMap<String, Any?> =
+        listOf("exact", "is_not", "icontains", "not_icontains", "regex", "not_regex", "is_set")
+            .associateWith<String, Any?> { "example@example.com" }.toMutableMap()
+
     internal fun createMixedConditionsFlag(): FlagDefinition {
         val json =
             """
@@ -1299,7 +1296,15 @@ internal class FlagEvaluatorTest {
             }
             """.trimIndent()
 
-        return config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+        // Give each ANDed criterion its own input so a negative case can fail only its target.
+        val document = com.google.gson.JsonParser.parseString(json).asJsonObject
+        val properties =
+            document.getAsJsonObject("filters").getAsJsonArray("groups")[0]
+                .asJsonObject.getAsJsonArray("properties")
+        properties.forEach { property ->
+            property.asJsonObject.addProperty("key", property.asJsonObject["operator"].asString)
+        }
+        return config.serializer.gson.fromJson(document, FlagDefinition::class.java)
     }
 
     internal fun createCohortMemberFlag(): FlagDefinition {

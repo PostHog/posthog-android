@@ -17,7 +17,6 @@ import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 internal class PostHogSerializerTest {
@@ -161,46 +160,39 @@ internal class PostHogSerializerTest {
     fun `serializes legacy file`() {
         val sut = getSut()
 
-        val theFile = File("src/test/resources/legacy/_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI")
-        val legacy =
-            QueueFile.Builder(theFile)
-                .forceLegacy(true)
-                .build()
-
-        assertEquals(19, legacy.size())
-        val it = legacy.iterator()
-        val events = mutableListOf<PostHogEvent>()
-        while (it.hasNext()) {
-            val bytes = it.next()
-
-            val event = sut.deserialize<PostHogEvent>(bytes.inputStream().reader().buffered())
-            assertNotNull(event)
-            events.add(event)
-        }
+        val events = readLegacyEvents(sut, "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI")
         assertEquals(19, events.size)
+        assertEquals(
+            mapOf("theEvent" to 7, "\$identify" to 4, "\$create_alias" to 4, "\$screen" to 4),
+            events.groupingBy { it.event }.eachCount(),
+        )
+        assertEquals("theEvent", events.first().event)
+        assertEquals("c9a96833-e10c-49b9-ac2a-408b5821c3a3", events.first().distinctId)
+        assertEquals(parseISO8601Date("2023-10-03T08:39:27.475Z"), events.first().timestamp)
+        assertEquals("theNewDistinct", events.last().distinctId)
+        assertEquals("propValue", events.first().properties?.get("propKey"))
     }
 
     @Test
     fun `serializes legacy file 2`() {
         val sut = getSut()
 
-        val theFile = File("src/test/resources/legacy/_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI2")
-        val legacy =
-            QueueFile.Builder(theFile)
-                .forceLegacy(true)
-                .build()
-
-        assertEquals(16, legacy.size())
-        val it = legacy.iterator()
-        val events = mutableListOf<PostHogEvent>()
-        while (it.hasNext()) {
-            val bytes = it.next()
-
-            val event = sut.deserialize<PostHogEvent>(bytes.inputStream().reader().buffered())
-            assertNotNull(event)
-            events.add(event)
-        }
+        val events = readLegacyEvents(sut, "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI2")
         assertEquals(16, events.size)
+        assertEquals(List(4) { listOf("\$identify", "\$create_alias", "\$screen", "theEvent") }.flatten(), events.map { it.event })
+        assertEquals(setOf("theNewDistinct"), events.map { it.distinctId }.toSet())
+        assertEquals(parseISO8601Date("2023-10-03T09:10:29.614Z"), events.first().timestamp)
+        assertEquals("propValue", events.last().properties?.get("propKey"))
+    }
+
+    private fun readLegacyEvents(
+        serializer: PostHogSerializer,
+        name: String,
+    ): List<PostHogEvent> {
+        val copy = File("src/test/resources/legacy/$name").copyTo(tmpDir.newFile(), overwrite = true)
+        return QueueFile.Builder(copy).forceLegacy(true).build().use { queue ->
+            queue.map { bytes -> bytes.inputStream().reader().buffered().use { serializer.deserialize<PostHogEvent>(it) } }
+        }
     }
 
     @Test

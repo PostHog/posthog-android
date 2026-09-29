@@ -321,28 +321,37 @@ internal class PostHogReplayBufferQueueTest {
                 } catch (e: Throwable) {
                     migrationError.set(e)
                 }
-            }.apply { start() }
-        targetExecutor.awaitQueuedTask()
+            }.apply {
+                isDaemon = true
+                start()
+            }
+        try {
+            targetExecutor.awaitQueuedTask()
 
-        queue.add(createEvent("snapshot_during_migration"))
-        assertEquals(1, queue.depth)
+            queue.add(createEvent("snapshot_during_migration"))
+            assertEquals(1, queue.depth)
 
-        targetExecutor.runNext()
-        migrationThread.join(2_000)
+            targetExecutor.runNext()
+            migrationThread.join(2_000)
 
-        assertFalse(migrationThread.isAlive)
-        migrationError.get()?.let { throw AssertionError("Migration failed", it) }
-        val targetDir = File(targetStoragePrefix, API_KEY)
-        assertEquals(2, migratedCount.get())
-        assertEquals(
-            listOf("snapshot_before_1", "snapshot_before_2"),
-            eventNamesInDirectory(config, targetDir),
-        )
-        assertEquals(
-            listOf("snapshot_during_migration"),
-            eventNamesInDirectory(config, bufferDir),
-        )
-        assertEquals(1, queue.depth)
+            assertFalse(migrationThread.isAlive)
+            migrationError.get()?.let { throw AssertionError("Migration failed", it) }
+            val targetDir = File(targetStoragePrefix, API_KEY)
+            assertEquals(2, migratedCount.get())
+            assertEquals(
+                listOf("snapshot_before_1", "snapshot_before_2"),
+                eventNamesInDirectory(config, targetDir),
+            )
+            assertEquals(
+                listOf("snapshot_during_migration"),
+                eventNamesInDirectory(config, bufferDir),
+            )
+            assertEquals(1, queue.depth)
+        } finally {
+            migrationThread.interrupt()
+            migrationThread.join(2_000)
+            assertFalse(migrationThread.isAlive, "Migration worker did not terminate")
+        }
     }
 
     @Test

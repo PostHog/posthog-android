@@ -362,15 +362,21 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `optOut state persists across instance`() {
+    fun `stateless optOut preferences are isolated between instances`() {
         sut = createStatelessInstance()
-        config = createConfig()
-
+        config = createConfig().apply { persistOptOut = true }
         sut.setup(config)
-        assertFalse(sut.isOptOut())
-
         sut.optOut()
         assertTrue(sut.isOptOut())
+        assertEquals(true, sut.getPreferencesPublic().getValue(OPT_OUT))
+        sut.close()
+
+        // Stateless setup deliberately owns an instance-local memory store.
+        sut = createStatelessInstance()
+        config = createConfig().apply { persistOptOut = true }
+        sut.setup(config)
+        assertFalse(sut.isOptOut())
+        assertNull(sut.getPreferencesPublic().getValue(OPT_OUT))
     }
 
     @Test
@@ -495,6 +501,7 @@ internal class PostHogStatelessTest {
     fun `captureStateless does nothing when not enabled`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
+        sut.setMockQueue(mockQueue)
 
         sut.captureStateless("test", "user123")
 
@@ -1597,6 +1604,7 @@ internal class PostHogStatelessTest {
     fun `captureExceptionStateless does nothing when not enabled`() {
         val mockQueue = MockQueue()
         sut = createStatelessInstance()
+        sut.setMockQueue(mockQueue)
 
         val exception = RuntimeException("Test exception")
 

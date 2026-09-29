@@ -3,277 +3,154 @@ package com.posthog
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogSerializer
-import com.posthog.internal.PostHogThreadFactory
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 internal class PostHogBeforeSendTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
-    private val queueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
-    private val replayQueueExecutor =
-        Executors.newSingleThreadScheduledExecutor(
-            PostHogThreadFactory("TestReplayQueue"),
-        )
-    private val remoteConfigExecutor =
-        Executors.newSingleThreadScheduledExecutor(
-            PostHogThreadFactory("TestRemoteConfig"),
-        )
-    private val cachedEventsExecutor =
-        Executors.newSingleThreadScheduledExecutor(
-            PostHogThreadFactory("TestCachedEvents"),
-        )
     private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
-    private lateinit var config: PostHogConfig
-
-    data class BeforeSendTestEventModel(
-        val targetKey: String,
-        val trigger: (PostHogInterface) -> Unit,
-    )
 
     @Suppress("DEPRECATION")
-    fun getSut(
-        host: String,
-        flushAt: Int = 1,
-        storagePrefix: String = tmpDir.newFolder().absolutePath,
-        optOut: Boolean = false,
-        preloadFeatureFlags: Boolean = false,
-        reloadFeatureFlags: Boolean = true,
-        sendFeatureFlagEvent: Boolean = true,
-        reuseAnonymousId: Boolean = false,
-        integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
-        cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        listBeforeSend: List<PostHogBeforeSend>? = null,
-    ): PostHogInterface {
-        config =
-            PostHogConfig(API_KEY, host).apply {
-                // for testing
-                this.flushAt = flushAt
-                this.storagePrefix = storagePrefix
-                this.optOut = optOut
-                this.preloadFeatureFlags = preloadFeatureFlags
-                if (integration != null) {
-                    addIntegration(integration)
-                }
-                this.sendFeatureFlagEvent = sendFeatureFlagEvent
-                this.reuseAnonymousId = reuseAnonymousId
-                this.cachePreferences = cachePreferences
-                this.remoteConfig = remoteConfig
-                listBeforeSend?.map {
-                    addBeforeSend(it)
-                }
+    private fun captureWithHooks(
+        hooks: List<PostHogBeforeSend>,
+        trigger: (PostHogInterface) -> Unit = { it.getFeatureFlag("key") },
+    ): List<RecordedRequest> {
+        val http = mockHttp()
+        val queueExecutor = Executors.newSingleThreadScheduledExecutor()
+        val replayExecutor = Executors.newSingleThreadScheduledExecutor()
+        val remoteExecutor = Executors.newSingleThreadScheduledExecutor()
+        val cachedExecutor = Executors.newSingleThreadScheduledExecutor()
+        val config =
+            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+                flushAt = 1
+                storagePrefix = tmpDir.newFolder().absolutePath
+                replayStoragePrefix = tmpDir.newFolder().absolutePath
+                preloadFeatureFlags = false
+                remoteConfig = false
+                cachePreferences = PostHogMemoryPreferences()
+                hooks.forEach { addBeforeSend(it) }
             }
-        return PostHog.withInternal(
-            config,
-            queueExecutor,
-            replayQueueExecutor,
-            remoteConfigExecutor,
-            cachedEventsExecutor,
-            reloadFeatureFlags,
-        )
-    }
-
-    private val listEvents =
-        listOf(
-            BeforeSendTestEventModel(
-                targetKey = "test_event",
-                trigger = {
-                    it.capture("test_event")
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.SCREEN.event,
-                trigger = {
-                    it.screen("screen")
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.SNAPSHOT.event,
-                trigger = {
-                    it.capture(PostHogEventName.SNAPSHOT.event)
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.IDENTIFY.event,
-                trigger = {
-                    it.identify(distinctId = "user_id")
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.GROUP_IDENTIFY.event,
-                trigger = {
-                    it.group("type", "key")
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.CREATE_ALIAS.event,
-                trigger = {
-                    it.alias("alias")
-                },
-            ),
-            BeforeSendTestEventModel(
-                targetKey = PostHogEventName.FEATURE_FLAG_CALLED.event,
-                trigger = {
-                    it.getFeatureFlag("key")
-                },
-            ),
-        )
-
-    @Test
-    fun `drop events`() {
-        for (model in listEvents) {
-            val http = mockHttp()
-            val url = http.url("/")
-            val postHogInterface =
-                getSut(
-                    url.toString(),
-                    listBeforeSend =
-                        listOf(
-                            PostHogBeforeSend { event ->
-                                if (event.event == model.targetKey) {
-                                    null
-                                } else {
-                                    event
-                                }
-                            },
-                        ),
-                )
-
-            model.trigger(postHogInterface)
-
+        val sut = PostHog.withInternal(config, queueExecutor, replayExecutor, remoteExecutor, cachedExecutor, false)
+        try {
+            trigger(sut)
+            sut.flush()
             queueExecutor.shutdownAndAwaitTermination()
-            replayQueueExecutor.shutdownAndAwaitTermination()
-
-            assertEquals(0, http.requestCount)
-            postHogInterface.close()
+            replayExecutor.shutdownAndAwaitTermination()
+            return List(http.requestCount) { assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)) }
+        } finally {
+            sut.close()
+            listOf(queueExecutor, replayExecutor, remoteExecutor, cachedExecutor).forEach { it.shutdownAndAwaitTermination() }
+            http.shutdown()
         }
     }
 
     @Test
-    fun `drop events with copy`() {
-        val http = mockHttp()
-        val url = http.url("/")
-        val postHogInterface: PostHogInterface =
-            getSut(
-                url.toString(),
-                listBeforeSend =
-                    listOf(
-                        PostHogBeforeSend { event ->
-                            event.copy(event = PostHogEventName.SCREEN.event)
-                        },
-                    ),
+    fun `drop events`() {
+        val cases =
+            listOf<Pair<String, (PostHogInterface) -> Unit>>(
+                "test_event" to { it.capture("test_event") },
+                PostHogEventName.SCREEN.event to { it.screen("screen") },
+                PostHogEventName.SNAPSHOT.event to {
+                    it.capture(PostHogEventName.SNAPSHOT.event, properties = mapOf("\$session_id" to uuid.toString()))
+                },
+                PostHogEventName.IDENTIFY.event to { it.identify("user_id") },
+                PostHogEventName.GROUP_IDENTIFY.event to { it.group("type", "key") },
+                PostHogEventName.CREATE_ALIAS.event to { it.alias("alias") },
+                PostHogEventName.FEATURE_FLAG_CALLED.event to { it.getFeatureFlag("key") },
             )
-        postHogInterface.getFeatureFlag("key")
+        for ((eventName, trigger) in cases) {
+            for (drop in listOf(false, true)) {
+                val seen = mutableListOf<String>()
+                val requests =
+                    captureWithHooks(
+                        listOf(
+                            PostHogBeforeSend { event ->
+                                seen.add(event.event)
+                                if (drop) null else event
+                            },
+                        ),
+                        trigger,
+                    )
+                assertEquals(setOf(eventName), seen.toSet(), "hook invocation for $eventName, drop=$drop")
+                assertEquals(if (drop) 0 else 1, requests.size, "delivery for $eventName, drop=$drop")
+            }
+        }
+    }
 
-        queueExecutor.shutdownAndAwaitTermination()
-        replayQueueExecutor.shutdownAndAwaitTermination()
-
-        assertEquals(1, http.requestCount)
-        postHogInterface.close()
+    @Test
+    fun `sends the event returned by a copy hook`() {
+        val requests =
+            captureWithHooks(
+                listOf(PostHogBeforeSend { it.copy(event = PostHogEventName.SCREEN.event) }),
+            )
+        assertEquals(1, requests.size)
+        val batch = serializer.deserialize<PostHogBatchEvent>(requests.single().body.unGzip().reader())
+        assertEquals(listOf(PostHogEventName.SCREEN.event), batch.batch.map { it.event })
     }
 
     @Test
     fun `mutate event properties`() {
-        val http = mockHttp()
-        val url = http.url("/")
-        val postHogInterface: PostHogInterface =
-            getSut(
-                url.toString(),
-                listBeforeSend =
-                    listOf(
-                        PostHogBeforeSend { event ->
-                            event.properties?.set("key", "value")
-                            event
-                        },
-                    ),
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        event.properties?.set("key", "value")
+                        event
+                    },
+                ),
             )
-        postHogInterface.getFeatureFlag("key")
-
-        queueExecutor.shutdownAndAwaitTermination()
-        replayQueueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        val theEvent = batch.batch.first()
-
-        assertEquals("value", theEvent.properties?.get("key"))
-
-        postHogInterface.close()
+        assertEquals(1, requests.size)
+        val batch = serializer.deserialize<PostHogBatchEvent>(requests.single().body.unGzip().reader())
+        assertEquals("value", batch.batch.single().properties?.get("key"))
     }
 
     @Test
     fun `chains multiple hooks, each receiving the previous hook's output`() {
-        val http = mockHttp()
-        val url = http.url("/")
-        val postHogInterface: PostHogInterface =
-            getSut(
-                url.toString(),
-                listBeforeSend =
-                    listOf(
-                        PostHogBeforeSend { event ->
-                            event.copy(
-                                properties =
-                                    event.properties?.toMutableMap()?.apply {
-                                        set("first", "1")
-                                    },
-                            )
-                        },
-                        PostHogBeforeSend { event ->
-                            event.properties?.set("sawFirst", event.properties?.get("first").toString())
-                            event
-                        },
-                    ),
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        event.copy(properties = event.properties?.toMutableMap()?.apply { set("first", "1") })
+                    },
+                    PostHogBeforeSend { event ->
+                        event.properties?.set("sawFirst", event.properties?.get("first").toString())
+                        event
+                    },
+                ),
             )
-        postHogInterface.getFeatureFlag("key")
-
-        queueExecutor.shutdownAndAwaitTermination()
-        replayQueueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        val theEvent = batch.batch.first()
-
-        assertEquals("1", theEvent.properties?.get("first"))
-        assertEquals("1", theEvent.properties?.get("sawFirst"))
-
-        postHogInterface.close()
+        assertEquals(1, requests.size)
+        val batch = serializer.deserialize<PostHogBatchEvent>(requests.single().body.unGzip().reader())
+        val event = batch.batch.single()
+        assertEquals("1", event.properties?.get("first"))
+        assertEquals("1", event.properties?.get("sawFirst"))
     }
 
     @Test
     fun `drops the event when a hook throws`() {
-        val http = mockHttp()
-        val url = http.url("/")
-        val postHogInterface: PostHogInterface =
-            getSut(
-                url.toString(),
-                listBeforeSend =
-                    listOf(
-                        PostHogBeforeSend { event ->
-                            event.properties?.set("key", "value")
-                            event
-                        },
-                        PostHogBeforeSend {
-                            throw RuntimeException("boom")
-                        },
-                    ),
+        var callsAfterThrow = 0
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        event.properties?.set("key", "value")
+                        event
+                    },
+                    PostHogBeforeSend { throw RuntimeException("boom") },
+                    PostHogBeforeSend {
+                        callsAfterThrow++
+                        it
+                    },
+                ),
             )
-        postHogInterface.getFeatureFlag("key")
-
-        queueExecutor.shutdownAndAwaitTermination()
-        replayQueueExecutor.shutdownAndAwaitTermination()
-
-        assertEquals(0, http.requestCount)
-
-        postHogInterface.close()
+        assertEquals(0, requests.size)
+        assertEquals(0, callsAfterThrow)
     }
 }

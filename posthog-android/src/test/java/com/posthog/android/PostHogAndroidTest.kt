@@ -48,6 +48,8 @@ internal class PostHogAndroidTest {
 
     @AfterTest
     fun `set down`() {
+        PostHog.close()
+        PostHogAndroid.resetAndroidConfig()
         tmpDir.root.deleteRecursively()
     }
 
@@ -111,14 +113,14 @@ internal class PostHogAndroidTest {
         val secondaryPrefs = PostHogMemoryPreferences()
 
         PostHogAndroid.setup(context, PostHogAndroidConfig(API_KEY).apply { cachePreferences = primaryPrefs })
-        PostHogAndroid.with(context, PostHogAndroidConfig(API_KEY_2).apply { cachePreferences = secondaryPrefs })
-
-        PostHogAndroid.capturePushNotificationOpened(Intent().putExtra("google.message_id", "probe"))
-
-        // The event goes to the shared instance, so the dedupe id must land in its preferences —
-        // never in the secondary project's file.
-        assertEquals("probe", primaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
-        assertNull(secondaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+        val secondary = PostHogAndroid.with(context, PostHogAndroidConfig(API_KEY_2).apply { cachePreferences = secondaryPrefs })
+        try {
+            PostHogAndroid.capturePushNotificationOpened(Intent().putExtra("google.message_id", "probe"))
+            assertEquals("probe", primaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+            assertNull(secondaryPrefs.getValue(PUSH_OPENED_MESSAGE_IDS))
+        } finally {
+            secondary.close()
+        }
     }
 
     @Test
@@ -307,6 +309,8 @@ internal class PostHogAndroidTest {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 captureScreenViews = false
+                capturePushNotificationOpened = false
+                sessionReplay = false
             }
 
         mockContextAppStart(context, tmpDir)
@@ -325,6 +329,8 @@ internal class PostHogAndroidTest {
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 captureDeepLinks = false
+                capturePushNotificationOpened = false
+                sessionReplay = false
             }
 
         mockContextAppStart(context, tmpDir)

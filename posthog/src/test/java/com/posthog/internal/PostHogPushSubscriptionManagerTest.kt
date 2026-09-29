@@ -3,8 +3,9 @@ package com.posthog.internal
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
+import com.posthog.TestHttpServers
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
-import com.posthog.mockHttp
+import com.posthog.shutdownAndAwaitTermination
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -30,6 +31,16 @@ internal class PostHogPushSubscriptionManagerTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
+    @get:Rule
+    val servers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = servers.mockHttp(total, response)
+
+    private val managers = mutableListOf<PostHogPushSubscriptionManager>()
+
     private val executor: ExecutorService = Executors.newSingleThreadExecutor(PostHogThreadFactory("TestPushSub"))
 
     @Volatile
@@ -37,7 +48,8 @@ internal class PostHogPushSubscriptionManagerTest {
 
     @AfterTest
     fun `set down`() {
-        executor.shutdownNow()
+        managers.forEach { it.close() }
+        executor.shutdownAndAwaitTermination()
         tmpDir.root.deleteRecursively()
     }
 
@@ -77,6 +89,7 @@ internal class PostHogPushSubscriptionManagerTest {
         pushAppIds: List<String>? = null,
         pushAppIdsProvider: (() -> List<String>?)? = null,
     ): Triple<PostHogPushSubscriptionManager, PostHogConfig, String?> {
+        servers.track(http)
         val config =
             PostHogConfig(API_KEY, host = http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
@@ -88,6 +101,7 @@ internal class PostHogPushSubscriptionManagerTest {
             }
         val api = PostHogApi(config)
         val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
+        managers.add(manager)
         return Triple(manager, config, storagePrefix)
     }
 
@@ -97,7 +111,7 @@ internal class PostHogPushSubscriptionManagerTest {
         File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.unregister.pending")
 
     private fun flush() {
-        executor.submit {}.get()
+        executor.submit {}.get(5, TimeUnit.SECONDS)
     }
 
     private fun readRecord(
@@ -1702,27 +1716,63 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `an app_id becoming registerable clears the delivered marker and re-registers`() {
+    fun `an app_id becoming registerable sends a previously gated undelivered token`() {
         val http = mockHttp()
+        var appIds: List<String>? = emptyList()
+        val (sut, config, storagePrefix) = getSut(http, pushAppIdsProvider = { appIds })
+
+        sut.register("fcm-token", "firebase-project")
+        flush()
+        assertEquals(0, http.requestCount)
+        assertNull(assertNotNull(readRecord(config, pendingFile(storagePrefix!!))).deliveredForDistinctId)
+
+        appIds = listOf("firebase-project")
+        sut.onPushAppIdsChanged(setOf("firebase-project"))
+        flush()
+
+        assertEquals(1, http.requestCount)
+        val request = assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals("POST", request.method)
+        assertEquals("distinct-1", parsedDistinctId(request))
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `an app_id becoming registerable clears the delivered marker and re-registers`() {
+        val http = mockHttp(total = 2)
         // The device registered while the project had no integration: the server answered 200 and
         // discarded the token, but the SDK recorded a delivery and stopped asking. Clearing that
         // marker is the only thing that reaches the device once the project configures push.
-        var appIds: List<String>? = emptyList()
-        // getSut only supplies a fixed list; this case needs one that changes mid-test.
-        val (_, config, storagePrefix) = getSut(http)
-        val gated =
-            PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
+        var appIds: List<String>? = null
+        // No published list permits a send; the successful marker predates the config transition.
+        val (gated, config, storagePrefix) = getSut(http, pushAppIdsProvider = { appIds })
 
         gated.register("fcm-token", "firebase-project")
         flush()
-        assertEquals(0, http.requestCount)
+        assertEquals(1, http.requestCount)
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
 
+        // The transition must be durable even if the process exits before it can resend.
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = false
+            }
         appIds = listOf("firebase-project")
         gated.onPushAppIdsChanged(setOf("firebase-project"))
         flush()
+        assertNull(assertNotNull(readRecord(config, pendingFile(storagePrefix))).deliveredForDistinctId)
+        assertEquals(1, http.requestCount)
+        gated.close()
+
+        val (restarted, _, _) = getSut(http, storagePrefix = storagePrefix, pushAppIds = appIds)
+        restarted.retryPending()
+        flush()
 
         assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
-        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+        assertEquals(2, http.requestCount)
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix))?.deliveredForDistinctId)
+        http.shutdown()
     }
 
     @Test
@@ -1732,20 +1782,31 @@ internal class PostHogPushSubscriptionManagerTest {
         // detect. The manager signals durability by invoking onDurable once, on the executor, after it
         // has handled (and persisted) the marker clear.
         val http = mockHttp()
-        var appIds: List<String>? = emptyList()
-        val (_, config, _) = getSut(http)
-        val gated =
-            PostHogPushSubscriptionManager(config, PostHogApi(config), executor, { distinctId }, { appIds })
+        var appIds: List<String>? = null
+        val (gated, config, storagePrefix) = getSut(http, pushAppIdsProvider = { appIds })
 
         gated.register("fcm-token", "firebase-project")
         flush()
 
+        assertEquals("distinct-1", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+        // Keep the cleared marker observable rather than immediately replacing it after a send.
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = false
+            }
         var durableCalls = 0
+        var durableRecord: PostHogPushSubscriptionManager.PendingRecord? = null
         appIds = listOf("firebase-project")
-        gated.onPushAppIdsChanged(setOf("firebase-project")) { durableCalls++ }
+        gated.onPushAppIdsChanged(setOf("firebase-project")) {
+            durableCalls++
+            durableRecord = readRecord(config, pendingFile(storagePrefix))
+        }
         flush()
 
         assertEquals(1, durableCalls)
+        assertNull(assertNotNull(durableRecord).deliveredForDistinctId)
+        assertEquals(1, http.requestCount)
+        http.shutdown()
     }
 
     @Test

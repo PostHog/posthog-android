@@ -163,7 +163,7 @@ internal class PostHogNativeCrashIntegrationTest {
 
     @Test
     fun `captures native crashes and ignores other exit reasons`() {
-        addExitRecord(ApplicationExitInfo.REASON_ANR, timestamp = 100)
+        addExitRecord(ApplicationExitInfo.REASON_ANR, timestamp = 100, trace = tombstoneBytes())
         addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 200, trace = tombstoneBytes())
 
         install()
@@ -397,18 +397,26 @@ internal class PostHogNativeCrashIntegrationTest {
     fun `an oversized tombstone is acknowledged and skipped`() {
         // streams 16MB + 1 byte without materializing it, so the test pins the
         // cap without a matching allocation of its own
+        var reachedEof = false
         val oversized =
             object : java.io.InputStream() {
                 private var remaining = 16L * 1024 * 1024 + 1
 
-                override fun read(): Int = if (remaining-- > 0) 0 else -1
+                override fun read(): Int {
+                    if (remaining-- > 0) return 0
+                    reachedEof = true
+                    return -1
+                }
 
                 override fun read(
                     b: ByteArray,
                     off: Int,
                     len: Int,
                 ): Int {
-                    if (remaining <= 0) return -1
+                    if (remaining <= 0) {
+                        reachedEof = true
+                        return -1
+                    }
                     val count = minOf(len.toLong(), remaining).toInt()
                     remaining -= count
                     return count
@@ -438,6 +446,7 @@ internal class PostHogNativeCrashIntegrationTest {
         // oversized is deterministic, so the record must not wedge the scanner
         // by holding the watermark below it forever
         assertEquals(650, watermark())
+        assertEquals(false, reachedEof, "oversized input must be rejected before reading to EOF")
     }
 
     @Test

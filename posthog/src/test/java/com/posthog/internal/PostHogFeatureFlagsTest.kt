@@ -2,15 +2,17 @@ package com.posthog.internal
 
 import com.posthog.API_KEY
 import com.posthog.PostHogConfig
+import com.posthog.TestHttpServers
 import com.posthog.awaitExecution
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
 import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVENTS
-import com.posthog.mockHttp
 import com.posthog.shutdownAndAwaitTermination
 import okhttp3.mockwebserver.MockResponse
+import org.junit.Rule
 import java.io.File
 import java.util.concurrent.Executors
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,6 +22,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
+    @get:Rule
+    val httpServers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = httpServers.mockHttp(total, response)
+
+    private val clients = mutableListOf<PostHogRemoteConfig>()
+
+    @AfterTest
+    fun cleanup() {
+        executor.shutdownAndAwaitTermination()
+        clients.forEach { it.clear() }
+    }
+
     private val executor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("Test"))
 
     private val file = File("src/test/resources/json/basic-flags-no-errors.json")
@@ -38,7 +56,7 @@ internal class PostHogFeatureFlagsTest {
                 cachePreferences = preferences
             }
         val api = PostHogApi(config!!)
-        return PostHogRemoteConfig(config!!, api, executor = executor)
+        return PostHogRemoteConfig(config!!, api, executor = executor).also { clients.add(it) }
     }
 
     @BeforeTest
@@ -393,7 +411,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `cache feature flags after loading from the network`() {
+    fun `load feature flags from cache before loading from the network`() {
         // preload items
         preferences.setValue(FEATURE_FLAGS, mapOf("foo" to true))
         preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("foo" to true))
@@ -413,7 +431,7 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
-    fun `load feature flags from cache if not loaded from the network yet`() {
+    fun `persist feature flags after loading from the network`() {
         val http =
             mockHttp(
                 response =
@@ -459,9 +477,11 @@ internal class PostHogFeatureFlagsTest {
         sut.loadFeatureFlags("test_id", null, null)
         executor.awaitExecution()
 
-        // Verify flags are loaded
-        assertNotNull(sut.getFeatureFlags())
-        assertNotNull(preferences.getValue(FEATURE_FLAGS))
+        // Verify the precondition as well as the retained state.
+        assertEquals(mapOf("flag1" to true), sut.getFeatureFlags())
+        assertEquals(mapOf("flag1" to true), preferences.getValue(FEATURE_FLAGS))
+        assertEquals(mapOf("flag1" to "payload1"), preferences.getValue(FEATURE_FLAGS_PAYLOAD))
+        assertEquals("payload1", sut.getFeatureFlagPayload("flag1"))
 
         // Send quota limited response
         http.enqueue(
@@ -478,9 +498,12 @@ internal class PostHogFeatureFlagsTest {
         sut.loadFeatureFlags("test_id", null, null)
         executor.awaitExecution()
 
-        // Verify flags are retained
-        assertNotNull(sut.getFeatureFlags())
-        assertNotNull(preferences.getValue(FEATURE_FLAGS))
+        executor.shutdownAndAwaitTermination()
+        assertEquals(2, http.requestCount)
+        assertEquals(mapOf("flag1" to true), sut.getFeatureFlags())
+        assertEquals(mapOf("flag1" to true), preferences.getValue(FEATURE_FLAGS))
+        assertEquals(mapOf("flag1" to "payload1"), preferences.getValue(FEATURE_FLAGS_PAYLOAD))
+        assertEquals("payload1", sut.getFeatureFlagPayload("flag1"))
     }
 
     @Test

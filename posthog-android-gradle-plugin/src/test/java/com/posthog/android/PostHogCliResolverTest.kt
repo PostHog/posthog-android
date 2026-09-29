@@ -118,11 +118,10 @@ internal class PostHogCliResolverTest {
     }
 
     @Test
-    fun `falls back to a global CLI when a local launcher cannot find Node`() {
+    fun `does not resolve a project-local launcher when Node is unavailable`() {
         val androidRoot = temporaryFolder.newFolder("android")
         createLauncher(androidRoot, "posthog-cli", executable = true)
         val home = temporaryFolder.newFolder("home")
-        val globalCli = createExecutable(File(home, ".local/bin/posthog-cli"))
 
         val resolved =
             resolvePostHogCliExecutable(
@@ -132,11 +131,11 @@ internal class PostHogCliResolverTest {
                 home = home,
                 workingDirectory = androidRoot,
                 isWindows = false,
-                cliInstallLocations = listOf(globalCli),
+                cliInstallLocations = emptyList(),
                 nodeInstallLocations = emptyList(),
             )
 
-        assertEquals(globalCli.absolutePath, resolved)
+        assertEquals(POSTHOG_CLI_DEFAULT_EXECUTABLE, resolved)
     }
 
     @Test

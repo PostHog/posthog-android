@@ -6,7 +6,7 @@ internal class FakeSharedPreferences : SharedPreferences {
     private val preferences = mutableMapOf<String, Any?>()
 
     override fun getAll(): MutableMap<String, *> {
-        return preferences
+        return preferences.toMutableMap()
     }
 
     override fun getString(

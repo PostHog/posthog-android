@@ -1,7 +1,6 @@
 package com.posthog.surveys
 
 import com.posthog.internal.surveys.hasWaitPeriodPassed
-import java.util.Calendar
 import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -36,10 +35,11 @@ internal class SurveyWaitPeriodTest {
     @Test
     fun `survey with wait period is filtered when exactly at period boundary`() {
         val survey = createSurveyWithWaitPeriod(7)
-        val now = Date()
+        val now = Date(1_700_000_000_000L)
         val sevenDaysAgo = daysAgo(7, now)
 
         assertFalse(hasWaitPeriodPassed(survey, lastSeenSurveyDate = sevenDaysAgo, now = now))
+        assertTrue(hasWaitPeriodPassed(survey, lastSeenSurveyDate = Date(sevenDaysAgo.time - 1), now = now))
     }
 
     @Test
@@ -57,7 +57,7 @@ internal class SurveyWaitPeriodTest {
         val now = Date()
 
         // ceil of any positive fraction of a day > 0
-        assertTrue(hasWaitPeriodPassed(survey, lastSeenSurveyDate = daysAgo(1, now), now = now))
+        assertTrue(hasWaitPeriodPassed(survey, lastSeenSurveyDate = Date(now.time - 1), now = now))
     }
 
     @Test
@@ -90,10 +90,7 @@ internal class SurveyWaitPeriodTest {
         days: Int,
         from: Date,
     ): Date {
-        val cal = Calendar.getInstance()
-        cal.time = from
-        cal.add(Calendar.DAY_OF_YEAR, -days)
-        return cal.time
+        return Date(from.time - days * 86_400_000L)
     }
 
     private fun createSurveyWithWaitPeriod(waitPeriodInDays: Int?): Survey {

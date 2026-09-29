@@ -32,6 +32,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.Duration
+import java.util.concurrent.FutureTask
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
@@ -147,18 +148,22 @@ internal class PostHogSurveyHostTest {
             compose.activityRule.scenario.recreate()
             compose.runOnIdle {
                 // Enqueue a show from the SDK thread, then invalidate it before main executes it.
-                Thread {
-                    delegate.renderSurvey(
-                        survey,
-                        { shown++ },
-                        { _, _, _ -> null },
-                        { closed++ },
-                    )
-                }.apply {
+                val render =
+                    FutureTask {
+                        delegate.renderSurvey(
+                            survey,
+                            { shown++ },
+                            { _, _, _ -> null },
+                            { closed++ },
+                        )
+                    }
+                Thread(render).apply {
+                    isDaemon = true
                     start()
                     join(2_000)
                     assertFalse(isAlive, "Queued render must finish without waiting for main")
                 }
+                render.get()
                 delegate.cleanupSurveys()
             }
             compose.onNodeWithText("Fresh question?").assertDoesNotExist()
@@ -191,11 +196,14 @@ internal class PostHogSurveyHostTest {
         var closed = 0
         compose.runOnIdle {
             // Cleanup is queued, but a fresh presentation reaches main first.
-            Thread { delegate.cleanupSurveys() }.apply {
+            val cleanup = FutureTask { delegate.cleanupSurveys() }
+            Thread(cleanup).apply {
+                isDaemon = true
                 start()
                 join(2_000)
                 assertFalse(isAlive, "Cleanup must finish without waiting for main")
             }
+            cleanup.get()
             delegate.renderSurvey(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
         }
         compose.onNodeWithText("Fresh question?").assertIsDisplayed()

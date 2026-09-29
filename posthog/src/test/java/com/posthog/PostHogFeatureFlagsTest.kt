@@ -20,6 +20,16 @@ internal class PostHogFeatureFlagsTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
+    @get:Rule
+    val servers = TestHttpServers()
+
+    private fun mockHttp(
+        total: Int = 1,
+        response: MockResponse = MockResponse().setBody(""),
+    ) = servers.mockHttp(total, response)
+
+    private val clients = mutableListOf<PostHogInterface>()
+
     private val queueExecutor =
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueue"))
     private val replayQueueExecutor =
@@ -79,11 +89,13 @@ internal class PostHogFeatureFlagsTest {
             remoteConfigExecutor,
             cachedEventsExecutor,
             reloadFeatureFlags,
-        )
+        ).also { clients.add(it) }
     }
 
     @AfterTest
     fun `set down`() {
+        clients.forEach { it.close() }
+        listOf(queueExecutor, replayQueueExecutor, remoteConfigExecutor, cachedEventsExecutor).forEach { it.shutdownAndAwaitTermination() }
         tmpDir.root.deleteRecursively()
     }
 

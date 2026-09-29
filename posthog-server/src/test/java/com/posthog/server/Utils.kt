@@ -177,7 +177,7 @@ public fun RecordedRequest.parseBatch(): BatchRequest {
  * Mock logger that captures log messages for test verification
  */
 public class TestLogger : PostHogLogger {
-    public val logs: MutableList<String> = mutableListOf()
+    public val logs: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
 
     override fun log(message: String) {
         logs.add(message)

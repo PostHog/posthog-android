@@ -3,6 +3,9 @@ package com.posthog.server.internal
 import com.posthog.internal.EvaluationReason
 import com.posthog.internal.FeatureFlag
 import com.posthog.internal.FeatureFlagMetadata
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -311,25 +314,32 @@ internal class PostHogFeatureFlagCacheTest {
         val numThreads = 10
         val numOperationsPerThread = 100
 
-        val threads = mutableListOf<Thread>()
-
-        repeat(numThreads) { threadId ->
-            val thread =
-                Thread {
-                    repeat(numOperationsPerThread) { operation ->
-                        val key = createTestKey("user-$threadId-$operation")
-                        cache.put(key, flags)
-                        cache.get(key)
+        val executor = Executors.newFixedThreadPool(numThreads)
+        val ready = CountDownLatch(numThreads)
+        val start = CountDownLatch(1)
+        try {
+            val workers =
+                (0 until numThreads).map { threadId ->
+                    executor.submit<Int> {
+                        ready.countDown()
+                        assertTrue(start.await(5, TimeUnit.SECONDS))
+                        repeat(numOperationsPerThread) { operation ->
+                            val key = createTestKey("user-$threadId-$operation")
+                            cache.put(key, flags)
+                            cache.get(key)
+                        }
+                        numOperationsPerThread
                     }
                 }
-            threads.add(thread)
-            thread.start()
+            assertTrue(ready.await(5, TimeUnit.SECONDS))
+            start.countDown()
+            assertEquals(numThreads * numOperationsPerThread, workers.sumOf { it.get(10, TimeUnit.SECONDS) })
+            assertEquals(100, cache.size())
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
         }
-
-        threads.forEach { it.join() }
-
-        // Cache should not exceed max size due to LRU eviction
-        assertTrue(cache.size() <= 100)
     }
 
     @Test

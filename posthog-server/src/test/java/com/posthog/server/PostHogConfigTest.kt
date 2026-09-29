@@ -110,11 +110,7 @@ internal class PostHogConfigTest {
 
         config.addBeforeSend(beforeSend)
 
-        // Verify by converting to core config and checking it was applied
-        val coreConfig = config.asCoreConfig()
-        // Note: We can't directly test the internal list, but we can test that
-        // it gets applied to the core config through the asCoreConfig method
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(beforeSend), config.asCoreConfig().beforeSendList)
     }
 
     @Test
@@ -123,11 +119,10 @@ internal class PostHogConfigTest {
         val beforeSend = createMockBeforeSend()
 
         config.addBeforeSend(beforeSend)
+        assertEquals(listOf(beforeSend), config.asCoreConfig().beforeSendList)
         config.removeBeforeSend(beforeSend)
 
-        // Verify removal by ensuring the core config is created without issues
-        val coreConfig = config.asCoreConfig()
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(emptyList(), config.asCoreConfig().beforeSendList)
     }
 
     @Test
@@ -137,9 +132,7 @@ internal class PostHogConfigTest {
 
         config.addIntegration(integration)
 
-        // Verify by converting to core config
-        val coreConfig = config.asCoreConfig()
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(integration), config.asCoreConfig().integrations)
     }
 
     @Test
@@ -200,10 +193,7 @@ internal class PostHogConfigTest {
         config.addBeforeSend(beforeSend1)
         config.addBeforeSend(beforeSend2)
 
-        val coreConfig = config.asCoreConfig()
-
-        // Verify the core config was created successfully
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(beforeSend1, beforeSend2), config.asCoreConfig().beforeSendList)
     }
 
     @Test
@@ -215,10 +205,7 @@ internal class PostHogConfigTest {
         config.addIntegration(integration1)
         config.addIntegration(integration2)
 
-        val coreConfig = config.asCoreConfig()
-
-        // Verify the core config was created successfully
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(integration1, integration2), config.asCoreConfig().integrations)
     }
 
     @Test
@@ -496,12 +483,10 @@ internal class PostHogConfigTest {
         config.addBeforeSend(beforeSend2)
         config.addBeforeSend(beforeSend3)
 
-        // Remove one callback
+        assertEquals(listOf(beforeSend1, beforeSend2, beforeSend3), config.asCoreConfig().beforeSendList)
         config.removeBeforeSend(beforeSend2)
 
-        // Verify by creating core config (which applies all callbacks)
-        val coreConfig = config.asCoreConfig()
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(beforeSend1, beforeSend3), config.asCoreConfig().beforeSendList)
     }
 
     @Test
@@ -513,9 +498,7 @@ internal class PostHogConfigTest {
         config.addIntegration(integration1)
         config.addIntegration(integration2)
 
-        // Verify by creating core config (which applies all integrations)
-        val coreConfig = config.asCoreConfig()
-        assertEquals(TEST_API_KEY, coreConfig.apiKey)
+        assertEquals(listOf(integration1, integration2), config.asCoreConfig().integrations)
     }
 
     @Test

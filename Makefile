@@ -59,9 +59,9 @@ releaseAndroidPlugin:
 testReport:
 	./gradlew koverHtmlReport
 
-# compile already runs the tests (tests java and android)
+# Include debug-only Compose interactions even when invoked in CI.
 test:
-	./gradlew testDebugUnitTest
+	./gradlew -PenableDebugTests=true test :posthog-android:testWithoutCompose :posthog-android-gradle-plugin:test :posthog-android-gradle-plugin:functionalTest
 
 # compile already runs the tests (tests only java)
 testJava:
@@ -87,4 +87,4 @@ updateLocks:
 
 # Compose interaction tests require the debug variant, which CI otherwise skips.
 testSurveyUI:
-	CI=false ./gradlew :posthog-android-surveys-compose:testDebugUnitTest
+	./gradlew -PenableDebugTests=true :posthog-android-surveys-compose:testDebugUnitTest

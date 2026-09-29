@@ -3,11 +3,14 @@ package com.posthog.android
 import android.content.SharedPreferences
 
 internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<String, Any?>) : SharedPreferences.Editor {
+    private val pending = mutableMapOf<String, Any?>()
+    private var clearRequested = false
+
     override fun putString(
         key: String,
         value: String?,
     ): SharedPreferences.Editor {
-        preferences[key] = value
+        pending[key] = value
         return this
     }
 
@@ -15,7 +18,7 @@ internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<S
         key: String,
         values: MutableSet<String>?,
     ): SharedPreferences.Editor {
-        preferences[key] = values
+        pending[key] = values?.toMutableSet()
         return this
     }
 
@@ -23,7 +26,7 @@ internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<S
         key: String,
         value: Int,
     ): SharedPreferences.Editor {
-        preferences[key] = value
+        pending[key] = value
         return this
     }
 
@@ -31,7 +34,7 @@ internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<S
         key: String,
         value: Long,
     ): SharedPreferences.Editor {
-        preferences[key] = value
+        pending[key] = value
         return this
     }
 
@@ -39,7 +42,7 @@ internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<S
         key: String,
         value: Float,
     ): SharedPreferences.Editor {
-        preferences[key] = value
+        pending[key] = value
         return this
     }
 
@@ -47,24 +50,31 @@ internal class FakeSharedPreferencesEditor(private val preferences: MutableMap<S
         key: String,
         value: Boolean,
     ): SharedPreferences.Editor {
-        preferences[key] = value
+        pending[key] = value
         return this
     }
 
     override fun remove(key: String): SharedPreferences.Editor {
-        preferences.remove(key)
+        pending[key] = null
         return this
     }
 
     override fun clear(): SharedPreferences.Editor {
-        preferences.clear()
+        clearRequested = true
         return this
     }
 
     override fun commit(): Boolean {
+        apply()
         return true
     }
 
     override fun apply() {
+        if (clearRequested) preferences.clear()
+        pending.forEach { (key, value) ->
+            if (value == null) preferences.remove(key) else preferences[key] = value
+        }
+        clearRequested = false
+        pending.clear()
     }
 }
