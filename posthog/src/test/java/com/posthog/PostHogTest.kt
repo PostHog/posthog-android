@@ -2008,6 +2008,7 @@ internal class PostHogTest {
         assertEquals("\$create_alias", theEvent.event)
         assertNotNull(theEvent.distinctId)
         assertEquals("theAlias", theEvent.properties!!["alias"] as String)
+        assertEquals(theEvent.distinctId, theEvent.properties!!["distinct_id"] as String)
 
         sut.close()
     }
