@@ -1,6 +1,7 @@
 package com.posthog.android.replay
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +10,7 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
+import android.os.Binder
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -312,6 +314,25 @@ internal class PostHogReplayIntegrationTest {
             sut.uninstall()
             curtains.close()
             controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `dialog belongs to its activity scene even when window tokens differ`() {
+        val first = Robolectric.buildActivity(Activity::class.java).setup()
+        val second = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            val sut = getSut()
+            val baseToken = Binder()
+            val dialogParams = WindowManager.LayoutParams().apply { token = Binder() }
+            assertTrue(sut.isSceneWindow(baseToken, first.get(), dialogParams, Dialog(first.get()).window!!))
+            assertFalse(sut.isSceneWindow(baseToken, first.get(), dialogParams, Dialog(second.get()).window!!))
+            assertFalse(sut.isSceneWindow(baseToken, null, dialogParams, Dialog(first.get()).window!!))
+            dialogParams.token = baseToken
+            assertTrue(sut.isSceneWindow(baseToken, null, dialogParams, Dialog(second.get()).window!!))
+        } finally {
+            second.pause().stop().destroy()
+            first.pause().stop().destroy()
         }
     }
 

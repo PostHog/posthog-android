@@ -1,7 +1,9 @@
 package com.posthog.android.replay
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -23,6 +25,7 @@ import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.IBinder
 import android.os.Looper
 import android.text.InputType
 import android.util.TypedValue
@@ -103,6 +106,7 @@ import curtains.touchEventInterceptors
 import curtains.windowAttachCount
 import java.lang.ref.WeakReference
 import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.WeakHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
@@ -127,6 +131,27 @@ public class PostHogReplayIntegration(
     // Guarded by decorViews, together with snapshot-state commits. Stop/resume in the same
     // session must invalidate work too, so session identity alone is not a sufficient lease.
     private var snapshotGeneration: Long = 0
+
+    // Scene state is committed under decorViews, like the existing per-root snapshot history.
+    private val sceneImages = WeakHashMap<View, RRWireframe>()
+    private val sceneDirtyViews = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
+    private val sceneIds = WeakHashMap<View, Int>()
+    private var nextSceneId = 10_000_001
+    private var lastScene: List<RRWireframe>? = null
+    private var sceneViewport: Pair<Int, Int>? = null
+    private var sceneFollowUp = false
+    private var sceneRevision = 0L
+
+    private data class SceneLayer(
+        val view: View,
+        val window: Window,
+        val status: ViewTreeSnapshotStatus,
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val dimAmount: Float,
+    )
 
     private val passwordInputTypes =
         setOf(
@@ -348,24 +373,36 @@ public class PostHogReplayIntegration(
                                             return@onNextDraw
                                         }
 
-                                        submitCapture(drawState) {
-                                            try {
-                                                if (decorViews[decorView]?.drawState !== drawState) {
-                                                    return@submitCapture
+                                        if (config.sessionReplayConfig.screenshot) {
+                                            requestSceneCapture(decorView)
+                                        } else {
+                                            submitCapture(drawState) {
+                                                try {
+                                                    if (decorViews[decorView]?.drawState !== drawState) {
+                                                        return@submitCapture
+                                                    }
+                                                    generateSnapshot(WeakReference(decorView), WeakReference(window))
+                                                } catch (e: Throwable) {
+                                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
                                                 }
-                                                generateSnapshot(WeakReference(decorView), WeakReference(window))
-                                            } catch (e: Throwable) {
-                                                config.logger.log("Session Replay generateSnapshot failed: $e.")
                                             }
                                         }
                                     }
 
                                 val layoutListener =
-                                    ViewTreeObserver.OnGlobalLayoutListener { drawState.recordLayout() }
+                                    ViewTreeObserver.OnGlobalLayoutListener {
+                                        drawState.recordLayout()
+                                        if (isActive() && isNativeSdk && config.sessionReplayConfig.screenshot) {
+                                            requestSceneCapture(decorView)
+                                        }
+                                    }
                                 decorView.viewTreeObserver?.addOnGlobalLayoutListener(layoutListener)
 
                                 val status = ViewTreeSnapshotStatus(listener, layoutListener, drawState = drawState)
                                 decorViews[decorView] = status
+                                if (isActive() && isNativeSdk && config.sessionReplayConfig.screenshot) {
+                                    mainHandler.handler.post { requestSceneCapture(decorView) }
+                                }
                             } catch (e: Throwable) {
                                 config.logger.log("Session Replay onDecorViewReady failed: $e.")
                             }
@@ -413,9 +450,221 @@ public class PostHogReplayIntegration(
         return true
     }
 
+    private fun requestSceneCapture(changedView: View? = null) {
+        if (!isActive() || !isNativeSdk || !config.sessionReplayConfig.screenshot) return
+        synchronized(decorViews) {
+            changedView?.let { sceneDirtyViews.add(it) }
+            sceneRevision++
+        }
+        val layers = selectSceneLayers() ?: return
+        val base = layers.first()
+        val accepted =
+            submitCapture(base.status.drawState) {
+                try {
+                    generateSceneSnapshot(layers)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay scene capture failed: $e.")
+                } finally {
+                    mainHandler.handler.post {
+                        val needsFollowUp = synchronized(decorViews) { sceneFollowUp }
+                        if (needsFollowUp) {
+                            synchronized(decorViews) { sceneFollowUp = false }
+                            requestSceneCapture()
+                        }
+                    }
+                }
+            }
+        if (!accepted) {
+            synchronized(decorViews) { sceneFollowUp = true }
+        }
+    }
+
+    private fun Context.activityOwner(): Activity? {
+        var current: Context = this
+        repeat(10) {
+            if (current is Activity) return current
+            current = (current as? ContextWrapper)?.baseContext ?: return null
+        }
+        return null
+    }
+
+    internal fun isSceneWindow(
+        baseToken: IBinder,
+        baseOwner: Activity?,
+        params: WindowManager.LayoutParams,
+        window: Window,
+    ): Boolean = params.token == baseToken || (baseOwner != null && window.context.activityOwner() === baseOwner)
+
+    // Curtains' root list is read on main, after its attachment callback completes.
+    // A dialog can attach before its activity decor. On older Android versions its
+    // public window token can differ from the activity's, so use the owning Activity
+    // as well as the window token to associate ordinary PhoneWindow dialogs.
+    private fun selectSceneLayers(): List<SceneLayer>? {
+        val roots = Curtains.rootViews
+        val baseIndex =
+            roots.indexOfLast {
+                it.isAliveAndAttachedToWindow() && it.isShown &&
+                    (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION
+            }
+        if (baseIndex < 0) return null
+        val base = roots[baseIndex]
+        val token = (base.layoutParams as? WindowManager.LayoutParams)?.token ?: return null
+        val displayId = base.display?.displayId
+        val owner = base.phoneWindow?.context?.activityOwner()
+        val layers = mutableListOf<SceneLayer>()
+        for (view in listOf(base) + roots.filter { it !== base }) {
+            if (!view.isAliveAndAttachedToWindow() || !view.isShown || view.display?.displayId != displayId) continue
+            val params = view.layoutParams as? WindowManager.LayoutParams ?: continue
+            if (view !== base && params.type != WindowManager.LayoutParams.TYPE_APPLICATION) continue
+            val window = view.phoneWindow ?: continue
+            if (view !== base && !isSceneWindow(token, owner, params, window)) {
+                continue
+            }
+            val status = decorViews[view] ?: return null
+            if (view.width <= 0 || view.height <= 0) return null
+            val position = IntArray(2)
+            view.getLocationOnScreen(position)
+            val attributes = window.attributes
+            layers.add(
+                SceneLayer(
+                    view,
+                    window,
+                    status,
+                    position[0],
+                    position[1],
+                    view.width,
+                    view.height,
+                    if (attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) attributes.dimAmount else 0f,
+                ),
+            )
+        }
+        return layers.takeIf { it.firstOrNull()?.view === base }
+    }
+
+    private fun generateSceneSnapshot(layers: List<SceneLayer>): Boolean {
+        val postHog = postHog ?: return false
+        val sessionId = PostHogSessionManager.getActiveSessionId()?.toString() ?: return false
+        val (generation, revision) =
+            synchronized(decorViews) {
+                if (!isActive() || replaySessionId != sessionId) return false
+                snapshotGeneration to sceneRevision
+            }
+        val timestamp = config.dateProvider.currentTimeMillis()
+        val images = mutableListOf<RRWireframe>()
+        val refreshed = mutableMapOf<View, RRWireframe>()
+        for (layer in layers) {
+            val (id, cached, dirty) =
+                synchronized(decorViews) {
+                    val id = sceneIds.getOrPut(layer.view) { nextSceneId++ }
+                    Triple(id, sceneImages[layer.view], sceneDirtyViews.remove(layer.view))
+                }
+            val image =
+                if (!dirty && cached != null &&
+                    cached.width == layer.width.densityValue(screenDensity) &&
+                    cached.height == layer.height.densityValue(screenDensity)
+                ) {
+                    cached
+                } else {
+                    layer.view.toScreenshotWireframe(layer.window, layer.status.drawState, forceAlpha = true)
+                        ?: run {
+                            synchronized(decorViews) {
+                                sceneDirtyViews.addAll(refreshed.keys)
+                                sceneDirtyViews.add(layer.view)
+                            }
+                            return false
+                        }
+                }
+            val positioned =
+                image.copy(
+                    id = id,
+                    x = layer.x.densityValue(screenDensity),
+                    y = layer.y.densityValue(screenDensity),
+                    width = layer.width.densityValue(screenDensity),
+                    height = layer.height.densityValue(screenDensity),
+                )
+            refreshed[layer.view] = positioned
+            images.add(positioned)
+        }
+
+        // Android applies the topmost requesting window's dim to the scene beneath it.
+        val dimIndex = layers.indexOfLast { it.dimAmount > 0f }
+        val scene = mutableListOf<RRWireframe>()
+        images.forEachIndexed { index, image ->
+            if (index == dimIndex) {
+                val base = images.first()
+                scene.add(
+                    RRWireframe(
+                        id = 10_000_000,
+                        x = base.x,
+                        y = base.y,
+                        width = base.width,
+                        height = base.height,
+                        type = "rectangle",
+                        style = RRStyle(backgroundColor = "rgba(0,0,0,${layers[index].dimAmount})"),
+                    ),
+                )
+            }
+            scene.add(image)
+        }
+        val screenSize =
+            layers.first().view.context.screenSize()
+                ?: run {
+                    synchronized(decorViews) { sceneDirtyViews.addAll(refreshed.keys) }
+                    return false
+                }
+        val viewport = screenSize.width to screenSize.height
+        val events =
+            synchronized(decorViews) {
+                if (!isActive() || snapshotGeneration != generation || sceneRevision != revision ||
+                    PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
+                    layers.any { layer ->
+                        decorViews[layer.view] !== layer.status || !layer.view.isShown ||
+                            layer.view.width != layer.width || layer.view.height != layer.height
+                    }
+                ) {
+                    sceneDirtyViews.addAll(refreshed.keys)
+                    return false
+                }
+                val result = mutableListOf<RREvent>()
+                if (sceneViewport != viewport) {
+                    val title = layers.first().window.attributes.title?.toString()?.substringAfter("/") ?: ""
+                    result.add(RRMetaEvent(width = viewport.first, height = viewport.second, timestamp = timestamp, href = title))
+                    sceneViewport = viewport
+                }
+                if (lastScene != scene) {
+                    result.add(RRFullSnapshotEvent(scene, 0, 0, timestamp))
+                    lastScene = scene
+                }
+                sceneImages.clear()
+                sceneImages.putAll(refreshed)
+                val base = layers.first()
+                val (visible, keyboardEvent) = detectKeyboardVisibility(base.view, base.status.keyboardVisible)
+                base.status.keyboardVisible = visible
+                keyboardEvent?.let { result.add(it) }
+                result
+            }
+        if (events.isNotEmpty()) {
+            postHog.capture(
+                PostHogEventName.SNAPSHOT.event,
+                properties =
+                    mapOf(
+                        "\$snapshot_data" to events,
+                        "\$snapshot_source" to "mobile",
+                        "\$session_id" to sessionId,
+                        "\$window_id" to sessionId,
+                    ),
+            )
+        }
+        return true
+    }
+
     private val onRootViewsChangedListener =
         OnRootViewsChangedListener { view, added ->
             addView(view, added)
+            if (isActive() && isNativeSdk && config.sessionReplayConfig.screenshot) {
+                // Curtains notifies before it updates rootViews. Read the completed topology later.
+                mainHandler.handler.post { requestSceneCapture() }
+            }
         }
 
     private fun detectKeyboardVisibility(
@@ -559,6 +808,10 @@ public class PostHogReplayIntegration(
         }
 
         decorViews.remove(view)
+        synchronized(decorViews) {
+            sceneImages.remove(view)
+            sceneDirtyViews.remove(view)
+        }
     }
 
     @Synchronized
@@ -1740,6 +1993,7 @@ public class PostHogReplayIntegration(
     private fun View.toScreenshotWireframe(
         window: Window,
         drawState: WindowDrawState,
+        forceAlpha: Boolean = false,
     ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -1765,7 +2019,7 @@ public class PostHogReplayIntegration(
         val screenshotScale = config.sessionReplayConfig.screenshotScale
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         val bitmapConfig =
-            when (config.sessionReplayConfig.screenshotColorMode) {
+            when (if (forceAlpha) PostHogScreenshotColorMode.ARGB_8888 else config.sessionReplayConfig.screenshotColorMode) {
                 PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
                 PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
             }
@@ -2501,6 +2755,10 @@ public class PostHogReplayIntegration(
             }
         }
 
+        if (isNativeSdk && config.sessionReplayConfig.screenshot) {
+            mainHandler.handler.post { requestSceneCapture() }
+        }
+
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
             // away — and incremental events (type:3) would ship under the new session before
@@ -2517,6 +2775,13 @@ public class PostHogReplayIntegration(
         // clear state so it starts with a full snapshot again
         synchronized(decorViews) {
             snapshotGeneration++
+            sceneImages.clear()
+            sceneDirtyViews.clear()
+            sceneIds.clear()
+            nextSceneId = 10_000_001
+            lastScene = null
+            sceneViewport = null
+            sceneFollowUp = false
             decorViews.entries.forEach {
                 resetViewSnapshotStates(it.value)
             }
@@ -2536,6 +2801,11 @@ public class PostHogReplayIntegration(
                 isSessionReplayActive = false
                 snapshotGeneration++
                 pixelCopyBitmapBuffer.close()
+                sceneImages.clear()
+                sceneDirtyViews.clear()
+                lastScene = null
+                sceneViewport = null
+                sceneFollowUp = false
                 decorViews.values.forEach { it.drawState.invalidateMaskCapture() }
             }
         }
