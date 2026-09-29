@@ -96,6 +96,7 @@ dependencies {
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("com.google.android.material:material:1.12.0")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 }
