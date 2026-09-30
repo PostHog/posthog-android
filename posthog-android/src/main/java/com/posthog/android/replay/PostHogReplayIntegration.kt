@@ -558,14 +558,18 @@ public class PostHogReplayIntegration(
                     val id = sceneIds.getOrPut(layer.view) { nextSceneId++ }
                     Triple(id, sceneImages[layer.view], sceneDirtyViews.remove(layer.view))
                 }
+            val isDialog = layer !== layers.first()
+            // Older dialog surfaces cannot be aligned with decor-coordinate masks. Recheck
+            // privacy on every scene capture rather than reusing a previously unmasked image.
+            val recheckDialogMasks = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
             val image =
-                if (!dirty && cached != null &&
+                if (!recheckDialogMasks && !dirty && cached != null &&
                     cached.width == layer.width.densityValue(screenDensity) &&
                     cached.height == layer.height.densityValue(screenDensity)
                 ) {
                     cached
                 } else {
-                    layer.view.toScreenshotWireframe(layer.window, layer.status.drawState, forceAlpha = true)
+                    layer.view.toScreenshotWireframe(layer.window, layer.status.drawState, forceAlpha = true, isDialog = isDialog)
                         ?: run {
                             synchronized(decorViews) {
                                 sceneDirtyViews.addAll(refreshed.keys)
@@ -1994,6 +1998,7 @@ public class PostHogReplayIntegration(
         window: Window,
         drawState: WindowDrawState,
         forceAlpha: Boolean = false,
+        isDialog: Boolean = false,
     ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -2016,6 +2021,19 @@ public class PostHogReplayIntegration(
         val sourceHeight = view.height
         val width = sourceWidth.densityValue(screenDensity)
         val height = sourceHeight.densityValue(screenDensity)
+        val maskWholeDialog = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
+
+        fun maskedDialog(): RRWireframe =
+            RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                type = "rectangle",
+                style = RRStyle(backgroundColor = "#000000"),
+            )
+
         val screenshotScale = config.sessionReplayConfig.screenshotScale
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         val bitmapConfig =
@@ -2025,7 +2043,9 @@ public class PostHogReplayIntegration(
             }
         var base64: String? = null
 
-        val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
+        // API 26–27 copy the entire dialog surface, including its insets, into the
+        // decor-sized bitmap. Only a verified empty mask walk permits copying pixels.
+        val verifyMaskAlignment = maskWholeDialog || shouldVerifyMaskAlignment(view, drawState)
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
@@ -2039,7 +2059,11 @@ public class PostHogReplayIntegration(
         if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             recordScreenshotDiscarded(drawState)
-            return null
+            return if (maskWholeDialog) maskedDialog() else null
+        }
+        if (maskWholeDialog && armedCapture!!.preWalk.rects.isNotEmpty()) {
+            finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
+            return maskedDialog()
         }
 
         if (sourceWidth <= 0 || sourceHeight <= 0 || view.width != sourceWidth || view.height != sourceHeight) {
@@ -2174,7 +2198,7 @@ public class PostHogReplayIntegration(
         // instead; the caller retries on the next capture.
         if (base64 == null) {
             recordScreenshotDiscarded(drawState)
-            return null
+            return if (maskWholeDialog) maskedDialog() else null
         }
         drawState.resetScreenshotDiscards()
 
