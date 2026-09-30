@@ -252,11 +252,13 @@ internal class PostHogFeatureFlags(
     /**
      * The result of one local evaluation pass. [flags] holds every flag that resolved, whether or
      * not [needsRemote] is set, so callers can fill only the gaps from `/flags`.
+     * [continuityFlagKeys] holds the flags that did not resolve because experience continuity is on.
      */
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
         val needsRemote: Boolean,
         val missingDefinitionKeys: Set<String>,
+        val continuityFlagKeys: Set<String>,
     )
 
     private class MissingFlagProbe {
@@ -317,6 +319,7 @@ internal class PostHogFeatureFlags(
         val props = localPersonProperties(distinctId, personProperties)
         val requestedKeys = flagKeys?.toHashSet()
         var needsRemote = false
+        val continuityFlagKeys = mutableSetOf<String>()
 
         for ((key, flagDef) in currentFlagDefinitions) {
             if (requestedKeys != null && key !in requestedKeys) {
@@ -338,6 +341,9 @@ internal class PostHogFeatureFlags(
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
                 needsRemote = true
+                if (flagDef.ensureExperienceContinuity) {
+                    continuityFlagKeys.add(key)
+                }
             } catch (e: Exception) {
                 config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
                 needsRemote = true
@@ -358,7 +364,7 @@ internal class PostHogFeatureFlags(
         }
 
         config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
-        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys)
+        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys, continuityFlagKeys)
     }
 
     /**
@@ -1105,6 +1111,13 @@ internal class PostHogFeatureFlags(
             }
 
         if (local != null && ((!local.needsRemote && !hasMissingKeyToProbe) || onlyEvaluateLocally)) {
+            if (onlyEvaluateLocally && local.continuityFlagKeys.isNotEmpty()) {
+                config.logger.log(
+                    "Local-only evaluation omitted flag(s) ${local.continuityFlagKeys.joinToString(", ")}: " +
+                        "experience continuity is incompatible with local evaluation. " +
+                        "Allow remote evaluation or turn off experience continuity for these flags.",
+                )
+            }
             return EvaluateFlagsResult(
                 flags = localFlags,
                 locallyEvaluated = localFlags.mapValues { true },
