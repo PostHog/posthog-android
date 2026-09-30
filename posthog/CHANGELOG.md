@@ -1,5 +1,11 @@
 ## Next
 
+## 6.45.2
+
+### Patch Changes
+
+- 572b972: Stop session replay when the remote config reports the mobile recordings quota as exceeded (`quotaLimited` contains `mobile_recordings`). Replay resumes once a later remote config no longer reports it.
+
 ## 6.45.1
 
 ### Patch Changes
