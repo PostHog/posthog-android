@@ -2480,6 +2480,10 @@ public class PostHogReplayIntegration(
         startRecording(resumeCurrent)
     }
 
+    // config.sessionReplay controls automatic starts; a recording the app started explicitly
+    // while it was off must survive them.
+    private fun isAutomaticStartPermitted(): Boolean = config.sessionReplay || startedWithAutomaticDisabled
+
     private fun startRecording(resumeCurrent: Boolean) {
         // Event triggers may change while an automatic start is queued on main.
         if (shouldWaitForEventTriggers()) {
@@ -2491,15 +2495,24 @@ public class PostHogReplayIntegration(
         }
 
         val currentSessionId = postHog?.getSessionId()?.toString()
-        resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
 
         // Keep producer commits and the bitmap buffer lifecycle on the same recording run.
-        synchronized(pixelCopyBitmapBuffer) {
-            synchronized(decorViews) {
-                pixelCopyBitmapBuffer.open()
-                isSessionReplayActive = true
+        val claimed =
+            synchronized(pixelCopyBitmapBuffer) {
+                synchronized(decorViews) {
+                    // Re-check under the lock: callers gate outside it, and stop() can clear the
+                    // manual-start marker in between, which would otherwise leave this start live.
+                    if (!isAutomaticStartPermitted()) {
+                        false
+                    } else {
+                        resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
+                        pixelCopyBitmapBuffer.open()
+                        isSessionReplayActive = true
+                        true
+                    }
+                }
             }
-        }
+        if (!claimed) return
 
         if (!resumeCurrent) {
             // Without this, on a static UI the first user-driven onDraw can be tens of seconds
@@ -2698,9 +2711,7 @@ public class PostHogReplayIntegration(
         // rotated; going through PostHog.startSessionReplay(false) would double-rotate).
         config.logger.log("[Session Replay] Session changed. Re-initializing recording for new session.")
         mainHandler.handler.post {
-            // config.sessionReplay controls automatic starts. A recording started while it was
-            // off must survive rotation, so it is preserved here too.
-            if (!config.sessionReplay && !startedWithAutomaticDisabled) {
+            if (!isAutomaticStartPermitted()) {
                 if (isSessionReplayActive) stopRecording()
                 return@post
             }
@@ -2930,7 +2941,7 @@ public class PostHogReplayIntegration(
      */
     private fun isRecordingPermittedForCurrentSession(): Boolean {
         val remoteConfig = config.remoteConfigHolder ?: return false
-        if ((!config.sessionReplay && !startedWithAutomaticDisabled) || !remoteConfig.isSessionReplayFlagActive()) {
+        if (!isAutomaticStartPermitted() || !remoteConfig.isSessionReplayFlagActive()) {
             return false
         }
         if (shouldWaitForEventTriggers()) {
@@ -2955,7 +2966,7 @@ public class PostHogReplayIntegration(
         val postHog = this.postHog ?: return
         val remoteConfig = config.remoteConfigHolder ?: return
 
-        if ((!config.sessionReplay && !startedWithAutomaticDisabled) || !remoteConfig.isSessionReplayFlagActive()) {
+        if (!isAutomaticStartPermitted() || !remoteConfig.isSessionReplayFlagActive()) {
             if (!isFirstDelivery) {
                 stopIfActive("Remote config disabled recording. Stopping.")
             }
