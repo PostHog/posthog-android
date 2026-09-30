@@ -1,5 +1,11 @@
 ## Next
 
+## 3.71.4
+
+### Patch Changes
+
+- 3d0717c: Fix session replay staying active after an explicit stop when it raced an automatic restart with `sessionReplay = false`
+
 ## 3.71.3
 
 ### Patch Changes
