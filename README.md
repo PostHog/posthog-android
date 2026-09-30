@@ -21,6 +21,12 @@ SDK usage examples and code snippets live in the official documentation so they 
 - [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
 
+## Required dependencies
+
+`posthog-android` needs [Curtains](https://github.com/square/curtains) (`com.squareup.curtains:curtains`) at runtime. The SDK reads window and touch events through it.
+
+Do not exclude that artifact from your build. Without it, session replay, interaction autocapture and touch tracking stay off for the whole process. The SDK writes a warning to Logcat when this happens.
+
 ## Questions?
 
 ### [Check out our community page.](https://posthog.com/posts)
