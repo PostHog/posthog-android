@@ -16,11 +16,13 @@ import java.util.Collections
  *   - [isEnabled] / [getFlag] fire `$feature_flag_called` (deduped by the same per-distinct-id LRU
  *     used by [PostHogInterface.getFeatureFlag]). Empty/blank distinctId short-circuits the event.
  *     Reads for unknown keys still fire a `$feature_flag_called` event with
- *     `$feature_flag_error: flag_missing` so dashboards see the lookup attempt.
+ *     `$feature_flag_error: flag_missing` so dashboards see the lookup attempt. Reads for keys in
+ *     [unresolvedFlags] report `local_evaluation_inconclusive` instead.
  *   - [getFlagPayload] does not fire any event.
  *
  * Filtered clones from [onlyAccessed] / [only] are independent of the parent — accessing flags on
- * the clone does not back-propagate into the parent's "accessed" set.
+ * the clone does not back-propagate into the parent's "accessed" set. Clones do not carry
+ * [unresolvedFlags]; inspect them on the original snapshot.
  *
  * @property distinctId The distinct ID the snapshot was evaluated for, or null for an empty snapshot.
  * @property requestId Request ID returned by the `/flags` API, when available.
@@ -38,10 +40,21 @@ public class PostHogFeatureFlagEvaluations internal constructor(
     private val host: EvaluationsHost,
     initialAccessed: Set<String> = emptySet(),
     groups: Map<String, String>? = null,
+    unresolvedFlags: Map<String, PostHogUnresolvedFlagReason> = emptyMap(),
 ) {
     private val flagMap: Map<String, FeatureFlag> = Collections.unmodifiableMap(LinkedHashMap(flagMap))
     private val locallyEvaluated: Map<String, Boolean> = Collections.unmodifiableMap(HashMap(locallyEvaluated))
     private val groups: Map<String, String>? = groups?.let { Collections.unmodifiableMap(HashMap(it)) }
+
+    /**
+     * Flags that have a local definition but no value in this snapshot, because local evaluation
+     * could not resolve them and no `/flags` fallback filled them. This happens with local-only
+     * evaluation, or when the fallback fails. The flags stay absent from [keys] and read as missing.
+     * Reading this map does not fire any event and does not record an access. When several parts of
+     * a flag are inconclusive, the reason is the first one found during evaluation.
+     */
+    public val unresolvedFlags: Map<String, PostHogUnresolvedFlagReason> =
+        Collections.unmodifiableMap(LinkedHashMap(unresolvedFlags))
 
     private val accessLock = Any()
     private val accessed: MutableSet<String> = HashSet(initialAccessed)
@@ -246,7 +259,15 @@ public class PostHogFeatureFlagEvaluations internal constructor(
         val error =
             buildList<String> {
                 responseError?.let { add(it) }
-                if (flag == null) add(FeatureFlagError.FLAG_MISSING)
+                if (flag == null) {
+                    add(
+                        if (key in unresolvedFlags) {
+                            FeatureFlagError.LOCAL_EVALUATION_INCONCLUSIVE
+                        } else {
+                            FeatureFlagError.FLAG_MISSING
+                        },
+                    )
+                }
             }
         if (error.isNotEmpty()) {
             props["\$feature_flag_error"] = error.joinToString(",")
