@@ -4,6 +4,7 @@ import com.posthog.internal.PostHogApi
 import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHogBlockingFlagDefinitionCacheProvider
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
+import com.posthog.server.PostHogUnresolvedFlagReason
 import com.posthog.server.TestLogger
 import com.posthog.server.conclusiveFlagDefinition
 import com.posthog.server.createEmptyFlagsResponse
@@ -3960,5 +3961,197 @@ internal class PostHogFeatureFlagsTest {
                 throw IllegalStateException("shutdown failed")
             }
         }
+    }
+
+    private fun unresolvedTestFlag(
+        key: String,
+        properties: String = "[]",
+        continuity: Boolean = false,
+        active: Boolean = true,
+        version: Int = 1,
+    ): String =
+        """
+        {
+            "id": 1,
+            "name": "$key",
+            "key": "$key",
+            "active": $active,
+            "ensure_experience_continuity": $continuity,
+            "filters": {"groups": [{"properties": $properties, "rollout_percentage": 100}]},
+            "version": $version
+        }
+        """.trimIndent()
+
+    private fun localFeatureFlags(
+        mockServer: MockWebServer,
+        logger: TestLogger = TestLogger(),
+    ): PostHogFeatureFlags {
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        return PostHogFeatureFlags(
+            config,
+            PostHogApi(config),
+            60000,
+            100,
+            localEvaluation = true,
+            personalApiKey = "test-personal-key",
+            pollerEnabled = false,
+        )
+    }
+
+    private fun PostHogFeatureFlags.evaluate(
+        onlyEvaluateLocally: Boolean,
+        flagKeys: List<String>? = null,
+    ): EvaluateFlagsResult =
+        evaluateFlags(
+            distinctId = "user-123",
+            groups = null,
+            personProperties = null,
+            groupProperties = null,
+            flagKeys = flagKeys,
+            onlyEvaluateLocally = onlyEvaluateLocally,
+            disableGeoip = false,
+        )
+
+    @Test
+    fun `local only evaluation reports each unresolved flag with its reason`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(
+                    createLocalEvaluationResponseFrom(
+                        unresolvedTestFlag("beta-ui"),
+                        unresolvedTestFlag("continuity-flag", continuity = true),
+                        unresolvedTestFlag(
+                            "plan-flag",
+                            """[{"key": "plan", "value": "pro", "operator": "exact", "type": "person"}]""",
+                        ),
+                        unresolvedTestFlag(
+                            "static-cohort-flag",
+                            """[{"key": "id", "value": 99, "operator": "in", "type": "cohort"}]""",
+                        ),
+                        unresolvedTestFlag(
+                            "dependent-flag",
+                            """[{"key": "continuity-flag", "type": "flag", "value": true,
+                                 "operator": "flag_evaluates_to", "dependency_chain": ["continuity-flag"]}]""",
+                        ),
+                    ),
+                ),
+            )
+        val featureFlags = localFeatureFlags(mockServer)
+
+        val result = featureFlags.evaluate(onlyEvaluateLocally = true)
+
+        assertEquals(setOf("beta-ui"), result.flags.keys)
+        assertEquals(
+            mapOf(
+                "continuity-flag" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+                "plan-flag" to PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                "static-cohort-flag" to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                "dependent-flag" to PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+            ),
+            result.unresolvedFlags,
+        )
+        assertEquals(1, mockServer.requestCount, "only the definitions load is allowed")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `inactive and unrequested flags are never unresolved`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(
+                    createLocalEvaluationResponseFrom(
+                        unresolvedTestFlag("beta-ui"),
+                        unresolvedTestFlag("disabled-flag", continuity = true, active = false),
+                        unresolvedTestFlag("continuity-flag", continuity = true),
+                    ),
+                ),
+            )
+        val featureFlags = localFeatureFlags(mockServer)
+
+        val result = featureFlags.evaluate(onlyEvaluateLocally = true, flagKeys = listOf("beta-ui", "disabled-flag"))
+
+        assertEquals(false, result.flags["disabled-flag"]?.enabled)
+        assertTrue(result.unresolvedFlags.isEmpty())
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `a flag stays unresolved only when the remote fallback does not fill it`() {
+        val definitions = jsonResponse(createLocalEvaluationResponseFrom(unresolvedTestFlag("checkout", continuity = true)))
+
+        val resolvedServer = createMockHttp(definitions, jsonResponse(createFlagsResponse("checkout", enabled = true)))
+        val resolvedFlags = localFeatureFlags(resolvedServer)
+        val resolved = resolvedFlags.evaluate(onlyEvaluateLocally = false)
+        assertEquals(true, resolved.flags["checkout"]?.enabled)
+        assertTrue(resolved.unresolvedFlags.isEmpty())
+
+        for (fallback in listOf(errorResponse(500), jsonResponse(createEmptyFlagsResponse()))) {
+            val server = createMockHttp(definitions, fallback)
+            val flags = localFeatureFlags(server)
+            val result = flags.evaluate(onlyEvaluateLocally = false)
+            assertNull(result.flags["checkout"])
+            assertEquals(mapOf("checkout" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), result.unresolvedFlags)
+            flags.shutDown()
+            server.shutdown()
+        }
+
+        resolvedFlags.shutDown()
+        resolvedServer.shutdown()
+    }
+
+    @Test
+    fun `a requested key without a local definition is never unresolved`() {
+        val mockServer =
+            createMockHttp(
+                jsonResponse(createLocalEvaluationResponseFrom(unresolvedTestFlag("checkout", continuity = true))),
+                jsonResponse(createEmptyFlagsResponse()),
+            )
+        val featureFlags = localFeatureFlags(mockServer)
+
+        val result = featureFlags.evaluate(onlyEvaluateLocally = false, flagKeys = listOf("checkout", "typo-flag"))
+
+        assertEquals(mapOf("checkout" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), result.unresolvedFlags)
+        assertEquals(2, mockServer.requestCount, "one fallback covers both keys")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
+    fun `loading a continuity flag warns once per definition version`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(
+                    createLocalEvaluationResponseFrom(
+                        unresolvedTestFlag("checkout", continuity = true),
+                        unresolvedTestFlag("disabled-flag", continuity = true, active = false),
+                    ),
+                ),
+                jsonResponse(
+                    createLocalEvaluationResponseFrom(
+                        unresolvedTestFlag("checkout", continuity = true),
+                        unresolvedTestFlag("beta-ui"),
+                    ),
+                ),
+                jsonResponse(createLocalEvaluationResponseFrom(unresolvedTestFlag("checkout", continuity = true, version = 2))),
+            )
+        val featureFlags = localFeatureFlags(mockServer, logger)
+        val warning = "Feature flag 'checkout' can never be evaluated locally (reason: experience_continuity)"
+
+        featureFlags.loadFeatureFlagDefinitions()
+        featureFlags.loadFeatureFlagDefinitions()
+        assertEquals(1, logger.countLogs(warning))
+        assertFalse(logger.containsLog("'disabled-flag' can never be evaluated locally"), "inactive flags resolve to false")
+
+        featureFlags.loadFeatureFlagDefinitions()
+        assertEquals(2, logger.countLogs(warning), "a new version warns again")
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
     }
 }

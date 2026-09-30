@@ -7,6 +7,7 @@ import com.posthog.internal.FlagProperty
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
+import com.posthog.server.PostHogUnresolvedFlagReason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -3122,5 +3123,75 @@ internal class FlagEvaluatorTest {
 
         assertEquals(true, result)
         assertEquals(false, evaluationCache["base-flag"])
+    }
+
+    @Test
+    internal fun testInconclusiveReasonSeparatesDefinitionFromCallerValues() {
+        data class Row(val name: String, val groups: String, val properties: Map<String, Any?>, val reason: PostHogUnresolvedFlagReason)
+
+        fun condition(property: String) = """{"properties": [$property], "rollout_percentage": 100}"""
+        val rows =
+            listOf(
+                Row(
+                    "caller float",
+                    condition("""{"key": "n", "value": "1", "operator": "exact", "type": "person"}"""),
+                    mapOf("n" to 1.5),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition float",
+                    condition("""{"key": "n", "value": 1.5, "operator": "exact", "type": "person"}"""),
+                    mapOf("n" to "x"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller date",
+                    condition("""{"key": "d", "value": "2024-01-01", "operator": "is_date_before", "type": "person"}"""),
+                    mapOf("d" to "not-a-date"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition date",
+                    condition("""{"key": "d", "value": "not-a-date", "operator": "is_date_before", "type": "person"}"""),
+                    mapOf("d" to "2024-01-01"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller semver",
+                    condition("""{"key": "v", "value": "1.2.3", "operator": "semver_gt", "type": "person"}"""),
+                    mapOf("v" to "abc"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition semver",
+                    condition("""{"key": "v", "value": "abc", "operator": "semver_gt", "type": "person"}"""),
+                    mapOf("v" to "1.2.3"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "unloaded dependency",
+                    condition(
+                        """{"key": "gone", "value": true, "operator": "flag_evaluates_to", "type": "flag", "dependency_chain": ["gone"]}""",
+                    ),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "first inconclusive condition wins",
+                    condition("""{"key": "plan", "value": "pro", "operator": "exact", "type": "person"}""") + "," +
+                        condition("""{"key": "id", "value": 99, "operator": "in", "type": "cohort"}"""),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+            )
+        for (row in rows) {
+            val json = """{"id": 1, "name": "f", "key": "f", "active": true, "filters": {"groups": [${row.groups}]}, "version": 1}"""
+            val flag = config.serializer.gson.fromJson(json, FlagDefinition::class.java)
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>(row.name) {
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", row.properties, emptyMap(), mapOf("f" to flag), mutableMapOf())
+                }
+            assertEquals(row.name, row.reason, error.reason)
+        }
     }
 }

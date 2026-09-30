@@ -11,6 +11,7 @@ import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
 import com.posthog.internal.PropertyValue
+import com.posthog.server.PostHogUnresolvedFlagReason
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
@@ -135,7 +136,10 @@ internal class FlagEvaluator(
 
         // Check if property key exists in values
         if (!propertyValues.containsKey(key)) {
-            throw InconclusiveMatchException("Can't match properties without a given property value")
+            throw InconclusiveMatchException(
+                "Can't match properties without a given property value",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
         }
 
         if (propertyOperator == PropertyOperator.IS_SET || propertyOperator == PropertyOperator.IS_NOT_SET) {
@@ -157,37 +161,37 @@ internal class FlagEvaluator(
 
             PropertyOperator.ICONTAINS ->
                 stringContains(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_ICONTAINS ->
                 !stringContains(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
             PropertyOperator.STARTS_WITH ->
                 stringStartsWith(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_STARTS_WITH ->
                 !stringStartsWith(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
             PropertyOperator.ENDS_WITH ->
                 stringEndsWith(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
             PropertyOperator.NOT_ENDS_WITH ->
                 !stringEndsWith(
-                    valueToString(overrideValue),
+                    callerValueToString(overrideValue),
                     valueToString(propertyValue),
                 )
 
@@ -233,7 +237,10 @@ internal class FlagEvaluator(
                     propertyOperator,
                 )
 
-            else -> throw InconclusiveMatchException("Unknown operator: $propertyOperator")
+            else -> throw InconclusiveMatchException(
+                "Unknown operator: $propertyOperator",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
     }
 
@@ -249,7 +256,7 @@ internal class FlagEvaluator(
             return isTruthyPropertyValue(propertyValue) == isTruthyPropertyValue(overrideValue)
         }
 
-        val expectedValue = unicodeLowercase(valueToString(overrideValue))
+        val expectedValue = unicodeLowercase(callerValueToString(overrideValue))
         return when (propertyValue) {
             is List<*> ->
                 propertyValue.any { value ->
@@ -276,6 +283,14 @@ internal class FlagEvaluator(
             else -> false
         }
 
+    // A caller value that cannot be stringified is the caller's to fix, not the flag's.
+    private fun callerValueToString(value: Any?): String =
+        try {
+            valueToString(value)
+        } catch (e: InconclusiveMatchException) {
+            throw InconclusiveMatchException(e.message.orEmpty(), PostHogUnresolvedFlagReason.MISSING_CONTEXT, e)
+        }
+
     private fun valueToString(value: Any?): String {
         if (value is String) {
             return value
@@ -286,8 +301,13 @@ internal class FlagEvaluator(
         val jsonValue =
             try {
                 JSON.toJsonTree(value)
-            } catch (error: IllegalArgumentException) {
-                throw InconclusiveMatchException("Cannot stringify JSON value locally: ${error.message}")
+            } catch (error: RuntimeException) {
+                // Gson throws several runtime exceptions for values it cannot reflect, such as java.time types.
+                throw InconclusiveMatchException(
+                    "Cannot stringify JSON value locally: ${error.message}",
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    error,
+                )
             }
         return canonicalJson(jsonValue)
     }
@@ -314,7 +334,10 @@ internal class FlagEvaluator(
         if (rawValue.matches(Regex("-?\\d+"))) {
             return rawValue
         }
-        throw InconclusiveMatchException("Cannot stringify floating-point JSON number locally: $rawValue")
+        throw InconclusiveMatchException(
+            "Cannot stringify floating-point JSON number locally: $rawValue",
+            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+        )
     }
 
     private fun compareJsonKeys(
@@ -348,14 +371,20 @@ internal class FlagEvaluator(
                     in '\uD800'..'\uDBFF' -> {
                         val next = value.getOrNull(index + 1)
                         if (next == null || next !in '\uDC00'..'\uDFFF') {
-                            throw InconclusiveMatchException("Cannot stringify an unpaired Unicode surrogate")
+                            throw InconclusiveMatchException(
+                                "Cannot stringify an unpaired Unicode surrogate",
+                                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                            )
                         }
                         append(character)
                     }
                     in '\uDC00'..'\uDFFF' -> {
                         val previous = value.getOrNull(index - 1)
                         if (previous == null || previous !in '\uD800'..'\uDBFF') {
-                            throw InconclusiveMatchException("Cannot stringify an unpaired Unicode surrogate")
+                            throw InconclusiveMatchException(
+                                "Cannot stringify an unpaired Unicode surrogate",
+                                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                            )
                         }
                         append(character)
                     }
@@ -468,7 +497,10 @@ internal class FlagEvaluator(
             try {
                 parseDateValue(propertyValue.toString())
             } catch (e: Exception) {
-                throw InconclusiveMatchException("The date set on the flag is not a valid format")
+                throw InconclusiveMatchException(
+                    "The date set on the flag is not a valid format",
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                )
             }
 
         val overrideDate =
@@ -480,11 +512,17 @@ internal class FlagEvaluator(
                     try {
                         parseOverrideDate(overrideValue)
                     } catch (e: Exception) {
-                        throw InconclusiveMatchException("The date provided is not a valid format")
+                        throw InconclusiveMatchException(
+                            "The date provided is not a valid format",
+                            PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                        )
                     }
                 }
 
-                else -> throw InconclusiveMatchException("The date provided must be a string or date object")
+                else -> throw InconclusiveMatchException(
+                    "The date provided must be a string or date object",
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                )
             }
 
         return when (propertyOperator) {
@@ -642,20 +680,32 @@ internal class FlagEvaluator(
 
         val match =
             REGEX_SEMVER.matchEntire(cleaned)
-                ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+                ?: throw InconclusiveMatchException(
+                    "Invalid semver version: '$version'",
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                )
 
         val major =
             parseSemverNumericIdentifier(match.groupValues[1])
-                ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+                ?: throw InconclusiveMatchException(
+                    "Invalid semver version: '$version'",
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                )
         val minor =
             match.groupValues[2].takeIf { it.isNotEmpty() }?.let {
                 parseSemverNumericIdentifier(it)
-                    ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+                    ?: throw InconclusiveMatchException(
+                        "Invalid semver version: '$version'",
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    )
             } ?: 0
         val patch =
             match.groupValues[3].takeIf { it.isNotEmpty() }?.let {
                 parseSemverNumericIdentifier(it)
-                    ?: throw InconclusiveMatchException("Invalid semver version: '$version'")
+                    ?: throw InconclusiveMatchException(
+                        "Invalid semver version: '$version'",
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    )
             } ?: 0
 
         return SemverVersion(major, minor, patch)
@@ -673,7 +723,10 @@ internal class FlagEvaluator(
         return try {
             parseSemver(propertyValue)
         } catch (e: InconclusiveMatchException) {
-            throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+            throw InconclusiveMatchException(
+                "The flag condition value is not a valid semver: ${e.message}",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
     }
 
@@ -690,7 +743,10 @@ internal class FlagEvaluator(
             try {
                 parseSemver(overrideValue.toString())
             } catch (e: InconclusiveMatchException) {
-                throw InconclusiveMatchException("The person property value is not a valid semver: ${e.message}")
+                throw InconclusiveMatchException(
+                    "The person property value is not a valid semver: ${e.message}",
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                )
             }
 
         val propertyString = propertyValue.toString()
@@ -722,12 +778,18 @@ internal class FlagEvaluator(
                     try {
                         computeWildcardBounds(propertyString)
                     } catch (e: InconclusiveMatchException) {
-                        throw InconclusiveMatchException("The flag condition value is not a valid semver: ${e.message}")
+                        throw InconclusiveMatchException(
+                            "The flag condition value is not a valid semver: ${e.message}",
+                            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                        )
                     }
                 overrideVersion >= lower && overrideVersion < upper
             }
 
-            else -> throw InconclusiveMatchException("Unknown semver operator: $propertyOperator")
+            else -> throw InconclusiveMatchException(
+                "Unknown semver operator: $propertyOperator",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
     }
 
@@ -800,7 +862,10 @@ internal class FlagEvaluator(
         cleaned = cleaned.trimEnd('*', '.')
 
         if (cleaned.isEmpty()) {
-            throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+            throw InconclusiveMatchException(
+                "Invalid wildcard version: '$propertyValue'",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
 
         val parts = cleaned.split(".")
@@ -810,12 +875,18 @@ internal class FlagEvaluator(
             if (part.isEmpty()) continue
             val num =
                 parseSemverNumericIdentifier(part)
-                    ?: throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+                    ?: throw InconclusiveMatchException(
+                        "Invalid wildcard version: '$propertyValue'",
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    )
             components.add(num)
         }
 
         if (components.isEmpty()) {
-            throw InconclusiveMatchException("Invalid wildcard version: '$propertyValue'")
+            throw InconclusiveMatchException(
+                "Invalid wildcard version: '$propertyValue'",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
 
         return when (components.size) {
@@ -846,15 +917,19 @@ internal class FlagEvaluator(
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
-                ?: throw InconclusiveMatchException("Cohort property missing value")
+                ?: throw InconclusiveMatchException("Cohort property missing value", PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION)
 
+        // Static cohorts are absent from the local cohort map, so they never resolve locally.
         if (!cohortProperties.containsKey(cohortId)) {
-            throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
+            throw InconclusiveMatchException(
+                "Can't match cohort without a given cohort property value",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
 
         val propertyGroup =
             cohortProperties[cohortId]
-                ?: throw InconclusiveMatchException("Cohort definition not found")
+                ?: throw InconclusiveMatchException("Cohort definition not found", PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION)
         return matchPropertyGroup(
             propertyGroup,
             propertyValues,
@@ -882,7 +957,7 @@ internal class FlagEvaluator(
         // Empty properties always match
         if (properties == null || properties.isEmpty()) return true
 
-        var errorMatchingLocally = false
+        var inconclusiveReason: PostHogUnresolvedFlagReason? = null
 
         // Handle based on whether we have nested property groups or flag properties
         when (properties) {
@@ -907,12 +982,12 @@ internal class FlagEvaluator(
                         }
                     } catch (e: InconclusiveMatchException) {
                         config.logger.log("Failed to compute nested property group locally: ${e.message}")
-                        errorMatchingLocally = true
+                        inconclusiveReason = inconclusiveReason ?: e.reason
                     }
                 }
 
-                if (errorMatchingLocally) {
-                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
+                inconclusiveReason?.let {
+                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value", it)
                 }
 
                 // If we get here, all matched in AND case, or none matched in OR case
@@ -939,13 +1014,20 @@ internal class FlagEvaluator(
                                     evaluateFlagDependency(
                                         property,
                                         flagsByKey
-                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without flagsByKey"),
+                                            ?: throw InconclusiveMatchException(
+                                                "Cannot evaluate flag dependencies without flagsByKey",
+                                                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                                            ),
                                         evaluationCache
                                             ?: throw InconclusiveMatchException(
                                                 "Cannot evaluate flag dependencies without evaluationCache",
+                                                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                                             ),
                                         distinctId
-                                            ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without distinctId"),
+                                            ?: throw InconclusiveMatchException(
+                                                "Cannot evaluate flag dependencies without distinctId",
+                                                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                                            ),
                                         propertyValues,
                                         cohortProperties,
                                     )
@@ -966,12 +1048,12 @@ internal class FlagEvaluator(
                         }
                     } catch (e: InconclusiveMatchException) {
                         config.logger.log("Failed to compute property ${property.key} locally: ${e.message}")
-                        errorMatchingLocally = true
+                        inconclusiveReason = inconclusiveReason ?: e.reason
                     }
                 }
 
-                if (errorMatchingLocally) {
-                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value")
+                inconclusiveReason?.let {
+                    throw InconclusiveMatchException("Can't match cohort without a given cohort property value", it)
                 }
 
                 // If we get here, all matched in AND case, or none matched in OR case
@@ -1014,9 +1096,15 @@ internal class FlagEvaluator(
                             evaluateFlagDependency(
                                 prop,
                                 flagsByKey
-                                    ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without flagsByKey"),
+                                    ?: throw InconclusiveMatchException(
+                                        "Cannot evaluate flag dependencies without flagsByKey",
+                                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                                    ),
                                 evaluationCache
-                                    ?: throw InconclusiveMatchException("Cannot evaluate flag dependencies without evaluationCache"),
+                                    ?: throw InconclusiveMatchException(
+                                        "Cannot evaluate flag dependencies without evaluationCache",
+                                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                                    ),
                                 distinctId,
                                 properties,
                                 cohortProperties,
@@ -1061,11 +1149,14 @@ internal class FlagEvaluator(
         evaluationCache: MutableMap<String, Any?>? = null,
     ): Any? {
         if (flag.ensureExperienceContinuity) {
-            throw InconclusiveMatchException("Flag \"${flag.key}\" has experience continuity enabled")
+            throw InconclusiveMatchException(
+                "Flag \"${flag.key}\" has experience continuity enabled",
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+            )
         }
 
         val flagConditions = flag.filters.groups ?: emptyList()
-        var isInconclusive = false
+        var inconclusiveReason: PostHogUnresolvedFlagReason? = null
 
         // Get variant keys for validation
         val flagVariants = flag.filters.multivariate?.variants ?: emptyList()
@@ -1101,12 +1192,12 @@ internal class FlagEvaluator(
                     return variant ?: true
                 }
             } catch (e: InconclusiveMatchException) {
-                isInconclusive = true
+                inconclusiveReason = inconclusiveReason ?: e.reason
             }
         }
 
-        if (isInconclusive) {
-            throw InconclusiveMatchException("Can't determine if feature flag is enabled or not with given properties")
+        inconclusiveReason?.let {
+            throw InconclusiveMatchException("Can't determine if feature flag is enabled or not with given properties", it)
         }
 
         // We can only return False when either all conditions are False, or no condition was inconclusive
@@ -1129,13 +1220,17 @@ internal class FlagEvaluator(
         if (dependencyChain == null) {
             throw InconclusiveMatchException(
                 "Flag dependency property for '${property.key}' is missing required 'dependency_chain' field",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             )
         }
 
         // Handle circular dependency (empty chain means circular)
         if (dependencyChain.isEmpty()) {
             config.logger.log("Circular dependency detected for flag: ${property.key}")
-            throw InconclusiveMatchException("Circular dependency detected for flag '${property.key}'")
+            throw InconclusiveMatchException(
+                "Circular dependency detected for flag '${property.key}'",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
         }
 
         // Evaluate all dependencies in the chain order
@@ -1148,6 +1243,8 @@ internal class FlagEvaluator(
                     evaluationCache[depFlagKey] = null
                     throw InconclusiveMatchException(
                         "Cannot evaluate flag dependency '$depFlagKey' - flag not found in local flags",
+                        // No entry can exist for an unloaded dependency, so the definition itself is the cause.
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                     )
                 } else {
                     // Check if the flag is active
@@ -1169,7 +1266,10 @@ internal class FlagEvaluator(
                         } catch (e: InconclusiveMatchException) {
                             // If we can't evaluate a dependency, store null and propagate the error
                             evaluationCache[depFlagKey] = null
-                            throw InconclusiveMatchException("Cannot evaluate flag dependency '$depFlagKey': ${e.message}")
+                            throw InconclusiveMatchException(
+                                "Cannot evaluate flag dependency '$depFlagKey': ${e.message}",
+                                PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                            )
                         }
                     }
                 }
@@ -1179,7 +1279,10 @@ internal class FlagEvaluator(
             val cachedResult = evaluationCache[depFlagKey]
             if (cachedResult == null) {
                 // Previously inconclusive - raise error again
-                throw InconclusiveMatchException("Flag dependency '$depFlagKey' was previously inconclusive")
+                throw InconclusiveMatchException(
+                    "Flag dependency '$depFlagKey' was previously inconclusive",
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                )
             } else if (cachedResult == false && depFlagKey != property.key) {
                 // Definitive false result for intermediate dependency - chain failed
                 // Only return false early if this is NOT the final flag we're checking
@@ -1199,14 +1302,20 @@ internal class FlagEvaluator(
 
             if (actualValue == null) {
                 // Flag wasn't evaluated - this shouldn't happen if dependency chain is correct
-                throw InconclusiveMatchException("Flag '$flagKey' was not evaluated despite being in dependency chain")
+                throw InconclusiveMatchException(
+                    "Flag '$flagKey' was not evaluated despite being in dependency chain",
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                )
             }
 
             // For flag dependencies, we need to compare the actual flag result with expected value
             if (propertyOperator == PropertyOperator.FLAG_EVALUATES_TO) {
                 return matchesDependencyValue(expectedValue, actualValue)
             } else {
-                throw InconclusiveMatchException("Flag dependency property for '${property.key}' has invalid operator '$propertyOperator'")
+                throw InconclusiveMatchException(
+                    "Flag dependency property for '${property.key}' has invalid operator '$propertyOperator'",
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                )
             }
         }
 

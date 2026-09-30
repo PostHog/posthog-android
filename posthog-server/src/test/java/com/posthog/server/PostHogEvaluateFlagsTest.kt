@@ -716,6 +716,21 @@ internal class PostHogEvaluateFlagsTest {
     }
 
     @Test
+    fun `local only evaluation exposes an unresolved flag and reports it as inconclusive`() {
+        withLocalEvaluation(definitions = conclusiveAndGatedDefinitions()) { postHog, dispatcher, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+
+            assertEquals(mapOf("gated" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), snapshot.unresolvedFlags)
+            assertFalse(snapshot.isEnabled("gated"))
+            postHog.flush()
+
+            assertEquals(0, dispatcher.flagsCalls.get())
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals("local_evaluation_inconclusive", assertNotNull(flagCalled["gated"])["\$feature_flag_error"])
+        }
+    }
+
+    @Test
     fun `a flags outage leaves locally-resolved flags on and is not retried within the cache window`() {
         withLocalEvaluation(
             definitions = conclusiveAndGatedDefinitions(),
