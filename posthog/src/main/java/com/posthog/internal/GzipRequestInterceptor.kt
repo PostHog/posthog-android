@@ -22,15 +22,14 @@ import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
 import okhttp3.Interceptor
-import okhttp3.MediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okio.Buffer
-import okio.BufferedSink
-import okio.GzipSink
-import okio.buffer
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.zip.GZIPOutputStream
 
 // https://square.github.io/okhttp/features/interceptors/
 
@@ -56,7 +55,7 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
                 try {
                     originalRequest.newBuilder()
                         .header("Content-Encoding", "gzip")
-                        .method(originalRequest.method, forceContentLength(gzip(body)))
+                        .method(originalRequest.method, gzip(body))
                         .build()
                 } catch (e: Throwable) {
                     config.logger.log("Failed to gzip the request body: $e.")
@@ -67,44 +66,17 @@ public class GzipRequestInterceptor(private val config: PostHogConfig) : Interce
         }
     }
 
-    private fun gzip(body: RequestBody): RequestBody {
-        return object : RequestBody() {
-            override fun contentType(): MediaType? {
-                return body.contentType()
-            }
-
-            override fun contentLength(): Long {
-                return -1 // We don't know the compressed length in advance!
-            }
-
-            @Throws(IOException::class)
-            override fun writeTo(sink: BufferedSink) {
-                val gzipSink = GzipSink(sink).buffer()
-                body.writeTo(gzipSink)
-                gzipSink.close()
-            }
-        }
-    }
-
-    // https://github.com/square/okhttp/issues/350
+    // Okio's GzipSink can emit corrupt output with Okio versions before 3.11.0 (square/okio#1608).
+    // Apps resolve their own Okio version, so compress with the JDK instead.
+    // Buffering the result also sets Content-Length, see https://github.com/square/okhttp/issues/350
     @Throws(IOException::class)
-    private fun forceContentLength(body: RequestBody): RequestBody {
-        val buffer = Buffer()
-        body.writeTo(buffer)
+    private fun gzip(body: RequestBody): RequestBody {
+        val uncompressed = Buffer()
+        body.writeTo(uncompressed)
 
-        return object : RequestBody() {
-            override fun contentType(): MediaType? {
-                return body.contentType()
-            }
+        val compressed = ByteArrayOutputStream()
+        GZIPOutputStream(compressed).use { uncompressed.writeTo(it) }
 
-            override fun contentLength(): Long {
-                return buffer.size
-            }
-
-            @Throws(IOException::class)
-            override fun writeTo(sink: BufferedSink) {
-                sink.write(buffer.snapshot())
-            }
-        }
+        return compressed.toByteArray().toRequestBody(body.contentType())
     }
 }
