@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import java.util.Random
 import java.util.zip.GZIPInputStream
@@ -17,7 +18,7 @@ internal class GzipRequestInterceptorTest {
     @get:Rule
     val httpServers = TestHttpServers()
 
-    private fun post(payload: String): okhttp3.mockwebserver.RecordedRequest {
+    private fun post(payload: String): RecordedRequest {
         val http = httpServers.mockHttp()
         val client =
             OkHttpClient.Builder()
