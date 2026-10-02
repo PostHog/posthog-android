@@ -55,11 +55,11 @@ public class PostHogQueue<Record>(
         get() = synchronized(dequeLock) { deque.size }
 
     public val queueDirectory: File?
-        get() = spec.storagePrefix?.let { File(it, config.apiKey) }
+        get() = spec.storagePrefix?.let { File(it, config.projectToken) }
 
     private fun addRecordSync(record: Record): Boolean {
         spec.storagePrefix?.let {
-            val dir = File(it, config.apiKey)
+            val dir = File(it, config.projectToken)
 
             if (!dirCreated) {
                 dir.mkdirs()
