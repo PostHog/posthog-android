@@ -154,6 +154,7 @@ public class com/posthog/server/PostHogConfig {
 	public final fun getPersonalApiKey ()Ljava/lang/String;
 	public final fun getPollIntervalSeconds ()I
 	public final fun getPreloadFeatureFlags ()Z
+	public final fun getProjectToken ()Ljava/lang/String;
 	public final fun getProxy ()Ljava/net/Proxy;
 	public final fun getReleaseIdentifier ()Ljava/lang/String;
 	public final fun getRemoteConfig ()Z
@@ -215,6 +216,8 @@ public final class com/posthog/server/PostHogConfig$Builder {
 
 public final class com/posthog/server/PostHogConfig$Companion {
 	public final fun builder (Ljava/lang/String;)Lcom/posthog/server/PostHogConfig$Builder;
+	public final synthetic fun invoke (Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;)Lcom/posthog/server/PostHogConfig;
+	public static synthetic fun invoke$default (Lcom/posthog/server/PostHogConfig$Companion;Ljava/lang/String;Ljava/lang/String;ZZZZIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;Ljava/net/Proxy;IIIZLjava/lang/String;ILjava/util/List;ILjava/lang/Object;)Lcom/posthog/server/PostHogConfig;
 }
 
 public final class com/posthog/server/PostHogEvaluateFlagsOptions {

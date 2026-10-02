@@ -195,6 +195,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getPersistOptOut ()Z
 	public final fun getPersonProfiles ()Lcom/posthog/PersonProfiles;
 	public final fun getPreloadFeatureFlags ()Z
+	public final fun getProjectToken ()Ljava/lang/String;
 	public final fun getPropertiesSanitizer ()Lcom/posthog/PostHogPropertiesSanitizer;
 	public final fun getProxy ()Ljava/net/Proxy;
 	public final fun getPushIdentityProvider ()Lkotlin/jvm/functions/Function3;
@@ -271,6 +272,8 @@ public class com/posthog/PostHogConfig {
 }
 
 public final class com/posthog/PostHogConfig$Companion {
+	public final synthetic fun invoke (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;)Lcom/posthog/PostHogConfig;
+	public static synthetic fun invoke$default (Lcom/posthog/PostHogConfig$Companion;Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLcom/posthog/PostHogPropertiesSanitizer;Lkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;IILjava/lang/Object;)Lcom/posthog/PostHogConfig;
 }
 
 public abstract interface class com/posthog/PostHogCoreInterface {

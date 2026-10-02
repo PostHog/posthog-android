@@ -13,9 +13,9 @@ import kotlin.test.assertTrue
 internal class PostHogConfigTest {
     @Test
     fun `constructor sets all required parameters with defaults`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
 
-        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals(TEST_API_KEY, config.projectToken)
         assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
         assertEquals(false, config.debug)
         assertEquals(true, config.sendFeatureFlagEvent)
@@ -37,26 +37,36 @@ internal class PostHogConfigTest {
     fun `trims whitespace-sensitive config values`() {
         val config =
             PostHogConfig(
-                apiKey = " \n$TEST_API_KEY\t ",
+                projectToken = " \n$TEST_API_KEY\t ",
                 host = " \nhttps://eu.i.posthog.com/\t ",
                 personalApiKey = " \nphx_test_personal_api_key\t ",
             )
 
-        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals(TEST_API_KEY, config.projectToken)
         assertEquals("https://eu.i.posthog.com/", config.host)
         assertEquals("phx_test_personal_api_key", config.personalApiKey)
     }
 
     @Test
+    fun `deprecated apiKey factory and getter alias projectToken`() {
+        val config = PostHogConfig(apiKey = " $TEST_API_KEY ", personalApiKey = "phx_test", evaluationContexts = listOf("web"))
+
+        assertEquals(TEST_API_KEY, config.projectToken)
+        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals("phx_test", config.personalApiKey)
+        assertEquals(listOf("web"), config.evaluationContexts)
+    }
+
+    @Test
     fun `defaults blank personal api key to null after trimming whitespace`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY, personalApiKey = " \n\t ")
+        val config = PostHogConfig(projectToken = TEST_API_KEY, personalApiKey = " \n\t ")
 
         assertNull(config.personalApiKey)
     }
 
     @Test
     fun `defaults a blank host after trimming whitespace`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY, host = " \n\t ")
+        val config = PostHogConfig(projectToken = TEST_API_KEY, host = " \n\t ")
 
         assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
     }
@@ -69,7 +79,7 @@ internal class PostHogConfigTest {
 
         val config =
             PostHogConfig(
-                apiKey = "custom-api-key",
+                projectToken = "custom-api-key",
                 host = "https://custom.host.com",
                 debug = true,
                 sendFeatureFlagEvent = false,
@@ -86,7 +96,7 @@ internal class PostHogConfigTest {
                 featureFlagCacheMaxAgeMs = 600000,
             )
 
-        assertEquals("custom-api-key", config.apiKey)
+        assertEquals("custom-api-key", config.projectToken)
         assertEquals("https://custom.host.com", config.host)
         assertEquals(true, config.debug)
         assertEquals(false, config.sendFeatureFlagEvent)
@@ -105,7 +115,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `addBeforeSend adds callback to internal list`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val beforeSend = createMockBeforeSend()
 
         config.addBeforeSend(beforeSend)
@@ -115,7 +125,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `removeBeforeSend removes callback from internal list`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val beforeSend = createMockBeforeSend()
 
         config.addBeforeSend(beforeSend)
@@ -127,7 +137,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `addIntegration adds integration to internal list`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val integration = createMockIntegration()
 
         config.addIntegration(integration)
@@ -142,7 +152,7 @@ internal class PostHogConfigTest {
 
         val config =
             PostHogConfig(
-                apiKey = "test-key",
+                projectToken = "test-key",
                 host = "https://test.host.com",
                 debug = true,
                 sendFeatureFlagEvent = false,
@@ -160,7 +170,7 @@ internal class PostHogConfigTest {
 
         val coreConfig = config.asCoreConfig()
 
-        assertEquals("test-key", coreConfig.apiKey)
+        assertEquals("test-key", coreConfig.projectToken)
         assertEquals("https://test.host.com", coreConfig.host)
         assertEquals(true, coreConfig.debug)
         assertEquals(false, coreConfig.sendFeatureFlagEvent)
@@ -176,7 +186,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig propagates releaseIdentifier to core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         config.releaseIdentifier = "release-123"
 
         val coreConfig = config.asCoreConfig()
@@ -186,7 +196,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig applies beforeSend callbacks to core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val beforeSend1 = createMockBeforeSend()
         val beforeSend2 = createMockBeforeSend()
 
@@ -198,7 +208,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig applies integrations to core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val integration1 = createMockIntegration()
         val integration2 = createMockIntegration()
 
@@ -228,7 +238,7 @@ internal class PostHogConfigTest {
         val builder = PostHogConfig.builder("test-api-key")
 
         val config = builder.build()
-        assertEquals("test-api-key", config.apiKey)
+        assertEquals("test-api-key", config.projectToken)
     }
 
     // Builder tests
@@ -236,7 +246,7 @@ internal class PostHogConfigTest {
     fun `builder creates config with default values`() {
         val config = PostHogConfig.builder(TEST_API_KEY).build()
 
-        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals(TEST_API_KEY, config.projectToken)
         assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
         assertEquals(false, config.debug)
         assertEquals(true, config.sendFeatureFlagEvent)
@@ -408,7 +418,7 @@ internal class PostHogConfigTest {
                 .featureFlagCalledCacheSize(30)
                 .build()
 
-        assertEquals(TEST_API_KEY, config.apiKey)
+        assertEquals(TEST_API_KEY, config.projectToken)
         assertEquals("https://custom.host.com", config.host)
         assertEquals(true, config.debug)
         assertEquals(false, config.sendFeatureFlagEvent)
@@ -442,7 +452,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `config properties are mutable after creation`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
 
         // Test that properties can be modified
         config.debug = true
@@ -473,7 +483,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `multiple beforeSend callbacks can be added and removed`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val beforeSend1 = createMockBeforeSend()
         val beforeSend2 = createMockBeforeSend()
         val beforeSend3 = createMockBeforeSend()
@@ -491,7 +501,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `multiple integrations can be added`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val integration1 = createMockIntegration()
         val integration2 = createMockIntegration()
 
@@ -503,7 +513,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig creates new instance each time`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
 
         val coreConfig1 = config.asCoreConfig()
         val coreConfig2 = config.asCoreConfig()
@@ -511,7 +521,7 @@ internal class PostHogConfigTest {
         // Should be different instances
         assertNotEquals(coreConfig1, coreConfig2)
         // But should have same properties
-        assertEquals(coreConfig1.apiKey, coreConfig2.apiKey)
+        assertEquals(coreConfig1.projectToken, coreConfig2.projectToken)
         assertEquals(coreConfig1.host, coreConfig2.host)
     }
 
@@ -575,28 +585,28 @@ internal class PostHogConfigTest {
 
     @Test
     fun `constructor sets evaluationContexts to null by default`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         assertNull(config.evaluationContexts)
     }
 
     @Test
     fun `constructor accepts evaluationContexts parameter`() {
         val contexts = listOf("web", "mobile", "checkout")
-        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        val config = PostHogConfig(projectToken = TEST_API_KEY, evaluationContexts = contexts)
         assertEquals(contexts, config.evaluationContexts)
     }
 
     @Test
     fun `asCoreConfig propagates evaluationContexts to core config`() {
         val contexts = listOf("web", "mobile")
-        val config = PostHogConfig(apiKey = TEST_API_KEY, evaluationContexts = contexts)
+        val config = PostHogConfig(projectToken = TEST_API_KEY, evaluationContexts = contexts)
         val coreConfig = config.asCoreConfig()
         assertEquals(contexts, coreConfig.evaluationContexts)
     }
 
     @Test
     fun `asCoreConfig propagates null evaluationContexts`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         val coreConfig = config.asCoreConfig()
         assertNull(coreConfig.evaluationContexts)
     }
@@ -623,14 +633,14 @@ internal class PostHogConfigTest {
 
     @Test
     fun `constructor sets flagDefinitionCacheProvider to null by default`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         assertNull(config.flagDefinitionCacheProvider)
     }
 
     @Test
     fun `flagDefinitionCacheProvider property accepts provider`() {
         val provider = NoOpFlagDefinitionCacheProvider()
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         config.flagDefinitionCacheProvider = provider
         assertEquals(provider, config.flagDefinitionCacheProvider)
     }
@@ -650,7 +660,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `in-app classification properties have expected defaults`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
 
         assertTrue(config.inAppIncludes.isEmpty())
         assertEquals(PostHogConfig.DEFAULT_IN_APP_EXCLUDES, config.inAppExcludes)
@@ -684,7 +694,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig propagates in-app classification settings to core config`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
         config.inAppIncludes = listOf("com.myapp.")
         config.inAppExcludes = listOf("com.thirdparty.")
 
@@ -696,7 +706,7 @@ internal class PostHogConfigTest {
 
     @Test
     fun `asCoreConfig propagates default excludes`() {
-        val config = PostHogConfig(apiKey = TEST_API_KEY)
+        val config = PostHogConfig(projectToken = TEST_API_KEY)
 
         val coreConfig = config.asCoreConfig()
 
@@ -748,7 +758,7 @@ internal class PostHogConfigTest {
         assertEquals("java.", PostHogConfig.DEFAULT_IN_APP_EXCLUDES[0])
         assertEquals(
             PostHogConfig.DEFAULT_IN_APP_EXCLUDES,
-            PostHogConfig(apiKey = TEST_API_KEY).inAppExcludes,
+            PostHogConfig(projectToken = TEST_API_KEY).inAppExcludes,
             "A fresh config must still see the untouched defaults",
         )
     }

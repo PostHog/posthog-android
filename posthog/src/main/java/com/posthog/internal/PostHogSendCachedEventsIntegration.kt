@@ -55,7 +55,7 @@ internal class PostHogSendCachedEventsIntegration(
     private fun flushLegacyEvents() {
         config.legacyStoragePrefix?.let {
             val legacyDir = File(it)
-            val legacyFile = File(legacyDir, "${config.apiKey}.tmp")
+            val legacyFile = File(legacyDir, "${config.projectToken}.tmp")
 
             if (!legacyFile.existsSafely(config)) {
                 return
