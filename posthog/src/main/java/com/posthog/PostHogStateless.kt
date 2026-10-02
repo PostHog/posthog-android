@@ -239,14 +239,26 @@ public open class PostHogStateless protected constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
+        captureStatelessInternal(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+    }
+
+    internal fun captureStatelessInternal(
+        event: String,
+        distinctId: String,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+    ): Boolean {
         try {
             if (!isEnabled()) {
-                return
+                return false
             }
 
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return
+                return false
             }
 
             var groupIdentify = false
@@ -286,12 +298,15 @@ public open class PostHogStateless protected constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return
+                return false
             }
 
-            queue?.add(postHogEvent)
+            val queue = queue ?: return false
+            queue.add(postHogEvent)
+            return true
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
+            return false
         }
     }
 

@@ -2606,7 +2606,6 @@ public class PostHogReplayIntegration(
 
         val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
         props["\$sdk_debug_replay_capture_mode"] = captureMode
-        props["\$sdk_debug_replay_throttle_delay_ms"] = config.sessionReplayConfig.throttleDelayMs
         props["\$sdk_debug_replay_internal_buffer_length"] =
             if (buffering) replayQueue?.bufferDepth ?: 0 else replayQueue?.size ?: 0
 

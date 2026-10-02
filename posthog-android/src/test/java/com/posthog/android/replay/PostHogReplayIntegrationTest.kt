@@ -4385,7 +4385,7 @@ internal class PostHogReplayIntegrationTest {
         val sut = getSut(config)
 
         assertEquals("wireframe", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
-        assertEquals(1000L, sut.debugProperties()["\$sdk_debug_replay_throttle_delay_ms"])
+        assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_throttle_delay_ms"))
     }
 
     @Test
@@ -4519,7 +4519,6 @@ internal class PostHogReplayIntegrationTest {
             assertEquals("disabled", props["\$recording_status"])
             assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
             assertEquals("wireframe", props["\$sdk_debug_replay_capture_mode"])
-            assertEquals(1000L, props["\$sdk_debug_replay_throttle_delay_ms"])
             assertEquals(0, props["\$sdk_debug_replay_internal_buffer_length"])
         } finally {
             sut.uninstall()
@@ -4578,7 +4577,7 @@ internal class PostHogReplayIntegrationTest {
                     "linked_flag".takeIf { props["\$sdk_debug_replay_linked_flag_trigger_status"] == "trigger_pending" },
                 )
             assertEquals(pending.ifEmpty { null }, props["\$sdk_debug_replay_pending_trigger_conditions"], "pending conditions vs statuses")
-            assertTrue(props.containsKey("\$sdk_debug_replay_capture_mode") && props.containsKey("\$sdk_debug_replay_throttle_delay_ms"))
+            assertTrue(props.containsKey("\$sdk_debug_replay_capture_mode"))
         }
         assertEquals("disabled", sut.debugProperties()["\$recording_status"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))
