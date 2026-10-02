@@ -124,6 +124,12 @@
 -keepnames class com.google.firebase.messaging.FirebaseMessaging
 ##---------------End: proguard configuration for Firebase Messaging (compileOnly)  ----------
 
+# Optional public AppCompat locale getter used on Android versions before 13.
+-if class androidx.appcompat.app.AppCompatDelegate
+-keep,allowoptimization class androidx.appcompat.app.AppCompatDelegate {
+    public static androidx.core.os.LocaleListCompat getApplicationLocales();
+}
+
 # Dead-tap response observation classifies only these known library View implementations.
 # Preserve names, not members or unused classes; app-defined custom drawing still fails closed.
 -keepnames class androidx.appcompat.widget.* extends android.view.View
