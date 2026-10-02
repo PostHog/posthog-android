@@ -66,7 +66,7 @@ object PosthogBuildConfig {
 
         val OKHTTP = "4.12.0"
         val CURTAINS = "1.2.5"
-        val ANDROIDX_CORE = "1.13.1"
+        val ANDROIDX_CORE = "1.9.0"
         val ANDROIDX_TEST = "1.5.0"
         val ANDROIDX_COMPOSE = "1.0.0"
 
