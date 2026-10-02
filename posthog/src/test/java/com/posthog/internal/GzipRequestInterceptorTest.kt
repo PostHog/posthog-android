@@ -22,8 +22,9 @@ import kotlin.test.assertEquals
 internal class GzipRequestInterceptorTest {
     @Test
     fun `compressed request round trips multiple writes and flushes`() {
+        val random = Random(0)
         for (size in listOf(121, 24_163)) {
-            val payload = ByteArray(size).also { Random(0).nextBytes(it) }
+            val payload = ByteArray(size).also { random.nextBytes(it) }
             val contentType = "application/octet-stream".toMediaType()
             val body =
                 object : RequestBody() {
