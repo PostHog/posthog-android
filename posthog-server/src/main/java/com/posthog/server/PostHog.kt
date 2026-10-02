@@ -80,10 +80,20 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
-        super<PostHogStateless>.identify(
+        identify(distinctId, userProperties, userPropertiesSetOnce, null)
+    }
+
+    override fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        timestamp: java.util.Date?,
+    ) {
+        super.identifyStateless(
             distinctId,
             userProperties,
             userPropertiesSetOnce,
+            timestamp,
         )
     }
 
