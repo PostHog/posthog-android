@@ -842,7 +842,7 @@ public class PostHog private constructor(
     private fun isWithinReplayDebugInterval(
         since: Long?,
         now: Long,
-    ): Boolean = since != null && now - since in 0 until REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS
+    ): Boolean = since != null && now - since < REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS
 
     /**
      * Single outstanding claim, so a capture inside `beforeSend` can't also take it; a claim older

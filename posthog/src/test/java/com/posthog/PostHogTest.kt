@@ -3091,7 +3091,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `replay debug window reopens when the wall clock moves backwards`() {
+    fun `replay debug window stays shut when the wall clock moves backwards until it catches up`() {
         val http = mockHttp()
         val clock = TestDateProvider(System.currentTimeMillis())
         val sut = replayDebugSut(http, flushAt = 3)
@@ -3100,10 +3100,10 @@ internal class PostHogTest {
         sut.capture(SDK_EVENT)
         clock.nowMs -= 60_000
         sut.capture(SDK_EVENT)
-        clock.nowMs += 1_000
+        clock.nowMs += 90_000
         sut.capture(SDK_EVENT)
 
-        assertEquals(listOf(true, true, false), capturedEvents(http).map { it.carriesReplayDebugBundle })
+        assertEquals(listOf(true, false, true), capturedEvents(http).map { it.carriesReplayDebugBundle })
 
         sut.close()
     }
