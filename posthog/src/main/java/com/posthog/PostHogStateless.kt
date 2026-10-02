@@ -387,6 +387,19 @@ public open class PostHogStateless protected constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
+        identifyStateless(distinctId, userProperties, userPropertiesSetOnce, timestamp = null)
+    }
+
+    /**
+     * Identifies the user, optionally overriding the `$identify` event timestamp
+     * @param timestamp the event timestamp override, or null to use the current time
+     */
+    protected fun identifyStateless(
+        distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        timestamp: Date?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -404,6 +417,7 @@ public open class PostHogStateless protected constructor(
             properties = props,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
+            timestamp = timestamp,
         )
     }
 
