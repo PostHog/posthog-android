@@ -1,6 +1,7 @@
 ---
 'posthog': patch
 'posthog-android': patch
+'posthog-android-surveys-compose': patch
 'posthog-server': patch
 ---
 
