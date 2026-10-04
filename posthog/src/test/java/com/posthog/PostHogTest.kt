@@ -1702,6 +1702,7 @@ internal class PostHogTest {
         val theEvent = batch.batch.first()
         assertEquals("\$identify", theEvent.event)
         assertEquals(DISTINCT_ID, theEvent.distinctId)
+        assertEquals(DISTINCT_ID, theEvent.properties!!["distinct_id"] as String)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
         assertEquals(userPropsOnce, theEvent.properties!!["\$set_once"])
