@@ -842,6 +842,7 @@ internal class PostHogStatelessTest {
         assertEquals("\$create_alias", event.event)
         assertEquals("user123", event.distinctId)
         assertEquals("alias456", event.properties!!["alias"])
+        assertEquals("user123", event.properties!!["distinct_id"])
     }
 
     // Group Management Tests

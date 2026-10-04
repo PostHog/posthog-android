@@ -378,6 +378,7 @@ public open class PostHogStateless protected constructor(
 
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
+        props["distinct_id"] = distinctId
 
         captureStateless("\$create_alias", distinctId, properties = props)
     }

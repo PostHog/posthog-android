@@ -1319,6 +1319,7 @@ public class PostHog private constructor(
 
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
+        props["distinct_id"] = distinctId
 
         capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
     }
