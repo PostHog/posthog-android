@@ -350,32 +350,7 @@ public class PostHog private constructor(
 
                 startSession()
 
-                config.integrations.forEach {
-                    try {
-                        it.install(this)
-
-                        if (it is PostHogSessionReplayHandler) {
-                            sessionReplayHandler = it
-
-                            // resume because we just created the session id above with
-                            // the startSession call
-                            if (isSessionReplayConfigEnabled()) {
-                                startSessionReplay(resumeCurrent = true)
-                            }
-                        } else if (it is PostHogSurveysHandler) {
-                            // surveys integration so we can notify it about captured events
-                            surveysHandler = it
-                            // Immediately push any cached surveys from remote config
-                            try {
-                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
-                            } catch (e: Throwable) {
-                                config.logger.log("Pushing cached surveys to integration failed: $e.")
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
-                    }
-                }
+                installIntegrations(resumeSessionReplay = true)
 
                 // only because of testing in isolation, this flag is always enabled
                 @Suppress("DEPRECATION")
@@ -418,6 +393,50 @@ public class PostHog private constructor(
                 integration.onRemoteConfig(loaded)
             } catch (e: Throwable) {
                 config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+            }
+        }
+    }
+
+    private fun installIntegrations(resumeSessionReplay: Boolean) {
+        val config = config ?: return
+        config.integrations.forEach {
+            try {
+                it.install(this)
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = it
+
+                    if (isSessionReplayConfigEnabled()) {
+                        startSessionReplay(resumeCurrent = resumeSessionReplay)
+                    }
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = it
+                    try {
+                        remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
+                    } catch (e: Throwable) {
+                        config.logger.log("Pushing cached surveys to integration failed: $e.")
+                    }
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
+            }
+        }
+    }
+
+    private fun uninstallIntegrations() {
+        stopSessionReplay()
+        val config = config ?: return
+        config.integrations.forEach {
+            try {
+                it.uninstall()
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = null
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = null
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
             }
         }
     }
@@ -545,21 +564,7 @@ public class PostHog private constructor(
 
                 config?.let { config ->
                     apiKeys.remove(config.apiKey)
-
-                    config.integrations.forEach {
-                        try {
-                            it.uninstall()
-
-                            if (it is PostHogSessionReplayHandler) {
-                                sessionReplayHandler = null
-                            } else if (it is PostHogSurveysHandler) {
-                                surveysHandler = null
-                            }
-                        } catch (e: Throwable) {
-                            config.logger
-                                .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
-                        }
-                    }
+                    uninstallIntegrations()
                 }
 
                 queue?.stop()
@@ -1226,6 +1231,8 @@ public class PostHog private constructor(
             optOutLoaded = true
         }
 
+        installIntegrations(resumeSessionReplay = false)
+
         // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
         // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
         // Gated on the opt-in capability interface so the public PostHogIntegration contract is unchanged.
@@ -1255,6 +1262,7 @@ public class PostHog private constructor(
         // Clear cached identity-token state so a stale token/401 flag isn't reused after
         // re-opting-in; the send guard in the manager already blocks sends while opted out.
         pushSubscriptionManager?.onOptOut()
+        uninstallIntegrations()
     }
 
     /**
