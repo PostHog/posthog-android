@@ -84,7 +84,7 @@ public data class PostHogDisplaySurveyAppearance(
                 backgroundColor = appearance.backgroundColor,
                 borderColor = appearance.borderColor,
                 submitButtonColor = appearance.submitButtonColor,
-                submitButtonText = appearance.submitButtonText,
+                submitButtonText = appearance.submitButtonText?.takeIf { it.isNotBlank() },
                 submitButtonTextColor = appearance.submitButtonTextColor,
                 textColor = appearance.textColor,
                 descriptionTextColor = appearance.descriptionTextColor,
@@ -98,12 +98,16 @@ public data class PostHogDisplaySurveyAppearance(
                 thankYouMessageHeader = translation?.thankYouMessageHeader ?: appearance.thankYouMessageHeader,
                 thankYouMessageDescription = translation?.thankYouMessageDescription ?: appearance.thankYouMessageDescription,
                 thankYouMessageDescriptionContentType = thankYouContentType,
-                thankYouMessageCloseButtonText = translation?.thankYouMessageCloseButtonText ?: appearance.thankYouMessageCloseButtonText,
+                thankYouMessageCloseButtonText =
+                    translation?.thankYouMessageCloseButtonText?.takeIf { it.isNotBlank() }
+                        ?: appearance.thankYouMessageCloseButtonText?.takeIf { it.isNotBlank() },
                 displayIntroScreen = appearance.displayIntroScreen ?: false,
                 introScreenHeader = translation?.introScreenHeader ?: appearance.introScreenHeader,
                 introScreenDescription = translation?.introScreenDescription ?: appearance.introScreenDescription,
                 introScreenDescriptionContentType = introContentType,
-                introScreenButtonText = translation?.introScreenButtonText ?: appearance.introScreenButtonText,
+                introScreenButtonText =
+                    translation?.introScreenButtonText?.takeIf { it.isNotBlank() }
+                        ?: appearance.introScreenButtonText?.takeIf { it.isNotBlank() },
             )
         }
     }
