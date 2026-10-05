@@ -146,7 +146,8 @@ class WindowCompositionProofActivity : Activity() {
         val activityLocation = IntArray(2).also(activityView::getLocationOnScreen)
         val dialogLocation = IntArray(2).also(dialogView::getLocationOnScreen)
         val dialogWindowLocation = IntArray(2).also(dialogView::getLocationInWindow)
-        val dialogSurfaceLocation = IntArray(2).also(dialogView::getLocationInSurface)
+        val dialogSurfaceLocation =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) IntArray(2).also(dialogView::getLocationInSurface) else null
         val nestedView = nestedOverlay?.window?.decorView
         val nestedLocation = nestedView?.let { IntArray(2).also(it::getLocationOnScreen).contentToString() }
         Log.i(
@@ -154,7 +155,8 @@ class WindowCompositionProofActivity : Activity() {
             "scene=$scene windowClass=${overlay.javaClass.name} " +
                 "activity=${activityView.width}x${activityView.height}@${activityLocation.contentToString()} " +
                 "dialog=${dialogView.width}x${dialogView.height}@${dialogLocation.contentToString()} " +
-                "inWindow=${dialogWindowLocation.contentToString()} inSurface=${dialogSurfaceLocation.contentToString()} " +
+                "inWindow=${dialogWindowLocation.contentToString()} " +
+                "inSurface=${dialogSurfaceLocation?.contentToString() ?: "unavailable"} " +
                 "dim=${dialogWindow.attributes.dimAmount} dialogFocus=${dialogView.hasWindowFocus()} " +
                 "opacity=${dialogWindow.attributes.alpha} nested=${nestedView?.width}x${nestedView?.height}@$nestedLocation " +
                 "nestedDim=${nestedOverlay?.window?.attributes?.dimAmount}",
@@ -174,7 +176,7 @@ class WindowCompositionProofActivity : Activity() {
                     handlerThread,
                     Rect(0, 0, dialogView.width, dialogView.height),
                 )
-                if (Build.VERSION.SDK_INT == 26 && scene == "wrap") {
+                if (dialogSurfaceLocation != null && scene == "wrap") {
                     copy(
                         scene,
                         "dialog-surface-crop",
