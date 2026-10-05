@@ -132,3 +132,16 @@
 -keepnames class androidx.compose.ui.viewinterop.* extends android.view.View
 -keepnames class androidx.compose.material.ripple.RippleContainer
 -keepnames class androidx.compose.material.ripple.RippleHostView
+
+# Screenshot cropping recognizes Material's optional dialog shell and public shape APIs.
+-keepnames class androidx.coordinatorlayout.widget.CoordinatorLayout
+-keepnames class com.google.android.material.bottomsheet.BottomSheetBehavior
+-keepclassmembers class androidx.coordinatorlayout.widget.CoordinatorLayout$LayoutParams {
+    public *** getBehavior();
+}
+-keepnames class com.google.android.material.shape.MaterialShapeDrawable
+-keepclassmembers class com.google.android.material.shape.MaterialShapeDrawable {
+    public android.content.res.ColorStateList getFillColor();
+    public android.content.res.ColorStateList getTintList();
+    public android.graphics.Paint$Style getPaintStyle();
+}
