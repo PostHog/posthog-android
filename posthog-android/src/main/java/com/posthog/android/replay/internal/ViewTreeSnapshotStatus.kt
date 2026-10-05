@@ -27,6 +27,7 @@ internal data class MaskCaptureToken(
 private class ActiveMaskCapture(
     val token: MaskCaptureToken,
     val armedDrawCount: Long,
+    val crop: DialogScreenshotCrop?,
     // Null until the pre-walk fixes it via setBaseline.
     var baselineRects: List<Rect>? = null,
     var invalid: Boolean = false,
@@ -36,6 +37,7 @@ private class ActiveMaskCapture(
 internal class DrawSampleSession(
     val token: MaskCaptureToken,
     val compareBaseline: List<Rect>,
+    val crop: DialogScreenshotCrop?,
 )
 
 // Outcome of fixing a capture baseline via setBaseline.
@@ -131,10 +133,14 @@ internal class WindowDrawState {
     // another task while the old worker or a timed-out PixelCopy callback is still running.
     private var captureScheduled = false
     private var pixelCopyInFlight = false
+    private var onCaptureAvailable: (() -> Unit)? = null
 
-    fun tryScheduleCapture(): Boolean =
+    fun tryScheduleCapture(onAvailable: (() -> Unit)? = null): Boolean =
         synchronized(captureLock) {
             if (captureScheduled || pixelCopyInFlight) {
+                // Register the wakeup with the rejection so completion cannot overtake it.
+                // Multiple requests need only one notification to capture the latest scene.
+                if (onAvailable != null) onCaptureAvailable = onAvailable
                 false
             } else {
                 captureScheduled = true
@@ -142,8 +148,19 @@ internal class WindowDrawState {
             }
         }
 
+    // Called under captureLock; invoke the returned callback only after releasing the lock.
+    private fun takeCaptureAvailableCallback(): (() -> Unit)? {
+        if (captureScheduled || pixelCopyInFlight) return null
+        return onCaptureAvailable.also { onCaptureAvailable = null }
+    }
+
     fun finishScheduledCapture() {
-        synchronized(captureLock) { captureScheduled = false }
+        val onAvailable =
+            synchronized(captureLock) {
+                captureScheduled = false
+                takeCaptureAvailableCallback()
+            }
+        onAvailable?.invoke()
     }
 
     fun beginPixelCopy() {
@@ -151,7 +168,12 @@ internal class WindowDrawState {
     }
 
     fun finishPixelCopy() {
-        synchronized(captureLock) { pixelCopyInFlight = false }
+        val onAvailable =
+            synchronized(captureLock) {
+                pixelCopyInFlight = false
+                takeCaptureAvailableCallback()
+            }
+        onAvailable?.invoke()
     }
 
     fun reset() {
@@ -190,10 +212,10 @@ internal class WindowDrawState {
     }
 
     // Arms detection BEFORE the pre-walk, so a draw overlapping it cannot go unnoticed.
-    fun beginMaskCapture(): MaskCaptureToken {
+    fun beginMaskCapture(crop: DialogScreenshotCrop? = null): MaskCaptureToken {
         synchronized(captureLock) {
             val token = MaskCaptureToken(++nextCaptureId)
-            activeCapture = ActiveMaskCapture(token, armedDrawCount = drawCount)
+            activeCapture = ActiveMaskCapture(token, armedDrawCount = drawCount, crop = crop)
             return token
         }
     }
@@ -239,7 +261,7 @@ internal class WindowDrawState {
                 return null
             }
             capture.drawSamplesInProgress++
-            return DrawSampleSession(capture.token, baseline)
+            return DrawSampleSession(capture.token, baseline, capture.crop)
         }
     }
 
