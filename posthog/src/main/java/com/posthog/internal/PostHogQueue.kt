@@ -247,14 +247,14 @@ public class PostHogQueue<Record>(
     private fun batchRecords() {
         val files = takeFiles()
 
-        val records = mutableListOf<Record>()
+        val records = mutableListOf<Pair<File, Record>>()
         for (file in files) {
             try {
                 val inputStream = config.encryption?.decrypt(file.inputStream()) ?: file.inputStream()
                 inputStream.use {
                     val record = spec.decode(it)
                     record?.let { theRecord ->
-                        records.add(theRecord)
+                        records.add(file to theRecord)
                     } ?: run {
                         deleteFileSafely(file)
                     }
@@ -264,6 +264,22 @@ public class PostHogQueue<Record>(
             }
         }
 
+        // Send boundary-separated groups from this flush's original FIFO window.
+        var start = 0
+        while (start < records.size) {
+            var end = start + 1
+            while (end < records.size && spec.canBatchTogether?.invoke(records[start].second, records[end].second) != false) {
+                end++
+            }
+            sendRecords(records.subList(start, end))
+            start = end
+        }
+    }
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun sendRecords(batch: List<Pair<File, Record>>) {
+        val files = batch.map { it.first }
+        val records = batch.map { it.second }
         var deleteFiles = true
         try {
             if (records.isNotEmpty()) {
