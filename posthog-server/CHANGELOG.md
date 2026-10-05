@@ -1,5 +1,11 @@
 ## Next
 
+## 2.20.1
+
+### Patch Changes
+
+- 84ef634: fix(flags): interpret date-only and naive date conditions, and relative date lookbacks, in UTC during local evaluation instead of the JVM default timezone
+
 ## 2.20.0
 
 ### Minor Changes
