@@ -1,5 +1,11 @@
 ## Next
 
+## 2.20.0
+
+### Minor Changes
+
+- 7d65bb3: feat(server): allow overriding the `$identify` event timestamp with `identify(distinctId, userProperties, userPropertiesSetOnce, timestamp)`
+
 ## 2.19.0
 
 ### Minor Changes
