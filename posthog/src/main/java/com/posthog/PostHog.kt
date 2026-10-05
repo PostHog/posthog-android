@@ -118,7 +118,7 @@ public class PostHog private constructor(
 
     // Guarded by replayDebugPropertiesLock.
     private var lastReplayDebugPropertiesAt: Long? = null
-    private var outstandingReplayDebugClaimAt: Long? = null
+    private var replayDebugClaimOutstanding = false
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -592,7 +592,7 @@ public class PostHog private constructor(
                 lastScreenName = null
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
-                    outstandingReplayDebugClaimAt = null
+                    replayDebugClaimOutstanding = false
                 }
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
@@ -845,19 +845,19 @@ public class PostHog private constructor(
     ): Boolean = since != null && now - since < REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS
 
     /**
-     * Single outstanding claim, so a capture inside `beforeSend` can't also take it; a claim older
-     * than the interval counts as leaked. The window starts at commit, on wall clock so a
-     * future-dated capture can't hold it shut.
+     * Single outstanding claim, so a capture inside `beforeSend` can't also take it. It never expires
+     * by age: the claiming capture already carries the bundle however long `beforeSend` takes, and
+     * always releases on exit. The window starts at commit, on wall clock so a future-dated capture
+     * can't hold it shut.
      */
     private fun claimReplayDebugPropertiesWindow(): Boolean {
         synchronized(replayDebugPropertiesLock) {
-            val now = currentTimeMillis()
-            if (isWithinReplayDebugInterval(lastReplayDebugPropertiesAt, now) ||
-                isWithinReplayDebugInterval(outstandingReplayDebugClaimAt, now)
+            if (replayDebugClaimOutstanding ||
+                isWithinReplayDebugInterval(lastReplayDebugPropertiesAt, currentTimeMillis())
             ) {
                 return false
             }
-            outstandingReplayDebugClaimAt = now
+            replayDebugClaimOutstanding = true
             return true
         }
     }
@@ -870,7 +870,7 @@ public class PostHog private constructor(
 
     private fun releaseReplayDebugPropertiesClaim() {
         synchronized(replayDebugPropertiesLock) {
-            outstandingReplayDebugClaimAt = null
+            replayDebugClaimOutstanding = false
         }
     }
 

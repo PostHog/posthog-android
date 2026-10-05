@@ -3270,6 +3270,31 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `an outstanding claim does not expire while beforeSend outlasts the interval`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        lateinit var sut: PostHogInterface
+        var nested = false
+        sut =
+            replayDebugSut(http, flushAt = 2, beforeSend = {
+                if (it.event == "\$slow" && !nested) {
+                    nested = true
+                    clock.nowMs += 31_000
+                    sut.capture("\$inner")
+                }
+                it
+            })
+        config.dateProvider = clock
+
+        sut.capture("\$slow")
+
+        val carriers = capturedEvents(http).filter { it.carriesReplayDebugBundle }
+        assertEquals(listOf("\$slow"), carriers.map { it.event })
+
+        sut.close()
+    }
+
+    @Test
     fun `a claimer routed to the replay queue as a snapshot releases its claim`() {
         val http = mockHttp()
         val clock = TestDateProvider(System.currentTimeMillis())
