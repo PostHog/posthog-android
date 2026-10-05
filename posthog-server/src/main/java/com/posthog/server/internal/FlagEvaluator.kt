@@ -14,6 +14,7 @@ import com.posthog.internal.PropertyValue
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -522,7 +523,7 @@ internal class FlagEvaluator(
             return null
         }
 
-        val now = ZonedDateTime.now()
+        val now = config.dateProvider.currentDate().toInstant().atZone(ZoneOffset.UTC)
         return when (interval) {
             "h" -> now.minus(number.toLong(), ChronoUnit.HOURS)
             "d" -> now.minus(number.toLong(), ChronoUnit.DAYS)
@@ -554,7 +555,7 @@ internal class FlagEvaluator(
         try {
             // Try date only: "2022-05-01"
             return java.time.LocalDate.parse(propertyValue, DateTimeFormatter.ISO_DATE)
-                .atStartOfDay(ZoneId.systemDefault())
+                .atStartOfDay(ZoneOffset.UTC)
         } catch (e: DateTimeParseException) {
             // fall through
         }
@@ -583,7 +584,7 @@ internal class FlagEvaluator(
         try {
             // Try datetime without timezone: "2022-05-01 00:00:00"
             return java.time.LocalDateTime.parse(propertyValue, DATE_FORMATTER_NO_TZ)
-                .atZone(ZoneId.systemDefault())
+                .atZone(ZoneOffset.UTC)
         } catch (e: DateTimeParseException) {
             // All formats failed
         }
