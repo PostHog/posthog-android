@@ -1,5 +1,11 @@
 ## Next
 
+## 6.46.1
+
+### Patch Changes
+
+- d811091: Split session replay uploads at session or distinct ID changes so queued snapshots retain their original attribution. Send boundary-separated groups sequentially within the existing batch limit, preserving failed and unsent snapshots for retry.
+
 ## 6.46.0
 
 ### Minor Changes
