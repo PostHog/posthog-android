@@ -112,8 +112,10 @@ public class PostHogSessionReplayConfig
          * Pixel format used for screenshot captures. Defaults to [PostHogScreenshotColorMode.ARGB_8888]
          * to preserve alpha and color precision before lossy WebP compression.
          * [PostHogScreenshotColorMode.RGB_565] uses less bitmap memory but reduces color precision
-         * and removes alpha, making transparent window regions appear black. Devices that reject
-         * RGB_565 fall back to ARGB_8888. Does not enable screenshot capture.
+         * and removes alpha, making transparent activity window regions appear black. In composed
+         * scenes, dialogs use RGB_565 only for proven-opaque crops with window opacity equal to 1;
+         * other dialogs use ARGB_8888 to preserve transparency. Devices that reject RGB_565 fall
+         * back to ARGB_8888. Does not enable screenshot capture.
          */
         @PostHogExperimental
         @Volatile

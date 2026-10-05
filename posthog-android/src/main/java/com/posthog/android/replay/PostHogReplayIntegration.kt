@@ -117,6 +117,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -153,6 +154,7 @@ public class PostHogReplayIntegration(
         val height: Int,
         val dimAmount: Float,
         val crop: DialogScreenshotCrop?,
+        val windowAlpha: Float,
     )
 
     private data class SceneImage(
@@ -160,6 +162,8 @@ public class PostHogReplayIntegration(
         val windowWidth: Int,
         val windowHeight: Int,
         val crop: DialogScreenshotCrop?,
+        val windowAlpha: Float,
+        val bitmapConfig: Bitmap.Config,
     )
 
     private val passwordInputTypes =
@@ -550,6 +554,7 @@ public class PostHogReplayIntegration(
                     view.height,
                     if (attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) attributes.dimAmount else 0f,
                     if (view !== base) findDialogScreenshotCrop(view) else null,
+                    if (view !== base) attributes.alpha else 1f,
                 ),
             )
         }
@@ -567,6 +572,7 @@ public class PostHogReplayIntegration(
             if (!isActive() || replaySessionId != sessionId || snapshotGeneration != generation || sceneRevision != revision) return false
         }
         val timestamp = config.dateProvider.currentTimeMillis()
+        val colorMode = config.sessionReplayConfig.screenshotColorMode
         val images = mutableListOf<RRWireframe>()
         val refreshed = mutableMapOf<View, SceneImage>()
 
@@ -587,12 +593,21 @@ public class PostHogReplayIntegration(
                     Triple(id, sceneImages[layer.view], sceneDirtyViews.remove(layer.view))
                 }
             val isDialog = layer !== layers.first()
+            val bitmapConfig =
+                if (colorMode == PostHogScreenshotColorMode.RGB_565 &&
+                    (!isDialog || (layer.crop?.opaque == true && layer.windowAlpha == 1f))
+                ) {
+                    Bitmap.Config.RGB_565
+                } else {
+                    Bitmap.Config.ARGB_8888
+                }
             // Older dialog surfaces cannot be aligned with decor-coordinate masks. Recheck
             // privacy on every scene capture rather than reusing a previously unmasked image.
             val recheckDialogMasks = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
             val image =
                 if (!recheckDialogMasks && !dirty && cached != null &&
-                    cached.windowWidth == layer.width && cached.windowHeight == layer.height && cached.crop == layer.crop
+                    cached.windowWidth == layer.width && cached.windowHeight == layer.height && cached.crop == layer.crop &&
+                    cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig
                 ) {
                     cached.wireframe
                 } else {
@@ -601,6 +616,8 @@ public class PostHogReplayIntegration(
                         layer.status.drawState,
                         isDialog = isDialog,
                         crop = layer.crop,
+                        bitmapConfig = bitmapConfig,
+                        windowAlpha = layer.windowAlpha,
                     )
                         ?: run {
                             restoreDirty(layer)
@@ -615,7 +632,7 @@ public class PostHogReplayIntegration(
                     width = (layer.crop?.width ?: layer.width).densityValue(screenDensity),
                     height = (layer.crop?.height ?: layer.height).densityValue(screenDensity),
                 )
-            refreshed[layer.view] = SceneImage(positioned, layer.width, layer.height, layer.crop)
+            refreshed[layer.view] = SceneImage(positioned, layer.width, layer.height, layer.crop, layer.windowAlpha, bitmapConfig)
             images.add(positioned)
         }
 
@@ -646,8 +663,11 @@ public class PostHogReplayIntegration(
                     return false
                 }
         val viewport = screenSize.width to screenSize.height
-        if (layers.any { it.crop != null } && runOnMainThreadBlocking {
-                layers.all { it.crop == null || findDialogScreenshotCrop(it.view) == it.crop }
+        if (layers.size > 1 && runOnMainThreadBlocking {
+                layers.drop(1).all {
+                    it.window.attributes.alpha == it.windowAlpha &&
+                        (it.crop == null || findDialogScreenshotCrop(it.view) == it.crop)
+                }
             } != true
         ) {
             restoreDirty()
@@ -2055,6 +2075,12 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState,
         isDialog: Boolean = false,
         crop: DialogScreenshotCrop? = null,
+        bitmapConfig: Bitmap.Config =
+            when (config.sessionReplayConfig.screenshotColorMode) {
+                PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
+                PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
+            },
+        windowAlpha: Float = 1f,
     ): RRWireframe? {
         val view = this
         if (!view.isVisible()) {
@@ -2092,11 +2118,6 @@ public class PostHogReplayIntegration(
 
         val screenshotScale = config.sessionReplayConfig.screenshotScale
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
-        val bitmapConfig =
-            when (config.sessionReplayConfig.screenshotColorMode) {
-                PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
-                PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
-            }
         var base64: String? = null
 
         // API 26–27 copy the entire dialog surface, including its insets, into the
@@ -2229,6 +2250,14 @@ public class PostHogReplayIntegration(
                     releaseFromWaiter = true
                     if (requestState.succeeded()) {
                         try {
+                            // PixelCopy captures surface pixels before the compositor applies window opacity.
+                            // Multiply alpha only after redaction, preserving partial pixel transparency.
+                            if (windowAlpha != 1f) {
+                                Canvas(bitmap).drawColor(
+                                    Color.argb((windowAlpha.coerceIn(0f, 1f) * 255).roundToInt(), 0, 0, 0),
+                                    PorterDuff.Mode.DST_IN,
+                                )
+                            }
                             base64 = bitmap.webpBase64(compressionQuality)
                         } catch (e: Throwable) {
                             config.logger.log("Session Replay screenshot encoding failed: $e.")

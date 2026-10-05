@@ -3652,7 +3652,7 @@ internal class PostHogReplayIntegrationTest {
             val position = IntArray(2).also { h.root.getLocationOnScreen(it) }
             val layers =
                 listOf(
-                    constructor.newInstance(base, h.activity.window, baseStatus, 0, 0, base.width, base.height, 0f, null),
+                    constructor.newInstance(base, h.activity.window, baseStatus, 0, 0, base.width, base.height, 0f, null, 1f),
                     constructor.newInstance(
                         h.root,
                         h.dialog.window,
@@ -3663,6 +3663,7 @@ internal class PostHogReplayIntegrationTest {
                         h.root.height,
                         0.48f,
                         findDialogScreenshotCrop(h.root),
+                        h.dialog.window!!.attributes.alpha,
                     ),
                 )
             return ReflectionHelpers.callInstanceMethod(
@@ -3777,18 +3778,100 @@ internal class PostHogReplayIntegrationTest {
                 h.sheet.setBackgroundColor(0x80ffffff.toInt())
                 assertTrue(capture(h, fx, status))
                 assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
-                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
                 val image = bitmap(images(fake).last())
                 try {
-                    assertEquals(255, Color.alpha(image.getPixel(200, 100)))
+                    assertEquals(0, Color.alpha(image.getPixel(200, 100)))
                 } finally {
                     image.recycle()
                 }
                 (h.sheet.parent as View).setBackgroundColor(Color.BLACK)
                 assertTrue(capture(h, fx, status))
                 assertEquals(null, RecordingShadowPixelCopy.requests.last().source)
-                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
                 assertEquals((h.root.width / h.root.resources.displayMetrics.density).toInt(), images(fake).last().width)
+            }
+
+        @Test
+        fun `window opacity invalidates an opaque crop cache and format follows current opacity`() =
+            withDialog { h, fx, fake, status ->
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+                val copies = RecordingShadowPixelCopy.requests.size
+                val window = h.dialog.window!!
+                window.attributes = window.attributes.apply { alpha = 0.5f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+                val image = bitmap(images(fake).last())
+                try {
+                    assertEquals(128, Color.alpha(image.getPixel(200, 100)))
+                    // Redaction precedes the uniform window-opacity adjustment.
+                    assertEquals(128, Color.alpha(image.getPixel(50, 35)))
+                    assertTrue(Color.red(image.getPixel(50, 35)) < 20)
+                } finally {
+                    image.recycle()
+                }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                window.attributes = window.attributes.apply { alpha = 0.25f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+                val quarterOpacity = bitmap(images(fake).last())
+                try {
+                    assertEquals(64, Color.alpha(quarterOpacity.getPixel(200, 100)))
+                } finally {
+                    quarterOpacity.recycle()
+                }
+                window.attributes = window.attributes.apply { alpha = 1f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 3, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+            }
+
+        @Test
+        fun `color mode changes invalidate cached layers without depending on retained bitmap capacity`() =
+            withDialog { h, fx, _, status ->
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                assertTrue(RecordingShadowPixelCopy.requests.takeLast(2).all { it.config == Bitmap.Config.ARGB_8888 })
+                fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 4, RecordingShadowPixelCopy.requests.size)
+                assertTrue(RecordingShadowPixelCopy.requests.takeLast(2).all { it.config == Bitmap.Config.RGB_565 })
+            }
+
+        @Test
+        fun `scene reads configured color mode once before capturing its layers`() =
+            withDialog { h, fx, _, status ->
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
+                }
+                assertTrue(capture(h, fx, status))
+                assertTrue(RecordingShadowPixelCopy.requests.all { it.config == Bitmap.Config.RGB_565 })
+                assertTrue(capture(h, fx, status))
+                assertTrue(RecordingShadowPixelCopy.requests.takeLast(2).all { it.config == Bitmap.Config.ARGB_8888 })
+            }
+
+        @Test
+        fun `window opacity changing during capture discards the stale scene`() =
+            withDialog { h, fx, fake, status ->
+                val window = h.dialog.window!!
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    window.attributes = window.attributes.apply { alpha = 0.5f }
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertTrue(capture(h, fx, status))
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
             }
     }
 
@@ -3946,6 +4029,8 @@ internal class PostHogReplayIntegrationTest {
             ReflectionHelpers.ClassParameter.from(WindowDrawState::class.java, h.status.drawState),
             ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, true),
             ReflectionHelpers.ClassParameter.from(DialogScreenshotCrop::class.java, null),
+            ReflectionHelpers.ClassParameter.from(Bitmap.Config::class.java, Bitmap.Config.ARGB_8888),
+            ReflectionHelpers.ClassParameter.from(Float::class.javaPrimitiveType, 1f),
         )
 
     @Test
@@ -4050,8 +4135,8 @@ internal class PostHogReplayIntegrationTest {
                 .declaredConstructors.single().apply { isAccessible = true }
         val layers =
             listOf(
-                constructor.newInstance(h.hookLayout, h.window, h.status, 0, 0, 100, 100, 0f, null),
-                constructor.newInstance(decor, window, status, 10, 20, 400, 400, 0.35f, null),
+                constructor.newInstance(h.hookLayout, h.window, h.status, 0, 0, 100, 100, 0f, null, 1f),
+                constructor.newInstance(decor, window, status, 10, 20, 400, 400, 0.35f, null, 1f),
             )
 
         fun captureScene(): List<RRWireframe> {
@@ -4108,7 +4193,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
-    fun `scene keeps the configured pixel format for activity and dialog layers`() {
+    fun `scene keeps RGB565 activity captures when uncertain dialogs require ARGB`() {
         val h = screenshotCaptureHarness(captureExecutor = mock())
         h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
         h.fx.config.sessionReplayConfig.screenshotScale = 0.5f
@@ -4129,8 +4214,8 @@ internal class PostHogReplayIntegrationTest {
         val constructor =
             PostHogReplayIntegration::class.java.declaredClasses.single { it.simpleName == "SceneLayer" }
                 .declaredConstructors.single().apply { isAccessible = true }
-        val activityLayer = constructor.newInstance(h.hookLayout, h.window, h.status, 0, 0, 100, 100, 0f, null)
-        val dialogLayer = constructor.newInstance(decor, window, status, 10, 20, 400, 400, 0.35f, null)
+        val activityLayer = constructor.newInstance(h.hookLayout, h.window, h.status, 0, 0, 100, 100, 0f, null, 1f)
+        val dialogLayer = constructor.newInstance(decor, window, status, 10, 20, 400, 400, 0.35f, null, 1f)
 
         fun capture(layers: List<Any>) {
             assertTrue(
@@ -4157,7 +4242,7 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(50, RecordingShadowPixelCopy.requests.single().width)
             assertEquals(50, RecordingShadowPixelCopy.requests.single().height)
             capture(listOf(activityLayer, dialogLayer))
-            assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+            assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
             assertEquals(200, RecordingShadowPixelCopy.requests.last().width)
             assertEquals(200, RecordingShadowPixelCopy.requests.last().height)
             ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)

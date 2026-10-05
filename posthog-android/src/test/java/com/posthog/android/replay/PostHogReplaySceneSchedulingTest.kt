@@ -3,11 +3,13 @@ package com.posthog.android.replay
 import android.app.Activity
 import android.app.Dialog
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Binder
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Base64
 import android.view.PixelCopy
 import android.view.View
 import android.view.Window
@@ -39,6 +41,7 @@ import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.annotation.LooperMode
@@ -99,6 +102,7 @@ internal class PostHogReplaySceneSchedulingTest {
         companion object {
             var copies = 0
             val formats = mutableListOf<Pair<Window, Bitmap.Config?>>()
+            var fillColor: Int? = null
             var onCopy: ((Window) -> Int)? = null
 
             @JvmStatic
@@ -111,7 +115,7 @@ internal class PostHogReplaySceneSchedulingTest {
             ) {
                 copies++
                 formats.add(window to bitmap.config)
-                bitmap.eraseColor(Color.rgb(copies % 255, 40, 80))
+                bitmap.eraseColor(fillColor ?: Color.rgb(copies % 255, 40, 80))
                 listener.onPixelCopyFinished(onCopy?.invoke(window) ?: PixelCopy.SUCCESS)
             }
         }
@@ -135,6 +139,7 @@ internal class PostHogReplaySceneSchedulingTest {
     fun setUp() {
         ScenePixelCopy.copies = 0
         ScenePixelCopy.formats.clear()
+        ScenePixelCopy.fillColor = null
         ScenePixelCopy.onCopy = null
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.setAppInBackground(false)
@@ -315,6 +320,7 @@ internal class PostHogReplaySceneSchedulingTest {
     private fun assertSceneColorMode(
         mode: PostHogScreenshotColorMode,
         expected: Bitmap.Config,
+        dialogExpected: Bitmap.Config,
     ) {
         config.sessionReplayConfig.screenshotColorMode = mode
         start()
@@ -327,17 +333,49 @@ internal class PostHogReplaySceneSchedulingTest {
 
         val dialogFormats = ScenePixelCopy.formats.filter { it.first === dialog.window }
         assertTrue(dialogFormats.isNotEmpty())
-        assertTrue(dialogFormats.all { it.second == expected })
+        assertTrue(dialogFormats.all { it.second == dialogExpected })
     }
 
     @Test
-    fun `registered scene captures honor RGB565 for activity and dialog layers`() {
-        assertSceneColorMode(PostHogScreenshotColorMode.RGB_565, Bitmap.Config.RGB_565)
+    fun `registered scene captures keep RGB565 activity and use ARGB for uncertain dialogs`() {
+        assertSceneColorMode(PostHogScreenshotColorMode.RGB_565, Bitmap.Config.RGB_565, Bitmap.Config.ARGB_8888)
     }
 
     @Test
     fun `registered scene captures preserve the default ARGB format for every layer`() {
-        assertSceneColorMode(PostHogScreenshotColorMode.ARGB_8888, Bitmap.Config.ARGB_8888)
+        assertSceneColorMode(PostHogScreenshotColorMode.ARGB_8888, Bitmap.Config.ARGB_8888, Bitmap.Config.ARGB_8888)
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `registered dialog capture multiplies pixel alpha by window opacity`() {
+        config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        ScenePixelCopy.fillColor = Color.argb(128, 200, 80, 40)
+        val window = dialog.window!!
+        window.attributes = window.attributes.apply { alpha = 0.5f }
+        val copies = ScenePixelCopy.copies
+        shadowOf(Looper.getMainLooper()).idleFor(100, TimeUnit.MILLISECONDS)
+        assertNotNull(sut.decorViews[window.decorView]).listener.onDraw()
+        drain()
+        assertEquals(copies + 1, ScenePixelCopy.copies)
+
+        assertTrue(ScenePixelCopy.formats.filter { it.first === controller.get().window }.all { it.second == Bitmap.Config.RGB_565 })
+        assertEquals(Bitmap.Config.ARGB_8888, ScenePixelCopy.formats.last().second)
+        val events = fake.properties!!["\$snapshot_data"] as List<*>
+        val full = events.filterIsInstance<RRFullSnapshotEvent>().single()
+        val frames = (full.data as Map<*, *>)["wireframes"] as List<*>
+        val image = frames.last() as RRWireframe
+        val bytes = Base64.decode(assertNotNull(image.base64).substringAfter(','), Base64.DEFAULT)
+        val bitmap = assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+        try {
+            assertEquals(64, Color.alpha(bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)))
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     @Test
