@@ -1,6 +1,27 @@
 # Contributing
 
-If you would like to contribute code to `posthog-android` you can do so through GitHub by forking the repository and opening a pull request against `main`. Build, test, and formatting commands are in [AGENTS.md](./AGENTS.md).
+If you would like to contribute code to `posthog-android` you can do so through GitHub by forking the repository and opening a pull request against `main`.
+
+## Development commands
+
+Prefer the [Makefile](./Makefile) wrappers:
+
+| Task | Command |
+|---|---|
+| Build, including the Gradle plugin | `make compile` |
+| Run JVM and Android tests, including Compose and the Gradle plugin | `make test` |
+| Run core (JVM) tests only | `make testJava` |
+| Run a specific core test class | `./gradlew :posthog:test --tests "com.posthog.PostHogTest"` |
+| Run Compose survey interaction tests | `make testSurveyUI` |
+| Check formatting | `make checkFormat` |
+| Fix formatting | `make format` |
+| Clean | `make clean` |
+| Dump API surface | `make api` |
+| Test coverage report | `make testReport` |
+| Dry release (local Maven) | `make dryRelease` |
+| Stop Gradle daemons | `make stop` |
+
+Use focused tests during iteration and select module/behavior checks before submitting SDK changes. Core JVM tests do not cover Android or Compose behavior; use the relevant Gradle module/task for Android or server tests, and `make testSurveyUI` for Compose survey interactions (it enables debug tests). Formatting uses Spotless + ktlint; review any diff from `make format`. For Markdown-only edits, check links and `git diff --check` rather than running SDK builds/tests.
 
 ## Public API changes
 
