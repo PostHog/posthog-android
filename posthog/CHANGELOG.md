@@ -1,5 +1,11 @@
 ## Next
 
+## 6.46.2
+
+### Patch Changes
+
+- 4c562de: Require Okio 3.11.0 or later to prevent corrupt gzip request bodies when Android's JNI layer copies compression buffers. This includes the upstream DeflaterSink fix and retains the Kotlin 2.0 compatibility target. Applications overriding transitive dependencies should allow the updated Okio version.
+
 ## 6.46.1
 
 ### Patch Changes
