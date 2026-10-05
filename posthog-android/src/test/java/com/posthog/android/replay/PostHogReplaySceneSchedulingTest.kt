@@ -24,6 +24,7 @@ import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.replay.RRFullSnapshotEvent
+import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRWireframe
 import curtains.Curtains
 import curtains.OnRootViewsChangedListener
@@ -97,6 +98,7 @@ internal class PostHogReplaySceneSchedulingTest {
     class ScenePixelCopy {
         companion object {
             var copies = 0
+            val formats = mutableListOf<Pair<Window, Bitmap.Config?>>()
             var onCopy: ((Window) -> Int)? = null
 
             @JvmStatic
@@ -108,6 +110,7 @@ internal class PostHogReplaySceneSchedulingTest {
                 handler: Handler,
             ) {
                 copies++
+                formats.add(window to bitmap.config)
                 bitmap.eraseColor(Color.rgb(copies % 255, 40, 80))
                 listener.onPixelCopyFinished(onCopy?.invoke(window) ?: PixelCopy.SUCCESS)
             }
@@ -119,6 +122,7 @@ internal class PostHogReplaySceneSchedulingTest {
     private val executor = QueuedExecutor()
     private val fake = PostHogFake()
     private val dialogs = mutableListOf<Dialog>()
+    private val otherActivities = mutableListOf<ActivityController<Activity>>()
     private lateinit var controller: ActivityController<Activity>
     private lateinit var curtains: MockedStatic<Curtains>
     private lateinit var sut: PostHogReplayIntegration
@@ -130,6 +134,7 @@ internal class PostHogReplaySceneSchedulingTest {
     @BeforeTest
     fun setUp() {
         ScenePixelCopy.copies = 0
+        ScenePixelCopy.formats.clear()
         ScenePixelCopy.onCopy = null
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.setAppInBackground(false)
@@ -193,6 +198,7 @@ internal class PostHogReplaySceneSchedulingTest {
         sut.uninstall()
         executor.shutdownNow()
         dialogs.forEach { it.dismiss() }
+        otherActivities.asReversed().forEach { it.pause().stop().destroy() }
         controller.pause().stop().destroy()
         shadowOf(Looper.getMainLooper()).idle()
         curtains.close()
@@ -260,6 +266,79 @@ internal class PostHogReplaySceneSchedulingTest {
     }
 
     private fun dirtyViews(): Set<View> = ReflectionHelpers.getField(sut, "sceneDirtyViews")
+
+    private fun assertSceneMetadata(title: String): Map<*, *> {
+        val events = fake.properties!!["\$snapshot_data"] as List<*>
+        assertTrue(events[0] is RRMetaEvent)
+        assertTrue(events[1] is RRFullSnapshotEvent)
+        val metadata = (events[0] as RRMetaEvent).data as Map<*, *>
+        assertEquals(title, metadata["href"])
+        return metadata
+    }
+
+    @Test
+    fun `each changed full scene includes current metadata before its keyframe`() {
+        controller.get().window.attributes.title = "test/CheckoutActivity"
+        start()
+        drain()
+        val first = assertSceneMetadata("CheckoutActivity")
+        val captures = fake.captures
+
+        shadowOf(Looper.getMainLooper()).idleFor(100, TimeUnit.MILLISECONDS)
+        activityStatus.listener.onDraw()
+        drain()
+
+        assertEquals(captures + 1, fake.captures)
+        assertEquals(first, assertSceneMetadata("CheckoutActivity"))
+    }
+
+    @Test
+    fun `same sized activity transition includes the new activity metadata`() {
+        controller.get().window.attributes.title = "test/CheckoutActivity"
+        start()
+        drain()
+        val first = assertSceneMetadata("CheckoutActivity")
+        val second = Robolectric.buildActivity(Activity::class.java).setup().visible()
+        otherActivities.add(second)
+        second.get().window.attributes.title = "test/ReceiptActivity"
+        prepareWindow(second.get().window, WindowManager.LayoutParams.TYPE_BASE_APPLICATION)
+        val decor = second.get().window.decorView
+        rootListeners.toList().forEach { it.onRootViewsChanged(decor, true) }
+        roots.add(decor)
+        drain()
+
+        val metadata = assertSceneMetadata("ReceiptActivity")
+        assertEquals(first["width"], metadata["width"])
+        assertEquals(first["height"], metadata["height"])
+    }
+
+    private fun assertSceneColorMode(
+        mode: PostHogScreenshotColorMode,
+        expected: Bitmap.Config,
+    ) {
+        config.sessionReplayConfig.screenshotColorMode = mode
+        start()
+        drain()
+        assertTrue(ScenePixelCopy.formats.isNotEmpty())
+        assertTrue(ScenePixelCopy.formats.all { it.second == expected })
+
+        val dialog = showDialog()
+        drain()
+
+        val dialogFormats = ScenePixelCopy.formats.filter { it.first === dialog.window }
+        assertTrue(dialogFormats.isNotEmpty())
+        assertTrue(dialogFormats.all { it.second == expected })
+    }
+
+    @Test
+    fun `registered scene captures honor RGB565 for activity and dialog layers`() {
+        assertSceneColorMode(PostHogScreenshotColorMode.RGB_565, Bitmap.Config.RGB_565)
+    }
+
+    @Test
+    fun `registered scene captures preserve the default ARGB format for every layer`() {
+        assertSceneColorMode(PostHogScreenshotColorMode.ARGB_8888, Bitmap.Config.ARGB_8888)
+    }
 
     @Test
     fun `a delayed draw cannot dirty a removed dialog`() {

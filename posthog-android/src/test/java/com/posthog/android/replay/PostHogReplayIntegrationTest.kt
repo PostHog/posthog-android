@@ -3777,17 +3777,17 @@ internal class PostHogReplayIntegrationTest {
                 h.sheet.setBackgroundColor(0x80ffffff.toInt())
                 assertTrue(capture(h, fx, status))
                 assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
-                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
                 val image = bitmap(images(fake).last())
                 try {
-                    assertEquals(0, Color.alpha(image.getPixel(200, 100)))
+                    assertEquals(255, Color.alpha(image.getPixel(200, 100)))
                 } finally {
                     image.recycle()
                 }
                 (h.sheet.parent as View).setBackgroundColor(Color.BLACK)
                 assertTrue(capture(h, fx, status))
                 assertEquals(null, RecordingShadowPixelCopy.requests.last().source)
-                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
                 assertEquals((h.root.width / h.root.resources.displayMetrics.density).toInt(), images(fake).last().width)
             }
     }
@@ -3944,7 +3944,6 @@ internal class PostHogReplayIntegrationTest {
             ReflectionHelpers.ClassParameter.from(View::class.java, h.hookLayout),
             ReflectionHelpers.ClassParameter.from(Window::class.java, h.window),
             ReflectionHelpers.ClassParameter.from(WindowDrawState::class.java, h.status.drawState),
-            ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, true),
             ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, true),
             ReflectionHelpers.ClassParameter.from(DialogScreenshotCrop::class.java, null),
         )
@@ -4109,7 +4108,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
-    fun `scene keeps the configured activity pixel format while preserving dialog alpha`() {
+    fun `scene keeps the configured pixel format for activity and dialog layers`() {
         val h = screenshotCaptureHarness(captureExecutor = mock())
         h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
         h.fx.config.sessionReplayConfig.screenshotScale = 0.5f
@@ -4158,7 +4157,7 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(50, RecordingShadowPixelCopy.requests.single().width)
             assertEquals(50, RecordingShadowPixelCopy.requests.single().height)
             capture(listOf(activityLayer, dialogLayer))
-            assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+            assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
             assertEquals(200, RecordingShadowPixelCopy.requests.last().width)
             assertEquals(200, RecordingShadowPixelCopy.requests.last().height)
             ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)

@@ -599,7 +599,6 @@ public class PostHogReplayIntegration(
                     layer.view.toScreenshotWireframe(
                         layer.window,
                         layer.status.drawState,
-                        forceAlpha = isDialog && layer.crop?.opaque != true,
                         isDialog = isDialog,
                         crop = layer.crop,
                     )
@@ -667,12 +666,13 @@ public class PostHogReplayIntegration(
                     return false
                 }
                 val result = mutableListOf<RREvent>()
-                if (sceneViewport != viewport) {
+                val sceneChanged = lastScene != scene
+                if (sceneViewport != viewport || sceneChanged) {
                     val title = layers.first().window.attributes.title?.toString()?.substringAfter("/") ?: ""
                     result.add(RRMetaEvent(width = viewport.first, height = viewport.second, timestamp = timestamp, href = title))
                     sceneViewport = viewport
                 }
-                if (lastScene != scene) {
+                if (sceneChanged) {
                     result.add(RRFullSnapshotEvent(scene, 0, 0, timestamp))
                     lastScene = scene
                 }
@@ -2053,7 +2053,6 @@ public class PostHogReplayIntegration(
     private fun View.toScreenshotWireframe(
         window: Window,
         drawState: WindowDrawState,
-        forceAlpha: Boolean = false,
         isDialog: Boolean = false,
         crop: DialogScreenshotCrop? = null,
     ): RRWireframe? {
@@ -2094,7 +2093,7 @@ public class PostHogReplayIntegration(
         val screenshotScale = config.sessionReplayConfig.screenshotScale
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         val bitmapConfig =
-            when (if (forceAlpha) PostHogScreenshotColorMode.ARGB_8888 else config.sessionReplayConfig.screenshotColorMode) {
+            when (config.sessionReplayConfig.screenshotColorMode) {
                 PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
                 PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
             }
