@@ -29,6 +29,28 @@ public sealed interface PostHogInterface {
         distinctId: String,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+    ) {
+        identify(
+            distinctId,
+            userProperties,
+            userPropertiesSetOnce,
+            null,
+        )
+    }
+
+    /**
+     * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
+     * @param distinctId the distinctId
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param timestamp the `$identify` event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If null, the current time is used. Docs https://posthog.com/docs/data/timestamps
+     */
+    public fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        timestamp: Date?,
     )
 
     /**
