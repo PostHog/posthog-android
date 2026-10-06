@@ -22,6 +22,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -139,6 +140,10 @@ class WindowCompositionProofActivity : Activity() {
     }
 
     private fun capture(scene: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.i(TAG, "PixelCopy probes require API 26 or newer")
+            return
+        }
         val activityWindow = window
         val dialogWindow = overlay.window ?: return
         val activityView = activityWindow.decorView
@@ -212,6 +217,7 @@ class WindowCompositionProofActivity : Activity() {
         }.start()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun copy(
         scene: String,
         name: String,
@@ -259,6 +265,7 @@ class WindowCompositionProofActivity : Activity() {
         bitmap.recycle()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun copyAcrossFormats(
         scene: String,
         source: Window,
