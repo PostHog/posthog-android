@@ -17,6 +17,7 @@ import com.posthog.surveys.OnPostHogSurveyShown
 import com.posthog.surveys.PostHogDisplaySurvey
 import com.posthog.surveys.PostHogSurveyResponse
 import com.posthog.surveys.Survey
+import com.posthog.surveys.SurveyConditions
 import com.posthog.surveys.SurveyQuestion
 import com.posthog.surveys.SurveyType
 import okhttp3.mockwebserver.MockResponse
@@ -345,6 +346,50 @@ internal class PostHogSurveysEventPayloadTest {
             assertNull(postHog.properties?.get("\$survey_response_1"))
         } finally {
             resumed.uninstall()
+            preferences.clear()
+        }
+    }
+
+    @Test
+    fun `survey shown before a restart is not shown again and starts the wait period`() {
+        val preferences = PostHogMemoryPreferences()
+        val delegate = RecordingSurveyDelegate()
+        val survey = createSurvey()
+        val (first, _) = createIntegration(delegate, preferences)
+        first.onSurveysLoaded(listOf(survey))
+        assertNotNull(delegate.onSurveyShown).invoke(assertNotNull(delegate.shownSurvey))
+        first.uninstall()
+        delegate.shownSurvey = null
+        val (relaunched, _) = createIntegration(delegate, preferences)
+        try {
+            val waitPeriod = SurveyConditions(null, null, null, null, null, 30, null)
+            relaunched.onSurveysLoaded(listOf(survey, createSurvey(id = "other-survey").copy(conditions = waitPeriod)))
+            assertNull(delegate.shownSurvey)
+        } finally {
+            relaunched.uninstall()
+            preferences.clear()
+        }
+    }
+
+    @Test
+    fun `unfinished survey does not resume inside its wait period`() {
+        val preferences = PostHogMemoryPreferences()
+        val delegate = RecordingSurveyDelegate()
+        val waitPeriod = SurveyConditions(null, null, null, null, null, 30, null)
+        val survey = partialResponseSurvey(false).copy(startDate = java.util.Date(), conditions = waitPeriod)
+        val (first, _) = createIntegration(delegate, preferences)
+        first.onSurveysLoaded(listOf(survey))
+        val display = assertNotNull(delegate.shownSurvey)
+        assertNotNull(delegate.onSurveyShown).invoke(display)
+        assertNotNull(delegate.onSurveyResponse).invoke(display, 0, PostHogSurveyResponse.Text("Saved"))
+        first.uninstall()
+        delegate.shownSurvey = null
+        val (relaunched, _) = createIntegration(delegate, preferences)
+        try {
+            relaunched.onSurveysLoaded(listOf(survey))
+            assertNull(delegate.shownSurvey)
+        } finally {
+            relaunched.uninstall()
             preferences.clear()
         }
     }
