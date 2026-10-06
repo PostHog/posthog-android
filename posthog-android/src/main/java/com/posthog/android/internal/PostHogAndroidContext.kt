@@ -5,7 +5,6 @@ import android.content.pm.PackageInfo
 import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
-import java.util.Locale
 import java.util.TimeZone
 
 /**
@@ -20,6 +19,8 @@ internal class PostHogAndroidContext(
     private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
     private val networkPropertiesProvider: () -> Map<String, Any>,
 ) : PostHogContext {
+    private val localeProvider = PostHogLocaleProvider(context, config)
+
     private val cacheSdkInfo by lazy {
         val sdkInfo = mutableMapOf<String, Any>()
 
@@ -67,7 +68,7 @@ internal class PostHogAndroidContext(
 
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
-        dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
+        dynamicContext["\$locale"] = localeProvider.getLocale()
         System.getProperty("http.agent")?.let {
             dynamicContext["\$user_agent"] = it
             // Mirrored into $raw_user_agent, the standardized property PostHog's
