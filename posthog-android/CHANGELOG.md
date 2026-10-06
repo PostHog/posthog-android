@@ -1,5 +1,11 @@
 ## Next
 
+## 3.71.7
+
+### Patch Changes
+
+- d3bb5db: `screen(screenTitle, properties)` now always records `screenTitle` as `$screen_name` on the `$screen` event, ignoring a `$screen_name` key in `properties`. Pass the name you want recorded as `screenTitle`.
+
 ## 3.71.6
 
 ### Patch Changes
