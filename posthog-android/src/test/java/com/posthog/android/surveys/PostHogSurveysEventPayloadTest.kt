@@ -351,7 +351,7 @@ internal class PostHogSurveysEventPayloadTest {
     }
 
     @Test
-    fun `survey shown before a restart is not shown again and starts the wait period`() {
+    fun `survey shown before a restart starts the wait period`() {
         val preferences = PostHogMemoryPreferences()
         val delegate = RecordingSurveyDelegate()
         val survey = createSurvey()
@@ -363,7 +363,7 @@ internal class PostHogSurveysEventPayloadTest {
         val (relaunched, _) = createIntegration(delegate, preferences)
         try {
             val waitPeriod = SurveyConditions(null, null, null, null, null, 30, null)
-            relaunched.onSurveysLoaded(listOf(survey, createSurvey(id = "other-survey").copy(conditions = waitPeriod)))
+            relaunched.onSurveysLoaded(listOf(createSurvey(id = "other-survey").copy(conditions = waitPeriod)))
             assertNull(delegate.shownSurvey)
         } finally {
             relaunched.uninstall()

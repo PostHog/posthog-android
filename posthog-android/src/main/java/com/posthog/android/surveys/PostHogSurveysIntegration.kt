@@ -488,8 +488,8 @@ public class PostHogSurveysIntegration(
                         if (!isCurrentContext(responseContext)) return@synchronized null
                         activateSurvey(originalSurvey, progress, responseContext.wasRestored)
 
-                        // Persist on show so a restart before close does not show the survey again
-                        setSurveySeen(originalSurvey)
+                        // Start the wait period on show, so a restart before close does not skip it
+                        setLastSeenSurveyDate(config.dateProvider.currentDate())
 
                         // Clear up event-activated surveys if this survey has events
                         synchronized(eventActivationLock) {

@@ -2,4 +2,4 @@
 "posthog-android": patch
 ---
 
-Record a survey as seen when it shows, so a restart before close does not show it again
+Start the survey wait period when a survey shows, so a restart before close does not skip it
