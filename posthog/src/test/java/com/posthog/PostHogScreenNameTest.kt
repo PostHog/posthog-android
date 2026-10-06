@@ -115,6 +115,20 @@ internal class PostHogScreenNameTest {
     }
 
     @Test
+    fun `screen title wins over a screen_name property`() {
+        val sut = getSut()
+
+        sut.screen("Home", mapOf("\$screen_name" to "Override", "tab" to "feed"))
+        queueExecutor.awaitExecution()
+
+        val screenEvent = captured.first { it.event == PostHogEventName.SCREEN.event }
+        assertEquals("Home", screenEvent.properties!!["\$screen_name"])
+        assertEquals("feed", screenEvent.properties!!["tab"])
+
+        sut.close()
+    }
+
+    @Test
     fun `screen with whitespace-padded title is trimmed for cache and event payload`() {
         val sut = getSut()
 

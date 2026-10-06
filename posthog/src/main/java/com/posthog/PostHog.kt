@@ -1276,7 +1276,8 @@ public class PostHog private constructor(
      * To override the auto-attached value on a specific event, pass `$screen_name`
      * in that event's `properties` on the next [capture] call.
      *
-     * @param screenTitle the screen name to record
+     * @param screenTitle the screen name to record. It takes precedence over a `$screen_name`
+     *   key in [properties].
      * @param properties additional properties to attach to this `$screen` event
      */
     public override fun screen(
@@ -1299,11 +1300,12 @@ public class PostHog private constructor(
         this.lastScreenName = trimmedTitle
 
         val props = mutableMapOf<String, Any>()
-        props["\$screen_name"] = trimmedTitle
-
         properties?.let {
             props.putAll(it)
         }
+
+        // The title wins over a caller-supplied $screen_name, matching the cached value.
+        props["\$screen_name"] = trimmedTitle
 
         capture(PostHogEventName.SCREEN.event, properties = props)
     }
