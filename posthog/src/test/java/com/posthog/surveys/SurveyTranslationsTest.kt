@@ -168,6 +168,148 @@ internal class SurveyTranslationsTest {
         assertSame(originalChoices, (survey.questions[1] as SingleSurveyQuestion).choices)
     }
 
+    @Test
+    fun `blank translated button text falls back instead of rendering an empty label`() {
+        for (blank in listOf("", "   ")) {
+            val display =
+                displayInJapanese(
+                    buttonTextSurveyJson(
+                        baseButtonText = "Send",
+                        translatedButtonText = blank,
+                        baseCloseText = "Done",
+                        translatedCloseText = blank,
+                        baseIntroText = "Start",
+                        translatedIntroText = blank,
+                    ),
+                )
+
+            assertEquals("translated question", display.questions[0].question)
+            assertEquals("Send", display.questions[0].buttonText)
+            assertEquals("translated header", display.appearance?.thankYouMessageHeader)
+            assertEquals("Done", display.appearance?.thankYouMessageCloseButtonText)
+            assertEquals("Start", display.appearance?.introScreenButtonText)
+        }
+    }
+
+    @Test
+    fun `blank button text everywhere resolves to null so the default label applies`() {
+        val display =
+            displayInJapanese(
+                buttonTextSurveyJson(
+                    baseButtonText = null,
+                    translatedButtonText = "",
+                    baseCloseText = "",
+                    translatedCloseText = "",
+                    baseIntroText = null,
+                    translatedIntroText = "",
+                    submitButtonText = "",
+                ),
+            )
+
+        assertNull(display.questions[0].buttonText)
+        assertNull(display.appearance?.submitButtonText)
+        assertNull(display.appearance?.thankYouMessageCloseButtonText)
+        assertNull(display.appearance?.introScreenButtonText)
+    }
+
+    @Test
+    fun `translated button text still wins when it is not blank`() {
+        val display =
+            displayInJapanese(
+                buttonTextSurveyJson(
+                    baseButtonText = "Send",
+                    translatedButtonText = "translated send",
+                    baseCloseText = "Done",
+                    translatedCloseText = "translated done",
+                    baseIntroText = "Start",
+                    translatedIntroText = "translated start",
+                ),
+            )
+
+        assertEquals("translated send", display.questions[0].buttonText)
+        assertEquals("translated done", display.appearance?.thankYouMessageCloseButtonText)
+        assertEquals("translated start", display.appearance?.introScreenButtonText)
+    }
+
+    @Test
+    fun `a translation that only blanks button labels is a no-op`() {
+        val survey =
+            decodeSurvey(
+                buttonTextSurveyJson(
+                    baseButtonText = "Send",
+                    translatedButtonText = "",
+                    baseCloseText = "Done",
+                    translatedCloseText = "",
+                    baseIntroText = "Start",
+                    translatedIntroText = "",
+                    translateOtherFields = false,
+                ),
+            )
+
+        val resolved = resolveSurveyTranslations(survey, "ja")
+
+        assertNull(resolved.matchedKey)
+        assertNull(resolved.survey)
+        assertTrue(resolved.questions.all { it == null })
+    }
+
+    private fun displayInJapanese(json: String): PostHogDisplaySurvey {
+        val survey = decodeSurvey(json)
+        val resolved = resolveSurveyTranslations(survey, "ja")
+        return PostHogDisplaySurvey.toDisplaySurvey(
+            survey,
+            surveyTranslation = resolved.survey,
+            questionTranslations = resolved.questions,
+        )
+    }
+
+    // A null argument omits the key from the JSON.
+    private fun buttonTextSurveyJson(
+        baseButtonText: String?,
+        translatedButtonText: String?,
+        baseCloseText: String?,
+        translatedCloseText: String?,
+        baseIntroText: String?,
+        translatedIntroText: String?,
+        submitButtonText: String? = null,
+        translateOtherFields: Boolean = true,
+    ): String {
+        fun field(
+            key: String,
+            value: String?,
+        ) = value?.let { ", \"$key\": \"$it\"" } ?: ""
+        val translatedQuestion = if (translateOtherFields) "translated question" else "base question"
+        val translatedHeader = if (translateOtherFields) "translated header" else "base header"
+        val appearanceButtons =
+            field("submitButtonText", submitButtonText) +
+                field("thankYouMessageCloseButtonText", baseCloseText) +
+                field("introScreenButtonText", baseIntroText)
+        val translatedButtons =
+            field("thankYouMessageCloseButtonText", translatedCloseText) +
+                field("introScreenButtonText", translatedIntroText)
+        return """
+            {
+              "id": "button-text-survey",
+              "name": "Hello",
+              "type": "popover",
+              "appearance": { "thankYouMessageHeader": "base header"$appearanceButtons },
+              "translations": {
+                "ja": { "thankYouMessageHeader": "$translatedHeader"$translatedButtons }
+              },
+              "questions": [
+                {
+                  "type": "open",
+                  "id": "q1",
+                  "question": "base question"${field("buttonText", baseButtonText)},
+                  "translations": {
+                    "ja": { "question": "$translatedQuestion"${field("buttonText", translatedButtonText)} }
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+    }
+
     companion object {
         private val SURVEY_WITH_TRANSLATIONS_JSON =
             """
