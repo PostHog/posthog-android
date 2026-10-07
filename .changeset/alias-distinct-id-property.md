@@ -1,5 +1,6 @@
 ---
-"posthog": patch
+'posthog': patch
+'posthog-android': patch
 ---
 
-fix: include `distinct_id` alongside `alias` in `$create_alias` event properties
+`alias()` now also sends the current `distinct_id` in the `$create_alias` event properties, alongside `alias`, matching posthog-js
