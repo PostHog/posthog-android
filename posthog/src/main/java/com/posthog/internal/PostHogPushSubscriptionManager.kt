@@ -104,12 +104,12 @@ internal class PostHogPushSubscriptionManager(
         val prefix = config.storagePrefix ?: return@lazy null
         // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
         // cached event files and would send the record as an empty event, then delete it.
-        File(File(File(prefix, "push"), config.apiKey), PENDING_FILE_NAME)
+        File(File(File(prefix, "push"), config.projectToken), PENDING_FILE_NAME)
     }
 
     private val pendingUnregisterFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
-        File(File(File(prefix, "push"), config.apiKey), PENDING_UNREGISTER_FILE_NAME)
+        File(File(File(prefix, "push"), config.projectToken), PENDING_UNREGISTER_FILE_NAME)
     }
 
     // Test seam: computed backoff seconds are multiplied by this to get the scheduled delay in
@@ -453,8 +453,8 @@ internal class PostHogPushSubscriptionManager(
             // The project API key resolves to no project, so every send gets the same 401. Guarding
             // here and not at each entry point covers identify resends and app_id changes too.
             config.logger.log(
-                "Push subscription skipped: this project API key was rejected. " +
-                    "Check the key passed to PostHog.setup().",
+                "Push subscription skipped: this project token was rejected. " +
+                    "Check the projectToken passed to PostHog.setup().",
             )
             return
         }
@@ -591,8 +591,8 @@ internal class PostHogPushSubscriptionManager(
             // The key resolves to no project, so every later attempt gets the same answer. Without
             // this the device re-posts on every app open for the life of the install.
             config.logger.log(
-                "Push subscription rejected: the project API key is not valid. " +
-                    "No further push registrations will be sent for this key.",
+                "Push subscription rejected: the project token is not valid. " +
+                    "No further push registrations will be sent for this token.",
             )
             markTokenRejected()
             haltForSession()
@@ -756,16 +756,16 @@ internal class PostHogPushSubscriptionManager(
     }
 
     private fun isTokenRejected(): Boolean {
-        val rejectedAt = readRejections()[config.apiKey]?.toLongOrNull() ?: return false
+        val rejectedAt = readRejections()[config.projectToken]?.toLongOrNull() ?: return false
         if (config.dateProvider.currentTimeMillis() - rejectedAt < REJECTED_REPROBE_MILLIS) {
             return true
         }
-        writeRejections(readRejections() - config.apiKey)
+        writeRejections(readRejections() - config.projectToken)
         return false
     }
 
     private fun markTokenRejected() {
-        writeRejections(readRejections() + (config.apiKey to config.dateProvider.currentTimeMillis().toString()))
+        writeRejections(readRejections() + (config.projectToken to config.dateProvider.currentTimeMillis().toString()))
     }
 
     /** Verdicts per api key, not one slot.

@@ -1,5 +1,33 @@
 ## Next
 
+## 3.72.0
+
+### Minor Changes
+
+- 8c11301: Add `projectToken` to `PostHogConfig` and `PostHogAndroidConfig` and deprecate `apiKey` (Kotlin subclasses calling `super(apiKey = ...)` must switch to `projectToken =`)
+
+### Patch Changes
+
+- 5ffdcae: Start the survey wait period when a survey shows, so a restart before close does not skip it
+
+## 3.71.7
+
+### Patch Changes
+
+- d3bb5db: `screen(screenTitle, properties)` now always records `screenTitle` as `$screen_name` on the `$screen` event, ignoring a `$screen_name` key in `properties`. Pass the name you want recorded as `screenTitle`.
+
+## 3.71.6
+
+### Patch Changes
+
+- 4c562de: Require Okio 3.11.0 or later to prevent corrupt gzip request bodies when Android's JNI layer copies compression buffers. This includes the upstream DeflaterSink fix and retains the Kotlin 2.0 compatibility target. Applications overriding transitive dependencies should allow the updated Okio version.
+
+## 3.71.5
+
+### Patch Changes
+
+- d811091: Split session replay uploads at session or distinct ID changes so queued snapshots retain their original attribution. Send boundary-separated groups sequentially within the existing batch limit, preserving failed and unsent snapshots for retry.
+
 ## 3.71.4
 
 ### Patch Changes

@@ -49,7 +49,7 @@ internal class PostHogSharedPreferences(
             sharedPreferences?.let { return it }
             val prefs =
                 try {
-                    context.getSharedPreferences("posthog-android-${config.apiKey}", MODE_PRIVATE)
+                    context.getSharedPreferences("posthog-android-${config.projectToken}", MODE_PRIVATE)
                 } catch (e: IllegalStateException) {
                     config.logger.log("Shared preferences are not available until the device is unlocked (Direct Boot): $e.")
                     return null

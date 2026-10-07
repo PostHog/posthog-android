@@ -107,6 +107,8 @@ dependencies {
 
     implementation(platform("com.squareup.okhttp3:okhttp-bom:${PosthogBuildConfig.Dependencies.OKHTTP}"))
     implementation("com.squareup.okhttp3:okhttp")
+    // Fixes DeflaterSink buffer reuse under JNI array copying: https://github.com/square/okio/issues/1608
+    implementation("com.squareup.okio:okio:${PosthogBuildConfig.Dependencies.OKIO}")
     compileOnly("org.codehaus.mojo:animal-sniffer-annotations:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_ANNOTATION}")
 
     // compatibility

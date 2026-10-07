@@ -4,6 +4,7 @@ import com.google.gson.reflect.TypeToken
 import com.posthog.PostHogConfig
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.FlagProperty
+import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
@@ -13,7 +14,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 import java.time.ZonedDateTime
+import java.util.Date
+import java.util.TimeZone
 
 internal class FlagEvaluatorTest {
     private lateinit var config: PostHogConfig
@@ -21,7 +25,7 @@ internal class FlagEvaluatorTest {
 
     @Before
     internal fun setUp() {
-        config = PostHogConfig(apiKey = "test-key")
+        config = PostHogConfig(projectToken = "test-key")
         evaluator = FlagEvaluator(config)
     }
 
@@ -809,6 +813,69 @@ internal class FlagEvaluatorTest {
         val yesterday = ZonedDateTime.now().minusDays(1)
         val properties = mapOf("last_seen" to yesterday)
         assertTrue(evaluator.matchProperty(property, properties))
+    }
+
+    @Test
+    internal fun testDateOnlyConditionIsInterpretedAsUtc() {
+        withDefaultTimeZone("America/New_York") {
+            val property =
+                FlagProperty("signup", "2024-06-01", PropertyOperator.IS_DATE_AFTER, PropertyType.PERSON, false, null)
+            assertTrue(evaluator.matchProperty(property, mapOf("signup" to "2024-06-01T02:00:00Z")))
+        }
+    }
+
+    @Test
+    internal fun testNaiveDateTimeConditionIsInterpretedAsUtc() {
+        withDefaultTimeZone("America/New_York") {
+            val property =
+                FlagProperty("signup", "2024-06-01 00:00:00", PropertyOperator.IS_DATE_AFTER, PropertyType.PERSON, false, null)
+            assertTrue(evaluator.matchProperty(property, mapOf("signup" to "2024-06-01T02:00:00Z")))
+        }
+    }
+
+    @Test
+    internal fun testNaiveDateTimePropertyIsInterpretedAsUtc() {
+        withDefaultTimeZone("America/New_York") {
+            val property =
+                FlagProperty("signup", "2024-06-01T03:00:00Z", PropertyOperator.IS_DATE_AFTER, PropertyType.PERSON, false, null)
+            assertFalse(evaluator.matchProperty(property, mapOf("signup" to "2024-06-01 02:00:00")))
+        }
+    }
+
+    @Test
+    internal fun testRelativeDateSubtractsFromCurrentUtcTime() {
+        withDefaultTimeZone("America/New_York") {
+            config.dateProvider = FixedDateProvider(Date.from(Instant.parse("2025-03-31T02:00:00Z")))
+            val property =
+                FlagProperty("last_seen", "-1m", PropertyOperator.IS_DATE_AFTER, PropertyType.PERSON, false, null)
+            // In UTC, one month before 2025-03-31T02:00Z is 2025-02-28T02:00Z.
+            assertTrue(evaluator.matchProperty(property, mapOf("last_seen" to "2025-02-28T12:00:00Z")))
+        }
+    }
+
+    private fun withDefaultTimeZone(
+        zoneId: String,
+        block: () -> Unit,
+    ) {
+        synchronized(TimeZone::class.java) {
+            val originalTimeZone = TimeZone.getDefault()
+            try {
+                TimeZone.setDefault(TimeZone.getTimeZone(zoneId))
+                block()
+            } finally {
+                TimeZone.setDefault(originalTimeZone)
+            }
+        }
+    }
+
+    private class FixedDateProvider(private val date: Date) : PostHogDateProvider {
+        override fun currentDate(): Date = date
+
+        override fun addSecondsToCurrentDate(seconds: Int): Date = Date(date.time + seconds * 1000L)
+
+        override fun currentTimeMillis(): Long = date.time
+
+        override fun nanoTime(): Long = date.time * 1_000_000L
     }
 
     @Test
