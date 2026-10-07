@@ -434,8 +434,8 @@ internal class PostHogApiTest {
     }
 
     @Test
-    fun `flags retries connection refused`() {
-        assertFlagsRetries(ConnectException("Connection refused"), expectedAttempts = 2)
+    fun `flags does not retry connection refused`() {
+        assertFlagsRetries(ConnectException("Connection refused"), expectedAttempts = 1)
     }
 
     @Test

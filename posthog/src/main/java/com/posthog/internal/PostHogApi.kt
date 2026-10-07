@@ -22,7 +22,6 @@ import okio.BufferedSink
 import java.io.EOFException
 import java.io.IOException
 import java.io.OutputStream
-import java.net.ConnectException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -311,7 +310,6 @@ public class PostHogApi(
                     error is EOFException ||
                     error is UnknownHostException ||
                     error is SSLException ||
-                    error is ConnectException ||
                     (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
             else -> false
         }
