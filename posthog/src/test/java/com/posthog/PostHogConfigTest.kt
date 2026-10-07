@@ -19,8 +19,19 @@ internal class PostHogConfigTest {
     fun `trims whitespace-sensitive config values`() {
         val config = PostHogConfig(" \n$API_KEY\t ", " \nhttps://eu.i.posthog.com/\t ")
 
-        assertEquals(API_KEY, config.apiKey)
+        assertEquals(API_KEY, config.projectToken)
         assertEquals("https://eu.i.posthog.com/", config.host)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `deprecated apiKey factory and getter alias projectToken`() {
+        val config = PostHogConfig(apiKey = " $API_KEY ", host = "https://eu.i.posthog.com", flushAt = 7)
+
+        assertEquals(API_KEY, config.projectToken)
+        assertEquals(API_KEY, config.apiKey)
+        assertEquals("https://eu.i.posthog.com", config.host)
+        assertEquals(7, config.flushAt)
     }
 
     @Test

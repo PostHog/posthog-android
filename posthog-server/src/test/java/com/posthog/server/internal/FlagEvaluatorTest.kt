@@ -25,7 +25,7 @@ internal class FlagEvaluatorTest {
 
     @Before
     internal fun setUp() {
-        config = PostHogConfig(apiKey = "test-key")
+        config = PostHogConfig(projectToken = "test-key")
         evaluator = FlagEvaluator(config)
     }
 

@@ -13,19 +13,19 @@ class MyApp : Application() {
         enableStrictMode()
 
         // Demo:
-//        val apiKey = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+//        val projectToken = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
         // ManoelTesting:
-        val apiKey = "phc_WKfvDfedaJEDCoUmt9pVa3OWtbbUP1W2ctxwXkt3A3n"
+        val projectToken = "phc_WKfvDfedaJEDCoUmt9pVa3OWtbbUP1W2ctxwXkt3A3n"
         // PaulKey
-//        val apiKey = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
-//        val config = PostHogAndroidConfig(apiKey, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
+//        val projectToken = "phc_GavhjwMwc75N4HsaLjMTEvH8Kpsz70rZ3N0E9ho89YJ"
+//        val config = PostHogAndroidConfig(projectToken, host = "https://3727-86-27-112-156.ngrok-free.app").apply {
         val mockHost = BuildConfig.POSTHOG_HOST
         val config =
             (
                 if (mockHost.isNotEmpty()) {
                     PostHogAndroidConfig("phc_MOCK", host = mockHost)
                 } else {
-                    PostHogAndroidConfig(apiKey)
+                    PostHogAndroidConfig(projectToken)
                 }
             ).apply {
                 debug = true

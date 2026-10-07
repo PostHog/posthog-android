@@ -181,13 +181,15 @@ public class PostHog private constructor(
                 config.logger =
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
-                if (config.apiKey.isEmpty()) {
-                    config.logger.log("PostHog SDK is disabled because the API key is required and was empty after trimming whitespace.")
+                if (config.projectToken.isEmpty()) {
+                    config.logger.log(
+                        "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
+                    )
                     return
                 }
 
-                if (!apiKeys.add(config.apiKey)) {
-                    config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
+                if (!apiKeys.add(config.projectToken)) {
+                    config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
                 val cachePreferences = config.cachePreferences ?: memoryPreferences
@@ -426,7 +428,7 @@ public class PostHog private constructor(
         config: PostHogConfig,
         serializer: PostHogSerializer,
     ) {
-        val cachedPrefs = getPreferences().getValue(config.apiKey) as? String
+        val cachedPrefs = getPreferences().getValue(config.projectToken) as? String
         cachedPrefs?.let {
             try {
                 serializer.deserialize<Map<String, Any>?>(it.reader())?.let { props ->
@@ -440,7 +442,7 @@ public class PostHog private constructor(
                         this.distinctId = distinctId
                     }
 
-                    getPreferences().remove(config.apiKey)
+                    getPreferences().remove(config.projectToken)
                 }
             } catch (e: Throwable) {
                 config.logger.log("Legacy cached prefs: $cachedPrefs failed to parse: $e.")
@@ -544,7 +546,7 @@ public class PostHog private constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.apiKey)
+                    apiKeys.remove(config.projectToken)
 
                     config.integrations.forEach {
                         try {

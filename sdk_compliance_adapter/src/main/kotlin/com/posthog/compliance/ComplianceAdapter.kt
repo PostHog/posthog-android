@@ -240,7 +240,7 @@ fun main() {
                 call.respond(
                     HealthResponse(
                         sdk_name = "posthog-android",
-                        sdk_version = PostHogConfig(apiKey = "").sdkVersion,
+                        sdk_version = PostHogConfig(projectToken = "").sdkVersion,
                         adapter_version = "1.0.0",
                         // Opt into the capture suites (android posts /batch with gzip).
                         capabilities = listOf("capture_v0", "encoding_gzip"),
@@ -274,7 +274,7 @@ fun main() {
 
                     val config =
                         PostHogConfig(
-                            apiKey = req.api_key,
+                            projectToken = req.api_key,
                             host = req.host,
                             flushAt = req.flush_at ?: 1,
                             flushIntervalSeconds = flushIntervalSeconds,

@@ -224,7 +224,7 @@ public fun createTestConfig(
 ): PostHogConfig {
     val config =
         PostHogConfig(
-            apiKey = apiKey,
+            projectToken = apiKey,
             host = host,
         )
     config.logger = logger

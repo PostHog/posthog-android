@@ -58,13 +58,15 @@ public open class PostHogStateless protected constructor(
                 config.logger =
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
-                if (config.apiKey.isEmpty()) {
-                    config.logger.log("PostHog SDK is disabled because the API key is required and was empty after trimming whitespace.")
+                if (config.projectToken.isEmpty()) {
+                    config.logger.log(
+                        "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
+                    )
                     return
                 }
 
-                if (!apiKeys.add(config.apiKey)) {
-                    config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
+                if (!apiKeys.add(config.projectToken)) {
+                    config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
                 config.cachePreferences = memoryPreferences
@@ -123,7 +125,7 @@ public open class PostHogStateless protected constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.apiKey)
+                    apiKeys.remove(config.projectToken)
 
                     config.integrations.forEach {
                         try {

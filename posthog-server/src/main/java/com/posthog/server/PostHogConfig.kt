@@ -19,9 +19,17 @@ import java.util.Collections
  */
 public open class PostHogConfig constructor(
     /**
-     * The PostHog project API key.
+     * Your PostHog project token, which starts with `phc_`. Required, no default.
+     *
+     * Find it in your PostHog project settings:
+     * https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace
+     * is trimmed. Formerly named `apiKey`.
+     *
+     * ```kotlin
+     * val config = PostHogConfig(projectToken = "phc_your_project_token")
+     * ```
      */
-    apiKey: String,
+    projectToken: String,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
@@ -142,9 +150,31 @@ public open class PostHogConfig constructor(
     public var evaluationContexts: List<String>? = null,
 ) {
     /**
-     * The PostHog project API key, trimmed of leading and trailing whitespace.
+     * Your PostHog project token, trimmed of leading and trailing whitespace.
+     *
+     * Find it in your PostHog project settings:
+     * https://us.posthog.com/settings/project-details#variables. Set it through the constructor or
+     * [builder]; there is no default.
+     *
+     * ```kotlin
+     * val token = PostHogConfig(projectToken = "phc_your_project_token").projectToken
+     * ```
      */
-    public val apiKey: String = apiKey.trim()
+    public val projectToken: String = projectToken.trim()
+
+    /**
+     * Deprecated alias for [projectToken]; returns the same trimmed value.
+     *
+     * ```kotlin
+     * val token = config.projectToken // instead of config.apiKey
+     * ```
+     */
+    @Deprecated(
+        "Deprecated in favor of projectToken. This will be removed in the next major version.",
+        ReplaceWith("projectToken"),
+    )
+    public val apiKey: String
+        get() = projectToken
 
     /**
      * The PostHog Host
@@ -269,7 +299,7 @@ public open class PostHogConfig constructor(
     internal fun asCoreConfig(): com.posthog.PostHogConfig {
         val coreConfig =
             com.posthog.PostHogConfig(
-                apiKey = apiKey,
+                projectToken = projectToken,
                 host = host,
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
@@ -378,17 +408,79 @@ public open class PostHogConfig constructor(
         /**
          * Creates a Java-friendly builder.
          *
-         * @param apiKey PostHog project API key.
+         * @param apiKey Your PostHog project token, which starts with `phc_`. Find it in your
+         *   PostHog project settings: https://us.posthog.com/settings/project-details#variables.
+         *   Example: `PostHogConfig.builder("phc_your_project_token").build()`.
          * @return A new [Builder].
          */
         @JvmStatic
         public fun builder(apiKey: String): Builder = Builder(apiKey)
+
+        /**
+         * Deprecated form of the [PostHogConfig] constructor that takes `apiKey` instead of
+         * `projectToken`, kept so Kotlin calls such as `PostHogConfig(apiKey = "phc_...")` still
+         * compile. Every other parameter and default matches the constructor.
+         *
+         * ```kotlin
+         * val config = PostHogConfig(projectToken = "phc_your_project_token") // instead of apiKey =
+         * ```
+         */
+        @Deprecated(
+            "Deprecated in favor of projectToken. This will be removed in the next major version.",
+        )
+        @Suppress("DEPRECATION")
+        @JvmSynthetic
+        public operator fun invoke(
+            apiKey: String,
+            host: String = DEFAULT_HOST,
+            debug: Boolean = false,
+            sendFeatureFlagEvent: Boolean = true,
+            preloadFeatureFlags: Boolean = true,
+            remoteConfig: Boolean = true,
+            flushAt: Int = DEFAULT_FLUSH_AT,
+            maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
+            maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
+            flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
+            encryption: PostHogEncryption? = null,
+            onFeatureFlags: PostHogOnFeatureFlags? = null,
+            proxy: Proxy? = null,
+            featureFlagCacheSize: Int = DEFAULT_FEATURE_FLAG_CACHE_SIZE,
+            featureFlagCacheMaxAgeMs: Int = DEFAULT_FEATURE_FLAG_CACHE_MAX_AGE_MS,
+            featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
+            localEvaluation: Boolean = false,
+            personalApiKey: String? = null,
+            pollIntervalSeconds: Int = DEFAULT_POLL_INTERVAL_SECONDS,
+            evaluationContexts: List<String>? = null,
+        ): PostHogConfig =
+            PostHogConfig(
+                projectToken = apiKey,
+                host = host,
+                debug = debug,
+                sendFeatureFlagEvent = sendFeatureFlagEvent,
+                preloadFeatureFlags = preloadFeatureFlags,
+                remoteConfig = remoteConfig,
+                flushAt = flushAt,
+                maxQueueSize = maxQueueSize,
+                maxBatchSize = maxBatchSize,
+                flushIntervalSeconds = flushIntervalSeconds,
+                encryption = encryption,
+                onFeatureFlags = onFeatureFlags,
+                proxy = proxy,
+                featureFlagCacheSize = featureFlagCacheSize,
+                featureFlagCacheMaxAgeMs = featureFlagCacheMaxAgeMs,
+                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
+                localEvaluation = localEvaluation,
+                personalApiKey = personalApiKey,
+                pollIntervalSeconds = pollIntervalSeconds,
+                evaluationContexts = evaluationContexts,
+            )
     }
 
     /**
      * Java-friendly builder for [PostHogConfig].
      *
-     * @param apiKey PostHog project API key.
+     * @param apiKey Your PostHog project token, which starts with `phc_`. Find it in your PostHog
+     *   project settings: https://us.posthog.com/settings/project-details#variables.
      */
     public class Builder(private val apiKey: String) {
         private var host: String = DEFAULT_HOST
@@ -647,7 +739,7 @@ public open class PostHogConfig constructor(
         public fun build(): PostHogConfig {
             val config =
                 PostHogConfig(
-                    apiKey = apiKey,
+                    projectToken = apiKey,
                     host = host,
                     debug = debug,
                     sendFeatureFlagEvent = sendFeatureFlagEvent,
