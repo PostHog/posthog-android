@@ -115,6 +115,18 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `identify with timestamp passes timestamp through`() {
+        withClient { client, server ->
+            client.identify("user123", mapOf("name" to "Ada"), null, java.util.Date(1234567890L))
+            client.flush()
+            val batch = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).parseBatch()
+            assertEquals("\$identify", batch.firstEvent?.get("event")?.asString)
+            assertEquals("1970-01-15T06:56:07.890Z", batch.firstEvent?.get("timestamp")?.asString)
+            assertEquals(mapOf("name" to "Ada"), batch.firstEventProperties()["\$set"])
+        }
+    }
+
+    @Test
     fun `capture with PostHogCaptureOptions works correctly`() {
         withClient { client, server ->
             val options =

@@ -30,6 +30,7 @@ public class EndpointSpec<Record> internal constructor(
     internal val send: (List<Record>) -> Unit,
     internal val isRetriableStatusCode: (Int) -> Boolean,
     internal val isFatalRecord: (Record) -> Boolean = { false },
+    internal val canBatchTogether: ((Record, Record) -> Boolean)? = null,
 ) {
     public companion object {
         @JvmStatic
@@ -77,6 +78,11 @@ public class EndpointSpec<Record> internal constructor(
                     config.serializer.deserialize<PostHogEvent?>(stream.reader().buffered())
                 },
                 describe = { _ -> "snapshot" },
+                canBatchTogether = { first, next ->
+                    // Replay ingestion attributes the entire request to the first snapshot.
+                    first.distinctId == next.distinctId &&
+                        (first.properties?.get("\$session_id") as? String) == (next.properties?.get("\$session_id") as? String)
+                },
                 send = { events -> api.snapshot(events) },
                 isRetriableStatusCode = ::isEventsRetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },

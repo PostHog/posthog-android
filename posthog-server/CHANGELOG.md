@@ -1,5 +1,29 @@
 ## Next
 
+## 2.21.0
+
+### Minor Changes
+
+- 8c11301: Add `projectToken` to `PostHogConfig` and `PostHogAndroidConfig` and deprecate `apiKey` (Kotlin subclasses calling `super(apiKey = ...)` must switch to `projectToken =`)
+
+## 2.20.2
+
+### Patch Changes
+
+- 4c562de: Require Okio 3.11.0 or later to prevent corrupt gzip request bodies when Android's JNI layer copies compression buffers. This includes the upstream DeflaterSink fix and retains the Kotlin 2.0 compatibility target. Applications overriding transitive dependencies should allow the updated Okio version.
+
+## 2.20.1
+
+### Patch Changes
+
+- 84ef634: fix(flags): interpret date-only and naive date conditions, and relative date lookbacks, in UTC during local evaluation instead of the JVM default timezone
+
+## 2.20.0
+
+### Minor Changes
+
+- 7d65bb3: feat(server): allow overriding the `$identify` event timestamp with `identify(distinctId, userProperties, userPropertiesSetOnce, timestamp)`
+
 ## 2.19.0
 
 ### Minor Changes

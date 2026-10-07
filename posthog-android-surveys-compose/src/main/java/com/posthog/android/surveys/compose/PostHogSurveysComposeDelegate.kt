@@ -29,7 +29,7 @@ import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
  * implementation("com.posthog:posthog-android-surveys-compose:<version>")
  *
  * // app init
- * val config = PostHogAndroidConfig(apiKey).apply { surveys = true }
+ * val config = PostHogAndroidConfig(projectToken).apply { surveys = true }
  * PostHogAndroid.setup(applicationContext, config)
  * ```
  *

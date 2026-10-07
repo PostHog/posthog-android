@@ -215,7 +215,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures a screen view event
-     * @param screenTitle the screen title
+     * @param screenTitle the screen title. It takes precedence over a `$screen_name` key in [properties].
      * @param properties the custom properties
      */
     public fun screen(

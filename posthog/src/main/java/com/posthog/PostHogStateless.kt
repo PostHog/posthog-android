@@ -58,13 +58,15 @@ public open class PostHogStateless protected constructor(
                 config.logger =
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
-                if (config.apiKey.isEmpty()) {
-                    config.logger.log("PostHog SDK is disabled because the API key is required and was empty after trimming whitespace.")
+                if (config.projectToken.isEmpty()) {
+                    config.logger.log(
+                        "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
+                    )
                     return
                 }
 
-                if (!apiKeys.add(config.apiKey)) {
-                    config.logger.log("API Key: ${config.apiKey} already has a PostHog instance.")
+                if (!apiKeys.add(config.projectToken)) {
+                    config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
                 config.cachePreferences = memoryPreferences
@@ -123,7 +125,7 @@ public open class PostHogStateless protected constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.apiKey)
+                    apiKeys.remove(config.projectToken)
 
                     config.integrations.forEach {
                         try {
@@ -387,6 +389,19 @@ public open class PostHogStateless protected constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
+        identifyStateless(distinctId, userProperties, userPropertiesSetOnce, timestamp = null)
+    }
+
+    /**
+     * Identifies the user, optionally overriding the `$identify` event timestamp
+     * @param timestamp the event timestamp override, or null to use the current time
+     */
+    protected fun identifyStateless(
+        distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        timestamp: Date?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -404,6 +419,7 @@ public open class PostHogStateless protected constructor(
             properties = props,
             userProperties = userProperties,
             userPropertiesSetOnce = userPropertiesSetOnce,
+            timestamp = timestamp,
         )
     }
 

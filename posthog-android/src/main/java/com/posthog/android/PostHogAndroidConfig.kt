@@ -10,7 +10,10 @@ import com.posthog.internal.PostHogQueue
 /**
  * Android SDK configuration.
  *
- * @param apiKey PostHog project API key. Leading and trailing whitespace is trimmed.
+ * @param projectToken Your PostHog project token, which starts with `phc_`. Required, no default.
+ *   Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables.
+ *   Leading and trailing whitespace is trimmed. Formerly named `apiKey`. Example:
+ *   `PostHogAndroidConfig(projectToken = "phc_your_project_token")`.
  * @param host PostHog ingestion host. Defaults to [DEFAULT_HOST].
  * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
  *   automatically, including app installed, app updated, app opened, and app backgrounded.
@@ -42,7 +45,7 @@ import com.posthog.internal.PostHogQueue
 public open class PostHogAndroidConfig
     @JvmOverloads
     constructor(
-        apiKey: String,
+        projectToken: String,
         host: String = DEFAULT_HOST,
         public var captureApplicationLifecycleEvents: Boolean = true,
         public var captureDeepLinks: Boolean = true,
@@ -52,7 +55,7 @@ public open class PostHogAndroidConfig
         public var capturePushNotificationSubscriptions: Boolean = true,
         public var capturePushNotificationOpened: Boolean = true,
     ) : PostHogConfig(
-            apiKey = apiKey,
+            projectToken = projectToken,
             host = host,
             queueProvider = { config, api, endpoint, storagePrefix, executor ->
                 val spec =
@@ -93,4 +96,40 @@ public open class PostHogAndroidConfig
         public var captureDeadClicks: Boolean = false
 
         internal var replayQueueHolder: PostHogReplayQueue? = null
+
+        public companion object {
+            /**
+             * Deprecated form of the [PostHogAndroidConfig] constructor that takes `apiKey` instead
+             * of `projectToken`, kept so Kotlin calls such as `PostHogAndroidConfig(apiKey = "phc_...")`
+             * still compile. Every other parameter and default matches the constructor.
+             *
+             * ```kotlin
+             * val config = PostHogAndroidConfig(projectToken = "phc_your_project_token") // instead of apiKey =
+             * ```
+             */
+            @Deprecated(
+                "Deprecated in favor of projectToken. This will be removed in the next major version.",
+            )
+            @JvmSynthetic
+            public operator fun invoke(
+                apiKey: String,
+                host: String = PostHogConfig.DEFAULT_HOST,
+                captureApplicationLifecycleEvents: Boolean = true,
+                captureDeepLinks: Boolean = true,
+                captureScreenViews: Boolean = true,
+                sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
+                capturePushNotificationSubscriptions: Boolean = true,
+                capturePushNotificationOpened: Boolean = true,
+            ): PostHogAndroidConfig =
+                PostHogAndroidConfig(
+                    projectToken = apiKey,
+                    host = host,
+                    captureApplicationLifecycleEvents = captureApplicationLifecycleEvents,
+                    captureDeepLinks = captureDeepLinks,
+                    captureScreenViews = captureScreenViews,
+                    sessionReplayConfig = sessionReplayConfig,
+                    capturePushNotificationSubscriptions = capturePushNotificationSubscriptions,
+                    capturePushNotificationOpened = capturePushNotificationOpened,
+                )
+        }
     }

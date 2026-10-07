@@ -64,7 +64,7 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertTrue(PostHog.isOptOut())
-        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the API key is required") })
+        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the project token is required") })
     }
 
     @Test

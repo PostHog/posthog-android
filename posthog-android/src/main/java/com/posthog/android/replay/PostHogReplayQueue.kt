@@ -22,15 +22,15 @@ internal class PostHogReplayQueue internal constructor(
     replayStoragePrefix: String?,
     private val executor: ExecutorService,
 ) : PostHogQueueInterface<PostHogEvent> {
-    private val replayDir = replayStoragePrefix?.let { File(it, config.apiKey) }
+    private val replayDir = replayStoragePrefix?.let { File(it, config.projectToken) }
 
     private val bufferQueue: PostHogReplayBufferQueue =
         PostHogReplayBufferQueue(
             config,
             if (replayStoragePrefix != null) {
-                File("$replayStoragePrefix-buffer", config.apiKey)
+                File("$replayStoragePrefix-buffer", config.projectToken)
             } else {
-                File(System.getProperty("java.io.tmpdir"), "posthog-replay-buffer/${config.apiKey}")
+                File(System.getProperty("java.io.tmpdir"), "posthog-replay-buffer/${config.projectToken}")
             },
         )
 

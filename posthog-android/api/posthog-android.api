@@ -17,6 +17,7 @@ public final class com/posthog/android/PostHogAndroid$Companion {
 }
 
 public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfig {
+	public static final field Companion Lcom/posthog/android/PostHogAndroidConfig$Companion;
 	public fun <init> (Ljava/lang/String;)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Z)V
@@ -44,6 +45,11 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun setCaptureRageClicks (Z)V
 	public final fun setCaptureScreenViews (Z)V
 	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
+}
+
+public final class com/posthog/android/PostHogAndroidConfig$Companion {
+	public final synthetic fun invoke (Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZ)Lcom/posthog/android/PostHogAndroidConfig;
+	public static synthetic fun invoke$default (Lcom/posthog/android/PostHogAndroidConfig$Companion;Ljava/lang/String;Ljava/lang/String;ZZZLcom/posthog/android/replay/PostHogSessionReplayConfig;ZZILjava/lang/Object;)Lcom/posthog/android/PostHogAndroidConfig;
 }
 
 public final class com/posthog/android/PostHogAutocaptureModifierKt {

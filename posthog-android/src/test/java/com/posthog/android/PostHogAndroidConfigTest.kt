@@ -10,15 +10,27 @@ internal class PostHogAndroidConfigTest {
     private val config = PostHogAndroidConfig(API_KEY)
 
     @Test
-    fun `captureApplicationLifecycleEvents sets given apiKey`() {
-        assertEquals(API_KEY, config.apiKey)
+    fun `captureApplicationLifecycleEvents sets given projectToken`() {
+        assertEquals(API_KEY, config.projectToken)
     }
 
     @Test
     fun `trims whitespace-sensitive config values`() {
         val config = PostHogAndroidConfig(" \n$API_KEY\t ")
 
+        assertEquals(API_KEY, config.projectToken)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `deprecated apiKey factory and getter alias projectToken`() {
+        val config = PostHogAndroidConfig(apiKey = " $API_KEY ", captureDeepLinks = false, capturePushNotificationOpened = false)
+
+        assertEquals(API_KEY, config.projectToken)
         assertEquals(API_KEY, config.apiKey)
+        assertFalse(config.captureDeepLinks)
+        assertFalse(config.capturePushNotificationOpened)
+        assertTrue(config.captureScreenViews)
     }
 
     @Test

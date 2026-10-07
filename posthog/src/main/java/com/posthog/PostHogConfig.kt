@@ -31,9 +31,18 @@ import java.util.concurrent.ExecutorService
  */
 public open class PostHogConfig(
     /**
-     * The PostHog project API key.
+     * Your PostHog project token, which starts with `phc_`. Required, no default.
+     *
+     * Find it in your PostHog project settings:
+     * https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace
+     * is trimmed; when the result is blank, setup logs a message and the SDK stays disabled.
+     * Formerly named `apiKey`.
+     *
+     * ```kotlin
+     * val config = PostHogConfig(projectToken = "phc_your_project_token")
+     * ```
      */
-    apiKey: String,
+    projectToken: String,
     /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
@@ -255,26 +264,7 @@ public open class PostHogConfig(
         PostHogDefaultPersonPropertiesProvider?,
         PostHogOnRemoteConfigLoaded?,
         PostHogFeatureFlagCalledProvider?,
-    ) -> PostHogFeatureFlagsInterface =
-        {
-                config,
-                api,
-                executor,
-                defaultPersonPropertiesProvider,
-                onRemoteConfigLoaded,
-                featureFlagCalledProvider,
-            ->
-            PostHogRemoteConfig(
-                config,
-                api,
-                executor,
-                defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
-                    emptyMap()
-                },
-                featureFlagCalledProvider ?: PostHogFeatureFlagCalledProvider { _, _ -> },
-                onRemoteConfigLoaded,
-            )
-        },
+    ) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER,
     /**
      * Factory to instantiate a custom queue implementation.
      */
@@ -285,15 +275,7 @@ public open class PostHogConfig(
         PostHogApiEndpoint,
         String?,
         ExecutorService,
-    ) -> PostHogQueueInterface<PostHogEvent> =
-        { config, api, endpoint, storagePrefix, executor ->
-            val spec =
-                when (endpoint) {
-                    PostHogApiEndpoint.BATCH -> EndpointSpec.batch(config, api, storagePrefix)
-                    PostHogApiEndpoint.SNAPSHOT -> EndpointSpec.snapshot(config, api, storagePrefix)
-                }
-            PostHogQueue(config, spec, executor)
-        },
+    ) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER,
     /**
      * Configuration for PostHog Error Tracking feature.
      */
@@ -372,7 +354,7 @@ public open class PostHogConfig(
      * including for hosts that merely wrap the SDK without owning consent.
      *
      * ```kotlin
-     * val config = PostHogAndroidConfig(apiKey = "<ph_project_api_key>").apply {
+     * val config = PostHogAndroidConfig(projectToken = "<ph_project_token>").apply {
      *     persistOptOut = false
      *     optOut = myConsentManager.isOptedOut
      * }
@@ -452,9 +434,31 @@ public open class PostHogConfig(
     public var compression: PostHogCompression = PostHogCompression.GZIP
 
     /**
-     * The PostHog project API key, trimmed of leading and trailing whitespace.
+     * Your PostHog project token, trimmed of leading and trailing whitespace.
+     *
+     * Find it in your PostHog project settings:
+     * https://us.posthog.com/settings/project-details#variables. Set it through the constructor;
+     * there is no default.
+     *
+     * ```kotlin
+     * val token = PostHogConfig(projectToken = "phc_your_project_token").projectToken
+     * ```
      */
-    public val apiKey: String = apiKey.trim()
+    public val projectToken: String = projectToken.trim()
+
+    /**
+     * Deprecated alias for [projectToken]; returns the same trimmed value.
+     *
+     * ```kotlin
+     * val token = config.projectToken // instead of config.apiKey
+     * ```
+     */
+    @Deprecated(
+        "Deprecated in favor of projectToken. This will be removed in the next major version.",
+        ReplaceWith("projectToken"),
+    )
+    public val apiKey: String
+        get() = projectToken
 
     /**
      * The PostHog Host
@@ -635,5 +639,147 @@ public open class PostHogConfig(
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
+
+        /**
+         * Deprecated form of the [PostHogConfig] constructor that takes `apiKey` instead of
+         * `projectToken`, kept so Kotlin calls such as `PostHogConfig(apiKey = "phc_...")` still
+         * compile. Every other parameter and default matches the constructor.
+         *
+         * ```kotlin
+         * val config = PostHogConfig(projectToken = "phc_your_project_token") // instead of apiKey =
+         * ```
+         */
+        @Deprecated(
+            "Deprecated in favor of projectToken. This will be removed in the next major version.",
+        )
+        @Suppress("DEPRECATION")
+        @JvmSynthetic
+        public operator fun invoke(
+            apiKey: String,
+            host: String = DEFAULT_HOST,
+            debug: Boolean = false,
+            optOut: Boolean = false,
+            sendFeatureFlagEvent: Boolean = true,
+            featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
+            preloadFeatureFlags: Boolean = true,
+            evaluationContexts: List<String>? = null,
+            setDefaultPersonProperties: Boolean = true,
+            remoteConfig: Boolean = true,
+            flushAt: Int = DEFAULT_FLUSH_AT,
+            maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
+            maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
+            maxRetries: Int = 3,
+            featureFlagRequestMaxRetries: Int = 1,
+            flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
+            encryption: PostHogEncryption? = null,
+            onFeatureFlags: PostHogOnFeatureFlags? = null,
+            sessionReplay: Boolean = false,
+            propertiesSanitizer: PostHogPropertiesSanitizer? = null,
+            getAnonymousId: ((UUID) -> UUID) = { it },
+            reuseAnonymousId: Boolean = false,
+            personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
+            surveys: Boolean = false,
+            proxy: Proxy? = null,
+            surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
+            logs: PostHogLogsConfig = PostHogLogsConfig(),
+            remoteConfigProvider: (
+                PostHogConfig,
+                PostHogApi,
+                ExecutorService,
+                PostHogDefaultPersonPropertiesProvider?,
+                PostHogOnRemoteConfigLoaded?,
+                PostHogFeatureFlagCalledProvider?,
+            ) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER,
+            queueProvider: (
+                PostHogConfig,
+                PostHogApi,
+                PostHogApiEndpoint,
+                String?,
+                ExecutorService,
+            ) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER,
+            errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(),
+            releaseIdentifier: String? = null,
+            bootstrap: PostHogBootstrapConfig? = null,
+            pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,
+        ): PostHogConfig =
+            PostHogConfig(
+                projectToken = apiKey,
+                host = host,
+                debug = debug,
+                optOut = optOut,
+                sendFeatureFlagEvent = sendFeatureFlagEvent,
+                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
+                preloadFeatureFlags = preloadFeatureFlags,
+                evaluationContexts = evaluationContexts,
+                setDefaultPersonProperties = setDefaultPersonProperties,
+                remoteConfig = remoteConfig,
+                flushAt = flushAt,
+                maxQueueSize = maxQueueSize,
+                maxBatchSize = maxBatchSize,
+                maxRetries = maxRetries,
+                featureFlagRequestMaxRetries = featureFlagRequestMaxRetries,
+                flushIntervalSeconds = flushIntervalSeconds,
+                encryption = encryption,
+                onFeatureFlags = onFeatureFlags,
+                sessionReplay = sessionReplay,
+                propertiesSanitizer = propertiesSanitizer,
+                getAnonymousId = getAnonymousId,
+                reuseAnonymousId = reuseAnonymousId,
+                personProfiles = personProfiles,
+                surveys = surveys,
+                proxy = proxy,
+                surveysConfig = surveysConfig,
+                logs = logs,
+                remoteConfigProvider = remoteConfigProvider,
+                queueProvider = queueProvider,
+                errorTrackingConfig = errorTrackingConfig,
+                releaseIdentifier = releaseIdentifier,
+                bootstrap = bootstrap,
+                pushIdentityProvider = pushIdentityProvider,
+            )
     }
 }
+
+private val DEFAULT_REMOTE_CONFIG_PROVIDER: (
+    PostHogConfig,
+    PostHogApi,
+    ExecutorService,
+    PostHogDefaultPersonPropertiesProvider?,
+    PostHogOnRemoteConfigLoaded?,
+    PostHogFeatureFlagCalledProvider?,
+) -> PostHogFeatureFlagsInterface =
+    {
+            config,
+            api,
+            executor,
+            defaultPersonPropertiesProvider,
+            onRemoteConfigLoaded,
+            featureFlagCalledProvider,
+        ->
+        PostHogRemoteConfig(
+            config,
+            api,
+            executor,
+            defaultPersonPropertiesProvider ?: PostHogDefaultPersonPropertiesProvider {
+                emptyMap()
+            },
+            featureFlagCalledProvider ?: PostHogFeatureFlagCalledProvider { _, _ -> },
+            onRemoteConfigLoaded,
+        )
+    }
+
+private val DEFAULT_QUEUE_PROVIDER: (
+    PostHogConfig,
+    PostHogApi,
+    PostHogApiEndpoint,
+    String?,
+    ExecutorService,
+) -> PostHogQueueInterface<PostHogEvent> =
+    { config, api, endpoint, storagePrefix, executor ->
+        val spec =
+            when (endpoint) {
+                PostHogApiEndpoint.BATCH -> EndpointSpec.batch(config, api, storagePrefix)
+                PostHogApiEndpoint.SNAPSHOT -> EndpointSpec.snapshot(config, api, storagePrefix)
+            }
+        PostHogQueue(config, spec, executor)
+    }

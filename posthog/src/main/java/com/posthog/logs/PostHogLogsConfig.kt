@@ -13,7 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * ### Kotlin
  *
  * ```kotlin
- * val config = PostHogAndroidConfig(apiKey).apply {
+ * val config = PostHogAndroidConfig(projectToken).apply {
  *     logs.serviceName = "checkout-android"
  *     logs.environment = "production"
  *     logs.resourceAttributes = mapOf("region" to "us-east-1")
@@ -33,7 +33,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * ### Java
  *
  * ```java
- * PostHogAndroidConfig config = new PostHogAndroidConfig(apiKey);
+ * PostHogAndroidConfig config = new PostHogAndroidConfig(projectToken);
  * config.getLogs().setServiceName("checkout-android");
  * config.getLogs().setEnvironment("production");
  * config.getLogs().addBeforeSend(record ->

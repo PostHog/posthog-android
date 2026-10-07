@@ -70,7 +70,7 @@ public class PostHogApi(
 
     @Throws(PostHogApiError::class, IOException::class)
     public fun batch(events: List<PostHogEvent>) {
-        val batch = PostHogBatchEvent(config.apiKey, events)
+        val batch = PostHogBatchEvent(config.projectToken, events)
 
         val url = "$theHost/batch"
         val request =
@@ -88,7 +88,7 @@ public class PostHogApi(
     @Throws(PostHogApiError::class, IOException::class)
     public fun snapshot(events: List<PostHogEvent>) {
         events.forEach {
-            it.apiKey = config.apiKey
+            it.apiKey = config.projectToken
         }
 
         val url = "$theHost${config.snapshotEndpoint}"
@@ -124,7 +124,7 @@ public class PostHogApi(
                 sdkVersion = config.sdkVersion,
             )
 
-        val url = "$theHost/i/v1/logs?token=${config.apiKey}"
+        val url = "$theHost/i/v1/logs?token=${config.projectToken}"
         val request =
             makeRequest(url) {
                 logRequest(payload, url)
@@ -160,7 +160,7 @@ public class PostHogApi(
     ) {
         val pushSubscription =
             PostHogPushSubscriptionRequest(
-                projectToken = config.apiKey,
+                projectToken = config.projectToken,
                 distinctId = distinctId,
                 deviceToken = deviceToken,
                 appId = appId,
@@ -258,7 +258,7 @@ public class PostHogApi(
     ): PostHogFlagsResponse? {
         val flagsRequest =
             PostHogFlagsRequest(
-                config.apiKey,
+                config.projectToken,
                 distinctId,
                 anonymousId = anonymousId,
                 deviceId = deviceId,
@@ -366,7 +366,7 @@ public class PostHogApi(
 
         val request =
             Request.Builder()
-                .url("$host/array/${config.apiKey}/config")
+                .url("$host/array/${config.projectToken}/config")
                 .header("User-Agent", config.userAgent)
                 .header("Content-Type", APP_JSON_UTF_8)
                 .get()
@@ -404,7 +404,7 @@ public class PostHogApi(
         personalApiKey: String,
         etag: String? = null,
     ): LocalEvaluationApiResponse {
-        val url = "$theHost/api/feature_flag/local_evaluation/?token=${config.apiKey}&send_cohorts"
+        val url = "$theHost/api/feature_flag/local_evaluation/?token=${config.projectToken}&send_cohorts"
 
         val requestBuilder =
             Request.Builder()
