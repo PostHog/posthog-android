@@ -1,5 +1,11 @@
 ## Next
 
+## 2.21.0
+
+### Minor Changes
+
+- 8c11301: Add `projectToken` to `PostHogConfig` and `PostHogAndroidConfig` and deprecate `apiKey` (Kotlin subclasses calling `super(apiKey = ...)` must switch to `projectToken =`)
+
 ## 2.20.2
 
 ### Patch Changes

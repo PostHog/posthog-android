@@ -1,5 +1,15 @@
 ## Next
 
+## 3.72.0
+
+### Minor Changes
+
+- 8c11301: Add `projectToken` to `PostHogConfig` and `PostHogAndroidConfig` and deprecate `apiKey` (Kotlin subclasses calling `super(apiKey = ...)` must switch to `projectToken =`)
+
+### Patch Changes
+
+- 5ffdcae: Start the survey wait period when a survey shows, so a restart before close does not skip it
+
 ## 3.71.7
 
 ### Patch Changes
