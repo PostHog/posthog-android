@@ -123,4 +123,65 @@ internal class PostHogSurveysDelegateLifecycleTest {
             integration.uninstall()
         }
     }
+
+    @Test
+    fun `survey awaiting shown is not rendered again`() {
+        val shown = mutableListOf<OnPostHogSurveyShown>()
+        val closed = mutableListOf<OnPostHogSurveyClosed>()
+        config.surveysConfig.surveysDelegate = recordingDelegate(shown, closed)
+        integration.install(PostHogFake())
+        try {
+            integration.showSurvey(survey)
+            idleMainLooper()
+            integration.showSurvey(survey)
+            idleMainLooper()
+            assertEquals(1, shown.size)
+
+            shown.single()(displaySurvey())
+            closed.single()(displaySurvey())
+            integration.showSurvey(survey)
+            idleMainLooper()
+            assertEquals(2, shown.size)
+        } finally {
+            integration.uninstall()
+        }
+    }
+
+    @Test
+    fun `closing a survey before it shows releases it`() {
+        val shown = mutableListOf<OnPostHogSurveyShown>()
+        val closed = mutableListOf<OnPostHogSurveyClosed>()
+        config.surveysConfig.surveysDelegate = recordingDelegate(shown, closed)
+        integration.install(PostHogFake())
+        try {
+            integration.showSurvey(survey)
+            idleMainLooper()
+            closed.single()(displaySurvey())
+            integration.showSurvey(survey)
+            idleMainLooper()
+            assertEquals(2, shown.size)
+        } finally {
+            integration.uninstall()
+        }
+    }
+
+    private fun recordingDelegate(
+        shown: MutableList<OnPostHogSurveyShown>,
+        closed: MutableList<OnPostHogSurveyClosed>,
+    ): PostHogSurveysDelegate =
+        object : PostHogSurveysDelegate by PostHogSurveysDefaultDelegate() {
+            override fun renderSurvey(
+                survey: PostHogDisplaySurvey,
+                onSurveyShown: OnPostHogSurveyShown,
+                onSurveyResponse: OnPostHogSurveyResponse,
+                onSurveyClosed: OnPostHogSurveyClosed,
+            ) {
+                shown += onSurveyShown
+                closed += onSurveyClosed
+            }
+        }
+
+    private fun displaySurvey() = PostHogDisplaySurvey.toDisplaySurvey(survey)
+
+    private fun idleMainLooper() = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
 }
