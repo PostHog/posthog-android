@@ -12,7 +12,7 @@ public interface PostHogSurveysDelegate {
      * Delegates that opt in through [PostHogSurveysResumeAwareDelegate] must start at
      * [PostHogDisplaySurvey.initialQuestionIndex] to resume an unfinished survey.
      *
-     * No other survey is rendered until this one is shown and closed. If the survey can't be
+     * No other survey is rendered until this one is closed. If the survey can't be
      * shown, call [onSurveyClosed] without [onSurveyShown]; the survey isn't marked as seen or
      * dismissed and can be rendered again later.
      *
