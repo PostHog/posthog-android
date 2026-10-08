@@ -1,5 +1,11 @@
 ## Next
 
+## 6.47.1
+
+### Patch Changes
+
+- fb21f39: Retry feature flag requests that fail with a DNS or TLS transport error, instead of only timeouts, EOF, and connection resets
+
 ## 6.47.0
 
 ### Minor Changes
