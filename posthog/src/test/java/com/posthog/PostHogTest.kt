@@ -1305,6 +1305,26 @@ internal class PostHogTest {
         sut.optIn()
 
         assertEquals(1, integration.onOptInCount)
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut uninstalls integrations and optIn reinstalls them`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        assertTrue(integration.installed)
+
+        sut.optOut()
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
 
         sut.close()
     }
