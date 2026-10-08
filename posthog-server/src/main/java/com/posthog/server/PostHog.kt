@@ -452,6 +452,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             responseError = result.responseError,
             host = evaluationsHost,
             groups = groups,
+            unresolvedFlags = result.unresolvedFlags,
         )
     }
 
