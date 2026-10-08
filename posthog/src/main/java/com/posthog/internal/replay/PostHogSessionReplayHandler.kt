@@ -11,8 +11,9 @@ public interface PostHogSessionReplayHandler {
     public fun isActive(): Boolean
 
     /**
-     * Snapshot of `$recording_status` and `$sdk_debug_replay_*` properties to attach to captured
-     * events. Must always include `$recording_status`; the rest are omitted when not applicable.
+     * Snapshot of `$recording_status` and `$sdk_debug_replay_*` properties. PostHog attaches only the
+     * required subset to every event and the full map to at most one SDK event per 30s. Must always
+     * include `$recording_status`; the rest are omitted when not applicable.
      */
     public fun debugProperties(): Map<String, Any>
 

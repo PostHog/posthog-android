@@ -49,6 +49,21 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 private const val MAX_DEBUG_ERROR_LENGTH = 500
+private const val REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS = 30_000L
+
+// Kept on every event because the app reads them per event; the rest of the replay debug bundle is throttled.
+private val REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS =
+    setOf(
+        "\$recording_status",
+        "\$sdk_debug_replay_event_trigger_status",
+        "\$sdk_debug_replay_linked_flag_trigger_status",
+        "\$sdk_debug_replay_internal_buffer_length",
+    )
+
+private fun isReplayDebugEvent(event: String): Boolean =
+    event.startsWith("\$") &&
+        event != PostHogEventName.FEATURE_FLAG_CALLED.event &&
+        event != PostHogEventName.SNAPSHOT.event
 
 // A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
 // after a cold start while the host's JS/Dart handlers register. Finite so that a re-send carrying no
@@ -99,6 +114,11 @@ public class PostHog private constructor(
 
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
+    private val replayDebugPropertiesLock = Any()
+
+    // Guarded by replayDebugPropertiesLock.
+    private var lastReplayDebugPropertiesAt: Long? = null
+    private var replayDebugClaimOutstanding = false
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -572,6 +592,10 @@ public class PostHog private constructor(
 
                 featureFlagsCalled.clear()
                 lastScreenName = null
+                synchronized(replayDebugPropertiesLock) {
+                    lastReplayDebugPropertiesAt = null
+                    replayDebugClaimOutstanding = false
+                }
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
 
@@ -671,6 +695,7 @@ public class PostHog private constructor(
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
         timestamp: Date? = null,
+        claimReplayDebugBundle: () -> Boolean = { false },
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -764,7 +789,7 @@ public class PostHog private constructor(
         // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
         // never precedes a rotation triggered by getActiveSessionId() above.
         if (appendSharedProps) {
-            props.putAll(sdkDebugProperties(sessionIdString, timestamp))
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
         }
 
         // only Session replay needs distinct_id also in the props
@@ -781,6 +806,7 @@ public class PostHog private constructor(
     private fun sdkDebugProperties(
         sessionId: String?,
         timestamp: Date?,
+        claimReplayDebugBundle: () -> Boolean,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
         val managerStart = PostHogSessionManager.getSessionStartedAt()
@@ -789,23 +815,65 @@ public class PostHog private constructor(
         if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
             return props
         }
+        val claimed = claimReplayDebugBundle()
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            props.putAll(sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled"))
+            val replayProps = sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+            if (claimed) {
+                props.putAll(replayProps)
+            } else {
+                REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS.forEach { key -> replayProps[key]?.let { props[key] = it } }
+            }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         try {
-            sessionStart(sessionId, managerStart)?.let { start ->
-                props["\$sdk_debug_session_start"] = start
-                props["\$sdk_debug_current_session_duration"] = PostHogSessionManager.currentTimeMillis() - start
+            if (claimed) {
+                sessionStart(sessionId, managerStart)?.let { props["\$sdk_debug_session_start"] = it }
             }
             queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         return props
+    }
+
+    private fun currentTimeMillis(): Long = config?.dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+
+    private fun isWithinReplayDebugInterval(
+        since: Long?,
+        now: Long,
+    ): Boolean = since != null && now - since < REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS
+
+    /**
+     * Single outstanding claim, so a capture inside `beforeSend` can't also take it. It never expires
+     * by age: the claiming capture already carries the bundle however long `beforeSend` takes, and
+     * always releases on exit. The window starts at commit, on wall clock so a future-dated capture
+     * can't hold it shut.
+     */
+    private fun claimReplayDebugPropertiesWindow(): Boolean {
+        synchronized(replayDebugPropertiesLock) {
+            if (replayDebugClaimOutstanding ||
+                isWithinReplayDebugInterval(lastReplayDebugPropertiesAt, currentTimeMillis())
+            ) {
+                return false
+            }
+            replayDebugClaimOutstanding = true
+            return true
+        }
+    }
+
+    private fun commitReplayDebugPropertiesWindow() {
+        synchronized(replayDebugPropertiesLock) {
+            lastReplayDebugPropertiesAt = currentTimeMillis()
+        }
+    }
+
+    private fun releaseReplayDebugPropertiesClaim() {
+        synchronized(replayDebugPropertiesLock) {
+            replayDebugClaimOutstanding = false
+        }
     }
 
     // The manager's clock for its own session. A caller-supplied id (the RN/Flutter bridges) carries
@@ -850,6 +918,9 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
+        // Tracked on this call rather than derived from the event, so it survives beforeSend renaming
+        // or replacing the event.
+        var claimedReplayDebugBundle = false
         try {
             if (!isEnabled()) {
                 return
@@ -919,6 +990,9 @@ public class PostHog private constructor(
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
                     timestamp = timestamp,
+                    claimReplayDebugBundle = {
+                        isReplayDebugEvent(event) && claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
+                    },
                 )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
@@ -944,15 +1018,19 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
             } else {
-                super.captureStateless(
-                    postHogEvent.event,
-                    newDistinctId,
-                    postHogEvent.properties ?: emptyMap(),
-                    userProperties,
-                    userPropertiesSetOnce,
-                    groups,
-                    timestamp,
-                )
+                val queued =
+                    captureStatelessInternal(
+                        postHogEvent.event,
+                        newDistinctId,
+                        postHogEvent.properties ?: emptyMap(),
+                        userProperties,
+                        userPropertiesSetOnce,
+                        groups,
+                        timestamp,
+                    )
+                if (queued && claimedReplayDebugBundle) {
+                    commitReplayDebugPropertiesWindow()
+                }
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event, mergedProperties)
                 // Notify session replay handler about the event for event triggers
@@ -960,6 +1038,10 @@ public class PostHog private constructor(
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
+        } finally {
+            if (claimedReplayDebugBundle) {
+                releaseReplayDebugPropertiesClaim()
+            }
         }
     }
 
