@@ -16,6 +16,9 @@ import com.posthog.internal.PostHogPreferences.Companion.MINIMAL_FLAG_CALLED_EVE
 import com.posthog.internal.PostHogPreferences.Companion.PUSH
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
+import com.posthog.internal.replay.PostHogTriggerGroupsConfig
+import com.posthog.internal.replay.PostHogTriggerGroupsEvaluator
+import com.posthog.internal.replay.parseTriggerGroupsConfig
 import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
@@ -178,6 +181,12 @@ public class PostHogRemoteConfig(
      */
     @Volatile
     private var sessionRecordingMinimumDurationMs: Long? = null
+
+    // Null while version is missing or 1, so the v1 fields above decide.
+    @Volatile
+    private var sessionRecordingTriggerGroups: PostHogTriggerGroupsConfig? = null
+
+    private val triggerGroupsEvaluator = PostHogTriggerGroupsEvaluator()
 
     init {
         preloadSessionRecordingConfig()
@@ -505,6 +514,23 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
+    private fun applyTriggerGroupsConfig(sessionRecording: Map<String, Any?>): PostHogTriggerGroupsConfig? {
+        val parsed =
+            parseTriggerGroupsConfig(sessionRecording) { message ->
+                config.logger.log(message)
+            }
+        sessionRecordingTriggerGroups = parsed
+        if (parsed != null) {
+            triggerGroupsEvaluator.onConfig(parsed.groups)
+        }
+        return parsed
+    }
+
+    private fun linkedFlagFreeConfig(
+        sessionRecording: Map<String, Any?>,
+        triggerGroups: PostHogTriggerGroupsConfig?,
+    ): Map<String, Any?> = if (triggerGroups != null) sessionRecording - "linkedFlag" else sessionRecording
+
     // Restores the full recording config from cache (survives reset), re-evaluated against current flags.
     // recordingConfig is read from the cache by the caller (off featureFlagsLock, since that read can
     // hit disk); this only re-evaluates it in memory, so it is safe to call while holding the lock.
@@ -531,6 +557,7 @@ public class PostHogRemoteConfig(
                     sessionReplayLinkedFlagConfigured = false
                 }
                 consoleLogRecordingEnabled = false
+                sessionRecordingTriggerGroups = null
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -548,16 +575,19 @@ public class PostHogRemoteConfig(
                     config.snapshotEndpoint = it["endpoint"] as? String
                         ?: config.snapshotEndpoint
 
+                    val triggerGroups = applyTriggerGroupsConfig(it)
+                    val decisionConfig = linkedFlagFreeConfig(it, triggerGroups)
+
                     // Resolved before the lock: isRecordingActive fires the feature-flag-called
                     // callback for a linked flag, which captures an event synchronously, and that
                     // must not run while featureFlagsLock is held.
-                    val recordingActive = isRecordingActive(this.featureFlags ?: mapOf(), it)
+                    val recordingActive = isRecordingActive(this.featureFlags ?: mapOf(), decisionConfig)
 
                     // Both fields under featureFlagsLock so sessionReplayLinkedFlagSnapshot() never
                     // observes a torn pair. The /flags re-arm path already holds it (reentrant); the
                     // /config path holds only remoteConfigLock, so this is load-bearing there.
                     synchronized(featureFlagsLock) {
-                        sessionReplayLinkedFlagConfigured = it["linkedFlag"] != null
+                        sessionReplayLinkedFlagConfigured = decisionConfig["linkedFlag"] != null
                         sessionReplayFlagActive = recordingActive
                     }
 
@@ -1134,8 +1164,11 @@ public class PostHogRemoteConfig(
                 val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
 
                 if (sessionRecording != null) {
-                    sessionReplayLinkedFlagConfigured = sessionRecording["linkedFlag"] != null
-                    sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
+                    val triggerGroups = applyTriggerGroupsConfig(sessionRecording)
+                    val decisionConfig = linkedFlagFreeConfig(sessionRecording, triggerGroups)
+
+                    sessionReplayLinkedFlagConfigured = decisionConfig["linkedFlag"] != null
+                    sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), decisionConfig)
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
@@ -1382,6 +1415,8 @@ public class PostHogRemoteConfig(
      * @return true if this session should be recorded, false otherwise
      */
     public fun makeSamplingDecision(sessionId: String): Boolean {
+        if (sessionRecordingTriggerGroups != null) return true
+
         // Local config takes precedence over remote config
         val localSampleRate = parseSampleRate(config.sampleRateProvider?.invoke())
         val sampleRate = localSampleRate ?: sessionRecordingSampleRate ?: return true
@@ -1409,9 +1444,12 @@ public class PostHogRemoteConfig(
      * React Native evaluates event triggers in its JS layer; RN-captured events never reach the
      * native capture() pipeline, so the native gate can't be satisfied. Returns null for RN — the
      * JS layer owns them (linkedFlag and sampling gates still apply).
+     *
+     * Returns null while v2 trigger groups are in effect.
      */
     public fun getEventTriggers(): Set<String>? {
         if (PostHogSessionManager.isReactNative) return null
+        if (sessionRecordingTriggerGroups != null) return null
         return sessionRecordingEventTriggers
     }
 
@@ -1421,6 +1459,65 @@ public class PostHogRemoteConfig(
      * reaches this duration.
      */
     public fun getRecordingMinimumDurationMs(): Long? = sessionRecordingMinimumDurationMs
+
+    /** While true, the v2 trigger groups replace the v1 recording gates. */
+    public fun hasSessionRecordingTriggerGroups(): Boolean = sessionRecordingTriggerGroups != null
+
+    /** Returns true when the event newly activated at least one trigger group. */
+    public fun onSessionRecordingTriggerEvent(
+        sessionId: String,
+        eventName: String,
+        properties: Map<String, Any?>?,
+    ): Boolean =
+        triggerGroupsEvaluator.onEvent(
+            sessionId,
+            eventName,
+            properties,
+            getPersonPropertiesForFlags(),
+        )
+
+    /** True when some trigger group is activated and sampled in for [sessionId]. */
+    public fun isSessionRecordingPermittedByTriggerGroups(sessionId: String): Boolean = decideTriggerGroups(sessionId).shouldRecord
+
+    /** True when no trigger group records yet but some group is still pending. */
+    public fun hasPendingSessionRecordingTriggerGroups(sessionId: String): Boolean =
+        decideTriggerGroups(sessionId).let { !it.shouldRecord && it.hasPendingGroups }
+
+    /** Lowest minDurationMs among the activated trigger groups for [sessionId]. */
+    public fun getSessionRecordingTriggerGroupsMinimumDurationMs(sessionId: String): Long? = decideTriggerGroups(sessionId).minDurationMs
+
+    public fun sessionRecordingTriggerGroupsDebugProperties(sessionId: String): Map<String, Any> {
+        val decision = decideTriggerGroups(sessionId)
+        return mapOf(
+            "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
+            "\$sdk_debug_replay_trigger_groups_count" to decision.groupsCount,
+            "\$sdk_debug_replay_matched_recording_trigger_groups" to
+                decision.matchedGroups.map { group ->
+                    mapOf(
+                        "id" to group.id,
+                        "name" to group.name,
+                        "matched" to true,
+                        "sampled" to group.sampled,
+                    )
+                },
+        )
+    }
+
+    private fun decideTriggerGroups(sessionId: String) =
+        triggerGroupsEvaluator.evaluate(
+            sessionId,
+            // Snapshotted before the evaluator lock: processSessionRecordingConfig pushes config
+            // to the evaluator while holding featureFlagsLock, so the reverse order deadlocks.
+            currentFeatureFlags(),
+            getPersonPropertiesForFlags(),
+            // RN events are captured in JS and never reach this evaluator.
+            eventLegsReliable = !PostHogSessionManager.isReactNative,
+        )
+
+    private fun currentFeatureFlags(): Map<String, Any?>? =
+        synchronized(featureFlagsLock) {
+            featureFlags?.toMap()
+        }
 
     override fun getRequestId(
         distinctId: String?,

@@ -77,6 +77,7 @@ import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -2494,6 +2495,13 @@ public class PostHogReplayIntegration(
             return
         }
 
+        if (shouldWaitForTriggerGroups()) {
+            config.logger.log(
+                "[Session Replay] Trigger groups configured. Integration will not start until one activates for the current session.",
+            )
+            return
+        }
+
         val currentSessionId = postHog?.getSessionId()?.toString()
 
         // Keep producer commits and the bitmap buffer lifecycle on the same recording run.
@@ -2595,6 +2603,15 @@ public class PostHogReplayIntegration(
             )
         props["\$sdk_debug_replay_linked_flag_trigger_status"] = linkedFlagStatus
 
+        config.remoteConfigHolder?.let { remoteConfig ->
+            if (remoteConfig.hasSessionRecordingTriggerGroups()) {
+                // Read-only like above: getSessionId() can rotate an idle session mid-snapshot.
+                PostHogSessionManager.peekSessionId()?.toString()?.let { sessionId ->
+                    props.putAll(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(sessionId))
+                }
+            }
+        }
+
         val pendingConditions =
             listOfNotNull(
                 "event_trigger".takeIf { eventTriggerStatus == "trigger_pending" },
@@ -2635,6 +2652,12 @@ public class PostHogReplayIntegration(
 
         val currentSessionId = postHog.getSessionId()?.toString() ?: return
 
+        val remoteConfig = config.remoteConfigHolder
+        if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
+            onTriggerGroupsEvent(remoteConfig, currentSessionId, event, properties)
+            return
+        }
+
         val triggers = config.remoteConfigHolder?.getEventTriggers()
 
         // No triggers configured, nothing to do
@@ -2667,6 +2690,27 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun onTriggerGroupsEvent(
+        remoteConfig: PostHogRemoteConfig,
+        currentSessionId: String,
+        event: String,
+        properties: Map<String, Any>?,
+    ) {
+        val newlyActivated = remoteConfig.onSessionRecordingTriggerEvent(currentSessionId, event, properties)
+        if (!newlyActivated) return
+
+        updateCachedMinimumDuration()
+        if (!isRecordingPermittedForCurrentSession()) {
+            config.logger.log(
+                "[Session Replay] Trigger group activated by event: $event, but recording is not permitted for session $currentSessionId.",
+            )
+            return
+        }
+        config.logger.log("[Session Replay] Trigger group activated by event: $event. Starting replay for session $currentSessionId.")
+        // Do not call start(): only an explicit request may establish manual-start provenance.
+        startRecording(resumeCurrent = true)
+    }
+
     /**
      * Called when the session ID changes. Stops recording if event triggers are configured
      * and the new session hasn't been activated yet, or re-initialises recording so the
@@ -2681,12 +2725,22 @@ public class PostHogReplayIntegration(
         // Invalidate immediately; reinitialization may be queued behind UI work.
         if (replaySessionId != currentSessionId) stopRecording()
         resetSessionStateIfNeeded(currentSessionId)
+        updateCachedMinimumDuration()
 
         val remoteConfig = config.remoteConfigHolder
         val triggers = remoteConfig?.getEventTriggers()
 
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }
 
+        if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
+            if (currentSessionId != null && remoteConfig.hasPendingSessionRecordingTriggerGroups(currentSessionId)) {
+                if (isSessionReplayActive) {
+                    config.logger.log("[Session Replay] Session changed. Stopping until a trigger group activates.")
+                    stopRecording()
+                }
+                return
+            }
+        }
         if (!triggers.isNullOrEmpty() && activatedSession != currentSessionId) {
             if (isSessionReplayActive) {
                 config.logger.log("[Session Replay] Session changed. Stopping until trigger is matched.")
@@ -2719,6 +2773,12 @@ public class PostHogReplayIntegration(
                 if (isSessionReplayActive) stopRecording()
                 return@post
             }
+            if (remoteConfig.hasSessionRecordingTriggerGroups()) {
+                if (!remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)) {
+                    if (isSessionReplayActive) stopRecording()
+                    return@post
+                }
+            }
             if (remoteConfig.makeSamplingDecision(currentSessionId).not()) {
                 if (isSessionReplayActive) stopRecording()
                 return@post
@@ -2737,6 +2797,14 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog.getSessionId()?.toString() ?: return false
         val state = eventTriggerState(currentSessionId)
         return state.configured && !state.activated
+    }
+
+    private fun shouldWaitForTriggerGroups(): Boolean {
+        val postHog = this.postHog ?: return false
+        val remoteConfig = config.remoteConfigHolder ?: return false
+        if (!remoteConfig.hasSessionRecordingTriggerGroups()) return false
+        val currentSessionId = postHog.getSessionId()?.toString() ?: return false
+        return remoteConfig.hasPendingSessionRecordingTriggerGroups(currentSessionId)
     }
 
     private data class EventTriggerState(val configured: Boolean, val activated: Boolean)
@@ -2948,6 +3016,9 @@ public class PostHogReplayIntegration(
             return false
         }
         val currentSessionId = postHog?.getSessionId()?.toString() ?: return false
+        if (remoteConfig.hasSessionRecordingTriggerGroups()) {
+            return remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)
+        }
         return remoteConfig.makeSamplingDecision(currentSessionId)
     }
 
@@ -2978,6 +3049,15 @@ public class PostHogReplayIntegration(
         }
 
         val currentSessionId = postHog.getSessionId()?.toString() ?: return
+        if (remoteConfig.hasSessionRecordingTriggerGroups()) {
+            if (remoteConfig.hasPendingSessionRecordingTriggerGroups(currentSessionId)) {
+                return
+            }
+            if (!remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)) {
+                stopIfActive("Remote config trigger groups decided against this session. Stopping.")
+                return
+            }
+        }
         if (!remoteConfig.makeSamplingDecision(currentSessionId)) {
             stopIfActive("Remote config sampled this session out. Stopping.")
             return
@@ -3027,7 +3107,14 @@ public class PostHogReplayIntegration(
     }
 
     private fun updateCachedMinimumDuration() {
-        val minimumDuration = config.remoteConfigHolder?.getRecordingMinimumDurationMs()
+        val remoteConfig = config.remoteConfigHolder
+        val minimumDuration =
+            if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
+                val sessionId = PostHogSessionManager.peekSessionId()?.toString()
+                sessionId?.let { remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(it) }
+            } else {
+                remoteConfig?.getRecordingMinimumDurationMs()
+            }
         synchronized(bufferingLock) {
             cachedMinimumDurationMs = minimumDuration
         }
