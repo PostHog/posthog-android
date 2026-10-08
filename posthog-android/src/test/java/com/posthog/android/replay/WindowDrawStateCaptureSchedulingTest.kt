@@ -1,16 +1,11 @@
 package com.posthog.android.replay
 
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.replay.internal.WindowDrawState
-import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-@RunWith(AndroidJUnit4::class)
-@Config(sdk = [28])
 internal class WindowDrawStateCaptureSchedulingTest {
     @Test
     fun `busy requests coalesce into one wakeup after the scheduling gate opens`() {
