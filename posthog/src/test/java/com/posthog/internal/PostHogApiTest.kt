@@ -20,11 +20,14 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import java.io.File
 import java.io.IOException
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.SocketException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import javax.net.ssl.SSLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -401,14 +404,16 @@ internal class PostHogApiTest {
         }
     }
 
-    @Test
-    fun `flags does not retry connection refused`() {
+    private fun assertFlagsRetries(
+        error: IOException,
+        expectedAttempts: Int,
+    ) {
         val attempts = AtomicInteger(0)
         val client =
             OkHttpClient.Builder()
                 .addInterceptor {
                     attempts.incrementAndGet()
-                    throw SocketException("Connection refused")
+                    throw error
                 }
                 .build()
         val http = mockHttp(response = MockResponse().setBody("{}"))
@@ -421,11 +426,31 @@ internal class PostHogApiTest {
                 sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
             }
 
-            assertEquals(1, attempts.get())
+            assertEquals(expectedAttempts, attempts.get())
             assertEquals(0, http.requestCount)
         } finally {
             http.shutdown()
         }
+    }
+
+    @Test
+    fun `flags does not retry connection refused`() {
+        assertFlagsRetries(ConnectException("Connection refused"), expectedAttempts = 1)
+    }
+
+    @Test
+    fun `flags retries dns resolution failures`() {
+        assertFlagsRetries(UnknownHostException("app.posthog.com"), expectedAttempts = 2)
+    }
+
+    @Test
+    fun `flags retries tls transport failures`() {
+        assertFlagsRetries(SSLException("handshake aborted"), expectedAttempts = 2)
+    }
+
+    @Test
+    fun `flags does not retry non transport IO failures`() {
+        assertFlagsRetries(IOException("unexpected end of stream"), expectedAttempts = 1)
     }
 
     @Test
