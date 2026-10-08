@@ -27,7 +27,6 @@ internal data class MaskCaptureToken(
 private class ActiveMaskCapture(
     val token: MaskCaptureToken,
     val armedDrawCount: Long,
-    val crop: DialogScreenshotCrop?,
     // Null until the pre-walk fixes it via setBaseline.
     var baselineRects: List<Rect>? = null,
     var invalid: Boolean = false,
@@ -37,7 +36,6 @@ private class ActiveMaskCapture(
 internal class DrawSampleSession(
     val token: MaskCaptureToken,
     val compareBaseline: List<Rect>,
-    val crop: DialogScreenshotCrop?,
 )
 
 // Outcome of fixing a capture baseline via setBaseline.
@@ -212,10 +210,10 @@ internal class WindowDrawState {
     }
 
     // Arms detection BEFORE the pre-walk, so a draw overlapping it cannot go unnoticed.
-    fun beginMaskCapture(crop: DialogScreenshotCrop? = null): MaskCaptureToken {
+    fun beginMaskCapture(): MaskCaptureToken {
         synchronized(captureLock) {
             val token = MaskCaptureToken(++nextCaptureId)
-            activeCapture = ActiveMaskCapture(token, armedDrawCount = drawCount, crop = crop)
+            activeCapture = ActiveMaskCapture(token, armedDrawCount = drawCount)
             return token
         }
     }
@@ -261,7 +259,7 @@ internal class WindowDrawState {
                 return null
             }
             capture.drawSamplesInProgress++
-            return DrawSampleSession(capture.token, baseline, capture.crop)
+            return DrawSampleSession(capture.token, baseline)
         }
     }
 
