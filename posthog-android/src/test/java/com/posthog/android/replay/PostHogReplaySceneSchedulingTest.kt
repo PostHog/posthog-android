@@ -104,6 +104,14 @@ internal class PostHogReplaySceneSchedulingTest {
             val formats = mutableListOf<Pair<Window, Bitmap.Config?>>()
             var fillColor: Int? = null
             var onCopy: ((Window) -> Int)? = null
+            var deferWindow: Window? = null
+            val pending = mutableListOf<Pair<Bitmap, PixelCopy.OnPixelCopyFinishedListener>>()
+
+            fun completePendingCopies() {
+                val callbacks = pending.toList()
+                pending.clear()
+                callbacks.forEach { it.second.onPixelCopyFinished(PixelCopy.SUCCESS) }
+            }
 
             @JvmStatic
             @Implementation
@@ -116,7 +124,11 @@ internal class PostHogReplaySceneSchedulingTest {
                 copies++
                 formats.add(window to bitmap.config)
                 bitmap.eraseColor(fillColor ?: Color.rgb(copies % 255, 40, 80))
-                listener.onPixelCopyFinished(onCopy?.invoke(window) ?: PixelCopy.SUCCESS)
+                if (window === deferWindow) {
+                    pending.add(bitmap to listener)
+                } else {
+                    listener.onPixelCopyFinished(onCopy?.invoke(window) ?: PixelCopy.SUCCESS)
+                }
             }
         }
     }
@@ -141,6 +153,8 @@ internal class PostHogReplaySceneSchedulingTest {
         ScenePixelCopy.formats.clear()
         ScenePixelCopy.fillColor = null
         ScenePixelCopy.onCopy = null
+        ScenePixelCopy.deferWindow = null
+        ScenePixelCopy.pending.clear()
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.setAppInBackground(false)
         PostHogSessionManager.endSession()
@@ -200,7 +214,9 @@ internal class PostHogReplaySceneSchedulingTest {
     fun tearDown() {
         consumePostsImmediately = false
         ScenePixelCopy.onCopy = null
+        ScenePixelCopy.deferWindow = null
         sut.uninstall()
+        ScenePixelCopy.completePendingCopies()
         executor.shutdownNow()
         dialogs.forEach { it.dismiss() }
         otherActivities.asReversed().forEach { it.pause().stop().destroy() }
@@ -260,6 +276,19 @@ internal class PostHogReplaySceneSchedulingTest {
         rootListeners.toList().forEach { it.onRootViewsChanged(decor, true) }
         roots.add(decor)
         shadowOf(Looper.getMainLooper()).idle()
+        return dialog
+    }
+
+    private fun timeoutDialogCopy(): Dialog {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        ScenePixelCopy.formats.clear()
+        ScenePixelCopy.deferWindow = dialog.window
+        assertNotNull(sut.decorViews[dialog.window!!.decorView]).listener.onDraw()
+        drain()
+        assertEquals(1, ScenePixelCopy.pending.size)
         return dialog
     }
 
@@ -337,7 +366,7 @@ internal class PostHogReplaySceneSchedulingTest {
     }
 
     @Test
-    fun `registered scene captures keep RGB565 activity and use ARGB for uncertain dialogs`() {
+    fun `registered scene captures keep RGB565 Activity and use ARGB for dialogs`() {
         assertSceneColorMode(PostHogScreenshotColorMode.RGB_565, Bitmap.Config.RGB_565, Bitmap.Config.ARGB_8888)
     }
 
@@ -443,18 +472,204 @@ internal class PostHogReplaySceneSchedulingTest {
     }
 
     @Test
-    fun `queued topology is discarded when a dialog appears before the worker starts`() {
+    fun `queued topology is followed by the latest scene when a dialog appears`() {
         start()
         val dialog = showDialog()
         executor.runNext()
-        assertEquals(0, fake.captures)
+        assertEquals(1, fake.captures)
+        assertEquals(listOf(controller.get().window), ScenePixelCopy.formats.map { it.first })
         drain()
+        assertEquals(listOf(controller.get().window, dialog.window), ScenePixelCopy.formats.map { it.first })
         val snapshot = (fake.properties!!["\$snapshot_data"] as List<*>).filterIsInstance<RRFullSnapshotEvent>().single()
 
         @Suppress("UNCHECKED_CAST")
         val frames = (snapshot.data as Map<*, *>)["wireframes"] as List<RRWireframe>
         assertEquals(listOf("screenshot", "rectangle", "screenshot"), frames.map { it.type })
         assertTrue(dialog.window!!.decorView in sut.decorViews)
+    }
+
+    @Test
+    fun `a dialog redraw during Activity capture does not discard completed images`() {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        ScenePixelCopy.formats.clear()
+        val captures = fake.captures
+        activityStatus.listener.onDraw()
+        ScenePixelCopy.onCopy = { window ->
+            if (window === controller.get().window) {
+                ScenePixelCopy.onCopy = null
+                assertNotNull(sut.decorViews[dialog.window!!.decorView]).listener.onDraw()
+            }
+            PixelCopy.SUCCESS
+        }
+
+        executor.runNext()
+        assertEquals(captures + 1, fake.captures)
+        drain()
+
+        assertEquals(listOf(controller.get().window, dialog.window), ScenePixelCopy.formats.map { it.first })
+        assertEquals(captures + 1, fake.captures)
+    }
+
+    @Test
+    fun `an Activity update during dialog capture remains pending`() {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        ScenePixelCopy.formats.clear()
+        val captures = fake.captures
+        activityStatus.listener.onDraw()
+        assertNotNull(sut.decorViews[dialog.window!!.decorView]).listener.onDraw()
+        ScenePixelCopy.onCopy = { window ->
+            if (window === dialog.window) {
+                ScenePixelCopy.onCopy = null
+                activityStatus.listener.onDraw()
+            }
+            PixelCopy.SUCCESS
+        }
+
+        executor.runNext()
+        assertEquals(captures + 1, fake.captures)
+        assertTrue(activityView in dirtyViews())
+        drain()
+
+        assertEquals(listOf(controller.get().window, dialog.window, controller.get().window), ScenePixelCopy.formats.map { it.first })
+        assertEquals(captures + 2, fake.captures)
+    }
+
+    @Test
+    fun lateDialogCopyDoesNotStartAnotherCopyForSameWindow() {
+        val dialog = timeoutDialogCopy()
+        val decor = dialog.window!!.decorView
+        val status = assertNotNull(sut.decorViews[decor])
+        val captures = fake.captures
+        assertFalse(ScenePixelCopy.pending.single().first.isRecycled)
+
+        repeat(5) {
+            status.listener.onDraw()
+            drain()
+            assertEquals(1, ScenePixelCopy.pending.size)
+            assertTrue(decor in dirtyViews())
+            assertEquals(captures, fake.captures)
+        }
+
+        ScenePixelCopy.deferWindow = null
+        ScenePixelCopy.completePendingCopies()
+        drain()
+
+        assertEquals(listOf(dialog.window, dialog.window), ScenePixelCopy.formats.map { it.first })
+        assertEquals(captures + 1, fake.captures)
+        assertFalse(decor in dirtyViews())
+    }
+
+    @Test
+    fun `late dialog completion after stop does not resume capture`() {
+        val dialog = timeoutDialogCopy()
+        assertNotNull(sut.decorViews[dialog.window!!.decorView]).listener.onDraw()
+        drain()
+        assertEquals(1, ScenePixelCopy.pending.size)
+        val captures = fake.captures
+
+        sut.stop()
+        ScenePixelCopy.deferWindow = null
+        ScenePixelCopy.completePendingCopies()
+        drain()
+
+        assertEquals(captures, fake.captures)
+        assertEquals(listOf(dialog.window), ScenePixelCopy.formats.map { it.first })
+        assertTrue(dirtyViews().isEmpty())
+    }
+
+    @Test
+    fun `late dialog completion after removal cannot restore the dialog`() {
+        val dialog = timeoutDialogCopy()
+        val decor = dialog.window!!.decorView
+        assertNotNull(sut.decorViews[decor]).listener.onDraw()
+        drain()
+        assertEquals(1, ScenePixelCopy.pending.size)
+        removeDialog(dialog)
+        drain()
+        val captures = fake.captures
+
+        ScenePixelCopy.deferWindow = null
+        ScenePixelCopy.completePendingCopies()
+        drain()
+
+        assertEquals(captures, fake.captures)
+        assertEquals(listOf(dialog.window), ScenePixelCopy.formats.map { it.first })
+        assertFalse(decor in sut.decorViews)
+        assertFalse(decor in dirtyViews())
+    }
+
+    @Test
+    fun `a failed dialog leaves an unchanged cached Activity reusable`() {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        val decor = dialog.window!!.decorView
+        ScenePixelCopy.formats.clear()
+        assertNotNull(sut.decorViews[decor]).listener.onDraw()
+        ScenePixelCopy.onCopy = { PixelCopy.ERROR_SOURCE_NO_DATA }
+        drain()
+
+        assertFalse(activityView in dirtyViews())
+        assertTrue(decor in dirtyViews())
+        ScenePixelCopy.onCopy = null
+        assertNotNull(sut.decorViews[decor]).listener.onDraw()
+        drain()
+
+        assertEquals(listOf(dialog.window, dialog.window), ScenePixelCopy.formats.map { it.first })
+    }
+
+    @Test
+    fun `a successful Activity image is retained when dialog capture fails`() {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        val decor = dialog.window!!.decorView
+        ScenePixelCopy.formats.clear()
+        val captures = fake.captures
+        activityStatus.listener.onDraw()
+        assertNotNull(sut.decorViews[decor]).listener.onDraw()
+        ScenePixelCopy.onCopy = { window ->
+            if (window === dialog.window) PixelCopy.ERROR_SOURCE_NO_DATA else PixelCopy.SUCCESS
+        }
+        executor.runNext()
+
+        assertEquals(captures, fake.captures)
+        assertFalse(activityView in dirtyViews())
+        assertTrue(decor in dirtyViews())
+        ScenePixelCopy.onCopy = null
+        drain()
+
+        assertEquals(listOf(controller.get().window, dialog.window, dialog.window), ScenePixelCopy.formats.map { it.first })
+        assertEquals(captures + 1, fake.captures)
+    }
+
+    @Test
+    fun `stop during dialog capture clears independently cached images`() {
+        start()
+        drain()
+        val dialog = showDialog()
+        drain()
+        activityStatus.listener.onDraw()
+        assertNotNull(sut.decorViews[dialog.window!!.decorView]).listener.onDraw()
+        val captures = fake.captures
+        ScenePixelCopy.onCopy = { window ->
+            if (window === dialog.window) sut.stop()
+            PixelCopy.SUCCESS
+        }
+        drain()
+
+        val images = ReflectionHelpers.getField<Map<*, *>>(sut, "sceneImages")
+        assertTrue(images.isEmpty())
+        assertTrue(dirtyViews().isEmpty())
+        assertEquals(captures, fake.captures)
     }
 
     @Test

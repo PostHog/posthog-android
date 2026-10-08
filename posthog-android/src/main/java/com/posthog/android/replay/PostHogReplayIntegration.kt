@@ -72,14 +72,12 @@ import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayMask
 import com.posthog.android.replay.PostHogMaskModifier.PostHogReplayUnmask
 import com.posthog.android.replay.internal.BaselineResult
-import com.posthog.android.replay.internal.DialogScreenshotCrop
 import com.posthog.android.replay.internal.IntHashSet
 import com.posthog.android.replay.internal.MaskCaptureToken
 import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
-import com.posthog.android.replay.internal.findDialogScreenshotCrop
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
 import com.posthog.internal.PostHogSessionManager
@@ -142,7 +140,6 @@ public class PostHogReplayIntegration(
     private var nextSceneId = 10_000_001
     private var lastScene: List<RRWireframe>? = null
     private var sceneViewport: Pair<Int, Int>? = null
-    private var sceneRevision = 0L
 
     private data class SceneLayer(
         val view: View,
@@ -153,7 +150,6 @@ public class PostHogReplayIntegration(
         val width: Int,
         val height: Int,
         val dimAmount: Float,
-        val crop: DialogScreenshotCrop?,
         val windowAlpha: Float,
     )
 
@@ -161,7 +157,6 @@ public class PostHogReplayIntegration(
         val wireframe: RRWireframe,
         val windowWidth: Int,
         val windowHeight: Int,
-        val crop: DialogScreenshotCrop?,
         val windowAlpha: Float,
         val bitmapConfig: Bitmap.Config,
     )
@@ -318,11 +313,8 @@ public class PostHogReplayIntegration(
         walk.resetForCompareAgainst(session.compareBaseline)
         var misaligned: Boolean
         try {
-            misaligned = session.crop != null && findDialogScreenshotCrop(view) != session.crop
-            if (!misaligned) {
-                findMaskableWidgets(view, walk)
-                misaligned = walk.poisoned || walk.isMisaligned()
-            }
+            findMaskableWidgets(view, walk)
+            misaligned = walk.poisoned || walk.isMisaligned()
         } catch (e: Throwable) {
             config.logger.log("Session Replay draw-time mask walk failed: $e.")
             misaligned = true
@@ -471,7 +463,7 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState? = null,
     ) {
         if (!isNativeSdk || !config.sessionReplayConfig.screenshot) return
-        val (generation, revision) =
+        val generation =
             synchronized(decorViews) {
                 if (!isActive()) return
                 if (changedView != null) {
@@ -479,8 +471,7 @@ public class PostHogReplayIntegration(
                     if (drawState != null && status.drawState !== drawState) return
                     sceneDirtyViews.add(changedView)
                 }
-                sceneRevision++
-                snapshotGeneration to sceneRevision
+                snapshotGeneration
             }
         // Pin the lease when selecting the topology, before any work can queue behind it.
         val layers = selectSceneLayers() ?: return
@@ -490,7 +481,7 @@ public class PostHogReplayIntegration(
             onAvailable = { mainHandler.handler.post { requestSceneCapture() } },
         ) {
             try {
-                generateSceneSnapshot(layers, generation, revision)
+                generateSceneSnapshot(layers, generation)
             } catch (e: Throwable) {
                 config.logger.log("Session Replay scene capture failed: $e.")
             }
@@ -519,13 +510,11 @@ public class PostHogReplayIntegration(
     // as well as the window token to associate ordinary PhoneWindow dialogs.
     private fun selectSceneLayers(): List<SceneLayer>? {
         val roots = Curtains.rootViews
-        val baseIndex =
-            roots.indexOfLast {
+        val base =
+            roots.lastOrNull {
                 it.isAliveAndAttachedToWindow() && it.isShown &&
                     (it.layoutParams as? WindowManager.LayoutParams)?.type == WindowManager.LayoutParams.TYPE_BASE_APPLICATION
-            }
-        if (baseIndex < 0) return null
-        val base = roots[baseIndex]
+            } ?: return null
         val token = (base.layoutParams as? WindowManager.LayoutParams)?.token ?: return null
         val displayId = base.display?.displayId
         val owner = base.phoneWindow?.context?.activityOwner()
@@ -553,7 +542,6 @@ public class PostHogReplayIntegration(
                     view.width,
                     view.height,
                     if (attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) attributes.dimAmount else 0f,
-                    if (view !== base) findDialogScreenshotCrop(view) else null,
                     if (view !== base) attributes.alpha else 1f,
                 ),
             )
@@ -564,25 +552,20 @@ public class PostHogReplayIntegration(
     private fun generateSceneSnapshot(
         layers: List<SceneLayer>,
         generation: Long,
-        revision: Long,
     ): Boolean {
         val postHog = postHog ?: return false
         val sessionId = PostHogSessionManager.getActiveSessionId()?.toString() ?: return false
         synchronized(decorViews) {
-            if (!isActive() || replaySessionId != sessionId || snapshotGeneration != generation || sceneRevision != revision) return false
+            if (!isActive() || replaySessionId != sessionId || snapshotGeneration != generation) return false
         }
         val timestamp = config.dateProvider.currentTimeMillis()
         val colorMode = config.sessionReplayConfig.screenshotColorMode
         val images = mutableListOf<RRWireframe>()
-        val refreshed = mutableMapOf<View, SceneImage>()
 
-        fun restoreDirty(failedLayer: SceneLayer? = null) {
+        fun restoreDirty(layer: SceneLayer) {
             synchronized(decorViews) {
-                if (!isActive() || snapshotGeneration != generation) return
-                layers.forEach { layer ->
-                    if ((layer.view in refreshed || layer === failedLayer) && decorViews[layer.view] === layer.status) {
-                        sceneDirtyViews.add(layer.view)
-                    }
+                if (isActive() && snapshotGeneration == generation && decorViews[layer.view] === layer.status) {
+                    sceneDirtyViews.add(layer.view)
                 }
             }
         }
@@ -594,9 +577,7 @@ public class PostHogReplayIntegration(
                 }
             val isDialog = layer !== layers.first()
             val bitmapConfig =
-                if (colorMode == PostHogScreenshotColorMode.RGB_565 &&
-                    (!isDialog || (layer.crop?.opaque == true && layer.windowAlpha == 1f))
-                ) {
+                if (colorMode == PostHogScreenshotColorMode.RGB_565 && !isDialog) {
                     Bitmap.Config.RGB_565
                 } else {
                     Bitmap.Config.ARGB_8888
@@ -606,33 +587,58 @@ public class PostHogReplayIntegration(
             val recheckDialogMasks = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
             val image =
                 if (!recheckDialogMasks && !dirty && cached != null &&
-                    cached.windowWidth == layer.width && cached.windowHeight == layer.height && cached.crop == layer.crop &&
+                    cached.windowWidth == layer.width && cached.windowHeight == layer.height &&
                     cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig
                 ) {
                     cached.wireframe
                 } else {
-                    layer.view.toScreenshotWireframe(
-                        layer.window,
-                        layer.status.drawState,
-                        isDialog = isDialog,
-                        crop = layer.crop,
-                        bitmapConfig = bitmapConfig,
-                        windowAlpha = layer.windowAlpha,
-                    )
-                        ?: run {
-                            restoreDirty(layer)
-                            return false
+                    val drawState = layer.status.drawState
+                    // The Activity owns the scene worker; dialogs also need their own copy gate.
+                    if (isDialog &&
+                        !drawState.tryScheduleCapture {
+                            mainHandler.handler.post { requestSceneCapture() }
                         }
+                    ) {
+                        restoreDirty(layer)
+                        return false
+                    }
+                    try {
+                        layer.view.toScreenshotWireframe(
+                            layer.window,
+                            drawState,
+                            isDialog = isDialog,
+                            bitmapConfig = bitmapConfig,
+                            windowAlpha = layer.windowAlpha,
+                        )
+                            ?: run {
+                                restoreDirty(layer)
+                                return false
+                            }
+                    } finally {
+                        if (isDialog) drawState.finishScheduledCapture()
+                    }
                 }
             val positioned =
                 image.copy(
                     id = id,
-                    x = (layer.x + (layer.crop?.left ?: 0)).densityValue(screenDensity),
-                    y = (layer.y + (layer.crop?.top ?: 0)).densityValue(screenDensity),
-                    width = (layer.crop?.width ?: layer.width).densityValue(screenDensity),
-                    height = (layer.crop?.height ?: layer.height).densityValue(screenDensity),
+                    x = layer.x.densityValue(screenDensity),
+                    y = layer.y.densityValue(screenDensity),
+                    width = layer.width.densityValue(screenDensity),
+                    height = layer.height.densityValue(screenDensity),
                 )
-            refreshed[layer.view] = SceneImage(positioned, layer.width, layer.height, layer.crop, layer.windowAlpha, bitmapConfig)
+            synchronized(decorViews) {
+                if (!isActive() || snapshotGeneration != generation ||
+                    PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
+                    decorViews[layer.view] !== layer.status || !layer.view.isShown ||
+                    layer.view.width != layer.width || layer.view.height != layer.height
+                ) {
+                    restoreDirty(layer)
+                    return false
+                }
+                // Keep each validated image even if a later layer fails. Draws arriving after
+                // this layer's dirty flag was consumed remain pending for the next capture.
+                sceneImages[layer.view] = SceneImage(positioned, layer.width, layer.height, layer.windowAlpha, bitmapConfig)
+            }
             images.add(positioned)
         }
 
@@ -656,33 +662,25 @@ public class PostHogReplayIntegration(
             }
             scene.add(image)
         }
-        val screenSize =
-            layers.first().view.context.screenSize()
-                ?: run {
-                    restoreDirty()
-                    return false
-                }
+        val screenSize = layers.first().view.context.screenSize() ?: return false
         val viewport = screenSize.width to screenSize.height
         if (layers.size > 1 && runOnMainThreadBlocking {
                 layers.drop(1).all {
-                    it.window.attributes.alpha == it.windowAlpha &&
-                        (it.crop == null || findDialogScreenshotCrop(it.view) == it.crop)
+                    it.window.attributes.alpha == it.windowAlpha
                 }
             } != true
         ) {
-            restoreDirty()
             return false
         }
         val events =
             synchronized(decorViews) {
-                if (!isActive() || snapshotGeneration != generation || sceneRevision != revision ||
+                if (!isActive() || snapshotGeneration != generation ||
                     PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
                     layers.any { layer ->
                         decorViews[layer.view] !== layer.status || !layer.view.isShown ||
                             layer.view.width != layer.width || layer.view.height != layer.height
                     }
                 ) {
-                    restoreDirty()
                     return false
                 }
                 val result = mutableListOf<RREvent>()
@@ -696,26 +694,13 @@ public class PostHogReplayIntegration(
                     result.add(RRFullSnapshotEvent(scene, 0, 0, timestamp))
                     lastScene = scene
                 }
-                sceneImages.clear()
-                sceneImages.putAll(refreshed)
                 val base = layers.first()
                 val (visible, keyboardEvent) = detectKeyboardVisibility(base.view, base.status.keyboardVisible)
                 base.status.keyboardVisible = visible
                 keyboardEvent?.let { result.add(it) }
                 result
             }
-        if (events.isNotEmpty()) {
-            postHog.capture(
-                PostHogEventName.SNAPSHOT.event,
-                properties =
-                    mapOf(
-                        "\$snapshot_data" to events,
-                        "\$snapshot_source" to "mobile",
-                        "\$session_id" to sessionId,
-                        "\$window_id" to sessionId,
-                    ),
-            )
-        }
+        captureSnapshotEvents(postHog, events, sessionId)
         return true
     }
 
@@ -1131,6 +1116,15 @@ public class PostHogReplayIntegration(
 
         // Commit above is the producer boundary. Do not invoke SDK/user callbacks under its lock.
         // A rotation after commit must not relabel this frame during core enrichment.
+        captureSnapshotEvents(postHog, events, sessionId)
+        return true
+    }
+
+    private fun captureSnapshotEvents(
+        postHog: PostHogInterface,
+        events: List<RREvent>,
+        sessionId: String,
+    ) {
         if (events.isNotEmpty()) {
             postHog.capture(
                 PostHogEventName.SNAPSHOT.event,
@@ -1143,7 +1137,6 @@ public class PostHogReplayIntegration(
                     ),
             )
         }
-        return true
     }
 
     // Called under decorViews so a reset cannot be overwritten by an in-flight frame.
@@ -1787,7 +1780,6 @@ public class PostHogReplayIntegration(
     private class ArmedMaskCapture(
         val token: MaskCaptureToken,
         val preWalk: MaskWalk,
-        val crop: DialogScreenshotCrop?,
     )
 
     // Arms the capture before the pre-walk so no draw can slip between the walk and the
@@ -1798,12 +1790,10 @@ public class PostHogReplayIntegration(
     private fun runArmMaskCaptureLoop(
         view: View,
         drawState: WindowDrawState,
-        crop: DialogScreenshotCrop?,
     ): ArmedMaskCapture? {
         var armed: ArmedMaskCapture? = null
         for (attempt in 0 until MAX_BASELINE_ARM_ATTEMPTS) {
-            if (crop != null && findDialogScreenshotCrop(view) != crop) return null
-            val token = drawState.beginMaskCapture(crop)
+            val token = drawState.beginMaskCapture()
             val preWalk = MaskWalk()
             try {
                 findMaskableWidgets(view, preWalk)
@@ -1817,7 +1807,7 @@ public class PostHogReplayIntegration(
             }
             when (drawState.setBaseline(token, preWalk.rects)) {
                 BaselineResult.ARMED -> {
-                    armed = ArmedMaskCapture(token, preWalk, crop)
+                    armed = ArmedMaskCapture(token, preWalk)
                     break
                 }
                 BaselineResult.TORN_BY_DRAW -> drawState.cancelMaskCapture(token)
@@ -1833,7 +1823,6 @@ public class PostHogReplayIntegration(
     private fun armMaskCapture(
         view: View,
         drawState: WindowDrawState,
-        crop: DialogScreenshotCrop?,
     ): ArmedMaskCapture? {
         // The whole loop runs in ONE main-thread message so a draw can't land between
         // beginMaskCapture() and setBaseline() -- drawCount can't move mid-walk, which also makes
@@ -1841,7 +1830,7 @@ public class PostHogReplayIntegration(
         // run-on-main calls from the pre-walk (e.g. a ComposeView) run inline, already on main.
         if (Looper.myLooper() == mainHandler.handler.looper) {
             return try {
-                runArmMaskCaptureLoop(view, drawState, crop)
+                runArmMaskCaptureLoop(view, drawState)
             } catch (e: Throwable) {
                 config.logger.log("Session Replay main-thread hop failed: $e")
                 null
@@ -1858,7 +1847,7 @@ public class PostHogReplayIntegration(
         var result: ArmedMaskCapture? = null
         mainHandler.handler.post {
             try {
-                val armed = runArmMaskCaptureLoop(view, drawState, crop)
+                val armed = runArmMaskCaptureLoop(view, drawState)
                 // Publish before the CAS, not after: on timeout the waiter reads `result` only
                 // once its own CAS fails, and it is the CAS's volatile write that makes this
                 // assignment visible. Writing after would let the waiter observe a claimed
@@ -1898,14 +1887,12 @@ public class PostHogReplayIntegration(
         rect: Rect,
         scaleX: Float,
         scaleY: Float,
-        offsetX: Int = 0,
-        offsetY: Int = 0,
     ) {
         set(
-            floor((rect.left - offsetX) * scaleX),
-            floor((rect.top - offsetY) * scaleY),
-            ceil((rect.right - offsetX) * scaleX),
-            ceil((rect.bottom - offsetY) * scaleY),
+            floor(rect.left * scaleX),
+            floor(rect.top * scaleY),
+            ceil(rect.right * scaleX),
+            ceil(rect.bottom * scaleY),
         )
     }
 
@@ -1913,7 +1900,6 @@ public class PostHogReplayIntegration(
         rects: List<Rect>,
         sourceWidth: Int,
         sourceHeight: Int,
-        crop: DialogScreenshotCrop? = null,
         canPaintMask: () -> Boolean = { true },
     ): Boolean {
         if (!isValid()) {
@@ -1932,14 +1918,14 @@ public class PostHogReplayIntegration(
                 return false
             }
 
-        val scaleX = width.toFloat() / (crop?.width ?: sourceWidth)
-        val scaleY = height.toFloat() / (crop?.height ?: sourceHeight)
+        val scaleX = width.toFloat() / sourceWidth
+        val scaleY = height.toFloat() / sourceHeight
         val maskRect = RectF()
         for (rect in rects) {
             if (!canPaintMask()) {
                 return false
             }
-            maskRect.setScaledScreenshotMask(rect, scaleX, scaleY, crop?.left ?: 0, crop?.top ?: 0)
+            maskRect.setScaledScreenshotMask(rect, scaleX, scaleY)
             canvas.drawRoundRect(maskRect, 10f * scaleX, 10f * scaleY, paint)
         }
         return true
@@ -1960,19 +1946,7 @@ public class PostHogReplayIntegration(
         // so the post-copy walk would be wasted work.
         val alreadyDoomed = drawState.isCaptureInvalid(armedCapture.token)
         if (!alreadyDoomed) {
-            if (armedCapture.crop == null) {
-                findMaskableWidgets(this, postWalk)
-            } else if (runOnMainThreadBlocking {
-                    if (findDialogScreenshotCrop(this) != armedCapture.crop) {
-                        false
-                    } else {
-                        findMaskableWidgets(this, postWalk)
-                        true
-                    }
-                } != true
-            ) {
-                postWalk.poisoned = true
-            }
+            findMaskableWidgets(this, postWalk)
         }
 
         val captureAligned =
@@ -1988,7 +1962,7 @@ public class PostHogReplayIntegration(
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
-        return bitmap.paintScreenshotMasks(postWalk.rects, sourceWidth, sourceHeight, armedCapture.crop)
+        return bitmap.paintScreenshotMasks(postWalk.rects, sourceWidth, sourceHeight)
     }
 
     private fun View.maskLegacyScreenshot(
@@ -2074,7 +2048,6 @@ public class PostHogReplayIntegration(
         window: Window,
         drawState: WindowDrawState,
         isDialog: Boolean = false,
-        crop: DialogScreenshotCrop? = null,
         bitmapConfig: Bitmap.Config =
             when (config.sessionReplayConfig.screenshotColorMode) {
                 PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
@@ -2097,12 +2070,12 @@ public class PostHogReplayIntegration(
             coordinates[0] = 0
             coordinates[1] = 0
         }
-        val x = (coordinates[0] + (crop?.left ?: 0)).densityValue(screenDensity)
-        val y = (coordinates[1] + (crop?.top ?: 0)).densityValue(screenDensity)
+        val x = coordinates[0].densityValue(screenDensity)
+        val y = coordinates[1].densityValue(screenDensity)
         val sourceWidth = view.width
         val sourceHeight = view.height
-        val width = (crop?.width ?: sourceWidth).densityValue(screenDensity)
-        val height = (crop?.height ?: sourceHeight).densityValue(screenDensity)
+        val width = sourceWidth.densityValue(screenDensity)
+        val height = sourceHeight.densityValue(screenDensity)
         val maskWholeDialog = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
 
         fun maskedDialog(): RRWireframe =
@@ -2122,13 +2095,13 @@ public class PostHogReplayIntegration(
 
         // API 26–27 copy the entire dialog surface, including its insets, into the
         // decor-sized bitmap. Only a verified empty mask walk permits copying pixels.
-        val verifyMaskAlignment = maskWholeDialog || crop != null || shouldVerifyMaskAlignment(view, drawState)
+        val verifyMaskAlignment = maskWholeDialog || shouldVerifyMaskAlignment(view, drawState)
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
                 // The pre-walk samples the baseline before the pixels freeze. Once armed, draws are
                 // verified against it, so pixel-only redraws survive while geometry changes discard.
-                armMaskCapture(view, drawState, crop)
+                armMaskCapture(view, drawState)
             } else {
                 drawState.beginLegacyCapture()
                 null
@@ -2154,8 +2127,8 @@ public class PostHogReplayIntegration(
             handler = ensurePixelCopyHandler()
             bitmapLease =
                 pixelCopyBitmapBuffer.acquire(
-                    scaledScreenshotDimension(crop?.width ?: sourceWidth, screenshotScale),
-                    scaledScreenshotDimension(crop?.height ?: sourceHeight, screenshotScale),
+                    scaledScreenshotDimension(sourceWidth, screenshotScale),
+                    scaledScreenshotDimension(sourceHeight, screenshotScale),
                     bitmapConfig,
                 ) ?: run {
                     finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
@@ -2175,8 +2148,10 @@ public class PostHogReplayIntegration(
 
         drawState.beginPixelCopy()
         try {
-            val listener =
-                PixelCopy.OnPixelCopyFinishedListener { copyResult ->
+            PixelCopy.request(
+                window,
+                bitmap,
+                { copyResult ->
                     var succeeded = false
                     try {
                         if (copyResult != PixelCopy.SUCCESS) {
@@ -2211,12 +2186,9 @@ public class PostHogReplayIntegration(
                             latch.countDown()
                         }
                     }
-                }
-            if (crop == null) {
-                PixelCopy.request(window, bitmap, listener, handler)
-            } else {
-                PixelCopy.request(window, crop.toRect(), bitmap, listener, handler)
-            }
+                },
+                handler,
+            )
         } catch (e: Throwable) {
             config.logger.log("Session Replay PixelCopy failed: $e.")
             try {

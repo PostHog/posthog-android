@@ -142,7 +142,6 @@ dependencies {
     testImplementation("androidx.test:rules:${PosthogBuildConfig.Dependencies.ANDROIDX_CORE}")
     testImplementation("org.robolectric:robolectric:${PosthogBuildConfig.Dependencies.ROBOLECTRIC}")
     testImplementation("androidx.activity:activity-compose:1.13.0")
-    testImplementation("com.google.android.material:material:1.12.0")
     testImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
     testImplementation("androidx.compose.material3:material3")
     testImplementation("androidx.compose.ui:ui-test-junit4")
