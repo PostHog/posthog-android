@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.posthog.PostHog
+import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
@@ -31,6 +32,7 @@ import com.posthog.android.surveys.PostHogSurveysIntegration
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogNoOpLogger
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.logIntegrationFailure
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 
@@ -221,37 +223,64 @@ public class PostHogAndroid private constructor() {
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
 
             val mainHandler = MainHandler()
-            config.addIntegration(PostHogReplayIntegration(context, config, mainHandler))
-            config.addIntegration(PostHogTouchActivityIntegration(config))
-            if (config.captureElementInteractions || config.captureRageClicks || config.captureDeadClicks) {
-                config.addIntegration(PostHogElementInteractionIntegration(config, mainHandler))
+            config.addIntegrationSafely("PostHogReplayIntegration") {
+                PostHogReplayIntegration(context, config, mainHandler)
             }
-            config.addIntegration(PostHogLogCatIntegration(config))
+            config.addIntegrationSafely("PostHogTouchActivityIntegration") {
+                PostHogTouchActivityIntegration(config)
+            }
+            if (config.captureElementInteractions || config.captureRageClicks || config.captureDeadClicks) {
+                config.addIntegrationSafely("PostHogElementInteractionIntegration") {
+                    PostHogElementInteractionIntegration(config, mainHandler)
+                }
+            }
+            config.addIntegrationSafely("PostHogLogCatIntegration") { PostHogLogCatIntegration(config) }
             if (context is Application) {
                 if (config.captureDeepLinks || config.captureScreenViews || config.sessionReplay ||
                     config.capturePushNotificationOpened
                 ) {
-                    config.addIntegration(
-                        PostHogActivityLifecycleCallbackIntegration(
-                            context,
-                            config,
-                        ),
-                    )
+                    config.addIntegrationSafely("PostHogActivityLifecycleCallbackIntegration") {
+                        PostHogActivityLifecycleCallbackIntegration(context, config)
+                    }
                 }
             }
             // Version accounting also runs when lifecycle event capture is disabled.
-            config.addIntegration(PostHogAppInstallIntegration(context, config, packageInfoProvider))
-            config.addIntegration(
-                PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider),
-            )
+            config.addIntegrationSafely("PostHogAppInstallIntegration") {
+                PostHogAppInstallIntegration(context, config, packageInfoProvider)
+            }
+            config.addIntegrationSafely("PostHogLifecycleObserverIntegration") {
+                PostHogLifecycleObserverIntegration(context, config, mainHandler, packageInfoProvider = packageInfoProvider)
+            }
             if (config.surveys) {
-                config.addIntegration(PostHogSurveysIntegration(context, config))
+                config.addIntegrationSafely("PostHogSurveysIntegration") { PostHogSurveysIntegration(context, config) }
             }
             if (config.capturePushNotificationSubscriptions) {
-                config.addIntegration(PostHogPushSubscriptionIntegration(config))
+                config.addIntegrationSafely("PostHogPushSubscriptionIntegration") {
+                    PostHogPushSubscriptionIntegration(config)
+                }
             }
             if (config.errorTrackingConfig.captureNativeCrashes) {
-                config.addIntegration(PostHogNativeCrashIntegration(context, config))
+                config.addIntegrationSafely("PostHogNativeCrashIntegration") {
+                    PostHogNativeCrashIntegration(context, config)
+                }
+            }
+        }
+
+        /**
+         * Builds an integration and registers it. Reports a failure instead of raising it.
+         *
+         * An integration can fail before [PostHogIntegration.install] ever runs, because building
+         * its listeners resolves the classes of the artifact that provides them. A host build that
+         * excludes such an artifact must lose that one integration, not the whole SDK.
+         */
+        internal fun PostHogAndroidConfig.addIntegrationSafely(
+            name: String,
+            create: () -> PostHogIntegration,
+        ) {
+            try {
+                addIntegration(create())
+            } catch (e: Throwable) {
+                logIntegrationFailure(name, e)
             }
         }
     }
