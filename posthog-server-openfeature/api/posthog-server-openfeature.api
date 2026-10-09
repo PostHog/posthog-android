@@ -1,0 +1,22 @@
+public final class com/posthog/server/openfeature/PostHogProvider : dev/openfeature/sdk/FeatureProvider {
+	public static final field Companion Lcom/posthog/server/openfeature/PostHogProvider$Companion;
+	public static final field GROUPS_KEY Ljava/lang/String;
+	public static final field GROUP_PROPERTIES_KEY Ljava/lang/String;
+	public static final field PROVIDER_NAME Ljava/lang/String;
+	public fun <init> (Lcom/posthog/server/PostHogInterface;)V
+	public fun <init> (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;)V
+	public synthetic fun <init> (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getBooleanEvaluation (Ljava/lang/String;Ljava/lang/Boolean;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getDoubleEvaluation (Ljava/lang/String;Ljava/lang/Double;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getIntegerEvaluation (Ljava/lang/String;Ljava/lang/Integer;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getLongEvaluation (Ljava/lang/String;Ljava/lang/Long;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getMetadata ()Ldev/openfeature/sdk/Metadata;
+	public fun getObjectEvaluation (Ljava/lang/String;Ldev/openfeature/sdk/Value;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getStringEvaluation (Ljava/lang/String;Ljava/lang/String;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun initialize (Ldev/openfeature/sdk/EvaluationContext;)V
+	public fun shutdown ()V
+}
+
+public final class com/posthog/server/openfeature/PostHogProvider$Companion {
+}
+
