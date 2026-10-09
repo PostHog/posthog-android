@@ -883,6 +883,47 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `remote config with unchanged event triggers keeps a trigger started recording`() {
+        val cachedTriggers = linkedSetOf("checkout_started", "deep_link_failed")
+        val cases =
+            listOf(
+                "same order" to cachedTriggers,
+                "reordered" to linkedSetOf("deep_link_failed", "checkout_started"),
+            )
+
+        for ((name, liveTriggers) in cases) {
+            val config = configWithSampling(flagActive = true, samplingPasses = true, triggers = cachedTriggers)
+            val remoteConfig = config.remoteConfigHolder!!
+            // Cached config only: the live fetch has not completed yet.
+            whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+            val sut = getSut(config)
+            val postHog = mock<PostHogInterface>()
+            whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+            sut.install(postHog)
+            try {
+                PostHogSessionManager.startSession()
+                val sessionId = PostHogSessionManager.peekSessionId()
+                sut.onEvent("deep_link_failed", null)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), name)
+
+                whenever(remoteConfig.getEventTriggers()).thenReturn(liveTriggers)
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "first live config stopped the recording ($name)")
+
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "later config reload stopped the recording ($name)")
+                assertEquals(sessionId, PostHogSessionManager.peekSessionId(), name)
+            } finally {
+                sut.uninstall()
+                PostHogSessionManager.endSession()
+            }
+        }
+    }
+
+    @Test
     fun `event trigger starts only when all replay gates pass`() {
         data class GateCase(
             val name: String,
