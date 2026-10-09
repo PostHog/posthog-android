@@ -1019,7 +1019,7 @@ internal class PostHogFeatureFlagsTest {
         featureFlags.loadFeatureFlagDefinitions()
 
         assertEquals(0, mockServer.requestCount)
-        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+        assertTrue(logger.containsLog("Fetching feature flag definitions requires a personal API key"))
 
         mockServer.shutdown()
     }
@@ -1055,7 +1055,7 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(result.flags.isEmpty())
         assertEquals(0, mockServer.requestCount)
-        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+        assertTrue(logger.containsLog("Fetching feature flag definitions requires a personal API key"))
 
         mockServer.shutdown()
     }
@@ -3001,6 +3001,37 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(logger.containsLog("Loaded 1 feature flags from flag definition cache"))
 
         mockServer.shutdown()
+    }
+
+    @Test
+    fun `provider fetch decision without personal api key warns and releases the load lock`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val provider = TestFlagDefinitionCacheProvider(shouldFetch = true)
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = null,
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        try {
+            featureFlags.loadFeatureFlagDefinitions()
+            featureFlags.loadFeatureFlagDefinitions()
+            assertEquals(2, provider.shouldFetchCalls)
+            assertEquals(0, provider.getCalls)
+            assertEquals(0, mockServer.requestCount)
+            assertTrue(logger.containsLog("Fetching feature flag definitions requires a personal API key"))
+        } finally {
+            featureFlags.shutDown()
+            mockServer.shutdown()
+        }
     }
 
     @Test

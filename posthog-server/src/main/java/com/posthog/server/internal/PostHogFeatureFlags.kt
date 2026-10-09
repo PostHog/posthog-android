@@ -533,7 +533,7 @@ internal class PostHogFeatureFlags(
         if (!localEvaluation) {
             return
         }
-        if (personalApiKey == null) {
+        if (!localEvaluationEnabled()) {
             logMissingPersonalApiKey()
             return
         }
@@ -577,6 +577,11 @@ internal class PostHogFeatureFlags(
                 }
 
                 config.logger.log("Flag definition cache empty before initial load, falling back to API")
+            }
+
+            if (personalApiKey == null) {
+                logMissingPersonalApiKey()
+                return
             }
 
             config.logger.log("Loading feature flags for local evaluation")
@@ -855,7 +860,7 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        if (personalApiKey == null) {
+        if (!localEvaluationEnabled()) {
             logMissingPersonalApiKey()
             return
         }
@@ -949,11 +954,11 @@ internal class PostHogFeatureFlags(
     }
 
     private fun localEvaluationEnabled(): Boolean {
-        return localEvaluation && personalApiKey != null
+        return localEvaluation && (personalApiKey != null || flagDefinitionCacheProvider != null)
     }
 
     private fun logMissingPersonalApiKey() {
-        config.logger.log("Local evaluation requires a personal API key. This call will be ignored.")
+        config.logger.log("Fetching feature flag definitions requires a personal API key. This call will be ignored.")
     }
 
     /**
@@ -1051,7 +1056,7 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        if (onlyEvaluateLocally && personalApiKey == null) {
+        if (onlyEvaluateLocally && personalApiKey == null && flagDefinitionCacheProvider == null) {
             logMissingPersonalApiKey()
             return EMPTY_EVALUATE_FLAGS_RESULT
         }

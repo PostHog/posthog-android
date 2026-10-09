@@ -10,6 +10,8 @@ import java.util.concurrent.CompletionStage
  * [shouldFetchFlagDefinitions] returns true this instance fetches definitions from
  * PostHog and receives them through [onFlagDefinitionsReceived]. When it returns
  * false this instance reads definitions from [getFlagDefinitions] instead.
+ * With local evaluation enabled, reading cached definitions does not require a
+ * personal API key. Direct definition fetches from PostHog still require one.
  *
  * Provider methods return [CompletionStage] so implementations can use either blocking
  * backends or async clients such as Reactor `Mono.toFuture()`; `Flux` should be reduced
@@ -17,9 +19,9 @@ import java.util.concurrent.CompletionStage
  * these stages in its current synchronous flag-loading flow.
  *
  * Provider errors are handled defensively by the SDK: failed reads fall back to the
- * API only when no definitions are already loaded, and failed writes/shutdowns are
- * logged without failing flag evaluation. A failed write also makes the next fetch
- * unconditional, so the SDK retries the write with a full set of definitions.
+ * API only when no definitions are already loaded and a personal API key is configured.
+ * Failed writes/shutdowns are logged without failing flag evaluation. A failed write also
+ * makes the next fetch unconditional, so the SDK retries the write with a full set of definitions.
  */
 public interface PostHogFlagDefinitionCacheProvider {
     /**
