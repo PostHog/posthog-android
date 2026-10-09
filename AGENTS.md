@@ -10,6 +10,7 @@ PostHog Android SDK monorepo. Kotlin-first, targets JVM and Android.
 - `posthog-android/` — Android-specific SDK (depends on `posthog/`)
 - `posthog-android-surveys-compose/` — Compose survey UI (depends on `posthog-android/`, transitively on `posthog/`)
 - `posthog-server/` — Server-side SDK (depends on `posthog/`)
+- `posthog-server-openfeature/` — OpenFeature provider for the server-side SDK (depends on `posthog-server/`, Java 11+)
 - `posthog-android-gradle-plugin/` — Gradle plugin for Android integrations
 - `posthog-samples/` — Sample apps
 
