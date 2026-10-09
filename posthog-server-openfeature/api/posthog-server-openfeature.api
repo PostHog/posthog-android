@@ -6,14 +6,10 @@ public final class com/posthog/server/openfeature/PostHogProvider : dev/openfeat
 	public fun <init> (Lcom/posthog/server/PostHogInterface;)V
 	public fun <init> (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;)V
 	public synthetic fun <init> (Lcom/posthog/server/PostHogInterface;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun getBooleanEvaluation (Ljava/lang/String;Ljava/lang/Boolean;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public fun getBooleanEvaluation (Ljava/lang/String;ZLdev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public fun getDoubleEvaluation (Ljava/lang/String;DLdev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public synthetic fun getDoubleEvaluation (Ljava/lang/String;Ljava/lang/Double;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public fun getIntegerEvaluation (Ljava/lang/String;ILdev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public synthetic fun getIntegerEvaluation (Ljava/lang/String;Ljava/lang/Integer;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public fun getLongEvaluation (Ljava/lang/String;JLdev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
-	public synthetic fun getLongEvaluation (Ljava/lang/String;Ljava/lang/Long;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getBooleanEvaluation (Ljava/lang/String;Ljava/lang/Boolean;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getDoubleEvaluation (Ljava/lang/String;Ljava/lang/Double;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getIntegerEvaluation (Ljava/lang/String;Ljava/lang/Integer;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
+	public fun getLongEvaluation (Ljava/lang/String;Ljava/lang/Long;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
 	public fun getMetadata ()Ldev/openfeature/sdk/Metadata;
 	public fun getObjectEvaluation (Ljava/lang/String;Ldev/openfeature/sdk/Value;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
 	public fun getStringEvaluation (Ljava/lang/String;Ljava/lang/String;Ldev/openfeature/sdk/EvaluationContext;)Ldev/openfeature/sdk/ProviderEvaluation;
