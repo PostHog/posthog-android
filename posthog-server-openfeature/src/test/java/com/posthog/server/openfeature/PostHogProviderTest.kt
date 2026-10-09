@@ -32,6 +32,7 @@ import kotlin.test.assertTrue
 internal class PostHogProviderTest {
     private val api = OpenFeatureAPI.getInstance()
     private val posthog = mock<PostHogInterface>()
+    private val snapshot = mock<PostHogFeatureFlagEvaluations>()
 
     @AfterTest
     fun tearDown() {
@@ -43,7 +44,6 @@ internal class PostHogProviderTest {
         flags: Map<String, Any> = emptyMap(),
         payloads: Map<String, String> = emptyMap(),
     ): Client {
-        val snapshot = mock<PostHogFeatureFlagEvaluations>()
         whenever(snapshot.keys).doReturn(flags.keys.toList())
         flags.forEach { (key, value) -> whenever(snapshot.getFlag(key)).doReturn(value) }
         payloads.forEach { (key, payload) -> whenever(snapshot.getFlagPayload(key)).doReturn(payload) }
@@ -302,6 +302,40 @@ internal class PostHogProviderTest {
     }
 
     @Test
+    fun `missing flag still reads the snapshot so the failure is captured`() {
+        val sut = getSut()
+
+        sut.getBooleanValue("missing", false, user())
+
+        verify(snapshot).getFlag("missing")
+    }
+
+    @Test
+    fun `ignores null entries in the evaluation context`() {
+        val sut = getSut(flags = mapOf("flag" to true))
+        val nested = HashMap<String, Value?>().apply { put("plan", null) }
+        val groups = HashMap<String, Value?>().apply { put("company", null) }
+        val context =
+            ImmutableContext(
+                "user-1",
+                HashMap<String, Value?>().apply {
+                    put("optional", null)
+                    put("nested", Value(ImmutableStructure(nested)))
+                    put("groups", Value(ImmutableStructure(groups)))
+                    put("groupProperties", null)
+                },
+            )
+
+        val details = sut.getBooleanDetails("flag", false, context)
+
+        assertTrue(details.value)
+        assertNull(details.errorCode)
+        val options = capturedOptions().second
+        assertEquals(mapOf<String, Any?>("optional" to null, "nested" to mapOf("plan" to null)), options.personProperties)
+        assertNull(options.groups)
+    }
+
+    @Test
     fun `accepts null default values`() {
         getSut(flags = mapOf("flag" to false))
         val sut: FeatureProvider = PostHogProvider(posthog)
@@ -365,6 +399,32 @@ internal class PostHogProviderTest {
         val details = sut.getObjectDetails("flag", Value("default"), user())
 
         assertEquals(ErrorCode.PARSE_ERROR, details.errorCode)
+    }
+
+    @Test
+    fun `object returns parse error for deeply nested payloads`() {
+        val payload = "[".repeat(10_000) + "]".repeat(10_000)
+        val sut = getSut(flags = mapOf("flag" to true), payloads = mapOf("flag" to payload))
+
+        val details = sut.getObjectDetails("flag", Value("default"), user())
+
+        assertEquals(ErrorCode.PARSE_ERROR, details.errorCode)
+        assertEquals("default", details.value.asString())
+    }
+
+    @Test
+    fun `object converts large numbers without expanding them`() {
+        val sut =
+            getSut(
+                flags = mapOf("flag" to true),
+                payloads = mapOf("flag" to """{"huge":1e500000000,"long":9000000000,"int":-5}"""),
+            )
+
+        val structure = sut.getObjectValue("flag", Value(), user()).asStructure()
+
+        assertEquals(Double.POSITIVE_INFINITY, structure.getValue("huge").asDouble())
+        assertEquals(9_000_000_000L, structure.getValue("long").asLong())
+        assertEquals(-5, structure.getValue("int").asInteger())
     }
 
     @Test

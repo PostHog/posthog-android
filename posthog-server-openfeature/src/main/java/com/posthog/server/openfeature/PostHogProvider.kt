@@ -171,12 +171,12 @@ public class PostHogProvider
             ctx?.let { splitContext(it, options) }
 
             val snapshot = client.evaluateFlags(distinctId, options.build())
+            // getFlag captures the $feature_flag_called event, also for missing flags and failed requests
+            val value = snapshot.getFlag(key)
             if (key !in snapshot.keys) {
                 throw FlagNotFoundError("Flag '$key' not found.")
             }
 
-            // getFlag captures the $feature_flag_called event
-            val value = snapshot.getFlag(key)
             val variant = value as? String
             val enabled = if (variant != null) variant.isNotEmpty() else value == true
             return FlagResult(enabled, variant, snapshot.getFlagPayload(key))
@@ -253,37 +253,41 @@ private fun parseIntegral(variant: String): String? {
     return trimmed.toBigIntegerOrNull()?.toString()
 }
 
-private fun Value.structureEntries(): Map<String, Value>? = if (isStructure) asStructure().asMap() else null
+// OpenFeature keeps Java null entries in context maps and structures
+private fun Value?.structureEntries(): Map<String, Value?>? = if (this != null && isStructure) asStructure().asMap() else null
 
-private fun Value.toPostHogValue(): Any? =
+private fun Value?.toPostHogValue(): Any? =
     when {
-        isNull -> null
+        this == null || isNull -> null
         isInstant -> asInstant().toString()
         isList -> asList().map { it.toPostHogValue() }
         isStructure -> asStructure().asMap().mapValues { it.value.toPostHogValue() }
         else -> asObject()
     }
 
-private fun JsonElement.toValue(): Value =
-    when {
+private const val MAX_PAYLOAD_DEPTH = 64
+
+private fun JsonElement.toValue(depth: Int = 0): Value {
+    if (depth > MAX_PAYLOAD_DEPTH) {
+        throw ParseError("Payload is nested deeper than $MAX_PAYLOAD_DEPTH levels.")
+    }
+    return when {
         isJsonNull -> Value()
-        isJsonObject -> Value(MutableStructure(asJsonObject.entrySet().associate { it.key to it.value.toValue() }))
-        isJsonArray -> Value(asJsonArray.map { it.toValue() })
+        isJsonObject -> Value(MutableStructure(asJsonObject.entrySet().associate { it.key to it.value.toValue(depth + 1) }))
+        isJsonArray -> Value(asJsonArray.map { it.toValue(depth + 1) })
         asJsonPrimitive.isBoolean -> Value(asBoolean)
         asJsonPrimitive.isNumber -> asBigDecimal.toNumberValue()
         else -> Value(asString)
     }
+}
 
+// longValueExact rejects large exponents without expanding them, unlike toBigIntegerExact
 private fun BigDecimal.toNumberValue(): Value {
     val integral =
         try {
-            toBigIntegerExact()
+            longValueExact()
         } catch (e: ArithmeticException) {
-            null
+            return Value(toDouble())
         }
-    return when {
-        integral == null || integral.bitLength() >= Long.SIZE_BITS -> Value(toDouble())
-        integral.bitLength() < Int.SIZE_BITS -> Value(integral.toInt())
-        else -> Value(integral.toLong())
-    }
+    return if (integral in Int.MIN_VALUE..Int.MAX_VALUE) Value(integral.toInt()) else Value(integral)
 }
