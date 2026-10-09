@@ -5,6 +5,7 @@ import com.posthog.server.PostHogFeatureFlagEvaluations
 import com.posthog.server.PostHogInterface
 import dev.openfeature.sdk.Client
 import dev.openfeature.sdk.ErrorCode
+import dev.openfeature.sdk.FeatureProvider
 import dev.openfeature.sdk.ImmutableContext
 import dev.openfeature.sdk.ImmutableStructure
 import dev.openfeature.sdk.OpenFeatureAPI
@@ -298,6 +299,19 @@ internal class PostHogProviderTest {
 
         assertEquals(3, details.value)
         assertNull(details.errorCode)
+    }
+
+    @Test
+    fun `accepts null default values`() {
+        getSut(flags = mapOf("flag" to false))
+        val sut: FeatureProvider = PostHogProvider(posthog)
+
+        assertEquals(false, sut.getBooleanEvaluation("flag", null, user()).value)
+        assertNull(sut.getStringEvaluation("flag", null, user()).value)
+        assertNull(sut.getIntegerEvaluation("flag", null, user()).value)
+        assertNull(sut.getLongEvaluation("flag", null, user()).value)
+        assertNull(sut.getDoubleEvaluation("flag", null, user()).value)
+        assertNull(sut.getObjectEvaluation("flag", null, user()).value)
     }
 
     @Test

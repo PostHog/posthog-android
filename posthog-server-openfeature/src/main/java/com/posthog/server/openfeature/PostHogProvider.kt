@@ -73,18 +73,18 @@ public class PostHogProvider
 
         override fun getBooleanEvaluation(
             key: String,
-            defaultValue: Boolean,
+            defaultValue: Boolean?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<Boolean> {
+        ): ProviderEvaluation<Boolean?> {
             val result = resolve(key, ctx)
             return result.toEvaluation(result.enabled)
         }
 
         override fun getStringEvaluation(
             key: String,
-            defaultValue: String,
+            defaultValue: String?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<String> {
+        ): ProviderEvaluation<String?> {
             val result = resolve(key, ctx)
             val variant = variantOrDefault(key, result, "string") ?: return result.toEvaluation(defaultValue)
             return result.toEvaluation(variant)
@@ -92,30 +92,30 @@ public class PostHogProvider
 
         override fun getIntegerEvaluation(
             key: String,
-            defaultValue: Int,
+            defaultValue: Int?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<Int> = resolveNumber(key, defaultValue, ctx, "integer") { parseIntegral(it)?.toIntOrNull() }
+        ): ProviderEvaluation<Int?> = resolveNumber(key, defaultValue, ctx, "integer") { parseIntegral(it)?.toIntOrNull() }
 
         override fun getLongEvaluation(
             key: String,
-            defaultValue: Long,
+            defaultValue: Long?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<Long> = resolveNumber(key, defaultValue, ctx, "long") { parseIntegral(it)?.toLongOrNull() }
+        ): ProviderEvaluation<Long?> = resolveNumber(key, defaultValue, ctx, "long") { parseIntegral(it)?.toLongOrNull() }
 
         override fun getDoubleEvaluation(
             key: String,
-            defaultValue: Double,
+            defaultValue: Double?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<Double> =
+        ): ProviderEvaluation<Double?> =
             resolveNumber(key, defaultValue, ctx, "double") {
                 parseIntegral(it)?.toBigIntegerOrNull()?.toDouble() ?: it.trim().toDoubleOrNull()?.takeIf { d -> d.isFinite() }
             }
 
         override fun getObjectEvaluation(
             key: String,
-            defaultValue: Value,
+            defaultValue: Value?,
             ctx: EvaluationContext?,
-        ): ProviderEvaluation<Value> {
+        ): ProviderEvaluation<Value?> {
             val result = resolve(key, ctx)
             val payload = result.payload
             if (payload == null) {
