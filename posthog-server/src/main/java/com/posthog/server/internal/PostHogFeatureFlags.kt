@@ -644,6 +644,10 @@ internal class PostHogFeatureFlags(
     }
 
     private fun shouldFetchFlagDefinitions(): Boolean {
+        // Cache-only readers must not claim the provider's fetch leadership.
+        if (personalApiKey == null) {
+            return false
+        }
         val provider = flagDefinitionCacheProvider ?: return true
         return awaitFlagDefinitionCacheProvider(
             errorDescription = "Error in flag definition cache provider shouldFetchFlagDefinitions",

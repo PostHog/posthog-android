@@ -194,8 +194,9 @@ public open class PostHogConfig constructor(
      * Shared cache provider for local-evaluation feature flag definitions.
      *
      * This can reduce duplicate definition fetches when multiple SDK instances run in
-     * the same service. With [localEvaluation] enabled, cached definitions can be read
-     * without [personalApiKey]; direct definition fetches still require it. Defaults to null.
+     * the same service. With [localEvaluation] enabled, instances without [personalApiKey]
+     * only read cached definitions, without consulting fetch leadership or publishing.
+     * Direct definition fetches still require [personalApiKey]. Defaults to null.
      */
     public var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
 

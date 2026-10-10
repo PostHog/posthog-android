@@ -6,12 +6,13 @@ import java.util.concurrent.CompletionStage
 /**
  * Shared cache provider for local-evaluation feature flag definitions.
  *
- * Implementations usually coordinate leadership across SDK instances. When
- * [shouldFetchFlagDefinitions] returns true this instance fetches definitions from
+ * With local evaluation enabled, instances without a personal API key only read
+ * [getFlagDefinitions]. They do not call [shouldFetchFlagDefinitions] or publish definitions.
+ *
+ * Implementations usually coordinate fetch leadership across instances with a personal API key.
+ * When [shouldFetchFlagDefinitions] returns true, this instance fetches definitions from
  * PostHog and receives them through [onFlagDefinitionsReceived]. When it returns
- * false this instance reads definitions from [getFlagDefinitions] instead.
- * With local evaluation enabled, reading cached definitions does not require a
- * personal API key. Direct definition fetches from PostHog still require one.
+ * false, this instance reads definitions from [getFlagDefinitions] instead.
  *
  * Provider methods return [CompletionStage] so implementations can use either blocking
  * backends or async clients such as Reactor `Mono.toFuture()`; `Flux` should be reduced
@@ -36,6 +37,7 @@ public interface PostHogFlagDefinitionCacheProvider {
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
+     * Called only when a personal API key is configured.
      */
     public fun shouldFetchFlagDefinitions(): CompletionStage<Boolean>
 
@@ -67,6 +69,7 @@ public abstract class PostHogBlockingFlagDefinitionCacheProvider : PostHogFlagDe
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
+     * Called only when a personal API key is configured.
      */
     public abstract fun shouldFetchFlagDefinitionsBlocking(): Boolean
 

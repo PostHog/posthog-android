@@ -39,6 +39,7 @@ internal class PostHogFlagDefinitionCacheTest {
                 PostHogConfig.builder(TEST_API_KEY)
                     .host(server.url("/").toString())
                     .localEvaluation(true)
+                    .personalApiKey(" \t\n")
                     .flagDefinitionCacheProvider(provider)
                     .sendFeatureFlagEvent(false)
                     .pollIntervalSeconds(3600)
@@ -51,6 +52,8 @@ internal class PostHogFlagDefinitionCacheTest {
             try {
                 client?.close()
                 assertEquals(0, server.requestCount, "provider-only evaluation must not make HTTP requests")
+                assertEquals(0, provider.calls.count { it == "shouldFetch" }, "cache-only readers must not claim fetch leadership")
+                assertEquals(0, provider.calls.count { it == "store" }, "cache-only readers must not publish")
                 assertEquals(1, provider.calls.count { it == "shutdown" })
             } finally {
                 server.shutdown()
@@ -70,7 +73,7 @@ internal class PostHogFlagDefinitionCacheTest {
             assertTrue(client.evaluateFlags("user-2").isEnabled("cached-flag"))
             assertEquals(true, client.getFeatureFlag("user-3", "cached-flag"))
             assertTrue(assertNotNull(client.getFeatureFlagResult("user-4", "cached-flag")).enabled)
-            assertEquals(listOf("shouldFetch", "get"), provider.calls.toList())
+            assertEquals(listOf("get"), provider.calls.toList())
         }
     }
 
@@ -93,7 +96,7 @@ internal class PostHogFlagDefinitionCacheTest {
             provider.data = definitions(rolloutPercentage = 0)
             client.reloadFeatureFlags()
             assertFalse(client.evaluateFlags("user-1", onlyEvaluateLocally = true).isEnabled("cached-flag"))
-            assertEquals(listOf("shouldFetch", "get", "shouldFetch", "get"), provider.calls.toList())
+            assertEquals(listOf("get", "get"), provider.calls.toList())
         }
     }
 
@@ -172,7 +175,7 @@ internal class PostHogFlagDefinitionCacheTest {
     }
 
     @Test
-    fun `provider-only reload preserves valid definitions on empty or failed reads and fetch decisions`() {
+    fun `provider-only reload preserves valid definitions on empty malformed or failed reads`() {
         val provider = CacheProvider(definitions())
         val loaded = CountDownLatch(1)
         withProvider(provider, configure = { it.onFeatureFlags = PostHogOnFeatureFlags { loaded.countDown() } }) { client ->
@@ -188,9 +191,10 @@ internal class PostHogFlagDefinitionCacheTest {
             provider.shouldFetch = true
             val readsBeforeFetch = provider.calls.count { it == "get" }
             client.reloadFeatureFlags()
-            assertEquals(readsBeforeFetch, provider.calls.count { it == "get" })
+            assertEquals(readsBeforeFetch + 1, provider.calls.count { it == "get" })
             assertTrue(client.evaluateFlags("user-1", onlyEvaluateLocally = true).isEnabled("cached-flag"))
             provider.failDecision = true
+            provider.data = mapOf("flags" to "invalid")
             client.reloadFeatureFlags()
             val preserved = client.evaluateFlags("user-1", onlyEvaluateLocally = true)
             assertTrue(preserved.isEnabled("cached-flag"))
@@ -219,24 +223,22 @@ internal class PostHogFlagDefinitionCacheTest {
     }
 
     @Test
-    fun `provider-only positive fetch decision does not read cache or fetch without a key`() {
+    fun `provider-only reader ignores positive fetch decision with a normalized blank key`() {
         val provider = CacheProvider(definitions()).apply { shouldFetch = true }
         withProvider(provider) { client ->
             client.reloadFeatureFlags()
-            assertTrue(client.evaluateFlags("user-1", onlyEvaluateLocally = true).keys.isEmpty())
-            assertTrue(provider.calls.contains("shouldFetch"))
-            assertFalse(provider.calls.contains("get"))
+            assertTrue(client.evaluateFlags("user-1", onlyEvaluateLocally = true).isEnabled("cached-flag"))
+            assertTrue(provider.calls.contains("get"))
         }
     }
 
     @Test
-    fun `provider-only failed fetch decision does not read cache or fetch without a key`() {
+    fun `provider-only reader ignores failing fetch decision`() {
         val provider = CacheProvider(definitions()).apply { failDecision = true }
         withProvider(provider) { client ->
             client.reloadFeatureFlags()
-            assertTrue(client.evaluateFlags("user-1", onlyEvaluateLocally = true).keys.isEmpty())
-            assertTrue(provider.calls.contains("shouldFetch"))
-            assertFalse(provider.calls.contains("get"))
+            assertTrue(client.evaluateFlags("user-1", onlyEvaluateLocally = true).isEnabled("cached-flag"))
+            assertTrue(provider.calls.contains("get"))
         }
     }
 
