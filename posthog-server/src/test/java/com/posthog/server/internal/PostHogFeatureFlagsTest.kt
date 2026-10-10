@@ -1019,7 +1019,7 @@ internal class PostHogFeatureFlagsTest {
         featureFlags.loadFeatureFlagDefinitions()
 
         assertEquals(0, mockServer.requestCount)
-        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+        assertTrue(logger.containsLog("Fetching feature flag definitions requires a personal API key"))
 
         mockServer.shutdown()
     }
@@ -1055,7 +1055,7 @@ internal class PostHogFeatureFlagsTest {
 
         assertTrue(result.flags.isEmpty())
         assertEquals(0, mockServer.requestCount)
-        assertTrue(logger.containsLog("Local evaluation requires a personal API key"))
+        assertTrue(logger.containsLog("Fetching feature flag definitions requires a personal API key"))
 
         mockServer.shutdown()
     }
@@ -3001,6 +3001,113 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(logger.containsLog("Loaded 1 feature flags from flag definition cache"))
 
         mockServer.shutdown()
+    }
+
+    @Test
+    fun `cache-only reader loads lazily and releases the load lock after empty reads`() {
+        val logger = TestLogger()
+        val mockServer = MockWebServer()
+        mockServer.start()
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val provider =
+            TestFlagDefinitionCacheProvider(
+                cacheData = createFlagDefinitionCacheData(config, "cached-flag"),
+                shouldFetch = true,
+                throwOnShouldFetch = true,
+            )
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = null,
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        try {
+            assertEquals(true, featureFlags.getFeatureFlag("cached-flag", false, "test-user"))
+            provider.cacheData = null
+            featureFlags.loadFeatureFlagDefinitions()
+            featureFlags.loadFeatureFlagDefinitions()
+            assertEquals(0, provider.shouldFetchCalls)
+            assertEquals(3, provider.getCalls)
+            assertEquals(0, provider.onReceivedCalls)
+            assertEquals(0, mockServer.requestCount)
+            assertEquals(true, featureFlags.getFeatureFlag("cached-flag", false, "test-user"))
+            assertTrue(logger.containsLog("Flag definition cache empty, keeping existing definitions"))
+        } finally {
+            featureFlags.shutDown()
+            mockServer.shutdown()
+        }
+    }
+
+    @Test
+    fun `cache-only reader cannot claim shared leadership before keyed publisher refreshes`() {
+        val logger = TestLogger()
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponse("published-flag")))
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        var sharedData: Map<String, Any?> = createFlagDefinitionCacheData(config, "cached-flag")
+        var fetchClaimed = false
+        var decisionCalls = 0
+        var storeCalls = 0
+        val provider =
+            object : PostHogBlockingFlagDefinitionCacheProvider() {
+                override fun getFlagDefinitionsBlocking(): Map<String, Any?> = sharedData
+
+                override fun shouldFetchFlagDefinitionsBlocking(): Boolean {
+                    decisionCalls++
+                    if (fetchClaimed) return false
+                    fetchClaimed = true
+                    return true
+                }
+
+                override fun onFlagDefinitionsReceivedBlocking(data: Map<String, Any?>) {
+                    storeCalls++
+                    sharedData = data
+                }
+            }
+        val reader =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        val publisher =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+                flagDefinitionCacheProvider = provider,
+            )
+        try {
+            reader.loadFeatureFlagDefinitions()
+            publisher.loadFeatureFlagDefinitions()
+            assertEquals(1, mockServer.requestCount, "reader must leave fetch leadership available to the keyed publisher")
+            assertTrue(fetchClaimed)
+            assertEquals(1, decisionCalls)
+            assertEquals(1, storeCalls)
+            assertEquals(true, publisher.getFeatureFlag("published-flag", false, "test-user"))
+
+            reader.loadFeatureFlagDefinitions()
+            assertEquals(true, reader.getFeatureFlag("published-flag", false, "test-user"))
+            assertEquals(1, decisionCalls, "reader must not claim or renew leadership")
+            assertEquals(1, storeCalls, "only the keyed publisher stores definitions")
+            assertEquals(1, mockServer.requestCount)
+        } finally {
+            reader.shutDown()
+            publisher.shutDown()
+            mockServer.shutdown()
+        }
     }
 
     @Test

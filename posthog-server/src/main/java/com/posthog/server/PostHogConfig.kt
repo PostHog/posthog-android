@@ -126,13 +126,13 @@ public open class PostHogConfig constructor(
      * Enable local evaluation of feature flags
      * When enabled, the SDK periodically fetches flag definitions and evaluates flags locally
      * without making API calls for each flag check. Falls back to API if evaluation is inconclusive.
-     * Requires personalApiKey to be set.
+     * Requires personalApiKey or flagDefinitionCacheProvider to be set.
      * Defaults to false
      */
     public var localEvaluation: Boolean = false,
     /**
-     * Personal API key for local evaluation
-     * Required when localEvaluation is true.
+     * Personal API key for fetching local-evaluation definitions from PostHog.
+     * Not required to read definitions from flagDefinitionCacheProvider.
      * Defaults to null
      */
     personalApiKey: String? = null,
@@ -184,8 +184,8 @@ public open class PostHogConfig constructor(
     public val host: String = host.trim().ifBlank { DEFAULT_HOST }
 
     /**
-     * Personal API key for local evaluation
-     * Required when localEvaluation is true.
+     * Personal API key for fetching local-evaluation definitions from PostHog.
+     * Not required to read definitions from [flagDefinitionCacheProvider].
      * Defaults to null
      */
     public var personalApiKey: String? = personalApiKey?.trim()?.ifBlank { null }
@@ -194,7 +194,9 @@ public open class PostHogConfig constructor(
      * Shared cache provider for local-evaluation feature flag definitions.
      *
      * This can reduce duplicate definition fetches when multiple SDK instances run in
-     * the same service. Defaults to null.
+     * the same service. With [localEvaluation] enabled, instances without [personalApiKey]
+     * only read cached definitions, without consulting fetch leadership or publishing.
+     * Direct definition fetches still require [personalApiKey]. Defaults to null.
      */
     public var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
 
@@ -648,7 +650,7 @@ public open class PostHogConfig constructor(
         public fun localEvaluation(localEvaluation: Boolean): Builder = apply { this.localEvaluation = localEvaluation }
 
         /**
-         * Sets the personal API key used for local feature flag evaluation.
+         * Sets the personal API key used to fetch local feature flag definitions from PostHog.
          *
          * Setting a non-blank personal API key automatically enables [localEvaluation] unless it has
          * already been set explicitly.
@@ -682,6 +684,7 @@ public open class PostHogConfig constructor(
 
         /**
          * Sets the provider for caching feature flag definitions.
+         * Enable [localEvaluation] to read cached definitions without a personal API key.
          *
          * @param flagDefinitionCacheProvider The cache provider, or null to use the default.
          * @return This builder.
