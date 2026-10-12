@@ -77,6 +77,10 @@ public class PostHogSurveysIntegration(
     private val resetGeneration: Long get() = progressStore.resetGeneration
     private val mainHandler = Handler(Looper.getMainLooper())
     private var presentationGeneration = 0L
+
+    // Handed to the delegate but not yet shown. Reserving here, like iOS and the browser, stops a
+    // repeat trigger event from re-rendering the survey and restarting the delegate's popup delay.
+    private var pendingPresentation: Long? = null
     private val lifecycleLock = Any()
 
     private var postHog: PostHogInterface? = null
@@ -348,7 +352,16 @@ public class PostHogSurveysIntegration(
             return
         }
 
-        val (generation, presentation) = synchronized(activeSurveyLock) { resetGeneration to ++presentationGeneration }
+        val (generation, presentation) =
+            synchronized(activeSurveyLock) {
+                if (pendingPresentation != null) {
+                    config.logger.log("Cannot show survey - another survey is already pending")
+                    return
+                }
+                val presentation = ++presentationGeneration
+                pendingPresentation = presentation
+                resetGeneration to presentation
+            }
         val displayLanguage = resolveDisplayLanguage()
         val translations = resolveSurveyTranslations(survey, displayLanguage)
         val savedProgress = if (supportsSurveyResume()) progressStore.load(survey) else null
@@ -373,11 +386,11 @@ public class PostHogSurveysIntegration(
             ).copy(initialQuestionIndex = progress.questionIndex)
 
         // Setup callbacks for delegate call
-        val onSurveyShown = surveyShownCallback(responseContext, progress)
+        val onSurveyShown = surveyShownCallback(responseContext, progress, presentation)
 
         val onSurveyResponse = surveyResponseCallback(responseContext)
 
-        val onSurveyClosed = surveyClosedCallback(responseContext)
+        val onSurveyClosed = surveyClosedCallback(responseContext, presentation)
 
         // Call the delegate to render the survey
         renderIfCurrent(generation, presentation) {
@@ -392,18 +405,32 @@ public class PostHogSurveysIntegration(
     ) {
         runOnMain {
             val current = synchronized(activeSurveyLock) { generation == resetGeneration && presentation == presentationGeneration }
-            if (!synchronized(lifecycleLock) { isStarted } || !current) return@runOnMain
+            if (!synchronized(lifecycleLock) { isStarted } || !current) {
+                releasePendingPresentation(presentation)
+                return@runOnMain
+            }
             render()
         }
     }
 
-    private fun surveyClosedCallback(responseContext: SurveyResponseContext): OnPostHogSurveyClosed {
+    private fun releasePendingPresentation(presentation: Long) {
+        synchronized(activeSurveyLock) {
+            if (pendingPresentation == presentation) pendingPresentation = null
+        }
+    }
+
+    private fun surveyClosedCallback(
+        responseContext: SurveyResponseContext,
+        presentation: Long,
+    ): OnPostHogSurveyClosed {
         return onSurveyClosed@{ _ ->
             // Store the original survey for branching logic
             val originalSurvey = responseContext.survey
             val distinctId = postHog?.distinctId()
             val event =
                 synchronized(activeSurveyLock) {
+                    releasePendingPresentation(presentation)
+
                     // Validate that this survey matches the currently active survey
                     if (!isActiveAttempt(originalSurvey.id, responseContext.submissionId)) {
                         config.logger.log("[Surveys] Received a close event for a non-active survey")
@@ -476,6 +503,7 @@ public class PostHogSurveysIntegration(
     private fun surveyShownCallback(
         responseContext: SurveyResponseContext,
         progress: SurveyProgress,
+        presentation: Long,
     ): OnPostHogSurveyShown =
         { shownSurvey ->
             val originalSurvey = responseContext.survey
@@ -485,6 +513,7 @@ public class PostHogSurveysIntegration(
                 val distinctId = postHog?.distinctId()
                 val event =
                     synchronized(activeSurveyLock) {
+                        releasePendingPresentation(presentation)
                         if (!isCurrentContext(responseContext)) return@synchronized null
                         activateSurvey(originalSurvey, progress, responseContext.wasRestored)
 
@@ -833,7 +862,7 @@ public class PostHogSurveysIntegration(
      */
     internal fun canShowNextSurvey(): Boolean {
         return synchronized(activeSurveyLock) {
-            config.cachePreferences?.isAvailable() != false && activeSurvey == null
+            config.cachePreferences?.isAvailable() != false && activeSurvey == null && pendingPresentation == null
         }
     }
 
@@ -882,6 +911,7 @@ public class PostHogSurveysIntegration(
     private fun clearActiveSurvey() {
         synchronized(activeSurveyLock) {
             activeSurvey = null
+            pendingPresentation = null
             activeSubmissionId = null
             activeProgressWasPersisted = false
             activeSurveyCompleted = false
