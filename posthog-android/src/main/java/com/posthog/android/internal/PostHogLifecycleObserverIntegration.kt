@@ -130,6 +130,11 @@ internal class PostHogLifecycleObserverIntegration(
     }
 
     private fun add() {
+        // While uninstalled (opted out) no onStop marked the app as backgrounded, so a reinstall
+        // while it isn't started sets that here; otherwise the next onStart does.
+        if (wasInstalled && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            PostHogSessionManager.setAppInBackground(true)
+        }
         // addObserver replays onStart synchronously when the app is already started.
         isReplayingStart = wasInstalled && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         try {
