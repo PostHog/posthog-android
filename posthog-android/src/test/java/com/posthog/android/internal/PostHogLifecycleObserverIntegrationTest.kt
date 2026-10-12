@@ -147,6 +147,30 @@ internal class PostHogLifecycleObserverIntegrationTest {
     }
 
     @Test
+    fun `reinstall while the app is in the background marks it as backgrounded`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val sut = getSut()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.uninstall()
+        // e.g. optIn while backgrounded: the app went to the background while uninstalled
+        PostHogSessionManager.setAppInBackground(false)
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        fakeDateProvider.currentTimeMs = baseTime + 1000L * 60 * 31
+
+        // an idle session is cleared in the background rather than rotated
+        assertNull(PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+        PostHogSessionManager.setAppInBackground(false)
+    }
+
+    @Test
     fun `onStart captures app backgrounded`() {
         val sut = getSut()
 
