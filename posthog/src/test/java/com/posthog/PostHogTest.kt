@@ -1330,6 +1330,99 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `optIn restarts session replay that was recording at optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not restart session replay the app stopped`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setup does not install integrations while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration, preloadFeatureFlags = false)
+
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn and optOut only reinstall integrations when the state changes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        sut.optIn()
+        assertEquals(1, integration.installCount)
+
+        sut.optOut()
+        sut.optOut()
+        assertEquals(1, integration.uninstallCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote config does not reach integrations while opted out`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, integration.remoteConfigCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an event`() {
         val http = mockHttp()
         val url = http.url("/")
