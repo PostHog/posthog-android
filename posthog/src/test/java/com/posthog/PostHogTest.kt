@@ -2014,6 +2014,42 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `alias does not throw when getAnonymousId throws`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        var aliasEvents = 0
+
+        val config =
+            PostHogConfig(API_KEY, url.toString()).apply {
+                storagePrefix = tmpDir.newFolder().absolutePath
+                preloadFeatureFlags = false
+                getAnonymousId = { throw IllegalStateException("id provider unavailable") }
+                addBeforeSend { event ->
+                    if (event.event == "\$create_alias") aliasEvents++
+                    event
+                }
+            }
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                false,
+            )
+
+        assertNull(runCatching { sut.alias("theAlias") }.exceptionOrNull())
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, aliasEvents)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `creates a group`() {
         val http = mockHttp()
         val url = http.url("/")
