@@ -52,6 +52,18 @@ internal class PostHogIntegrationInstallFailureTest {
     }
 
     @Test
+    fun `a missing curtains class in the cause is named as the artifact`() {
+        val failure =
+            NoClassDefFoundError(
+                "Failed resolution of: Lcom/posthog/android/replay/PostHogReplayIntegration\$\$ExternalSyntheticLambda0;",
+            ).apply { initCause(ClassNotFoundException("Didn't find class \"curtains.OnRootViewsChangedListener\"")) }
+
+        getSut(failure)
+
+        assertTrue(testLogger.warnings.single().contains("com.squareup.curtains:curtains"))
+    }
+
+    @Test
     fun `a missing class of an unknown artifact is still reported as a warning`() {
         getSut(ClassNotFoundException("com.example.Missing"))
 

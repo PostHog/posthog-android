@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
+import com.posthog.internal.errortracking.ThrowableCoercer
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -57,7 +58,11 @@ private fun missingClassHint(throwable: Throwable): String? {
     if (throwable !is LinkageError && throwable !is ClassNotFoundException) {
         return null
     }
-    return if (throwable.toString().contains("curtains", ignoreCase = true)) {
+    // ART reports the class that failed to resolve, such as a desugared lambda, and keeps the
+    // missing curtains class in the cause.
+    val mentionsCurtains =
+        ThrowableCoercer.walkCauseChain(throwable).any { it.toString().contains("curtains", ignoreCase = true) }
+    return if (mentionsCurtains) {
         "Your build excludes the 'com.squareup.curtains:curtains' artifact, which the PostHog SDK needs."
     } else {
         "Your build probably excludes an artifact that the PostHog SDK needs."
