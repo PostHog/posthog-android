@@ -152,6 +152,10 @@ public class PostHog private constructor(
 
     @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
+
+    // Whether optIn may start session replay: false when it wasn't recording at optOut (e.g. the app
+    // stopped it), so consent doesn't override that. Guarded by setupLock.
+    private var startSessionReplayOnOptIn = true
     private var surveysHandler: PostHogSurveysHandler? = null
 
     @Volatile
@@ -352,7 +356,10 @@ public class PostHog private constructor(
 
                 startSession()
 
-                installIntegrations(resumeSessionReplay = true)
+                // integrations are installed on optIn instead
+                if (!isOptedOut()) {
+                    installIntegrations(resumeSessionReplay = true)
+                }
 
                 // only because of testing in isolation, this flag is always enabled
                 @Suppress("DEPRECATION")
@@ -390,16 +397,26 @@ public class PostHog private constructor(
         config: PostHogConfig,
         loaded: Boolean,
     ) {
-        config.integrations.forEach { integration ->
-            try {
-                integration.onRemoteConfig(loaded)
-            } catch (e: Throwable) {
-                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+        // under setupLock so it can't interleave with optOut/optIn, where some integrations would
+        // otherwise reinstall themselves while opted out
+        synchronized(setupLock) {
+            if (isOptedOut()) {
+                return
+            }
+            config.integrations.forEach { integration ->
+                try {
+                    integration.onRemoteConfig(loaded)
+                } catch (e: Throwable) {
+                    config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+                }
             }
         }
     }
 
-    private fun installIntegrations(resumeSessionReplay: Boolean) {
+    private fun installIntegrations(
+        resumeSessionReplay: Boolean,
+        startSessionReplay: Boolean = true,
+    ) {
         val config = config ?: return
         config.integrations.forEach {
             try {
@@ -408,7 +425,7 @@ public class PostHog private constructor(
                 if (it is PostHogSessionReplayHandler) {
                     sessionReplayHandler = it
 
-                    if (isSessionReplayConfigEnabled()) {
+                    if (startSessionReplay && isSessionReplayConfigEnabled()) {
                         startSessionReplay(resumeCurrent = resumeSessionReplay)
                     }
                 } else if (it is PostHogSurveysHandler) {
@@ -1224,6 +1241,7 @@ public class PostHog private constructor(
             return
         }
 
+        val wasOptedOut = isOptedOut()
         synchronized(optOutLock) {
             config?.optOut = false
             if (config?.persistOptOut != false) {
@@ -1233,7 +1251,14 @@ public class PostHog private constructor(
             optOutLoaded = true
         }
 
-        installIntegrations(resumeSessionReplay = false)
+        if (wasOptedOut) {
+            synchronized(setupLock) {
+                // close() may have run since the isEnabled() check above
+                if (isEnabled()) {
+                    installIntegrations(resumeSessionReplay = false, startSessionReplay = startSessionReplayOnOptIn)
+                }
+            }
+        }
 
         // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
         // re-registers, since a logout unregister cleared it and opt-in alone leaves it unsubscribed).
@@ -1252,7 +1277,8 @@ public class PostHog private constructor(
             return
         }
 
-        if (!isOptedOut()) config.notifyIntegrationsChanged()
+        val wasOptedOut = isOptedOut()
+        if (!wasOptedOut) config.notifyIntegrationsChanged()
         synchronized(optOutLock) {
             config?.optOut = true
             if (config?.persistOptOut != false) {
@@ -1264,7 +1290,15 @@ public class PostHog private constructor(
         // Clear cached identity-token state so a stale token/401 flag isn't reused after
         // re-opting-in; the send guard in the manager already blocks sends while opted out.
         pushSubscriptionManager?.onOptOut()
-        uninstallIntegrations()
+
+        if (!wasOptedOut) {
+            synchronized(setupLock) {
+                if (isEnabled()) {
+                    startSessionReplayOnOptIn = sessionReplayHandler?.isActive() == true
+                    uninstallIntegrations()
+                }
+            }
+        }
     }
 
     /**
