@@ -3,4 +3,4 @@
 "posthog-android": patch
 ---
 
-Uninstall capture integrations on opt-out and reinstall them on opt-in, starting session replay with a fresh session after the user opts back in.
+Stop session replay, autocapture and other integrations while opted out, and restart them on `optIn()` (replay starts a new session, and only if it was recording at opt-out).
