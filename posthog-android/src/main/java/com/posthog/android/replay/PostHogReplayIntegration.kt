@@ -977,7 +977,8 @@ public class PostHogReplayIntegration(
 
     /**
      * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
-     * its scratch objects are reused; other callers allocate per call.
+     * its scratch objects are reused; other callers allocate per call (see the wireframe
+     * vs delayed-screenshot-walk race test).
      */
     private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
@@ -1978,14 +1979,6 @@ public class PostHogReplayIntegration(
         parentId: Int? = null,
         ancestorUnmasked: Boolean = false,
     ): RRWireframe? {
-        val build = runOnMainThreadBlocking { collectWireframe(parentId, ancestorUnmasked) } ?: return null
-        return build()
-    }
-
-    private fun View.collectWireframe(
-        parentId: Int?,
-        ancestorUnmasked: Boolean,
-    ): (() -> RRWireframe)? {
         val view = this
         if (!view.isVisible()) {
             return null
@@ -2007,8 +2000,7 @@ public class PostHogReplayIntegration(
         val y = coordinates[1].densityValue(screenDensity)
         val width = view.width.densityValue(screenDensity)
         val height = view.height.densityValue(screenDensity)
-        var image: (() -> String?)? = null
-        val styleImages = mutableListOf<() -> Unit>()
+        var base64: String? = null
 
         var type: String? = null
         if (view.id == android.R.id.statusBarBackground) {
@@ -2023,8 +2015,7 @@ public class PostHogReplayIntegration(
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
-                val encode = background.prepareBase64(view.width, view.height)
-                styleImages.add { style.backgroundImage = encode() }
+                style.backgroundImage = background.base64(view.width, view.height)
             }
         }
 
@@ -2122,11 +2113,13 @@ public class PostHogReplayIntegration(
             // left, top, right, bottom
             view.compoundDrawables.forEachIndexed { index, drawable ->
                 drawable?.let {
-                    if (index == 0 || index == 2) {
-                        val encode = it.prepareBase64(view.width, view.height)
-                        styleImages.add {
-                            if (index == 0) style.iconLeft = encode() else style.iconRight = encode()
-                        }
+                    val drawableBase64 = it.base64(view.width, view.height)
+                    // TODO: the 2 other possible drawables (top and bottom are not common)
+                    when (index) {
+                        0 -> style.iconLeft = drawableBase64
+//                        1 -> style.iconTop = drawableBase64
+                        2 -> style.iconRight = drawableBase64
+//                        3 -> style.iconBottom = drawableBase64
                     }
                 }
             }
@@ -2205,7 +2198,7 @@ public class PostHogReplayIntegration(
             if (!view.shouldMaskImage(isUnmasked)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
-                    image = drawable.prepareBase64(view.width, view.height)
+                    base64 = drawable.base64(view.width, view.height)
 //                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
 //                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
 //                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
@@ -2250,60 +2243,36 @@ public class PostHogReplayIntegration(
             type = "web_view"
         }
 
-        val children = mutableListOf<() -> RRWireframe>()
+        val children = mutableListOf<RRWireframe>()
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.collectWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
+                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
                     children.add(it)
                 }
             }
         }
-        val disabled = !view.isEnabled
 
-        // Capture all View state before returning to the worker. Drawable conversion and
-        // encoding must not extend the main-thread traversal.
-        return {
-            styleImages.forEach { it() }
-            RRWireframe(
-                id = viewId,
-                x = x,
-                y = y,
-                width = width,
-                height = height,
-                text = text,
-                type = type,
-                style = style,
-                childWireframes = children.map { it() }.ifEmpty { null },
-                base64 = image?.invoke(),
-                parentId = parentId,
-                disabled = disabled,
-                checked = checked,
-                inputType = inputType,
-                value = value,
-                label = label,
-                options = options,
-                max = max,
-            )
-        }
-    }
-
-    private fun Drawable.prepareBase64(
-        width: Int,
-        height: Int,
-    ): () -> String? {
-        // Custom converters may handle drawables that cannot be cloned.
-        val copyOnMain = config.sessionReplayConfig.drawableConverter == null
-        val drawable = if (copyOnMain) copy() else null
-        return {
-            val converted = runDrawableConverter(this)
-            if (converted != null) {
-                converted.webpBase64()
-            } else {
-                val snapshot = if (copyOnMain) drawable else copy()
-                snapshot?.base64(width, height, cloned = true, convert = false)
-            }
-        }
+        return RRWireframe(
+            id = viewId,
+            x = x,
+            y = y,
+            width = width,
+            height = height,
+            text = text,
+            type = type,
+            style = style,
+            childWireframes = children.ifEmpty { null },
+            base64 = base64,
+            parentId = parentId,
+            disabled = !view.isEnabled,
+            checked = checked,
+            inputType = inputType,
+            value = value,
+            label = label,
+            options = options,
+            max = max,
+        )
     }
 
     private fun runDrawableConverter(drawable: Drawable): Bitmap? {
@@ -2359,9 +2328,8 @@ public class PostHogReplayIntegration(
         width: Int,
         height: Int,
         cloned: Boolean = false,
-        convert: Boolean = true,
     ): String? {
-        val convertedBitmap = if (convert) runDrawableConverter(this) else null
+        val convertedBitmap = runDrawableConverter(this)
         if (convertedBitmap != null) {
             return convertedBitmap.webpBase64()
         }

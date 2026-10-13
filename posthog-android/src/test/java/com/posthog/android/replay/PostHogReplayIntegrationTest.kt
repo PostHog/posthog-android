@@ -4,15 +4,11 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ColorFilter
-import android.graphics.PixelFormat
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -23,7 +19,6 @@ import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -168,10 +163,9 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
-    fun `capture reads view geometry and masks on main in all capture modes`() {
-        for (mode in listOf("legacy", "verified", "wireframe")) {
+    fun `screenshot capture reads view geometry and masks on main`() {
+        for (mode in listOf("legacy", "verified")) {
             val (fx, fake) = screenshotFixture(mode == "verified")
-            fx.config.sessionReplayConfig.screenshot = mode != "wireframe"
             val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
             val reads = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
 
@@ -252,54 +246,6 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(null, h.status.drawState.beginDrawSample())
         } finally {
             h.fx.sut.uninstall()
-        }
-    }
-
-    @Test
-    fun `wireframe drawable conversion stays off main after view collection`() {
-        val (fx, fake) = screenshotFixture()
-        fx.config.sessionReplayConfig.screenshot = false
-        fx.config.sessionReplayConfig.maskAllImages = false
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val bitmap = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
-        val drawable =
-            object : Drawable() {
-                override fun draw(canvas: Canvas) = Unit
-
-                override fun setAlpha(alpha: Int) = Unit
-
-                override fun setColorFilter(colorFilter: ColorFilter?) = Unit
-
-                @Suppress("OVERRIDE_DEPRECATION")
-                override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-
-                override fun getConstantState(): ConstantState = error("The custom converter handles this drawable")
-            }
-        val image = ImageView(activity).apply { setImageDrawable(drawable) }
-        activity.setContentView(image)
-        shadowOf(Looper.getMainLooper()).idle()
-        makeWindowVisible(activity.window.decorView)
-        image.layout(0, 0, 10, 10)
-        fx.sut.decorViews[image] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
-        val conversionOnMain = AtomicReference<Boolean>()
-        fx.config.sessionReplayConfig.drawableConverter =
-            PostHogDrawableConverter {
-                assertTrue(it === drawable)
-                conversionOnMain.set(Looper.myLooper() == Looper.getMainLooper())
-                bitmap
-            }
-        try {
-            val future =
-                createReplayExecutor().submit(
-                    Callable { fx.sut.captureSnapshot(WeakReference(image), WeakReference(activity.window)) },
-                )
-            assertTrue(awaitDraining(future, 4000))
-            assertEquals(false, conversionOnMain.get())
-            assertTrue(fake.captures > 0)
-            assertNotNull(fx.sut.decorViews[image]?.lastSnapshot?.base64)
-        } finally {
-            fx.sut.uninstall()
-            bitmap.recycle()
         }
     }
 
@@ -3556,6 +3502,134 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.uninstall()
             if (decorView.isAttachedToWindow) windowManager.removeViewImmediate(decorView)
             ThrowingShadowBitmap.allocationFailures = 0
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
+    fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                integrationContext = appContext,
+            )
+        fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = true
+        val fake = PostHogFake()
+        PostHogSessionManager.startSession()
+        fx.sut.install(
+            object : PostHogInterface by fake {
+                override fun getSessionId(): UUID? = PostHogSessionManager.getActiveSessionId()
+            },
+        )
+        fx.sut.start(resumeCurrent = true)
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val guardedEntered = CountDownLatch(1)
+        val releaseGuardedCall = CountDownLatch(1)
+        val wireframeEntered = CountDownLatch(1)
+        val guardedTimedOut = AtomicBoolean(false)
+        val guardedRectWasCorrupted = AtomicBoolean(false)
+        val guardedPointWasCorrupted = AtomicBoolean(false)
+        val guardedRect = AtomicReference<Rect>()
+        val guardedPoint = AtomicReference<Point>()
+        val guardedVisibilityCalls = AtomicInteger(0)
+        val wireframeReusedGuardedRect = AtomicBoolean(false)
+        val wireframeReusedGuardedPoint = AtomicBoolean(false)
+        val guardedRectValue = Rect(1, 2, 30, 40)
+        val guardedPointValue = Point(5, 6)
+
+        val guardedView =
+            VisibleRectHookView(activity) { rect, point ->
+                // The first call is the pre-copy walk. Delay the callback's post-copy walk.
+                if (guardedVisibilityCalls.incrementAndGet() == 2) {
+                    guardedRect.set(rect)
+                    guardedPoint.set(point)
+                    rect.set(guardedRectValue)
+                    point?.set(guardedPointValue.x, guardedPointValue.y)
+                    guardedEntered.countDown()
+                    if (!releaseGuardedCall.await(5, TimeUnit.SECONDS)) {
+                        guardedTimedOut.set(true)
+                    }
+                    guardedRectWasCorrupted.set(rect != guardedRectValue)
+                    guardedPointWasCorrupted.set(point != guardedPointValue)
+                }
+            }
+        val wireframeView =
+            VisibleRectHookView(activity) { rect, point ->
+                wireframeReusedGuardedRect.set(rect === guardedRect.get())
+                wireframeReusedGuardedPoint.set(point === guardedPoint.get())
+                rect.set(100, 200, 300, 400)
+                point?.set(500, 600)
+                wireframeEntered.countDown()
+            }
+        val guardedRoot = FrameLayout(activity).apply { addView(guardedView) }
+        val outerRoot =
+            FrameLayout(activity).apply {
+                addView(guardedRoot)
+                addView(wireframeView)
+            }
+        activity.setContentView(outerRoot)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        outerRoot.layout(0, 0, 100, 100)
+        guardedRoot.layout(0, 0, 100, 50)
+        guardedView.layout(0, 0, 50, 50)
+        wireframeView.layout(50, 0, 100, 50)
+        fx.sut.decorViews[guardedRoot] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        fx.sut.decorViews[wireframeView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val wireframeFuture =
+                executor.submit {
+                    try {
+                        assertTrue(guardedEntered.await(3, TimeUnit.SECONDS))
+                        fx.sut.generateSnapshot(
+                            WeakReference(wireframeView),
+                            WeakReference(activity.window),
+                        )
+                    } finally {
+                        releaseGuardedCall.countDown()
+                    }
+                }
+            val screenshotFuture =
+                executor.submit {
+                    fx.sut.generateSnapshot(
+                        WeakReference(guardedRoot),
+                        WeakReference(activity.window),
+                        forceScreenshot = true,
+                    )
+                }
+            assertTrue(
+                awaitDraining(guardedEntered, 3000),
+                "The delayed screenshot callback did not reach its guarded post-copy mask walk",
+            )
+
+            val callsOverlapped = wireframeEntered.count == 0L
+            releaseGuardedCall.countDown()
+            awaitDraining(screenshotFuture, 3000)
+            awaitDraining(wireframeFuture, 3000)
+
+            assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
+            val overlappingCallsWereSafe =
+                !wireframeReusedGuardedRect.get() &&
+                    !wireframeReusedGuardedPoint.get() &&
+                    !guardedRectWasCorrupted.get() &&
+                    !guardedPointWasCorrupted.get()
+            assertTrue(
+                !callsOverlapped || overlappingCallsWereSafe,
+                "An unguarded wireframe visibility call entered during the delayed screenshot mask walk and reused " +
+                    "its Rect=${wireframeReusedGuardedRect.get()} and Point=${wireframeReusedGuardedPoint.get()}; " +
+                    "guarded Rect corrupted=${guardedRectWasCorrupted.get()}, " +
+                    "Point corrupted=${guardedPointWasCorrupted.get()}",
+            )
+        } finally {
+            releaseGuardedCall.countDown()
+            executor.shutdownNow()
+            fx.sut.uninstall()
         }
     }
 
