@@ -977,8 +977,7 @@ public class PostHogReplayIntegration(
 
     /**
      * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
-     * its scratch objects are reused; other callers allocate per call (see the wireframe
-     * vs delayed-screenshot-walk race test).
+     * its scratch objects are reused; other callers allocate per call.
      */
     private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
@@ -1240,24 +1239,37 @@ public class PostHogReplayIntegration(
         }
         val latch = CountDownLatch(1)
         var result: T? = null
-        mainHandler.handler.post {
-            try {
-                // Caught here too: an uncaught throw would otherwise escape onto the
-                // main Looper and crash the host app.
-                result = block()
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay main-thread hop failed: $e")
-            } finally {
-                latch.countDown()
+        val abandoned = AtomicBoolean(false)
+        val task =
+            Runnable {
+                try {
+                    if (!abandoned.get()) {
+                        result = block()
+                    }
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay main-thread hop failed: $e")
+                } finally {
+                    latch.countDown()
+                }
             }
-        }
+        mainHandler.handler.post(task)
         return try {
-            if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) {
+                result
+            } else {
+                abandoned.set(true)
+                mainHandler.handler.removeCallbacks(task)
+                null
+            }
         } catch (e: InterruptedException) {
+            abandoned.set(true)
+            mainHandler.handler.removeCallbacks(task)
             Thread.currentThread().interrupt()
             config.logger.log("Session Replay main-thread hop failed: $e")
             null
         } catch (e: Throwable) {
+            abandoned.set(true)
+            mainHandler.handler.removeCallbacks(task)
             config.logger.log("Session Replay main-thread hop failed: $e")
             null
         }
@@ -1631,16 +1643,17 @@ public class PostHogReplayIntegration(
         sourceWidth: Int,
         sourceHeight: Int,
     ): Boolean {
-        if (width != sourceWidth || height != sourceHeight) {
-            return false
-        }
-        val postWalk = MaskWalk()
-        // A layout pass or an invalidating draw sample already sealed the verdict as discard,
-        // so the post-copy walk would be wasted work.
-        val alreadyDoomed = drawState.isCaptureInvalid(armedCapture.token)
-        if (!alreadyDoomed) {
-            findMaskableWidgets(this, postWalk)
-        }
+        val postWalk =
+            runOnMainThreadBlocking {
+                if (width != sourceWidth || height != sourceHeight) {
+                    return@runOnMainThreadBlocking null
+                }
+                MaskWalk().also {
+                    if (!drawState.isCaptureInvalid(armedCapture.token)) {
+                        findMaskableWidgets(this, it)
+                    }
+                }
+            } ?: return false
 
         val captureAligned =
             drawState.finishMaskCapture(
@@ -1673,8 +1686,12 @@ public class PostHogReplayIntegration(
             return false
         }
 
-        val walk = MaskWalk(failClosed = false, shouldAbort = unsafeRedraw)
-        findMaskableWidgets(this, walk)
+        val walk =
+            runOnMainThreadBlocking {
+                MaskWalk(failClosed = false, shouldAbort = unsafeRedraw).also {
+                    findMaskableWidgets(this, it)
+                }
+            } ?: return false
         if (walk.aborted || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
@@ -1735,6 +1752,14 @@ public class PostHogReplayIntegration(
         scale: Float,
     ): Int = maxOf(1, ceil(size * scale).toInt())
 
+    private class ScreenshotGeometry(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val verifyMaskAlignment: Boolean,
+    )
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(
@@ -1742,24 +1767,28 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState,
     ): RRWireframe? {
         val view = this
-        if (!view.isVisible()) {
-            return null
-        }
-
+        val geometry =
+            runOnMainThreadBlocking {
+                if (!view.isVisible()) {
+                    return@runOnMainThreadBlocking null
+                }
+                val coordinates = IntArray(2)
+                if (view.isViewStateStableForMatrixOperations()) {
+                    view.getLocationOnScreen(coordinates)
+                }
+                ScreenshotGeometry(
+                    coordinates[0],
+                    coordinates[1],
+                    view.width,
+                    view.height,
+                    shouldVerifyMaskAlignment(view, drawState),
+                )
+            } ?: return null
         val viewId = System.identityHashCode(view)
-
-        val coordinates = IntArray(2)
-        if (view.isViewStateStableForMatrixOperations()) {
-            view.getLocationOnScreen(coordinates)
-        } else {
-            // Use zero coordinates as fallback when view state is unstable
-            coordinates[0] = 0
-            coordinates[1] = 0
-        }
-        val x = coordinates[0].densityValue(screenDensity)
-        val y = coordinates[1].densityValue(screenDensity)
-        val sourceWidth = view.width
-        val sourceHeight = view.height
+        val x = geometry.x.densityValue(screenDensity)
+        val y = geometry.y.densityValue(screenDensity)
+        val sourceWidth = geometry.width
+        val sourceHeight = geometry.height
         val width = sourceWidth.densityValue(screenDensity)
         val height = sourceHeight.densityValue(screenDensity)
         val screenshotScale = config.sessionReplayConfig.screenshotScale
@@ -1771,7 +1800,7 @@ public class PostHogReplayIntegration(
             }
         var base64: String? = null
 
-        val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
+        val verifyMaskAlignment = geometry.verifyMaskAlignment
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
@@ -1949,6 +1978,14 @@ public class PostHogReplayIntegration(
         parentId: Int? = null,
         ancestorUnmasked: Boolean = false,
     ): RRWireframe? {
+        val build = runOnMainThreadBlocking { collectWireframe(parentId, ancestorUnmasked) } ?: return null
+        return build()
+    }
+
+    private fun View.collectWireframe(
+        parentId: Int?,
+        ancestorUnmasked: Boolean,
+    ): (() -> RRWireframe)? {
         val view = this
         if (!view.isVisible()) {
             return null
@@ -1970,7 +2007,8 @@ public class PostHogReplayIntegration(
         val y = coordinates[1].densityValue(screenDensity)
         val width = view.width.densityValue(screenDensity)
         val height = view.height.densityValue(screenDensity)
-        var base64: String? = null
+        var image: (() -> String?)? = null
+        val styleImages = mutableListOf<() -> Unit>()
 
         var type: String? = null
         if (view.id == android.R.id.statusBarBackground) {
@@ -1985,7 +2023,8 @@ public class PostHogReplayIntegration(
             background.toRGBColor()?.let { color ->
                 style.backgroundColor = color
             } ?: run {
-                style.backgroundImage = background.base64(view.width, view.height)
+                val encode = background.prepareBase64(view.width, view.height)
+                styleImages.add { style.backgroundImage = encode() }
             }
         }
 
@@ -2083,13 +2122,11 @@ public class PostHogReplayIntegration(
             // left, top, right, bottom
             view.compoundDrawables.forEachIndexed { index, drawable ->
                 drawable?.let {
-                    val drawableBase64 = it.base64(view.width, view.height)
-                    // TODO: the 2 other possible drawables (top and bottom are not common)
-                    when (index) {
-                        0 -> style.iconLeft = drawableBase64
-//                        1 -> style.iconTop = drawableBase64
-                        2 -> style.iconRight = drawableBase64
-//                        3 -> style.iconBottom = drawableBase64
+                    if (index == 0 || index == 2) {
+                        val encode = it.prepareBase64(view.width, view.height)
+                        styleImages.add {
+                            if (index == 0) style.iconLeft = encode() else style.iconRight = encode()
+                        }
                     }
                 }
             }
@@ -2168,7 +2205,7 @@ public class PostHogReplayIntegration(
             if (!view.shouldMaskImage(isUnmasked)) {
                 // TODO: we can probably do a LRU caching here for already captured images
                 view.drawable?.let { drawable ->
-                    base64 = drawable.base64(view.width, view.height)
+                    image = drawable.prepareBase64(view.width, view.height)
 //                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
 //                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
 //                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
@@ -2213,36 +2250,60 @@ public class PostHogReplayIntegration(
             type = "web_view"
         }
 
-        val children = mutableListOf<RRWireframe>()
+        val children = mutableListOf<() -> RRWireframe>()
         if (view is ViewGroup && view.childCount > 0) {
             for (i in 0 until view.childCount) {
                 val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
+                viewChild.collectWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
                     children.add(it)
                 }
             }
         }
+        val disabled = !view.isEnabled
 
-        return RRWireframe(
-            id = viewId,
-            x = x,
-            y = y,
-            width = width,
-            height = height,
-            text = text,
-            type = type,
-            style = style,
-            childWireframes = children.ifEmpty { null },
-            base64 = base64,
-            parentId = parentId,
-            disabled = !view.isEnabled,
-            checked = checked,
-            inputType = inputType,
-            value = value,
-            label = label,
-            options = options,
-            max = max,
-        )
+        // Capture all View state before returning to the worker. Drawable conversion and
+        // encoding must not extend the main-thread traversal.
+        return {
+            styleImages.forEach { it() }
+            RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                text = text,
+                type = type,
+                style = style,
+                childWireframes = children.map { it() }.ifEmpty { null },
+                base64 = image?.invoke(),
+                parentId = parentId,
+                disabled = disabled,
+                checked = checked,
+                inputType = inputType,
+                value = value,
+                label = label,
+                options = options,
+                max = max,
+            )
+        }
+    }
+
+    private fun Drawable.prepareBase64(
+        width: Int,
+        height: Int,
+    ): () -> String? {
+        // Custom converters may handle drawables that cannot be cloned.
+        val copyOnMain = config.sessionReplayConfig.drawableConverter == null
+        val drawable = if (copyOnMain) copy() else null
+        return {
+            val converted = runDrawableConverter(this)
+            if (converted != null) {
+                converted.webpBase64()
+            } else {
+                val snapshot = if (copyOnMain) drawable else copy()
+                snapshot?.base64(width, height, cloned = true, convert = false)
+            }
+        }
     }
 
     private fun runDrawableConverter(drawable: Drawable): Bitmap? {
@@ -2298,8 +2359,9 @@ public class PostHogReplayIntegration(
         width: Int,
         height: Int,
         cloned: Boolean = false,
+        convert: Boolean = true,
     ): String? {
-        val convertedBitmap = runDrawableConverter(this)
+        val convertedBitmap = if (convert) runDrawableConverter(this) else null
         if (convertedBitmap != null) {
             return convertedBitmap.webpBase64()
         }

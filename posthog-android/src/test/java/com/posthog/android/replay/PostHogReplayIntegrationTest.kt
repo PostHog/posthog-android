@@ -4,11 +4,15 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.PixelFormat
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -19,6 +23,7 @@ import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -159,6 +164,143 @@ internal class PostHogReplayIntegrationTest {
         override fun isEnabled(): Boolean = true
 
         fun awaitMigration(): Boolean = latch.await(2, TimeUnit.SECONDS)
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `capture reads view geometry and masks on main in all capture modes`() {
+        for (mode in listOf("legacy", "verified", "wireframe")) {
+            val (fx, fake) = screenshotFixture(mode == "verified")
+            fx.config.sessionReplayConfig.screenshot = mode != "wireframe"
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val reads = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
+
+            fun record(name: String) {
+                reads.add(name to (Looper.myLooper() == Looper.getMainLooper()))
+            }
+            val root =
+                object : FrameLayout(activity) {
+                    override fun getGlobalVisibleRect(
+                        rect: Rect,
+                        point: Point?,
+                    ): Boolean {
+                        record("root visibility")
+                        return super.getGlobalVisibleRect(rect, point)
+                    }
+
+                    override fun getLocationOnScreen(location: IntArray) {
+                        record("root position")
+                        super.getLocationOnScreen(location)
+                    }
+                }
+            val child =
+                object : TextView(activity) {
+                    override fun getGlobalVisibleRect(
+                        rect: Rect,
+                        point: Point?,
+                    ): Boolean {
+                        record("child mask or visibility")
+                        return super.getGlobalVisibleRect(rect, point)
+                    }
+
+                    override fun getLocationOnScreen(location: IntArray) {
+                        record("child position")
+                        super.getLocationOnScreen(location)
+                    }
+                }.apply {
+                    text = "sensitive"
+                    tag = "ph-no-capture"
+                }
+            root.addView(child)
+            activity.setContentView(root)
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activity.window.decorView)
+            root.layout(0, 0, 100, 100)
+            child.layout(0, 0, 100, 20)
+            fx.sut.decorViews[root] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+            reads.clear()
+            try {
+                val future =
+                    createReplayExecutor().submit(
+                        Callable { fx.sut.captureSnapshot(WeakReference(root), WeakReference(activity.window)) },
+                    )
+                assertTrue(awaitDraining(future, 4000), mode)
+                assertTrue(fake.captures > 0, mode)
+                assertTrue(reads.any { it.first == "root position" }, mode)
+                assertTrue(reads.any { it.first == "child mask or visibility" }, mode)
+                assertTrue(reads.all { it.second }, "$mode read geometry off main: $reads")
+            } finally {
+                fx.sut.uninstall()
+            }
+        }
+    }
+
+    @Test
+    fun `timed out view collection does not run later or emit a snapshot`() {
+        val h = screenshotCaptureHarness()
+        var reads = 0
+        h.hookLayout.onWalkTouch = { reads++ }
+        try {
+            val future =
+                createReplayExecutor().submit(
+                    Callable { h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)) },
+                )
+            assertFalse(future.get(2, TimeUnit.SECONDS))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(0, reads)
+            assertEquals(0, h.fake.captures)
+            assertEquals(null, h.status.drawState.beginDrawSample())
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `wireframe drawable conversion stays off main after view collection`() {
+        val (fx, fake) = screenshotFixture()
+        fx.config.sessionReplayConfig.screenshot = false
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val bitmap = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)
+        val drawable =
+            object : Drawable() {
+                override fun draw(canvas: Canvas) = Unit
+
+                override fun setAlpha(alpha: Int) = Unit
+
+                override fun setColorFilter(colorFilter: ColorFilter?) = Unit
+
+                @Suppress("OVERRIDE_DEPRECATION")
+                override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+                override fun getConstantState(): ConstantState = error("The custom converter handles this drawable")
+            }
+        val image = ImageView(activity).apply { setImageDrawable(drawable) }
+        activity.setContentView(image)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        image.layout(0, 0, 10, 10)
+        fx.sut.decorViews[image] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        val conversionOnMain = AtomicReference<Boolean>()
+        fx.config.sessionReplayConfig.drawableConverter =
+            PostHogDrawableConverter {
+                assertTrue(it === drawable)
+                conversionOnMain.set(Looper.myLooper() == Looper.getMainLooper())
+                bitmap
+            }
+        try {
+            val future =
+                createReplayExecutor().submit(
+                    Callable { fx.sut.captureSnapshot(WeakReference(image), WeakReference(activity.window)) },
+                )
+            assertTrue(awaitDraining(future, 4000))
+            assertEquals(false, conversionOnMain.get())
+            assertTrue(fake.captures > 0)
+            assertNotNull(fx.sut.decorViews[image]?.lastSnapshot?.base64)
+        } finally {
+            fx.sut.uninstall()
+            bitmap.recycle()
+        }
     }
 
     @BeforeTest
@@ -2286,7 +2428,7 @@ internal class PostHogReplayIntegrationTest {
                 boundaryCompleted = true
             }
 
-            val delivered = fx.sut.generateSnapshot(WeakReference(view), WeakReference(window))
+            val delivered = fx.sut.captureSnapshot(WeakReference(view), WeakReference(window))
             assertTrue(boundaryCompleted, "Session controls must not wait for screenshot processing")
             assertFalse(delivered)
             assertEquals(0, fake.captures)
@@ -2296,7 +2438,8 @@ internal class PostHogReplayIntegrationTest {
 
             SnapshotBoundaryShadowPixelCopy.afterMasking = null
             fx.sut.start(resumeCurrent = true)
-            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.captureSnapshot(WeakReference(view), WeakReference(window)))
             val events = fake.properties!!["\$snapshot_data"] as List<*>
             assertTrue(events[0] is RRMetaEvent)
             assertTrue(events[1] is RRFullSnapshotEvent)
@@ -2386,7 +2529,7 @@ internal class PostHogReplayIntegrationTest {
             val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
             fx.sut.decorViews[view] = status
 
-            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            assertTrue(fx.sut.captureSnapshot(WeakReference(view), WeakReference(window)))
             val event = assertNotNull(captured)
             assertEquals(sessionId, event.properties!!["\$session_id"])
             assertEquals(sessionId, event.properties!!["\$window_id"])
@@ -2426,7 +2569,7 @@ internal class PostHogReplayIntegrationTest {
             makeWindowVisible(decorView)
             fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
 
-            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+            fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
 
             assertEquals(0, fake.captures)
             val drawState = fx.sut.decorViews[decorView]!!.drawState
@@ -2469,7 +2612,7 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.decorViews[decorView] = status
             assertTrue(status.drawState.tryScheduleCapture())
 
-            assertFalse(fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(window)))
+            assertFalse(fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(window)))
             status.drawState.finishScheduledCapture()
             assertNotNull(DelayedShadowPixelCopy.callback)
             assertFalse(status.drawState.tryScheduleCapture())
@@ -2503,7 +2646,7 @@ internal class PostHogReplayIntegrationTest {
             makeWindowVisible(decorView)
             fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
 
-            fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(activity.window))
+            fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(activity.window))
 
             assertEquals(1, fake.captures)
             assertEquals("\$snapshot", fake.event)
@@ -2528,7 +2671,7 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.decorViews[view] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
 
             assertTrue(fx.sut.isActive())
-            assertTrue(fx.sut.generateSnapshot(WeakReference(view), WeakReference(window)))
+            assertTrue(fx.sut.captureSnapshot(WeakReference(view), WeakReference(window)))
             assertEquals(1, fake.captures)
             val events = fake.properties!!["\$snapshot_data"] as List<*>
             assertTrue(events[0] is RRMetaEvent)
@@ -2549,7 +2692,7 @@ internal class PostHogReplayIntegrationTest {
             h.child.layout(0, 0, 101, 20)
 
             repeat(2) {
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             }
 
             val (first, second) = RecordingShadowPixelCopy.requests
@@ -2588,7 +2731,7 @@ internal class PostHogReplayIntegrationTest {
             if (!h.fx.sut.isActive()) {
                 h.fx.sut.start(resumeCurrent = true)
             }
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             assertEquals(1, h.fake.captures)
         } finally {
             stopper.join(3000)
@@ -2605,7 +2748,7 @@ internal class PostHogReplayIntegrationTest {
         RecordingShadowPixelCopy.defer = true
         try {
             repeat(2) {
-                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             }
             assertEquals(2, RecordingShadowPixelCopy.requests.size)
             val (first, second) = RecordingShadowPixelCopy.requests
@@ -2619,7 +2762,7 @@ internal class PostHogReplayIntegrationTest {
             assertFalse(second.bitmap.isRecycled)
 
             RecordingShadowPixelCopy.defer = false
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             RecordingShadowPixelCopy.complete(1)
             assertTrue(second.bitmap.isRecycled)
             assertEquals(1, h.fake.captures)
@@ -2678,14 +2821,14 @@ internal class PostHogReplayIntegrationTest {
             RecordingShadowPixelCopy.reset()
             RecordingShadowPixelCopy.defer = true
             try {
-                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val pendingBitmap = RecordingShadowPixelCopy.requests.single().bitmap
 
                 val nextScale = if (scale == 1f) 0.5f else 1f
                 h.fx.config.sessionReplayConfig.screenshotScale = nextScale
                 h.fx.config.sessionReplayConfig.screenshotColorMode = otherColorMode
                 RecordingShadowPixelCopy.defer = false
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val current = RecordingShadowPixelCopy.requests[1]
                 assertEquals(ceil(100 * nextScale).toInt(), current.width)
                 assertEquals(otherColorMode.name, assertNotNull(current.config).name)
@@ -2696,7 +2839,7 @@ internal class PostHogReplayIntegrationTest {
                 RecordingShadowPixelCopy.complete(0)
                 h.fx.config.sessionReplayConfig.screenshotScale = scale
                 h.fx.config.sessionReplayConfig.screenshotColorMode = colorMode
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 assertTrue(pendingBitmap === RecordingShadowPixelCopy.requests[2].bitmap)
                 assertEquals(2, h.fake.captures)
             } finally {
@@ -2712,7 +2855,7 @@ internal class PostHogReplayIntegrationTest {
             RecordingShadowPixelCopy.reset()
             RecordingShadowPixelCopy.defer = true
             try {
-                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val bitmap = RecordingShadowPixelCopy.requests.single().bitmap
                 h.fx.sut.uninstall()
                 assertFalse(bitmap.isRecycled)
@@ -2733,7 +2876,7 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.layout(0, 0, 1, 1)
             RecordingShadowPixelCopy.reset()
             try {
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val request = RecordingShadowPixelCopy.requests.single()
                 assertEquals(1, request.width)
                 assertEquals(1, request.height)
@@ -2750,10 +2893,10 @@ internal class PostHogReplayIntegrationTest {
             RecordingShadowPixelCopy.reset()
             RecordingShadowPixelCopy.onRequest = { h.hookLayout.layout(0, 0, 101, 99) }
             try {
-                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 assertEquals(0, h.fake.captures)
                 RecordingShadowPixelCopy.onRequest = null
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             } finally {
                 h.fx.sut.uninstall()
                 RecordingShadowPixelCopy.reset()
@@ -2779,7 +2922,7 @@ internal class PostHogReplayIntegrationTest {
             RecordingShadowPixelCopy.reset()
             RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.TRANSPARENT) }
             try {
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val bitmap = screenshotBitmap(h.fake)
                 try {
                     assertEquals(ceil(101 * scale).toInt(), bitmap.width)
@@ -2810,7 +2953,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.config.sessionReplayConfig.screenshotColorMode = otherColorMode
             }
             try {
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 val bitmap = screenshotBitmap(h.fake)
                 try {
                     assertEquals(ceil(300 * scale).toInt(), bitmap.width)
@@ -2864,7 +3007,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.config.sessionReplayConfig.screenshotCompressionQuality = if (quality == 0) 100 else 0
             }
             try {
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 @Suppress("UNCHECKED_CAST")
                 val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
                 val full = events.first { it.type == RREventType.FullSnapshot }
@@ -2890,8 +3033,8 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.layout(0, 0, 101, 99)
             h.child.layout(0, 0, 101, 20)
 
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
 
             assertEquals(2, RecordingShadowPixelCopy.requests.size)
             val first = RecordingShadowPixelCopy.requests[0].bitmap
@@ -2964,12 +3107,12 @@ internal class PostHogReplayIntegrationTest {
                     h.hookLayout.layout(0, 0, width, height)
                 }
 
-                assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 assertEquals(0, h.fake.captures)
 
                 DrawSequenceShadowPixelCopy.onRequest = null
                 h.hookLayout.layout(0, 0, 100, 100)
-                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
                 assertEquals(1, h.fake.captures)
             } finally {
                 DrawSequenceShadowPixelCopy.onRequest = null
@@ -2987,18 +3130,18 @@ internal class PostHogReplayIntegrationTest {
         RecordingShadowPixelCopy.reset()
         RecordingShadowPixelCopy.defer = true
         try {
-            assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             val timedOutBitmap = RecordingShadowPixelCopy.requests.single().bitmap
             assertFalse(timedOutBitmap.isRecycled)
 
             RecordingShadowPixelCopy.defer = false
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             assertEquals(2, RecordingShadowPixelCopy.requests.size)
             assertFalse(timedOutBitmap === RecordingShadowPixelCopy.requests[1].bitmap)
             assertFalse(timedOutBitmap.isRecycled)
 
             RecordingShadowPixelCopy.complete(0)
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
 
             assertEquals(3, RecordingShadowPixelCopy.requests.size)
             assertTrue(timedOutBitmap === RecordingShadowPixelCopy.requests[2].bitmap)
@@ -3017,13 +3160,13 @@ internal class PostHogReplayIntegrationTest {
         RecordingShadowPixelCopy.reset()
         try {
             RecordingShadowPixelCopy.result = PixelCopy.ERROR_DESTINATION_INVALID
-            assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertFalse(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
             val rejectedBitmap = RecordingShadowPixelCopy.requests.single().bitmap
             assertEquals(Bitmap.Config.RGB_565, rejectedBitmap.config)
             assertTrue(rejectedBitmap.isRecycled)
 
             RecordingShadowPixelCopy.result = PixelCopy.SUCCESS
-            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
 
             assertEquals(2, RecordingShadowPixelCopy.requests.size)
             assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests[1].bitmap.config)
@@ -3316,13 +3459,13 @@ internal class PostHogReplayIntegrationTest {
 
             // A mock window has no decor, so PixelCopy throws and every capture is discarded.
             repeat(2) {
-                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+                fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
             assertFalse(messages.any { it.contains("screenshots in a row") })
 
             status.drawState.resetSnapshotState()
             repeat(3) {
-                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+                fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
 
             assertEquals(1, messages.count { it.contains("screenshots in a row") })
@@ -3400,7 +3543,7 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
 
             repeat(3) {
-                fx.sut.generateSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+                fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
             }
 
             assertEquals(3, ThrowingShadowBitmap.allocationFailures)
@@ -3413,129 +3556,6 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.uninstall()
             if (decorView.isAttachedToWindow) windowManager.removeViewImmediate(decorView)
             ThrowingShadowBitmap.allocationFailures = 0
-        }
-    }
-
-    @Test
-    @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
-    fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
-        val appContext = ApplicationProvider.getApplicationContext<Context>()
-        val fx =
-            createIntegrationWithRealQueue(
-                flagActive = true,
-                hasFetched = true,
-                integrationContext = appContext,
-            )
-        fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = true
-        val fake = PostHogFake()
-        PostHogSessionManager.startSession()
-        fx.sut.install(
-            object : PostHogInterface by fake {
-                override fun getSessionId(): UUID? = PostHogSessionManager.getActiveSessionId()
-            },
-        )
-        fx.sut.start(resumeCurrent = true)
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        val guardedEntered = CountDownLatch(1)
-        val releaseGuardedCall = CountDownLatch(1)
-        val wireframeEntered = CountDownLatch(1)
-        val guardedTimedOut = AtomicBoolean(false)
-        val guardedRectWasCorrupted = AtomicBoolean(false)
-        val guardedPointWasCorrupted = AtomicBoolean(false)
-        val guardedRect = AtomicReference<Rect>()
-        val guardedPoint = AtomicReference<Point>()
-        val guardedVisibilityCalls = AtomicInteger(0)
-        val wireframeReusedGuardedRect = AtomicBoolean(false)
-        val wireframeReusedGuardedPoint = AtomicBoolean(false)
-        val guardedRectValue = Rect(1, 2, 30, 40)
-        val guardedPointValue = Point(5, 6)
-
-        val guardedView =
-            VisibleRectHookView(activity) { rect, point ->
-                // The first call is the pre-copy walk. Delay the callback's post-copy walk.
-                if (guardedVisibilityCalls.incrementAndGet() == 2) {
-                    guardedRect.set(rect)
-                    guardedPoint.set(point)
-                    rect.set(guardedRectValue)
-                    point?.set(guardedPointValue.x, guardedPointValue.y)
-                    guardedEntered.countDown()
-                    if (!releaseGuardedCall.await(5, TimeUnit.SECONDS)) {
-                        guardedTimedOut.set(true)
-                    }
-                    guardedRectWasCorrupted.set(rect != guardedRectValue)
-                    guardedPointWasCorrupted.set(point != guardedPointValue)
-                }
-            }
-        val wireframeView =
-            VisibleRectHookView(activity) { rect, point ->
-                wireframeReusedGuardedRect.set(rect === guardedRect.get())
-                wireframeReusedGuardedPoint.set(point === guardedPoint.get())
-                rect.set(100, 200, 300, 400)
-                point?.set(500, 600)
-                wireframeEntered.countDown()
-            }
-        val guardedRoot = FrameLayout(activity).apply { addView(guardedView) }
-        val outerRoot =
-            FrameLayout(activity).apply {
-                addView(guardedRoot)
-                addView(wireframeView)
-            }
-        activity.setContentView(outerRoot)
-        shadowOf(Looper.getMainLooper()).idle()
-        makeWindowVisible(activity.window.decorView)
-        outerRoot.layout(0, 0, 100, 100)
-        guardedRoot.layout(0, 0, 100, 50)
-        guardedView.layout(0, 0, 50, 50)
-        wireframeView.layout(50, 0, 100, 50)
-        fx.sut.decorViews[guardedRoot] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
-        fx.sut.decorViews[wireframeView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
-        val executor = Executors.newFixedThreadPool(2)
-
-        try {
-            val screenshotFuture =
-                executor.submit {
-                    fx.sut.generateSnapshot(
-                        WeakReference(guardedRoot),
-                        WeakReference(activity.window),
-                        forceScreenshot = true,
-                    )
-                }
-            assertTrue(
-                awaitDraining(guardedEntered, 3000),
-                "The delayed screenshot callback did not reach its guarded post-copy mask walk",
-            )
-
-            val wireframeFuture =
-                executor.submit {
-                    fx.sut.generateSnapshot(
-                        WeakReference(wireframeView),
-                        WeakReference(activity.window),
-                    )
-                }
-            val callsOverlapped = awaitDraining(wireframeEntered, 1500)
-            releaseGuardedCall.countDown()
-            awaitDraining(screenshotFuture, 3000)
-            awaitDraining(wireframeFuture, 3000)
-
-            assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
-            val overlappingCallsWereSafe =
-                !wireframeReusedGuardedRect.get() &&
-                    !wireframeReusedGuardedPoint.get() &&
-                    !guardedRectWasCorrupted.get() &&
-                    !guardedPointWasCorrupted.get()
-            assertTrue(
-                !callsOverlapped || overlappingCallsWereSafe,
-                "An unguarded wireframe visibility call entered during the delayed screenshot mask walk and reused " +
-                    "its Rect=${wireframeReusedGuardedRect.get()} and Point=${wireframeReusedGuardedPoint.get()}; " +
-                    "guarded Rect corrupted=${guardedRectWasCorrupted.get()}, " +
-                    "Point corrupted=${guardedPointWasCorrupted.get()}",
-            )
-        } finally {
-            releaseGuardedCall.countDown()
-            executor.shutdownNow()
-            fx.sut.uninstall()
         }
     }
 
@@ -3860,7 +3880,7 @@ internal class PostHogReplayIntegrationTest {
                 }
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             // Torn pre-walk, fresh pre-walk, then the post-copy walk.
             assertEquals(3, walkTouches)
@@ -3883,7 +3903,7 @@ internal class PostHogReplayIntegrationTest {
                 copyRequests++
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, copyRequests)
             assertEquals(1, h.fake.captures)
@@ -3903,7 +3923,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(0, h.fake.captures)
         } finally {
@@ -3922,7 +3942,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, h.fake.captures)
         } finally {
@@ -3943,7 +3963,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, h.fake.captures)
         } finally {
@@ -3963,7 +3983,7 @@ internal class PostHogReplayIntegrationTest {
                 h.fx.sut.onDrawCallback(h.hookLayout, h.status.drawState)
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, h.fake.captures)
         } finally {
@@ -3990,7 +4010,7 @@ internal class PostHogReplayIntegrationTest {
                 }
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(3, walkTouches)
             assertEquals(1, copyRequests)
@@ -4019,7 +4039,7 @@ internal class PostHogReplayIntegrationTest {
             }
             CountingShadowPixelCopy.requestCount = 0
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, walkTouches)
             assertEquals(0, h.fake.captures)
@@ -4043,7 +4063,7 @@ internal class PostHogReplayIntegrationTest {
             }
             CountingShadowPixelCopy.requestCount = 0
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(3, walkTouches)
             assertEquals(0, h.fake.captures)
@@ -4069,7 +4089,7 @@ internal class PostHogReplayIntegrationTest {
                 }
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(2, touches)
             assertEquals(0, h.fake.captures)
@@ -4094,7 +4114,7 @@ internal class PostHogReplayIntegrationTest {
                 }
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(2, touches)
             assertEquals(0, h.fake.captures)
@@ -4121,7 +4141,7 @@ internal class PostHogReplayIntegrationTest {
                 }
             }
 
-            val generated = h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            val generated = h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(2, touches)
             assertTrue(statePreserved)
@@ -4149,7 +4169,7 @@ internal class PostHogReplayIntegrationTest {
                 copyRequests++
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, copyRequests)
             assertEquals(0f, h.child.translationY)
@@ -4214,7 +4234,7 @@ internal class PostHogReplayIntegrationTest {
             h.child.animation = animation
             h.hookLayout.onWalkTouch = { h.fx.sut.onDrawCallback(h.status.drawState) }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(0, h.fake.captures)
         } finally {
@@ -4236,7 +4256,7 @@ internal class PostHogReplayIntegrationTest {
                 otherWindowState.didLayoutSinceReset = true
             }
 
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
 
             assertEquals(1, h.fake.captures)
         } finally {
