@@ -249,6 +249,43 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `busy main thread during post-copy mask collection drops the frame`() {
+        for (verified in listOf(false, true)) {
+            val h = screenshotCaptureHarness(verified)
+            val copyRequested = CountDownLatch(1)
+            var walkTouches = 0
+            DrawSequenceShadowPixelCopy.onRequest = { copyRequested.countDown() }
+            try {
+                val future =
+                    createReplayExecutor().submit(
+                        Callable { h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)) },
+                    )
+                // Serve the pre-copy hops, then stall main so the post-copy collection times out.
+                assertTrue(awaitDraining(copyRequested, 2000), "verified=$verified")
+                h.hookLayout.onWalkTouch = { walkTouches++ }
+                assertFalse(future.get(3, TimeUnit.SECONDS), "verified=$verified")
+                // The PixelCopy callback releases the capture gate only after its own hop gave up.
+                val deadline = System.currentTimeMillis() + 3000
+                var callbackFinished = false
+                while (!callbackFinished && System.currentTimeMillis() < deadline) {
+                    callbackFinished = h.status.drawState.tryScheduleCapture()
+                    if (!callbackFinished) Thread.sleep(10)
+                }
+                assertTrue(callbackFinished, "verified=$verified")
+                h.status.drawState.finishScheduledCapture()
+
+                shadowOf(Looper.getMainLooper()).idle()
+                assertEquals(0, walkTouches, "verified=$verified")
+                assertEquals(0, h.fake.captures, "verified=$verified")
+            } finally {
+                DrawSequenceShadowPixelCopy.onRequest = null
+                h.fx.sut.uninstall()
+            }
+        }
+    }
+
     @BeforeTest
     fun `set up`() {
         PostHogSessionManager.isReactNative = false
