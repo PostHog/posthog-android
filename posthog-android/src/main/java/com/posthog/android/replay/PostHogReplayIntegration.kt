@@ -1240,24 +1240,37 @@ public class PostHogReplayIntegration(
         }
         val latch = CountDownLatch(1)
         var result: T? = null
-        mainHandler.handler.post {
-            try {
-                // Caught here too: an uncaught throw would otherwise escape onto the
-                // main Looper and crash the host app.
-                result = block()
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay main-thread hop failed: $e")
-            } finally {
-                latch.countDown()
+        val abandoned = AtomicBoolean(false)
+        val task =
+            Runnable {
+                try {
+                    if (!abandoned.get()) {
+                        result = block()
+                    }
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay main-thread hop failed: $e")
+                } finally {
+                    latch.countDown()
+                }
             }
-        }
+        mainHandler.handler.post(task)
         return try {
-            if (latch.await(1000, TimeUnit.MILLISECONDS)) result else null
+            if (latch.await(1000, TimeUnit.MILLISECONDS)) {
+                result
+            } else {
+                abandoned.set(true)
+                mainHandler.handler.removeCallbacks(task)
+                null
+            }
         } catch (e: InterruptedException) {
+            abandoned.set(true)
+            mainHandler.handler.removeCallbacks(task)
             Thread.currentThread().interrupt()
             config.logger.log("Session Replay main-thread hop failed: $e")
             null
         } catch (e: Throwable) {
+            abandoned.set(true)
+            mainHandler.handler.removeCallbacks(task)
             config.logger.log("Session Replay main-thread hop failed: $e")
             null
         }
@@ -1631,16 +1644,17 @@ public class PostHogReplayIntegration(
         sourceWidth: Int,
         sourceHeight: Int,
     ): Boolean {
-        if (width != sourceWidth || height != sourceHeight) {
-            return false
-        }
-        val postWalk = MaskWalk()
-        // A layout pass or an invalidating draw sample already sealed the verdict as discard,
-        // so the post-copy walk would be wasted work.
-        val alreadyDoomed = drawState.isCaptureInvalid(armedCapture.token)
-        if (!alreadyDoomed) {
-            findMaskableWidgets(this, postWalk)
-        }
+        val postWalk =
+            runOnMainThreadBlocking {
+                if (width != sourceWidth || height != sourceHeight) {
+                    return@runOnMainThreadBlocking null
+                }
+                MaskWalk().also {
+                    if (!drawState.isCaptureInvalid(armedCapture.token)) {
+                        findMaskableWidgets(this, it)
+                    }
+                }
+            } ?: return false
 
         val captureAligned =
             drawState.finishMaskCapture(
@@ -1673,8 +1687,12 @@ public class PostHogReplayIntegration(
             return false
         }
 
-        val walk = MaskWalk(failClosed = false, shouldAbort = unsafeRedraw)
-        findMaskableWidgets(this, walk)
+        val walk =
+            runOnMainThreadBlocking {
+                MaskWalk(failClosed = false, shouldAbort = unsafeRedraw).also {
+                    findMaskableWidgets(this, it)
+                }
+            } ?: return false
         if (walk.aborted || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
@@ -1735,6 +1753,14 @@ public class PostHogReplayIntegration(
         scale: Float,
     ): Int = maxOf(1, ceil(size * scale).toInt())
 
+    private class ScreenshotGeometry(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val verifyMaskAlignment: Boolean,
+    )
+
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
     @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(
@@ -1742,24 +1768,28 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState,
     ): RRWireframe? {
         val view = this
-        if (!view.isVisible()) {
-            return null
-        }
-
+        val geometry =
+            runOnMainThreadBlocking {
+                if (!view.isVisible()) {
+                    return@runOnMainThreadBlocking null
+                }
+                val coordinates = IntArray(2)
+                if (view.isViewStateStableForMatrixOperations()) {
+                    view.getLocationOnScreen(coordinates)
+                }
+                ScreenshotGeometry(
+                    coordinates[0],
+                    coordinates[1],
+                    view.width,
+                    view.height,
+                    shouldVerifyMaskAlignment(view, drawState),
+                )
+            } ?: return null
         val viewId = System.identityHashCode(view)
-
-        val coordinates = IntArray(2)
-        if (view.isViewStateStableForMatrixOperations()) {
-            view.getLocationOnScreen(coordinates)
-        } else {
-            // Use zero coordinates as fallback when view state is unstable
-            coordinates[0] = 0
-            coordinates[1] = 0
-        }
-        val x = coordinates[0].densityValue(screenDensity)
-        val y = coordinates[1].densityValue(screenDensity)
-        val sourceWidth = view.width
-        val sourceHeight = view.height
+        val x = geometry.x.densityValue(screenDensity)
+        val y = geometry.y.densityValue(screenDensity)
+        val sourceWidth = geometry.width
+        val sourceHeight = geometry.height
         val width = sourceWidth.densityValue(screenDensity)
         val height = sourceHeight.densityValue(screenDensity)
         val screenshotScale = config.sessionReplayConfig.screenshotScale
@@ -1771,7 +1801,7 @@ public class PostHogReplayIntegration(
             }
         var base64: String? = null
 
-        val verifyMaskAlignment = shouldVerifyMaskAlignment(view, drawState)
+        val verifyMaskAlignment = geometry.verifyMaskAlignment
         val armedCapture =
             if (verifyMaskAlignment) {
                 drawState.reset()
