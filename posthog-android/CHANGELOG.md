@@ -1,5 +1,11 @@
 ## Next
 
+## 3.72.3
+
+### Patch Changes
+
+- 683a4e0: Fix screenshot-mode session replay geometry reads corrupting app layout and screenshot masks.
+
 ## 3.72.2
 
 ### Patch Changes
