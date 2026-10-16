@@ -1059,6 +1059,7 @@ public class PostHogReplayIntegration(
         // Scratch objects; a walk is confined to a single thread.
         val scratchRect = Rect()
         val scratchPoint = Point()
+        val scratchLocation = IntArray(2)
         val visitedViews = IntHashSet()
 
         fun resetForCompareAgainst(baselineRects: List<Rect>) {
@@ -1188,9 +1189,18 @@ public class PostHogReplayIntegration(
 
     private fun View.addGlobalVisibleRect(walk: MaskWalk) {
         if (isViewStateStableForMatrixOperations()) {
-            getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            getWindowVisibleRect(walk)
             walk.addRect(walk.scratchRect)
         }
+    }
+
+    // getGlobalVisibleRect ignores the window pan applied while the soft keyboard is open
+    // (adjustPan), but the captured pixels include it. The root's location in the window
+    // carries that pan, so shift the rect by it to match the screenshot.
+    private fun View.getWindowVisibleRect(walk: MaskWalk) {
+        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        rootView.getLocationInWindow(walk.scratchLocation)
+        walk.scratchRect.offset(walk.scratchLocation[0], walk.scratchLocation[1])
     }
 
     /**
@@ -1202,7 +1212,7 @@ public class PostHogReplayIntegration(
         if (!isViewStateStableForMatrixOperations()) {
             return
         }
-        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        getWindowVisibleRect(walk)
         val rect = walk.scratchRect
         // Only adjust bounds for views that typically have significant padding or compound
         // drawables (EditText border/underline, Button background padding).
