@@ -1,5 +1,11 @@
 ## Next
 
+## 2.21.2
+
+### Patch Changes
+
+- 11470c7: Allow local feature flag evaluation from a shared definition cache without a personal API key when local evaluation is enabled.
+
 ## 2.21.1
 
 ### Patch Changes
