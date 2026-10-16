@@ -72,23 +72,24 @@ private fun surveyTranslationChangesAnything(
     ) {
         return true
     }
-    if (translation.thankYouMessageCloseButtonText != null &&
-        translation.thankYouMessageCloseButtonText != appearance?.thankYouMessageCloseButtonText
-    ) {
-        return true
-    }
+    if (buttonLabelChanges(translation.thankYouMessageCloseButtonText, appearance?.thankYouMessageCloseButtonText)) return true
     if (translation.introScreenHeader != null && translation.introScreenHeader != appearance?.introScreenHeader) return true
     if (translation.introScreenDescription != null &&
         translation.introScreenDescription != appearance?.introScreenDescription
     ) {
         return true
     }
-    if (translation.introScreenButtonText != null &&
-        translation.introScreenButtonText != appearance?.introScreenButtonText
-    ) {
-        return true
-    }
+    if (buttonLabelChanges(translation.introScreenButtonText, appearance?.introScreenButtonText)) return true
     return false
+}
+
+// A blank translated button label is ignored at display time, so it is not a change.
+private fun buttonLabelChanges(
+    translated: String?,
+    original: String?,
+): Boolean {
+    val label = translated?.takeIf { it.isNotBlank() } ?: return false
+    return label != original?.takeIf { it.isNotBlank() }
 }
 
 private fun questionTranslationChangesAnything(
@@ -97,7 +98,7 @@ private fun questionTranslationChangesAnything(
 ): Boolean {
     if (translation.question != null && translation.question != question.question) return true
     if (translation.description != null && translation.description != question.description) return true
-    if (translation.buttonText != null && translation.buttonText != question.buttonText) return true
+    if (buttonLabelChanges(translation.buttonText, question.buttonText)) return true
     when (question) {
         is LinkSurveyQuestion ->
             if (translation.link != null && translation.link != question.link) return true

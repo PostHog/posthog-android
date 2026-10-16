@@ -34,7 +34,10 @@ public open class PostHogDisplaySurveyQuestion(
             val id = question.id ?: ""
             val questionText = translation?.question ?: question.question ?: return null
             val description = translation?.description ?: question.description
-            val buttonText = translation?.buttonText ?: question.buttonText
+            // A blank button label is treated as unset, so the next fallback applies.
+            val buttonText =
+                translation?.buttonText?.takeIf { it.isNotBlank() }
+                    ?: question.buttonText?.takeIf { it.isNotBlank() }
             val isOptional = question.optional ?: false
             val contentType =
                 question.descriptionContentType?.let {
