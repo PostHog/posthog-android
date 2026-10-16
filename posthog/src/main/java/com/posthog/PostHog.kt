@@ -152,6 +152,10 @@ public class PostHog private constructor(
 
     @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
+
+    // Whether optIn may start session replay: false when it wasn't recording at optOut (e.g. the app
+    // stopped it), so consent doesn't override that. Guarded by setupLock.
+    private var startSessionReplayOnOptIn = true
     private var surveysHandler: PostHogSurveysHandler? = null
 
     @Volatile
@@ -352,31 +356,9 @@ public class PostHog private constructor(
 
                 startSession()
 
-                config.integrations.forEach {
-                    try {
-                        it.install(this)
-
-                        if (it is PostHogSessionReplayHandler) {
-                            sessionReplayHandler = it
-
-                            // resume because we just created the session id above with
-                            // the startSession call
-                            if (isSessionReplayConfigEnabled()) {
-                                startSessionReplay(resumeCurrent = true)
-                            }
-                        } else if (it is PostHogSurveysHandler) {
-                            // surveys integration so we can notify it about captured events
-                            surveysHandler = it
-                            // Immediately push any cached surveys from remote config
-                            try {
-                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
-                            } catch (e: Throwable) {
-                                config.logger.log("Pushing cached surveys to integration failed: $e.")
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
-                    }
+                // integrations are installed on optIn instead
+                if (!isOptedOut()) {
+                    installIntegrations(resumeSessionReplay = true)
                 }
 
                 // only because of testing in isolation, this flag is always enabled
@@ -415,11 +397,65 @@ public class PostHog private constructor(
         config: PostHogConfig,
         loaded: Boolean,
     ) {
-        config.integrations.forEach { integration ->
+        // under setupLock so it can't interleave with optOut/optIn, where some integrations would
+        // otherwise reinstall themselves while opted out
+        synchronized(setupLock) {
+            if (isOptedOut()) {
+                return
+            }
+            config.integrations.forEach { integration ->
+                try {
+                    integration.onRemoteConfig(loaded)
+                } catch (e: Throwable) {
+                    config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+                }
+            }
+        }
+    }
+
+    private fun installIntegrations(
+        resumeSessionReplay: Boolean,
+        startSessionReplay: Boolean = true,
+    ) {
+        val config = config ?: return
+        config.integrations.forEach {
             try {
-                integration.onRemoteConfig(loaded)
+                it.install(this)
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = it
+
+                    if (startSessionReplay && isSessionReplayConfigEnabled()) {
+                        startSessionReplay(resumeCurrent = resumeSessionReplay)
+                    }
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = it
+                    try {
+                        remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
+                    } catch (e: Throwable) {
+                        config.logger.log("Pushing cached surveys to integration failed: $e.")
+                    }
+                }
             } catch (e: Throwable) {
-                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+                config.logger.log("Integration ${it.javaClass.name} failed to install: $e.")
+            }
+        }
+    }
+
+    private fun uninstallIntegrations() {
+        stopSessionReplay()
+        val config = config ?: return
+        config.integrations.forEach {
+            try {
+                it.uninstall()
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = null
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = null
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
             }
         }
     }
@@ -547,21 +583,7 @@ public class PostHog private constructor(
 
                 config?.let { config ->
                     apiKeys.remove(config.projectToken)
-
-                    config.integrations.forEach {
-                        try {
-                            it.uninstall()
-
-                            if (it is PostHogSessionReplayHandler) {
-                                sessionReplayHandler = null
-                            } else if (it is PostHogSurveysHandler) {
-                                surveysHandler = null
-                            }
-                        } catch (e: Throwable) {
-                            config.logger
-                                .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
-                        }
-                    }
+                    uninstallIntegrations()
                 }
 
                 queue?.stop()
@@ -1219,6 +1241,7 @@ public class PostHog private constructor(
             return
         }
 
+        val wasOptedOut = isOptedOut()
         synchronized(optOutLock) {
             config?.optOut = false
             if (config?.persistOptOut != false) {
@@ -1226,6 +1249,15 @@ public class PostHog private constructor(
             }
             // an explicit runtime choice; the deferred read must not override it
             optOutLoaded = true
+        }
+
+        if (wasOptedOut) {
+            synchronized(setupLock) {
+                // close() may have run since the isEnabled() check above
+                if (isEnabled()) {
+                    installIntegrations(resumeSessionReplay = false, startSessionReplay = startSessionReplayOnOptIn)
+                }
+            }
         }
 
         // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
@@ -1245,7 +1277,8 @@ public class PostHog private constructor(
             return
         }
 
-        if (!isOptedOut()) config.notifyIntegrationsChanged()
+        val wasOptedOut = isOptedOut()
+        if (!wasOptedOut) config.notifyIntegrationsChanged()
         synchronized(optOutLock) {
             config?.optOut = true
             if (config?.persistOptOut != false) {
@@ -1257,6 +1290,15 @@ public class PostHog private constructor(
         // Clear cached identity-token state so a stale token/401 flag isn't reused after
         // re-opting-in; the send guard in the manager already blocks sends while opted out.
         pushSubscriptionManager?.onOptOut()
+
+        if (!wasOptedOut) {
+            synchronized(setupLock) {
+                if (isEnabled()) {
+                    startSessionReplayOnOptIn = sessionReplayHandler?.isActive() == true
+                    uninstallIntegrations()
+                }
+            }
+        }
     }
 
     /**
