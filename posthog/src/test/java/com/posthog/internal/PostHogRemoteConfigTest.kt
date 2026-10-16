@@ -3084,4 +3084,130 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    @Test
+    fun `v2 trigger groups replace the v1 gates once loaded from remote config`() {
+        val response = File("src/test/resources/json/remote-config-v2-trigger-groups.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasSessionRecordingTriggerGroups())
+        assertNull(sut.getEventTriggers())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+
+        // the v1 event-trigger gate stands down even though the config also carries eventTriggers
+        assertNull(sut.getEventTriggers())
+        // per-group sampling replaces the global gate, so the v1 decision must not also apply
+        assertTrue(sut.makeSamplingDecision("any-session"))
+
+        // group-a has empty conditions and is fully sampled, group-b waits for a purchase
+        // group-a already records, so recording does not wait on the pending group-b
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertEquals(30000L, sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 50)))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertEquals(5000L, sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+
+        val debugProps = sut.sessionRecordingTriggerGroupsDebugProperties("session-1")
+        assertEquals("v2_trigger_groups", debugProps["\$sdk_debug_replay_remote_trigger_matching_config"])
+        assertEquals(2, debugProps["\$sdk_debug_replay_trigger_groups_count"])
+        assertEquals(
+            listOf(
+                mapOf("id" to "group-a", "name" to "Always on", "matched" to true, "sampled" to true),
+                mapOf("id" to "group-b", "name" to "Big purchases", "matched" to true, "sampled" to true),
+            ),
+            debugProps["\$sdk_debug_replay_matched_recording_trigger_groups"],
+        )
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups wait while no group records and some group is pending`() {
+        val response =
+            File("src/test/resources/json/remote-config-v2-trigger-groups.json").readText()
+                .replaceFirst("\"sampleRate\": 1.0", "\"sampleRate\": 0.0")
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups are preloaded from the cache`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 0.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        // activated immediately, but sampled out by its rate
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `v2 trigger groups ignore a leftover linkedFlag`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "linkedFlag" to "replay-flag",
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 1.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        // per-group flag conditions replace the v1 linkedFlag gate, so an unmatched linkedFlag
+        // must not disable recording for a v2 config
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertFalse(sut.sessionReplayLinkedFlagSnapshot().configured)
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
 }
