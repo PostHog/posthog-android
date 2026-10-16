@@ -7,6 +7,7 @@ import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogUncaughtExceptionCapture
+import com.posthog.server.internal.withActiveTraceContext
 
 @Suppress("DEPRECATION")
 public class PostHog : PostHogStateless(), PostHogInterface {
@@ -316,7 +317,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         super.captureExceptionStateless(
             exception,
             distinctId = captureContext.distinctId,
-            properties = captureContext.properties,
+            properties = withActiveTraceContext(captureContext.properties),
         )
     }
 
@@ -347,7 +348,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             ) {
                 mergeCaptureProperties(
                     distinctId = captureContext.distinctId,
-                    properties = captureContext.properties,
+                    properties = withActiveTraceContext(captureContext.properties),
                     userProperties = options.userProperties,
                     groups = options.groups,
                     appendFeatureFlags = options.appendFeatureFlags,
