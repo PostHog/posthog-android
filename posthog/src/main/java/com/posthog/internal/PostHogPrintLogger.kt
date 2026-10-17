@@ -16,6 +16,10 @@ public class PostHogPrintLogger(private val config: PostHogConfig) : PostHogLogg
         }
     }
 
+    override fun logWarning(message: String) {
+        println(message)
+    }
+
     override fun isEnabled(): Boolean {
         return config.debug
     }

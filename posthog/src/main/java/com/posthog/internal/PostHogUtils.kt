@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
+import com.posthog.internal.errortracking.ThrowableCoercer
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -29,6 +30,43 @@ public fun Throwable.isNetworkingError(): Boolean {
     return isConnectionTimeout(this) ||
         noInternetAvailable(this) ||
         isRequestCanceled(this)
+}
+
+/**
+ * Reports why an integration named [integrationName] is not available. A missing class means the
+ * host build excludes an artifact that the SDK needs, so that case becomes a warning: a debug-only
+ * message hides a whole feature, such as session replay, that stays off for the rest of the process.
+ */
+@PostHogInternal
+public fun PostHogConfig.logIntegrationFailure(
+    integrationName: String,
+    error: Throwable,
+) {
+    val failure = "Integration $integrationName failed to install: $error."
+    val hint = missingClassHint(error)
+    if (hint == null) {
+        logger.log(failure)
+    } else {
+        logger.logWarning(
+            "$failure $hint Restore that artifact. Until you do, this integration " +
+                "and every feature that it provides stay off for the whole process.",
+        )
+    }
+}
+
+private fun missingClassHint(throwable: Throwable): String? {
+    if (throwable !is NoClassDefFoundError && throwable !is ClassNotFoundException) {
+        return null
+    }
+    // ART reports the class that failed to resolve, such as a desugared lambda, and keeps the
+    // missing curtains class in the cause.
+    val mentionsCurtains =
+        ThrowableCoercer.walkCauseChain(throwable).any { it.toString().contains("curtains", ignoreCase = true) }
+    return if (mentionsCurtains) {
+        "Your build excludes the 'com.squareup.curtains:curtains' artifact, which the PostHog SDK needs."
+    } else {
+        "Your build probably excludes an artifact that the PostHog SDK needs."
+    }
 }
 
 internal fun File.deleteSafely(config: PostHogConfig) {
