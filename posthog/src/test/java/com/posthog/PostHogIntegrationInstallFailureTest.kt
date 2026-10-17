@@ -71,6 +71,14 @@ internal class PostHogIntegrationInstallFailureTest {
     }
 
     @Test
+    fun `a static initializer failure is not blamed on a missing artifact`() {
+        getSut(ExceptionInInitializerError(IllegalStateException("boom")))
+
+        assertTrue(testLogger.warnings.isEmpty())
+        assertFalse(testLogger.messages.any { it.contains("artifact") })
+    }
+
+    @Test
     fun `any other install failure stays a debug message`() {
         getSut(RuntimeException("boom"))
 

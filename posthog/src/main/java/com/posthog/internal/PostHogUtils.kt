@@ -55,7 +55,7 @@ public fun PostHogConfig.logIntegrationFailure(
 }
 
 private fun missingClassHint(throwable: Throwable): String? {
-    if (throwable !is LinkageError && throwable !is ClassNotFoundException) {
+    if (throwable !is NoClassDefFoundError && throwable !is ClassNotFoundException) {
         return null
     }
     // ART reports the class that failed to resolve, such as a desugared lambda, and keeps the
