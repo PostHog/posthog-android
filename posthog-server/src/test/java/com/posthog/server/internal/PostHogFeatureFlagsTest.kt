@@ -1850,6 +1850,49 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `local only evaluation logs the experience continuity flags it omits`() {
+        val logger = TestLogger()
+        val mockServer =
+            createMockHttp(
+                jsonResponse(
+                    createLocalEvaluationResponseFrom(
+                        conclusiveFlagDefinition("local-flag"),
+                        conclusiveFlagDefinition("continuity-flag", ensureExperienceContinuity = true),
+                    ),
+                ),
+            )
+        val config = createTestConfig(logger, mockServer.url("/").toString())
+        val featureFlags =
+            PostHogFeatureFlags(
+                config,
+                PostHogApi(config),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+
+        val result =
+            featureFlags.evaluateFlags(
+                distinctId = "user-123",
+                groups = null,
+                personProperties = null,
+                groupProperties = null,
+                flagKeys = null,
+                onlyEvaluateLocally = true,
+                disableGeoip = false,
+            )
+
+        assertEquals(setOf("local-flag"), result.flags.keys)
+        assertEquals(1, mockServer.requestCount, "only the definitions load is allowed")
+        assertTrue(logger.containsLog("Local-only evaluation omitted flag(s) continuity-flag"))
+
+        featureFlags.shutDown()
+        mockServer.shutdown()
+    }
+
+    @Test
     fun `definitions that fail to load are not re-fetched on every evaluateFlags call`() {
         // A personal API key that always fails never sets `definitionsLoaded`, so nothing but the
         // cached result stops every call re-attempting a blocking /local_evaluation load. The
