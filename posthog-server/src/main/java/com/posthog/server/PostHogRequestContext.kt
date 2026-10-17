@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.server.internal.enrichCurrentSpanSafely
 import java.util.UUID
 
 /**
@@ -58,6 +59,7 @@ public class PostHogRequestContext private constructor() {
             val previous = currentContext.get()
             val base = if (fresh) null else previous
             currentContext.set(resolveContext(data, base))
+            enrichCurrentSpanSafely()
             return Scope(previous)
         }
 

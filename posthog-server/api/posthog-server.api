@@ -509,3 +509,13 @@ public final class com/posthog/server/PostHogRequestContextData {
 	public final fun getSessionId ()Ljava/lang/String;
 }
 
+public final class com/posthog/server/otel/PostHogContextSpanProcessor : io/opentelemetry/sdk/trace/SpanProcessor {
+	public fun <init> ()V
+	public fun forceFlush ()Lio/opentelemetry/sdk/common/CompletableResultCode;
+	public fun isEndRequired ()Z
+	public fun isStartRequired ()Z
+	public fun onEnd (Lio/opentelemetry/sdk/trace/ReadableSpan;)V
+	public fun onStart (Lio/opentelemetry/context/Context;Lio/opentelemetry/sdk/trace/ReadWriteSpan;)V
+	public fun shutdown ()Lio/opentelemetry/sdk/common/CompletableResultCode;
+}
+
