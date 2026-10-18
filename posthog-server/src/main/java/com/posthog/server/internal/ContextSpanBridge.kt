@@ -1,13 +1,13 @@
 package com.posthog.server.internal
 
-import com.posthog.PostHogStateless
+import com.posthog.server.PostHogInterface
 import com.posthog.server.PostHogRequestContext
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 
-private val registeredProcessors = WeakHashMap<Any, WeakReference<PostHogStateless>>()
+private val registeredProcessors = WeakHashMap<Any, WeakReference<PostHogInterface>>()
 
-internal fun registerSpanContextOwner(owner: PostHogStateless): Any =
+internal fun registerSpanContextOwner(owner: PostHogInterface): Any =
     Any().also { token ->
         synchronized(registeredProcessors) {
             registeredProcessors[token] = WeakReference(owner)

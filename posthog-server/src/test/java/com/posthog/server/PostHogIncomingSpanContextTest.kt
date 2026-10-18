@@ -20,7 +20,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogIncomingSpanContextTest {
-    private val owner = PostHog().apply { setup(PostHogConfig("phc_test", preloadFeatureFlags = false)) }
+    private val owner: PostHogInterface = PostHog.with(PostHogConfig("phc_test", preloadFeatureFlags = false))
 
     @AfterTest
     fun closeClient() {

@@ -1,6 +1,5 @@
 package com.posthog.server
 
-import com.posthog.PostHogStateless
 import com.posthog.server.internal.enrichCurrentSpanSafely
 import java.util.UUID
 
@@ -25,9 +24,9 @@ public class PostHogRequestContext private constructor() {
         private const val MAX_HEADER_VALUE_LENGTH = 1000
 
         private val currentContext = ThreadLocal<PostHogRequestContextData?>()
-        private val currentOwner = ThreadLocal<PostHogStateless?>()
+        private val currentOwner = ThreadLocal<PostHogInterface?>()
 
-        internal fun owner(): PostHogStateless? = currentOwner.get()
+        internal fun owner(): PostHogInterface? = currentOwner.get()
 
         /**
          * Returns the context active on the current thread, or null when no scope is active.
@@ -69,7 +68,7 @@ public class PostHogRequestContext private constructor() {
          */
         @JvmStatic
         public fun beginScope(
-            owner: PostHogStateless,
+            owner: PostHogInterface,
             data: PostHogRequestContextData,
         ): Scope = beginScope(owner, data, fresh = false)
 
@@ -79,13 +78,13 @@ public class PostHogRequestContext private constructor() {
          */
         @JvmStatic
         public fun beginScope(
-            owner: PostHogStateless,
+            owner: PostHogInterface,
             data: PostHogRequestContextData,
             fresh: Boolean,
         ): Scope = beginOwnedScope(owner, data, fresh)
 
         private fun beginOwnedScope(
-            owner: PostHogStateless?,
+            owner: PostHogInterface?,
             data: PostHogRequestContextData,
             fresh: Boolean,
         ): Scope {
@@ -132,7 +131,7 @@ public class PostHogRequestContext private constructor() {
          * Runs [block] in an owner-bound scope and restores the previous scope afterwards.
          */
         public fun <T> withContext(
-            owner: PostHogStateless,
+            owner: PostHogInterface,
             data: PostHogRequestContextData,
             block: () -> T,
         ): T = withContext(owner, data, fresh = false, block)
@@ -141,7 +140,7 @@ public class PostHogRequestContext private constructor() {
          * Runs [block] in an owner-bound scope, optionally ignoring previous context with [fresh].
          */
         public fun <T> withContext(
-            owner: PostHogStateless,
+            owner: PostHogInterface,
             data: PostHogRequestContextData,
             fresh: Boolean,
             block: () -> T,
@@ -306,7 +305,7 @@ public class PostHogRequestContext private constructor() {
      */
     public class Scope internal constructor(
         private val previous: PostHogRequestContextData?,
-        private val previousOwner: PostHogStateless?,
+        private val previousOwner: PostHogInterface?,
     ) : AutoCloseable {
         private var closed: Boolean = false
 

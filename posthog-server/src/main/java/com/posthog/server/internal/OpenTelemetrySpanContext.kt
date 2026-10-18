@@ -1,23 +1,30 @@
 package com.posthog.server.internal
 
-import com.posthog.PostHogStateless
+import com.posthog.server.PostHog
+import com.posthog.server.PostHogInterface
 import com.posthog.server.PostHogRequestContext
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.sdk.trace.ReadWriteSpan
 
-internal fun enrichActiveOpenTelemetrySpan(owner: PostHogStateless) {
+internal fun enrichActiveOpenTelemetrySpan(owner: PostHogInterface) {
     val span = Span.current()
     if (span is ReadWriteSpan) {
         enrichSpanWithRequestContext(owner, span)
     }
 }
 
+private fun PostHogInterface.optedOut(): Boolean =
+    when (this) {
+        is PostHog -> isOptOut()
+    }
+
 internal fun enrichSpanWithRequestContext(
-    owner: PostHogStateless,
+    owner: PostHogInterface,
     span: ReadWriteSpan,
 ) {
     try {
-        if (owner.isOptOut() || PostHogRequestContext.owner() !== owner || !span.isRecording) {
+        // Check the owner first because a closed client logs on each isOptOut() call.
+        if (PostHogRequestContext.owner() !== owner || !span.isRecording || owner.optedOut()) {
             return
         }
         val context = PostHogRequestContext.current() ?: return

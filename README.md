@@ -29,11 +29,17 @@ Do not exclude that artifact from your build. Without it, session replay, intera
 
 ## Server span context
 
-The `posthog-server` request context enriches an active recording OpenTelemetry SDK span with available `sessionId` and `posthogDistinctId` attributes. Register `com.posthog.server.otel.PostHogContextSpanProcessor` on the application's existing provider to include those IDs on new child spans.
+`posthog-server` can add `sessionId` and `posthogDistinctId` attributes to recording OpenTelemetry SDK spans. To turn this on, register `com.posthog.server.otel.PostHogContextSpanProcessor` on the application's existing provider. Then open each request scope with the same PostHog client.
 
-Pass the same PostHog client to the processor and to each request scope. Only that client's processor adds IDs, and a disabled or opted-out client adds none.
+Spans get IDs only from a scope owned by that client. A disabled or opted-out client adds no IDs. An outermost scope opened without a client adds no span IDs. A nested scope opened without a client keeps the owner of the outer scope.
+
+When a client-owned scope opens, it also adds IDs to the current active span. This happens when that client has a registered processor on any provider.
+
+The processor holds its client weakly. If the application closes its client and makes a new one, build a new processor and provider for the new client.
 
 ```kotlin
+val posthog = PostHog.with(config)
+
 val tracerProvider = SdkTracerProvider.builder()
     .addSpanProcessor(PostHogContextSpanProcessor(posthog))
     .build()

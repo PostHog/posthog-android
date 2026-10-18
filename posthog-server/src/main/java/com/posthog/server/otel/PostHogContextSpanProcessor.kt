@@ -1,6 +1,6 @@
 package com.posthog.server.otel
 
-import com.posthog.PostHogStateless
+import com.posthog.server.PostHogInterface
 import com.posthog.server.PostHogRequestContext
 import com.posthog.server.internal.enrichSpanWithRequestContext
 import com.posthog.server.internal.registerSpanContextOwner
@@ -10,6 +10,7 @@ import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.trace.ReadWriteSpan
 import io.opentelemetry.sdk.trace.ReadableSpan
 import io.opentelemetry.sdk.trace.SpanProcessor
+import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -23,13 +24,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * `sessionId` and `posthogDistinctId`. Existing attributes with either name take
  * precedence regardless of their type. Missing or blank IDs remain absent.
  *
- * Bind each request scope to the same [owner]. Opted-out clients add no attributes.
+ * Bind each request scope to the same owner client. Opted-out clients add no attributes.
+ * The processor holds the owner weakly. If the application replaces its client,
+ * build a new processor and provider for the new client.
  * Start and close a fresh PostHog context scope for each request. Work on another
  * thread requires its own explicit context scope. Close each scope on the thread
  * that opened it. This processor does not add
  * coroutine, Reactor, or other framework context propagation.
  */
-public class PostHogContextSpanProcessor public constructor(private val owner: PostHogStateless) : SpanProcessor {
+public class PostHogContextSpanProcessor public constructor(owner: PostHogInterface) : SpanProcessor {
+    private val ownerRef = WeakReference(owner)
     private val stopped = AtomicBoolean(false)
     private val registration = registerSpanContextOwner(owner)
 
@@ -37,9 +41,11 @@ public class PostHogContextSpanProcessor public constructor(private val owner: P
         parentContext: Context,
         span: ReadWriteSpan,
     ) {
-        if (!stopped.get()) {
-            enrichSpanWithRequestContext(owner, span)
+        if (stopped.get()) {
+            return
         }
+        val owner = ownerRef.get() ?: return
+        enrichSpanWithRequestContext(owner, span)
     }
 
     override fun isStartRequired(): Boolean = true
