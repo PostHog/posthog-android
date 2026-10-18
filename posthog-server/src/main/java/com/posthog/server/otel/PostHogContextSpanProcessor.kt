@@ -1,12 +1,16 @@
 package com.posthog.server.otel
 
+import com.posthog.PostHogStateless
 import com.posthog.server.PostHogRequestContext
 import com.posthog.server.internal.enrichSpanWithRequestContext
+import com.posthog.server.internal.registerSpanContextOwner
+import com.posthog.server.internal.unregisterSpanContextOwner
 import io.opentelemetry.context.Context
 import io.opentelemetry.sdk.common.CompletableResultCode
 import io.opentelemetry.sdk.trace.ReadWriteSpan
 import io.opentelemetry.sdk.trace.ReadableSpan
 import io.opentelemetry.sdk.trace.SpanProcessor
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Adds available PostHog request IDs when an application span starts.
@@ -19,20 +23,22 @@ import io.opentelemetry.sdk.trace.SpanProcessor
  * `sessionId` and `posthogDistinctId`. Existing attributes with either name take
  * precedence regardless of their type. Missing or blank IDs remain absent.
  *
+ * Bind each request scope to the same [owner]. Opted-out clients add no attributes.
  * Start and close a fresh PostHog context scope for each request. Work on another
  * thread requires its own explicit context scope. Close each scope on the thread
  * that opened it. This processor does not add
  * coroutine, Reactor, or other framework context propagation.
  */
-public class PostHogContextSpanProcessor public constructor() : SpanProcessor {
-    @Volatile private var stopped: Boolean = false
+public class PostHogContextSpanProcessor public constructor(private val owner: PostHogStateless) : SpanProcessor {
+    private val stopped = AtomicBoolean(false)
+    private val registration = registerSpanContextOwner(owner)
 
     override fun onStart(
         parentContext: Context,
         span: ReadWriteSpan,
     ) {
-        if (!stopped) {
-            enrichSpanWithRequestContext(span)
+        if (!stopped.get()) {
+            enrichSpanWithRequestContext(owner, span)
         }
     }
 
@@ -43,7 +49,9 @@ public class PostHogContextSpanProcessor public constructor() : SpanProcessor {
     override fun isEndRequired(): Boolean = false
 
     override fun shutdown(): CompletableResultCode {
-        stopped = true
+        if (stopped.compareAndSet(false, true)) {
+            unregisterSpanContextOwner(registration)
+        }
         return CompletableResultCode.ofSuccess()
     }
 

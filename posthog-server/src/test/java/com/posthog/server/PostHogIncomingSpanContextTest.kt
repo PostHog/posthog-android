@@ -11,6 +11,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -19,9 +20,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogIncomingSpanContextTest {
+    private val owner = PostHog().apply { setup(PostHogConfig("phc_test", preloadFeatureFlags = false)) }
+
+    @AfterTest
+    fun closeClient() {
+        owner.close()
+    }
+
     @Test
     fun `request scope enriches an existing application SDK span`() {
-        SdkTracerProvider.builder().build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             val span = provider.get("posthog-test").spanBuilder("incoming").startSpan() as ReadWriteSpan
             try {
                 span.makeCurrent().use {
@@ -32,7 +40,7 @@ internal class PostHogIncomingSpanContextTest {
                                 PostHogRequestContext.DISTINCT_ID_HEADER to "browser-person",
                             ),
                         )
-                    PostHogRequestContext.beginScope(context, fresh = true).use {
+                    PostHogRequestContext.beginScope(owner, context, fresh = true).use {
                         val attributes = span.toSpanData().attributes.asMap().mapKeys { it.key.key }
                         assertEquals("browser-session", attributes["sessionId"])
                         assertEquals("browser-person", attributes["posthogDistinctId"])
@@ -46,13 +54,13 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `child spans keep their request snapshot after the scope ends`() {
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             val tracer = provider.get("posthog-test")
             val child =
-                PostHogRequestContext.withContext(PostHogRequestContextData("person-one", "session-one"), fresh = true) {
+                PostHogRequestContext.withContext(owner, PostHogRequestContextData("person-one", "session-one"), fresh = true) {
                     tracer.spanBuilder("child").startSpan() as ReadWriteSpan
                 }
-            PostHogRequestContext.withContext(PostHogRequestContextData("person-two", "session-two"), fresh = true) {
+            PostHogRequestContext.withContext(owner, PostHogRequestContextData("person-two", "session-two"), fresh = true) {
                 child.end()
                 val attrs = child.toSpanData().attributes.asMap().mapKeys { it.key.key }
                 assertEquals("person-one", attrs["posthogDistinctId"])
@@ -74,7 +82,7 @@ internal class PostHogIncomingSpanContextTest {
                     .put(AttributeKey.stringArrayKey("sessionId"), listOf("explicit"))
                     .put("posthogDistinctId", false).build(),
             )
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             for (explicit in cases) {
                 val span =
                     provider.get("posthog-test").spanBuilder("explicit")
@@ -82,6 +90,7 @@ internal class PostHogIncomingSpanContextTest {
                 try {
                     span.makeCurrent().use {
                         PostHogRequestContext.beginScope(
+                            owner,
                             PostHogRequestContextData("header-person", "header-session"),
                             fresh = true,
                         ).use {
@@ -99,13 +108,13 @@ internal class PostHogIncomingSpanContextTest {
     fun `enrichment does not evict existing attributes at the SDK limit`() {
         SdkTracerProvider.builder()
             .setSpanLimits(SpanLimits.builder().setMaxNumberOfAttributes(1).build())
-            .addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
-                PostHogRequestContext.withContext(PostHogRequestContextData("person", "session"), fresh = true) {
+            .addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
+                PostHogRequestContext.withContext(owner, PostHogRequestContextData("person", "session"), fresh = true) {
                     val span =
                         provider.get("posthog-test").spanBuilder("full")
                             .setAttribute("keep", "application").startSpan() as ReadWriteSpan
                     span.makeCurrent().use {
-                        PostHogRequestContext.beginScope(PostHogRequestContextData("other-person", "other-session")).use {
+                        PostHogRequestContext.beginScope(owner, PostHogRequestContextData("other-person", "other-session")).use {
                             assertEquals(Attributes.of(AttributeKey.stringKey("keep"), "application"), span.toSpanData().attributes)
                         }
                     }
@@ -116,9 +125,9 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `missing and blank IDs remain absent`() {
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             for (value in listOf(null, "", "  ")) {
-                PostHogRequestContext.withContext(PostHogRequestContextData(value, value), fresh = true) {
+                PostHogRequestContext.withContext(owner, PostHogRequestContextData(value, value), fresh = true) {
                     val span = provider.get("posthog-test").spanBuilder("missing").startSpan() as ReadWriteSpan
                     span.end()
                     assertTrue(span.toSpanData().attributes.isEmpty)
@@ -129,11 +138,11 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `failure closes inner scope and the next span sees its parent context`() {
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             val tracer = provider.get("posthog-test")
-            PostHogRequestContext.withContext(PostHogRequestContextData("outer-person", "outer-session"), fresh = true) {
+            PostHogRequestContext.withContext(owner, PostHogRequestContextData("outer-person", "outer-session"), fresh = true) {
                 assertFailsWith<IllegalStateException> {
-                    PostHogRequestContext.withContext(PostHogRequestContextData("inner-person", "inner-session")) {
+                    PostHogRequestContext.withContext(owner, PostHogRequestContextData("inner-person", "inner-session")) {
                         val inner = tracer.spanBuilder("inner").startSpan() as ReadWriteSpan
                         inner.end()
                         assertEquals("inner-session", inner.toSpanData().attributes.get(AttributeKey.stringKey("sessionId")))
@@ -150,7 +159,7 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `concurrent request threads and reused workers stay isolated`() {
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             val executor = Executors.newFixedThreadPool(2)
             try {
                 val ready = CountDownLatch(2)
@@ -159,6 +168,7 @@ internal class PostHogIncomingSpanContextTest {
                         executor.submit<Attributes> {
                             val attributes =
                                 PostHogRequestContext.withContext(
+                                    owner,
                                     PostHogRequestContextData("person-$id", "session-$id"),
                                     fresh = true,
                                 ) {
@@ -194,12 +204,12 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `detached work receives no implicit context after request completion`() {
-        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
             val executor = Executors.newSingleThreadExecutor()
             val release = CountDownLatch(1)
             try {
                 val work =
-                    PostHogRequestContext.withContext(PostHogRequestContextData("person", "session"), fresh = true) {
+                    PostHogRequestContext.withContext(owner, PostHogRequestContextData("person", "session"), fresh = true) {
                         executor.submit<Attributes> {
                             check(release.await(5, TimeUnit.SECONDS))
                             val span = provider.get("posthog-test").spanBuilder("detached").startSpan() as ReadWriteSpan
@@ -219,10 +229,18 @@ internal class PostHogIncomingSpanContextTest {
 
     @Test
     fun `processor shutdown stops future child enrichment`() {
-        val processor = PostHogContextSpanProcessor()
+        val processor = PostHogContextSpanProcessor(owner)
         SdkTracerProvider.builder().addSpanProcessor(processor).build().use { provider ->
+            val incoming = provider.get("posthog-test").spanBuilder("incoming").startSpan() as ReadWriteSpan
             assertTrue(processor.shutdown().isSuccess)
-            PostHogRequestContext.withContext(PostHogRequestContextData("person", "session"), fresh = true) {
+            assertTrue(processor.shutdown().isSuccess)
+            incoming.makeCurrent().use {
+                PostHogRequestContext.beginScope(owner, PostHogRequestContextData("person", "session"), fresh = true).use {
+                    assertTrue(incoming.toSpanData().attributes.isEmpty)
+                }
+            }
+            incoming.end()
+            PostHogRequestContext.withContext(owner, PostHogRequestContextData("person", "session"), fresh = true) {
                 val span = provider.get("posthog-test").spanBuilder("after-shutdown").startSpan() as ReadWriteSpan
                 span.end()
                 assertTrue(span.toSpanData().attributes.isEmpty)
@@ -231,12 +249,30 @@ internal class PostHogIncomingSpanContextTest {
     }
 
     @Test
+    fun `ownerless scopes keep capture context without enriching spans`() {
+        SdkTracerProvider.builder().addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
+            val tracer = provider.get("ownerless")
+            val incoming = tracer.spanBuilder("incoming").startSpan() as ReadWriteSpan
+            incoming.makeCurrent().use {
+                PostHogRequestContext.withContext(PostHogRequestContextData("person", "session"), fresh = true) {
+                    assertEquals("person", PostHogRequestContext.current()?.distinctId)
+                    val child = tracer.spanBuilder("child").startSpan() as ReadWriteSpan
+                    child.end()
+                    assertTrue(child.toSpanData().attributes.isEmpty)
+                    assertTrue(incoming.toSpanData().attributes.isEmpty)
+                }
+            }
+            incoming.end()
+        }
+    }
+
+    @Test
     fun `application sampling remains unchanged`() {
         SdkTracerProvider.builder().setSampler(Sampler.alwaysOff())
-            .addSpanProcessor(PostHogContextSpanProcessor()).build().use { provider ->
+            .addSpanProcessor(PostHogContextSpanProcessor(owner)).build().use { provider ->
                 val span = provider.get("posthog-test").spanBuilder("sampled-out").startSpan()
                 span.makeCurrent().use {
-                    PostHogRequestContext.beginScope(PostHogRequestContextData("person", "session"), fresh = true).use {
+                    PostHogRequestContext.beginScope(owner, PostHogRequestContextData("person", "session"), fresh = true).use {
                         assertFalse(span.isRecording)
                     }
                 }
