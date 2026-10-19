@@ -547,6 +547,68 @@ internal class PostHogEvaluateFlagsTest {
         }
     }
 
+    @Test
+    fun `numeric ordering evaluates locally and falls back only for invalid filters or missing properties`() {
+        fun definition(
+            key: String,
+            operator: String,
+            filter: String,
+        ): String =
+            """
+            {
+                "id": 1, "key": "$key", "name": "$key", "active": true,
+                "filters": { "groups": [{ "properties": [
+                    { "key": "$key", "type": "person", "operator": "$operator", "value": $filter }
+                ], "rollout_percentage": 100 }] }
+            }
+            """.trimIndent()
+
+        val definitions =
+            createLocalEvaluationResponseFrom(
+                definition("gt", "gt", "2"),
+                definition("lt", "lt", "30"),
+                definition("gte", "gte", "\"5\""),
+                definition("lte", "lte", "\"5\""),
+                definition("invalid-actual", "gt", "\"9\""),
+                definition("null-actual", "gt", "\"9\""),
+                definition("invalid-filter", "gt", "\"9px\""),
+                definition("missing", "gt", "\"9\""),
+            )
+        withLocalEvaluation(
+            definitions = definitions,
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("invalid-filter" to true, "missing" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val properties =
+                mapOf("gt" to "10", "lt" to "100", "gte" to "10", "lte" to "10", "invalid-actual" to "10px", "null-actual" to null)
+            val localKeys = listOf("gt", "lt", "gte", "lte", "invalid-actual", "null-actual")
+            val local = postHog.evaluateFlags("local-user", personProperties = properties, flagKeys = localKeys)
+            assertEquals(localKeys.toSet(), local.keys.toSet())
+            assertTrue(local.isEnabled("gt"))
+            assertFalse(local.isEnabled("lt"))
+            assertTrue(local.isEnabled("gte"))
+            assertFalse(local.isEnabled("lte"))
+            assertFalse(local.isEnabled("invalid-actual"))
+            assertFalse(local.isEnabled("null-actual"))
+            assertEquals(0, dispatcher.flagsCalls.get())
+
+            val withFallback = postHog.evaluateFlags("fallback-user", personProperties = properties + ("invalid-filter" to null))
+            assertTrue(withFallback.isEnabled("gt"))
+            assertFalse(withFallback.isEnabled("invalid-actual"))
+            assertTrue(withFallback.isEnabled("invalid-filter"))
+            assertTrue(withFallback.isEnabled("missing"))
+            assertEquals(1, dispatcher.flagsCalls.get())
+
+            val localOnly =
+                postHog.evaluateFlags(
+                    "local-only-user",
+                    personProperties = properties + ("invalid-filter" to "10"),
+                    onlyEvaluateLocally = true,
+                )
+            assertEquals(localKeys.toSet(), localOnly.keys.toSet())
+            assertEquals(1, dispatcher.flagsCalls.get())
+        }
+    }
+
     /** One flag local evaluation always resolves, one it can never resolve without an `email`. */
     private fun conclusiveAndGatedDefinitions(): String =
         createLocalEvaluationResponseFrom(
