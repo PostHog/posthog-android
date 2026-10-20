@@ -508,6 +508,7 @@ private fun evaluationRuntimeJson(evaluationRuntime: String?): String {
 public fun conclusiveFlagDefinition(
     key: String,
     evaluationRuntime: String? = null,
+    ensureExperienceContinuity: Boolean = false,
 ): String {
     return """
         {
@@ -515,6 +516,7 @@ public fun conclusiveFlagDefinition(
             "name": "$key",
             "key": "$key",
             "active": true,
+            "ensure_experience_continuity": $ensureExperienceContinuity,
             ${evaluationRuntimeJson(evaluationRuntime)}
             "filters": {
                 "groups": [

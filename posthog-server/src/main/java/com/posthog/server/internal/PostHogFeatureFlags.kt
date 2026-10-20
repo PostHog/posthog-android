@@ -252,11 +252,13 @@ internal class PostHogFeatureFlags(
     /**
      * The result of one local evaluation pass. [flags] holds every flag that resolved, whether or
      * not [needsRemote] is set, so callers can fill only the gaps from `/flags`.
+     * [continuityFlagKeys] holds the flags that did not resolve because experience continuity is on.
      */
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
         val needsRemote: Boolean,
         val missingDefinitionKeys: Set<String>,
+        val continuityFlagKeys: Set<String>,
     )
 
     private class MissingFlagProbe {
@@ -317,6 +319,7 @@ internal class PostHogFeatureFlags(
         val props = localPersonProperties(distinctId, personProperties)
         val requestedKeys = flagKeys?.toHashSet()
         var needsRemote = false
+        val continuityFlagKeys = mutableSetOf<String>()
 
         for ((key, flagDef) in currentFlagDefinitions) {
             if (requestedKeys != null && key !in requestedKeys) {
@@ -338,6 +341,9 @@ internal class PostHogFeatureFlags(
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
                 needsRemote = true
+                if (flagDef.ensureExperienceContinuity) {
+                    continuityFlagKeys.add(key)
+                }
             } catch (e: Exception) {
                 config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
                 needsRemote = true
@@ -358,7 +364,7 @@ internal class PostHogFeatureFlags(
         }
 
         config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
-        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys)
+        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys, continuityFlagKeys)
     }
 
     /**
@@ -533,7 +539,7 @@ internal class PostHogFeatureFlags(
         if (!localEvaluation) {
             return
         }
-        if (personalApiKey == null) {
+        if (!localEvaluationEnabled()) {
             logMissingPersonalApiKey()
             return
         }
@@ -577,6 +583,11 @@ internal class PostHogFeatureFlags(
                 }
 
                 config.logger.log("Flag definition cache empty before initial load, falling back to API")
+            }
+
+            if (personalApiKey == null) {
+                logMissingPersonalApiKey()
+                return
             }
 
             config.logger.log("Loading feature flags for local evaluation")
@@ -639,6 +650,10 @@ internal class PostHogFeatureFlags(
     }
 
     private fun shouldFetchFlagDefinitions(): Boolean {
+        // Cache-only readers must not claim the provider's fetch leadership.
+        if (personalApiKey == null) {
+            return false
+        }
         val provider = flagDefinitionCacheProvider ?: return true
         return awaitFlagDefinitionCacheProvider(
             errorDescription = "Error in flag definition cache provider shouldFetchFlagDefinitions",
@@ -855,7 +870,7 @@ internal class PostHogFeatureFlags(
             return
         }
 
-        if (personalApiKey == null) {
+        if (!localEvaluationEnabled()) {
             logMissingPersonalApiKey()
             return
         }
@@ -949,11 +964,11 @@ internal class PostHogFeatureFlags(
     }
 
     private fun localEvaluationEnabled(): Boolean {
-        return localEvaluation && personalApiKey != null
+        return localEvaluation && (personalApiKey != null || flagDefinitionCacheProvider != null)
     }
 
     private fun logMissingPersonalApiKey() {
-        config.logger.log("Local evaluation requires a personal API key. This call will be ignored.")
+        config.logger.log("Fetching feature flag definitions requires a personal API key. This call will be ignored.")
     }
 
     /**
@@ -1051,7 +1066,7 @@ internal class PostHogFeatureFlags(
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
 
-        if (onlyEvaluateLocally && personalApiKey == null) {
+        if (onlyEvaluateLocally && personalApiKey == null && flagDefinitionCacheProvider == null) {
             logMissingPersonalApiKey()
             return EMPTY_EVALUATE_FLAGS_RESULT
         }
@@ -1105,6 +1120,13 @@ internal class PostHogFeatureFlags(
             }
 
         if (local != null && ((!local.needsRemote && !hasMissingKeyToProbe) || onlyEvaluateLocally)) {
+            if (onlyEvaluateLocally && local.continuityFlagKeys.isNotEmpty()) {
+                config.logger.log(
+                    "Local-only evaluation omitted flag(s) ${local.continuityFlagKeys.joinToString(", ")}: " +
+                        "experience continuity is incompatible with local evaluation. " +
+                        "Allow remote evaluation or turn off experience continuity for these flags.",
+                )
+            }
             return EvaluateFlagsResult(
                 flags = localFlags,
                 locallyEvaluated = localFlags.mapValues { true },

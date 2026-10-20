@@ -1,5 +1,35 @@
 ## Next
 
+## 3.72.5
+
+### Patch Changes
+
+- 815d270: Fix screenshot-mode session replay masks staying at stale positions while the soft keyboard pans the window, which exposed masked input values.
+
+## 3.72.4
+
+### Patch Changes
+
+- c5e788b: Report a missing runtime dependency instead of disabling an integration in silence. When an integration cannot be built or installed because a class is absent, the SDK now logs a warning that names the Maven artifact the build excludes, even when debug is off, and keeps the other integrations. A build that excludes `com.squareup.curtains:curtains` turns off session replay, interaction autocapture and touch tracking, and said nothing useful about it before.
+
+## 3.72.3
+
+### Patch Changes
+
+- 683a4e0: Fix screenshot-mode session replay geometry reads corrupting app layout and screenshot masks.
+
+## 3.72.2
+
+### Patch Changes
+
+- 0859ca7: Fix repeat trigger events restarting a survey's `surveyPopupDelaySeconds` delay; a custom `PostHogSurveysDelegate` that can't show a survey must now call `onSurveyClosed`. Flutter apps should use posthog_flutter 5.50.13 or later, since earlier versions can stop showing surveys until the app restarts.
+
+## 3.72.1
+
+### Patch Changes
+
+- fb21f39: Retry feature flag requests that fail with a DNS or TLS transport error, instead of only timeouts, EOF, and connection resets
+
 ## 3.72.0
 
 ### Minor Changes

@@ -24,6 +24,8 @@ import java.io.IOException
 import java.io.OutputStream
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
 /**
  * The class that calls the PostHog API
@@ -306,6 +308,8 @@ public class PostHogApi(
             is IOException ->
                 error is SocketTimeoutException ||
                     error is EOFException ||
+                    error is UnknownHostException ||
+                    error is SSLException ||
                     (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
             else -> false
         }

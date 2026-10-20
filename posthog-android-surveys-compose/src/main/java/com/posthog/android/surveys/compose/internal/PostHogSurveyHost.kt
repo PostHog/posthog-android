@@ -235,7 +235,10 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             }
 
         if (!presented) {
+            // The SDK holds this survey until it hears back, so report the failed show as a close.
+            val onClosed = onClosedCallback
             dismissInternal(notifyClosed = false)
+            onClosed?.invoke(survey)
         }
     }
 

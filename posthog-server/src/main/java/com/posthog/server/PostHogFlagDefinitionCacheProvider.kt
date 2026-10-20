@@ -6,10 +6,13 @@ import java.util.concurrent.CompletionStage
 /**
  * Shared cache provider for local-evaluation feature flag definitions.
  *
- * Implementations usually coordinate leadership across SDK instances. When
- * [shouldFetchFlagDefinitions] returns true this instance fetches definitions from
+ * With local evaluation enabled, instances without a personal API key only read
+ * [getFlagDefinitions]. They do not call [shouldFetchFlagDefinitions] or publish definitions.
+ *
+ * Implementations usually coordinate fetch leadership across instances with a personal API key.
+ * When [shouldFetchFlagDefinitions] returns true, this instance fetches definitions from
  * PostHog and receives them through [onFlagDefinitionsReceived]. When it returns
- * false this instance reads definitions from [getFlagDefinitions] instead.
+ * false, this instance reads definitions from [getFlagDefinitions] instead.
  *
  * Provider methods return [CompletionStage] so implementations can use either blocking
  * backends or async clients such as Reactor `Mono.toFuture()`; `Flux` should be reduced
@@ -17,9 +20,9 @@ import java.util.concurrent.CompletionStage
  * these stages in its current synchronous flag-loading flow.
  *
  * Provider errors are handled defensively by the SDK: failed reads fall back to the
- * API only when no definitions are already loaded, and failed writes/shutdowns are
- * logged without failing flag evaluation. A failed write also makes the next fetch
- * unconditional, so the SDK retries the write with a full set of definitions.
+ * API only when no definitions are already loaded and a personal API key is configured.
+ * Failed writes/shutdowns are logged without failing flag evaluation. A failed write also
+ * makes the next fetch unconditional, so the SDK retries the write with a full set of definitions.
  */
 public interface PostHogFlagDefinitionCacheProvider {
     /**
@@ -34,6 +37,7 @@ public interface PostHogFlagDefinitionCacheProvider {
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
+     * Called only when a personal API key is configured.
      */
     public fun shouldFetchFlagDefinitions(): CompletionStage<Boolean>
 
@@ -65,6 +69,7 @@ public abstract class PostHogBlockingFlagDefinitionCacheProvider : PostHogFlagDe
 
     /**
      * Return true when this SDK instance should fetch definitions from PostHog.
+     * Called only when a personal API key is configured.
      */
     public abstract fun shouldFetchFlagDefinitionsBlocking(): Boolean
 

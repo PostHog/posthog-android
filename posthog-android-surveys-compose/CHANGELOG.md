@@ -1,5 +1,11 @@
 # posthog-android-surveys-compose
 
+## 0.4.3
+
+### Patch Changes
+
+- 0859ca7: Fix repeat trigger events restarting a survey's `surveyPopupDelaySeconds` delay; a custom `PostHogSurveysDelegate` that can't show a survey must now call `onSurveyClosed`. Flutter apps should use posthog_flutter 5.50.13 or later, since earlier versions can stop showing surveys until the app restarts.
+
 ## 0.4.2
 
 ### Patch Changes
