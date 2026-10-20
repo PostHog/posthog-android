@@ -1,8 +1,12 @@
 package com.posthog.android.internal.errortracking
 
+import com.posthog.PostHogConfig
+import com.posthog.internal.PostHogSerializer
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 internal class NativeCrashEventCoercerTest {
     private val coercer = NativeCrashEventCoercer(inAppPathPrefixes = listOf("/data/app/~~abc"))
@@ -176,5 +180,43 @@ internal class NativeCrashEventCoercerTest {
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId(""))
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId("zz"))
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId("abc"))
+    }
+
+    @Test
+    fun `attaches the tombstone text as the crash report`() {
+        val thread = NativeCrashThread(4343, "RenderThread", emptyList(), emptyList(), emptyList())
+        val properties = coercer.toPostHogProperties(tombstone(frames = emptyList()).copy(threads = mapOf(4343L to thread)))
+
+        val report = properties["\$exception_crash_report"] as String
+        assertTrue(report.contains("pid: 0, tid: 4343, name: RenderThread"))
+    }
+
+    @Test
+    fun `omits the crash report when the crashing thread is missing`() {
+        val properties = coercer.toPostHogProperties(tombstone(frames = emptyList()))
+
+        assertNull(properties["\$exception_crash_report"])
+    }
+
+    @Test
+    fun `drops the crash report when JSON escaping pushes the event over the limit`() {
+        val serializer = PostHogSerializer(PostHogConfig("phc_test"))
+        // Quotes double in size once JSON-escaped.
+        val quotes = "\"".repeat(300)
+
+        fun properties(): MutableMap<String, Any> =
+            mutableMapOf(
+                "\$exception_list" to listOf(mapOf("value" to quotes)),
+                "\$exception_crash_report" to "Abort message: '$quotes'",
+            )
+
+        val kept = properties()
+        val dropped = properties()
+
+        assertFalse(NativeCrashEventCoercer.removeOversizedCrashReport(kept, serializer::serializeObject, maxBytes = 1500))
+        assertTrue(NativeCrashEventCoercer.removeOversizedCrashReport(dropped, serializer::serializeObject, maxBytes = 1000))
+        assertTrue(kept.containsKey("\$exception_crash_report"))
+        assertFalse(dropped.containsKey("\$exception_crash_report"))
+        assertTrue(dropped.containsKey("\$exception_list"))
     }
 }

@@ -36,8 +36,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * integration reads the crash records the OS kept via
  * [android.app.ActivityManager.getHistoricalProcessExitReasons], parses the
  * attached tombstone, and captures an `$exception` event with raw native stack
- * frames and the `$debug_images` needed for server-side symbolication against
- * uploaded `.so` debug symbols.
+ * frames, the `$debug_images` needed for server-side symbolication against
+ * uploaded `.so` debug symbols, and the tombstone text, as debuggerd prints
+ * it, in `$exception_crash_report`.
  *
  * Requires Android 12 (API 31), where native crash records carry a tombstone.
  * Enable with `errorTrackingConfig.captureNativeCrashes`; error tracking
@@ -317,6 +318,9 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 }
 
             properties?.let {
+                if (NativeCrashEventCoercer.removeOversizedCrashReport(it, config.serializer::serializeObject)) {
+                    config.logger.log("Dropped the crash report text to keep the native crash event under the size limit.")
+                }
                 postHog.capture(
                     PostHogEventName.EXCEPTION.event,
                     properties = it,
