@@ -1,5 +1,17 @@
 ## Next
 
+## 2.21.3
+
+### Patch Changes
+
+- d09a92a: Log a message when `evaluateFlags(onlyEvaluateLocally = true)` omits flags because experience continuity is on. Local evaluation cannot resolve these flags, so a local-only snapshot does not contain them. The message names the flags. Like all SDK logs, it shows only when `debug` is on.
+
+## 2.21.2
+
+### Patch Changes
+
+- 11470c7: Allow local feature flag evaluation from a shared definition cache without a personal API key when local evaluation is enabled.
+
 ## 2.21.1
 
 ### Patch Changes
