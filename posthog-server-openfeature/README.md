@@ -32,7 +32,11 @@ You own the PostHog client: close it yourself when your application stops. The p
 | `groupProperties` attribute (structure of group type to properties) | group properties |
 | all other attributes | person properties |
 
-If the context has no targeting key, the evaluation returns the `TARGETING_KEY_MISSING` error. To use a fixed distinct ID for anonymous evaluations, use `new PostHogProvider(posthog, "anonymous")`.
+If the context has no targeting key, the evaluation returns the `TARGETING_KEY_MISSING` error. To use a fixed distinct ID for anonymous evaluations, set `defaultDistinctId` in the provider options:
+
+```java
+new PostHogProvider(posthog, PostHogProviderOptions.builder().defaultDistinctId("anonymous").build());
+```
 
 ## Flag types
 

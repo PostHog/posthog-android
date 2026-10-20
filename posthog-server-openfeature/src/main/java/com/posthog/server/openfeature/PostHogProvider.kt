@@ -42,14 +42,13 @@ import java.util.logging.Logger
  * `PostHogConfig.sendFeatureFlagEvent` is false.
  *
  * @param client A configured PostHog server client.
- * @param defaultDistinctId Distinct ID to use when the evaluation context has no targeting key.
- *   When null, a missing targeting key returns the `TARGETING_KEY_MISSING` error.
+ * @param options Provider options, see [PostHogProviderOptions].
  */
 public class PostHogProvider
     @JvmOverloads
     constructor(
         private val client: PostHogInterface,
-        private val defaultDistinctId: String? = null,
+        private val options: PostHogProviderOptions = PostHogProviderOptions.builder().build(),
     ) : FeatureProvider {
         override fun getMetadata(): Metadata = Metadata { PROVIDER_NAME }
 
@@ -185,7 +184,7 @@ public class PostHogProvider
         private fun distinctId(ctx: EvaluationContext?): String {
             val targetingKey = ctx?.targetingKey
             if (!targetingKey.isNullOrBlank()) return targetingKey
-            return defaultDistinctId
+            return options.defaultDistinctId
                 ?: throw TargetingKeyMissingError(
                     "The evaluation context has no targeting key and no default distinct ID is set.",
                 )
@@ -227,8 +226,7 @@ public class PostHogProvider
                 .build()
 
         public companion object {
-            /** Name reported in the provider metadata. */
-            public const val PROVIDER_NAME: String = "PostHogProvider"
+            internal const val PROVIDER_NAME: String = "PostHogProvider"
 
             /** Reserved evaluation context attribute that holds PostHog groups, keyed by group type. */
             public const val GROUPS_KEY: String = "groups"

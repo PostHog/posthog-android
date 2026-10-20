@@ -49,7 +49,7 @@ internal class PostHogProviderTest {
         payloads.forEach { (key, payload) -> whenever(snapshot.getFlagPayload(key)).doReturn(payload) }
         whenever(posthog.evaluateFlags(anyOrNull(), any<PostHogEvaluateFlagsOptions>())).doReturn(snapshot)
 
-        api.setProviderAndWait(PostHogProvider(posthog, defaultDistinctId))
+        api.setProviderAndWait(PostHogProvider(posthog, PostHogProviderOptions.builder().defaultDistinctId(defaultDistinctId).build()))
         return api.client
     }
 
