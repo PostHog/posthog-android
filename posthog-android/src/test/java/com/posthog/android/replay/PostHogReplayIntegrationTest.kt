@@ -229,6 +229,35 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // While the soft keyboard is open in adjustPan mode, the window content is drawn shifted
+    // up by ViewRootImpl.mCurScrollY. Masks must follow the shifted pixels.
+    @Test
+    fun `mask rects follow the window pan applied by the soft keyboard`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        val masked = View(activity).apply { tag = "ph-no-capture" }
+        root.addView(masked)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        masked.layout(0, 200, 100, 300)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(API_KEY), MainHandler())
+
+        fun maskRects() = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }.rects
+
+        val unpanned = maskRects()
+        val viewRootImpl = activity.window.decorView.parent
+        viewRootImpl.javaClass.getDeclaredField("mCurScrollY").apply {
+            isAccessible = true
+            setInt(viewRootImpl, 150)
+        }
+        val panned = maskRects()
+
+        assertEquals(1, unpanned.size)
+        assertEquals(listOf(Rect(unpanned[0]).apply { offset(0, -150) }), panned)
+    }
+
     @Test
     fun `timed out view collection does not run later or emit a snapshot`() {
         val h = screenshotCaptureHarness()
