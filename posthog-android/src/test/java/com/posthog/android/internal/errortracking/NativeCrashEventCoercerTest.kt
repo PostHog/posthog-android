@@ -3,6 +3,7 @@ package com.posthog.android.internal.errortracking
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 internal class NativeCrashEventCoercerTest {
     private val coercer = NativeCrashEventCoercer(inAppPathPrefixes = listOf("/data/app/~~abc"))
@@ -176,5 +177,21 @@ internal class NativeCrashEventCoercerTest {
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId(""))
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId("zz"))
         assertNull(NativeCrashEventCoercer.debugIdFromBuildId("abc"))
+    }
+
+    @Test
+    fun `attaches the tombstone text as the crash report`() {
+        val thread = NativeCrashThread(4343, "RenderThread", emptyList(), emptyList(), emptyList())
+        val properties = coercer.toPostHogProperties(tombstone(frames = emptyList()).copy(threads = mapOf(4343L to thread)))
+
+        val report = properties["\$exception_crash_report"] as String
+        assertTrue(report.contains("pid: 0, tid: 4343, name: RenderThread"))
+    }
+
+    @Test
+    fun `omits the crash report when the crashing thread is missing`() {
+        val properties = coercer.toPostHogProperties(tombstone(frames = emptyList()))
+
+        assertNull(properties["\$exception_crash_report"])
     }
 }
