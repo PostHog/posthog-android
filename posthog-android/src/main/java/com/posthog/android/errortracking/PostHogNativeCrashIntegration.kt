@@ -318,9 +318,6 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 }
 
             properties?.let {
-                if (NativeCrashEventCoercer.removeOversizedCrashReport(it, config.serializer::serializeObject)) {
-                    config.logger.log("Dropped the crash report text to keep the native crash event under the size limit.")
-                }
                 postHog.capture(
                     PostHogEventName.EXCEPTION.event,
                     properties = it,

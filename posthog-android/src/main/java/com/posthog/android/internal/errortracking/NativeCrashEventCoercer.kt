@@ -111,32 +111,6 @@ internal class NativeCrashEventCoercer(
     internal companion object {
         internal const val CRASH_REPORT_PROPERTY = "\$exception_crash_report"
 
-        // Capture rejects events over its default 1 MB limit, and a single
-        // rejected event is dropped, so leave headroom for the context the
-        // SDK adds at capture time.
-        private const val MAX_CRASH_EVENT_BYTES = 900_000
-
-        /**
-         * Removes [CRASH_REPORT_PROPERTY] when the serialized properties would
-         * exceed [maxBytes], so an oversized report cannot cost the crash event.
-         */
-        internal fun removeOversizedCrashReport(
-            properties: MutableMap<String, Any>,
-            serialize: (Any) -> String?,
-            maxBytes: Int = MAX_CRASH_EVENT_BYTES,
-        ): Boolean {
-            val report = properties[CRASH_REPORT_PROPERTY] as? String ?: return false
-            // The serialized event is never smaller than the report itself, so skip serializing one that cannot fit.
-            val tooLarge =
-                report.length > maxBytes ||
-                    runCatching { serialize(properties)?.toByteArray(Charsets.UTF_8)?.size }.getOrNull()?.let { it > maxBytes } == true
-            if (!tooLarge) {
-                return false
-            }
-            properties.remove(CRASH_REPORT_PROPERTY)
-            return true
-        }
-
         /**
          * Derives the debug id matching an uploaded symbol set from a GNU
          * build id hex string: the first 16 bytes (zero-padded) read as a
