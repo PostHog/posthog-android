@@ -1,5 +1,11 @@
 ## Next
 
+## 2.21.4
+
+### Patch Changes
+
+- 25e65fe: Fix numeric-string ordering in server-side local feature flag evaluation. `gt`, `gte`, `lt`, and `lte` now compare finite numbers rather than strings, which can change flag membership for numeric-string properties. Invalid property values no longer match through lexicographic comparison, and invalid numeric conditions remain eligible for remote fallback.
+
 ## 2.21.3
 
 ### Patch Changes
