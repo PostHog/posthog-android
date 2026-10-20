@@ -1,5 +1,11 @@
 ## Next
 
+## 3.72.5
+
+### Patch Changes
+
+- 815d270: Fix screenshot-mode session replay masks staying at stale positions while the soft keyboard pans the window, which exposed masked input values.
+
 ## 3.72.4
 
 ### Patch Changes
