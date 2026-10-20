@@ -65,6 +65,7 @@ object PosthogBuildConfig {
         val GSON = "2.10.1"
 
         val OKHTTP = "4.12.0"
+        val OPENFEATURE = "1.23.0"
         val OKIO = "3.11.0"
         val CURTAINS = "1.2.5"
         val ANDROIDX_CORE = "1.5.0"
