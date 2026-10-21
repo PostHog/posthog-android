@@ -1157,6 +1157,28 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `restart queued by a session change does not run after uninstall`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+
+            // e.g. optOut uninstalls before the queued restart runs on main
+            sut.uninstall()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
     fun `restart after reinstall keeps a manual start waiting for an event trigger`() {
         val config =
             configWithSampling(

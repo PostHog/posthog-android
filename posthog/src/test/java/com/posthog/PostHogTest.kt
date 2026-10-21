@@ -1502,6 +1502,116 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `flags-loaded replay start can't land after a concurrent optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        val onFlagsLoaded =
+            PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
+                .apply { isAccessible = true }
+                .get(sut) as PostHogOnFeatureFlags
+
+        // optOut runs while the flags-loaded callback is between reading the handler and starting it
+        var optOut: Thread? = null
+        integration.onIsActive = {
+            if (optOut == null) {
+                optOut = thread { sut.optOut() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (optOut!!.state != Thread.State.BLOCKED && optOut!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "optOut never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        onFlagsLoaded.loaded()
+        optOut!!.join()
+
+        assertTrue(sut.isOptOut())
+        assertFalse(integration.isActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent stopSessionReplay and startSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        // startSessionReplay runs while stopSessionReplay has recorded its intent but not yet stopped
+        var start: Thread? = null
+        integration.onStop = {
+            if (start == null) {
+                start = thread { sut.startSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (start!!.state != Thread.State.BLOCKED && start!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "start never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.stopSessionReplay()
+        start!!.join()
+        integration.onStop = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        // optIn restarts replay only if it was still recording, i.e. the start took effect
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent startSessionReplay and stopSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        // stopSessionReplay runs while startSessionReplay has recorded its intent but not yet started
+        var stop: Thread? = null
+        integration.onIsActive = {
+            if (stop == null) {
+                stop = thread { sut.stopSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (stop!!.state != Thread.State.BLOCKED && stop!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "stop never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.startSessionReplay()
+        stop!!.join()
+        integration.onIsActive = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
     fun `optOut applies consent together with its integration transition`() {
         val http = mockHttp()
         val url = http.url("/")

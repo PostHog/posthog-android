@@ -32,12 +32,20 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         isActive = activateOnStart
     }
 
+    // runs at the start of each stop() call, before the handler goes inactive
+    public var onStop: (() -> Unit)? = null
+
     override fun stop() {
+        onStop?.invoke()
         stopCalled = true
         isActive = false
     }
 
+    // runs on each isActive() call, so a test can interleave work at that point
+    public var onIsActive: (() -> Unit)? = null
+
     override fun isActive(): Boolean {
+        onIsActive?.invoke()
         return isActive
     }
 

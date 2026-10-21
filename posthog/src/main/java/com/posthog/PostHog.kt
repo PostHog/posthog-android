@@ -169,10 +169,13 @@ public class PostHog private constructor(
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
-            sessionReplayHandler?.let {
-                if (isSessionReplayConfigEnabled()) {
-                    // start will bail if session replay is already active anyway
-                    startSessionReplayInternal(resumeCurrent = true)
+            // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
+            synchronized(setupLock) {
+                sessionReplayHandler?.let {
+                    if (isSessionReplayConfigEnabled()) {
+                        // start will bail if session replay is already active anyway
+                        startSessionReplayInternal(resumeCurrent = true)
+                    }
                 }
             }
         }
@@ -2396,11 +2399,15 @@ public class PostHog private constructor(
             return
         }
 
-        // a start asked for while opted out is ignored, so it doesn't change the intent either
-        if (!isOptedOut()) {
-            sessionReplayWanted = true
+        // under setupLock so the intent and the start apply together, against a concurrent
+        // stopSessionReplay or optOut
+        synchronized(setupLock) {
+            // a start asked for while opted out is ignored, so it doesn't change the intent either
+            if (!isOptedOut()) {
+                sessionReplayWanted = true
+            }
+            startSessionReplayInternal(resumeCurrent)
         }
-        startSessionReplayInternal(resumeCurrent)
     }
 
     private fun startSessionReplayInternal(resumeCurrent: Boolean) {
@@ -2447,12 +2454,15 @@ public class PostHog private constructor(
             return
         }
 
-        // also reached from optOut's uninstall, by which point consent is already opted out
-        if (!isOptedOut()) {
-            sessionReplayWanted = false
-        }
-        sessionReplayHandler?.stop() ?: run {
-            config?.logger?.log("Session replay isn't installed.")
+        // under setupLock for the same reason as startSessionReplay
+        synchronized(setupLock) {
+            // also reached from optOut's uninstall, by which point consent is already opted out
+            if (!isOptedOut()) {
+                sessionReplayWanted = false
+            }
+            sessionReplayHandler?.stop() ?: run {
+                config?.logger?.log("Session replay isn't installed.")
+            }
         }
     }
 
