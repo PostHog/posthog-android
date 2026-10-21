@@ -32,6 +32,8 @@ internal class FlagEvaluator(
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)
+        private val NUMERIC_OPERATORS = setOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)
+        private val REGEX_DECIMAL = Regex("""[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?""")
         private val JSON = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
         private val REGEX_SEMVER =
@@ -145,6 +147,10 @@ internal class FlagEvaluator(
 
         val overrideValue = propertyValues[key]
 
+        if (propertyOperator in NUMERIC_OPERATORS) {
+            return compareValues(overrideValue, propertyValue, propertyOperator)
+        }
+
         // Handle null values (only allowed for certain operators)
         if (propertyOperator !in NONE_VALUES_ALLOWED_OPERATORS && overrideValue == null) {
             return false
@@ -202,13 +208,6 @@ internal class FlagEvaluator(
                 !matchesRegex(
                     propertyValue.toString(),
                     overrideValue.toString(),
-                )
-
-            PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE ->
-                compareValues(
-                    overrideValue,
-                    propertyValue,
-                    propertyOperator,
                 )
 
             PropertyOperator.IS_DATE_BEFORE, PropertyOperator.IS_DATE_AFTER ->
@@ -401,54 +400,26 @@ internal class FlagEvaluator(
         propertyValue: Any?,
         propertyOperator: PropertyOperator,
     ): Boolean {
-        val numericValue = propertyValue?.toString()?.toDoubleOrNull()
+        val numericValue =
+            parseFiniteNumber(propertyValue)
+                ?: throw InconclusiveMatchException("The number set on the flag is not a valid finite number")
+        val numericOverride = parseFiniteNumber(overrideValue) ?: return false
+        return compareNumbers(numericOverride, numericValue, propertyOperator)
+    }
 
-        return if (numericValue != null && overrideValue != null) {
-            when (overrideValue) {
-                is String ->
-                    compareStrings(
-                        overrideValue,
-                        propertyValue.toString(),
-                        propertyOperator,
-                    )
-
-                is Number ->
-                    compareNumbers(
-                        overrideValue.toDouble(),
-                        numericValue,
-                        propertyOperator,
-                    )
-
-                else ->
-                    compareStrings(
-                        overrideValue.toString(),
-                        propertyValue.toString(),
-                        propertyOperator,
-                    )
+    private fun parseFiniteNumber(value: Any?): Double? {
+        val number =
+            when (value) {
+                is Number -> value.toDouble()
+                is String -> if (REGEX_DECIMAL.matches(value)) value.toDoubleOrNull() else null
+                else -> null
             }
-        } else {
-            // String comparison if numeric parsing fails
-            compareStrings(overrideValue.toString(), propertyValue.toString(), propertyOperator)
-        }
+        return number?.takeIf { it.isFinite() }
     }
 
     private fun compareNumbers(
         lhs: Double,
         rhs: Double,
-        propertyOperator: PropertyOperator,
-    ): Boolean {
-        return when (propertyOperator) {
-            PropertyOperator.GT -> lhs > rhs
-            PropertyOperator.GTE -> lhs >= rhs
-            PropertyOperator.LT -> lhs < rhs
-            PropertyOperator.LTE -> lhs <= rhs
-            else -> false
-        }
-    }
-
-    private fun compareStrings(
-        lhs: String,
-        rhs: String,
         propertyOperator: PropertyOperator,
     ): Boolean {
         return when (propertyOperator) {

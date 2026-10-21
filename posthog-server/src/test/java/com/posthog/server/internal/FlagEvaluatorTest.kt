@@ -700,6 +700,92 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testNumericOrderingIssueCases() {
+        data class Row(val actual: String, val filter: Any, val operator: PropertyOperator, val expected: Boolean)
+
+        val rows =
+            listOf(
+                Row("10", 2, PropertyOperator.GT, true),
+                Row("100", 30, PropertyOperator.LT, false),
+                Row("10", "5", PropertyOperator.GTE, true),
+                Row("10", "5", PropertyOperator.LTE, false),
+            )
+        for (row in rows) {
+            val property = FlagProperty("value", row.filter, row.operator, PropertyType.PERSON, false, null)
+            assertEquals("$row", row.expected, evaluator.matchProperty(property, mapOf("value" to row.actual)))
+        }
+    }
+
+    @Test
+    internal fun testNumericOrderingUsesFiniteBinary64() {
+        val pairs =
+            listOf(
+                Triple("10", "2", 1),
+                Triple("100", "30", 1),
+                Triple("10", "5", 1),
+                Triple("5", "10", -1),
+                Triple("+0010.", "1e1", 0),
+                Triple("-.5", "-0.50", 0),
+                Triple("+1.25e+2", "124.9", 1),
+                Triple("-1.25E-2", "-.01", -1),
+                Triple("-0", "+0.0", 0),
+                Triple("1e-9999", "0", 0),
+                Triple("9007199254740993", "9007199254740992", 0),
+            )
+        for ((actual, filter, comparison) in pairs) {
+            for (actualValue in listOfNotNull(actual, actual.toDouble(), actual.toLongOrNull())) {
+                for (filterValue in listOfNotNull(filter, filter.toDouble(), filter.toLongOrNull())) {
+                    for (operator in listOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)) {
+                        val expected =
+                            when (operator) {
+                                PropertyOperator.GT -> comparison > 0
+                                PropertyOperator.GTE -> comparison >= 0
+                                PropertyOperator.LT -> comparison < 0
+                                else -> comparison <= 0
+                            }
+                        val property = FlagProperty("value", filterValue, operator, PropertyType.PERSON, false, null)
+                        assertEquals(
+                            "actual=$actualValue filter=$filterValue operator=$operator",
+                            expected,
+                            evaluator.matchProperty(property, mapOf("value" to actualValue)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testNumericOrderingDistinguishesInvalidPropertyFromInvalidFilter() {
+        val invalidValues =
+            listOf(
+                "", " ", " 10", "10 ", "10\n", "10\r\n", "\t10", "10px", "1_0", "1,000", "١٠", "１０",
+                "+", ".", "1e", "0x10", "0x1.0p0", "10d", "NaN", "Infinity", "-Infinity", "1e309",
+                Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
+                true, false, null, listOf(10), mapOf("value" to 10),
+            )
+        for (operator in listOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)) {
+            for (validFilter in listOf("9", 9)) {
+                val property = FlagProperty("value", validFilter, operator, PropertyType.PERSON, false, null)
+                for (invalid in invalidValues) {
+                    assertFalse("actual=$invalid operator=$operator", evaluator.matchProperty(property, mapOf("value" to invalid)))
+                }
+                kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                    evaluator.matchProperty(property, emptyMap())
+                }
+            }
+            for (invalid in invalidValues) {
+                val property = FlagProperty("value", invalid, operator, PropertyType.PERSON, false, null)
+                for (actual in listOf(10, "10", null, "invalid")) {
+                    kotlin.test.assertFailsWith<InconclusiveMatchException>("filter=$invalid operator=$operator actual=$actual") {
+                        evaluator.matchProperty(property, mapOf("value" to actual))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     internal fun testMatchPropertyDateBefore() {
         val property =
             FlagProperty(
