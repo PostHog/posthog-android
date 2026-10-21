@@ -1157,6 +1157,42 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `restart after reinstall keeps a manual start waiting for an event trigger`() {
+        val config =
+            configWithSampling(
+                flagActive = true,
+                samplingPasses = true,
+                sessionReplay = false,
+                triggers = setOf("checkout_started"),
+            )
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+
+            // opt-out uninstalls the integration; opt-in reinstalls it and starts a new session
+            sut.uninstall()
+            sut.install(postHog)
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = false)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive())
+
+            sut.onEvent("checkout_started", null)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
     fun `explicit stop cancels a manual start waiting for an event trigger`() {
         val config =
             configWithSampling(

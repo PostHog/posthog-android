@@ -154,9 +154,10 @@ public class PostHog private constructor(
     @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
 
-    // Whether optIn starts session replay: whether it was recording at optOut, including a recording
-    // the app started itself, or the sessionReplay config when launched opted out. Guarded by setupLock.
-    private var startSessionReplayOnOptIn = false
+    // Whether the app wants session replay on, so optIn restarts it: the sessionReplay config at setup,
+    // then the app's own start/stop calls made while opted in. Internal stops don't change it.
+    @Volatile
+    private var sessionReplayWanted = false
     private var surveysHandler: PostHogSurveysHandler? = null
 
     @Volatile
@@ -171,7 +172,7 @@ public class PostHog private constructor(
             sessionReplayHandler?.let {
                 if (isSessionReplayConfigEnabled()) {
                     // start will bail if session replay is already active anyway
-                    startSessionReplay(resumeCurrent = true)
+                    startSessionReplayInternal(resumeCurrent = true)
                 }
             }
         }
@@ -358,7 +359,7 @@ public class PostHog private constructor(
                 startSession()
 
                 // integrations are installed on optIn instead
-                startSessionReplayOnOptIn = isSessionReplayConfigEnabled()
+                sessionReplayWanted = isSessionReplayConfigEnabled()
                 if (!isOptedOut()) {
                     installIntegrations(resumeSessionReplay = true, startSessionReplay = isSessionReplayConfigEnabled())
                 }
@@ -428,7 +429,7 @@ public class PostHog private constructor(
                     sessionReplayHandler = it
 
                     if (startSessionReplay) {
-                        startSessionReplay(resumeCurrent = resumeSessionReplay)
+                        startSessionReplayInternal(resumeCurrent = resumeSessionReplay)
                     }
                 } else if (it is PostHogSurveysHandler) {
                     surveysHandler = it
@@ -1261,7 +1262,7 @@ public class PostHog private constructor(
             }
 
             if (wasOptedOut) {
-                installIntegrations(resumeSessionReplay = false, startSessionReplay = startSessionReplayOnOptIn)
+                installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted)
             }
         }
 
@@ -1299,7 +1300,6 @@ public class PostHog private constructor(
             }
 
             if (!wasOptedOut) {
-                startSessionReplayOnOptIn = sessionReplayHandler?.isActive() == true
                 uninstallIntegrations()
             }
         }
@@ -2396,6 +2396,18 @@ public class PostHog private constructor(
             return
         }
 
+        // a start asked for while opted out is ignored, so it doesn't change the intent either
+        if (!isOptedOut()) {
+            sessionReplayWanted = true
+        }
+        startSessionReplayInternal(resumeCurrent)
+    }
+
+    private fun startSessionReplayInternal(resumeCurrent: Boolean) {
+        if (!isEnabled()) {
+            return
+        }
+
         if (!isSessionReplayFlagEnabled()) {
             config?.logger?.log(
                 "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
@@ -2435,6 +2447,10 @@ public class PostHog private constructor(
             return
         }
 
+        // also reached from optOut's uninstall, by which point consent is already opted out
+        if (!isOptedOut()) {
+            sessionReplayWanted = false
+        }
         sessionReplayHandler?.stop() ?: run {
             config?.logger?.log("Session replay isn't installed.")
         }
