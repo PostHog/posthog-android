@@ -10,6 +10,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicBoolean
@@ -121,9 +122,10 @@ internal class PostHogLifecycleObserverIntegration(
         if (wasExpired) {
             cancelTask()
             // Force the rotation now and stop replay synchronously — process may suspend
-            // before the listener's main-thread post can run.
+            // before the listener's main-thread post can run. Stops the handler directly: the
+            // public stopSessionReplay() would record that the app no longer wants replay.
             postHog?.endSession()
-            postHog?.stopSessionReplay()
+            config.integrations.filterIsInstance<PostHogSessionReplayHandler>().forEach { it.stop() }
         } else {
             scheduleEndSession()
         }

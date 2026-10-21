@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.PostHogIntegration
 import com.posthog.android.API_KEY
 import com.posthog.android.FakeLifecycle
 import com.posthog.android.PostHogAndroidConfig
@@ -15,6 +16,7 @@ import com.posthog.android.mockPackageInfo
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import java.util.Calendar
@@ -264,15 +266,16 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val replayHandler = FakeReplayHandler()
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
+                addIntegration(replayHandler)
             }
         val mainHandler = MainHandler()
         val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
         val fake = createPostHogFake()
-        fake.sessionReplayActive = true
         sut.install(fake)
 
         PostHogSessionManager.startSession()
@@ -286,8 +289,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
 
-        assertEquals(1, fake.stopSessionReplayCalls)
-        assertEquals(false, fake.sessionReplayActive)
+        // an SDK-internal stop: the public stop would clear the app's wish for replay
+        assertEquals(0, fake.stopSessionReplayCalls)
+        assertEquals(1, replayHandler.stopCalls)
         // Session was ended; the next onStart will create a fresh one.
         assertNull(PostHogSessionManager.getActiveSessionId())
 
@@ -448,5 +452,26 @@ internal class PostHogLifecycleObserverIntegrationTest {
         override fun currentTimeMillis(): Long = currentTimeMs
 
         override fun nanoTime(): Long = System.nanoTime()
+    }
+
+    private class FakeReplayHandler : PostHogIntegration, PostHogSessionReplayHandler {
+        var stopCalls = 0
+
+        override fun start(resumeCurrent: Boolean) {}
+
+        override fun stop() {
+            stopCalls++
+        }
+
+        override fun isActive(): Boolean = false
+
+        override fun debugProperties(): Map<String, Any> = emptyMap()
+
+        override fun onEvent(
+            event: String,
+            properties: Map<String, Any>?,
+        ) {}
+
+        override fun onSessionIdChanged() {}
     }
 }
