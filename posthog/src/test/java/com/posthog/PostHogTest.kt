@@ -1374,6 +1374,82 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `optIn restarts session replay the app started itself`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        // sessionReplay config stays off: the app starts the recording by hand
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not start session replay when launched opted out with it disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(url.toString(), optOut = true, cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut applies consent together with its integration transition`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+        val setupLock =
+            PostHogStateless::class.java.getDeclaredField("setupLock").apply { isAccessible = true }.get(sut)
+
+        val optOut: Thread
+        val optIn: Thread
+        synchronized(setupLock) {
+            optOut = thread { sut.optOut() }
+            awaitBlocked(optOut)
+            // optOut is waiting to uninstall, so its consent must not be visible yet
+            assertFalse(sut.isOptOut())
+
+            optIn = thread { sut.optIn() }
+            awaitBlocked(optIn)
+        }
+        optOut.join()
+        optIn.join()
+
+        // whichever ran last, integrations match the final consent
+        assertEquals(!sut.isOptOut(), integration.installed)
+
+        sut.close()
+    }
+
+    private fun awaitBlocked(thread: Thread) {
+        val deadline = System.currentTimeMillis() + 5000
+        while (thread.state != Thread.State.BLOCKED) {
+            check(System.currentTimeMillis() < deadline) { "thread never blocked" }
+            Thread.sleep(1)
+        }
+    }
+
+    @Test
     fun `setup does not install integrations while opted out`() {
         val http = mockHttp()
         val url = http.url("/")

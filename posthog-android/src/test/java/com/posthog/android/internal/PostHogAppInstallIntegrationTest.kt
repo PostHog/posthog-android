@@ -226,4 +226,23 @@ internal class PostHogAppInstallIntegrationTest {
 
         sut.uninstall()
     }
+
+    @Test
+    fun `recordAppVersion does not throw when the store fails`() {
+        val failing =
+            object : PostHogPreferences by PostHogMemoryPreferences() {
+                override fun setValue(
+                    key: String,
+                    value: Any,
+                ) {
+                    throw IllegalStateException("store failed")
+                }
+            }
+        val sut = getSut(preferences = failing)
+
+        context.mockPackageInfo("1.0.0", 1)
+
+        // runs from PostHogAndroid.setup while opted out, so a failure must not reach the host app
+        sut.recordAppVersion()
+    }
 }

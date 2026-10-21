@@ -86,13 +86,18 @@ internal class PostHogAppInstallIntegration(
      */
     @Synchronized
     internal fun recordAppVersion() {
-        if (config.cachePreferences?.isAvailable() == false) {
-            return
+        // runs outside the integration install failure boundary, so it must not throw into setup
+        try {
+            if (config.cachePreferences?.isAvailable() == false) {
+                return
+            }
+            val packageInfo = packageInfoProvider() ?: return
+            val preferences = config.cachePreferences ?: return
+            packageInfo.versionName?.let { preferences.setValue(VERSION, it) }
+            packageInfo.versionCodeCompat()?.let { preferences.setValue(BUILD, it) }
+        } catch (e: Throwable) {
+            config.logger.log("Recording the app version failed: $e.")
         }
-        val packageInfo = packageInfoProvider() ?: return
-        val preferences = config.cachePreferences ?: return
-        packageInfo.versionName?.let { preferences.setValue(VERSION, it) }
-        packageInfo.versionCodeCompat()?.let { preferences.setValue(BUILD, it) }
     }
 
     @Synchronized

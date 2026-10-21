@@ -154,9 +154,9 @@ public class PostHog private constructor(
     @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
 
-    // Whether optIn may start session replay: false when it wasn't recording at optOut (e.g. the app
-    // stopped it), so consent doesn't override that. Guarded by setupLock.
-    private var startSessionReplayOnOptIn = true
+    // Whether optIn starts session replay: whether it was recording at optOut, including a recording
+    // the app started itself, or the sessionReplay config when launched opted out. Guarded by setupLock.
+    private var startSessionReplayOnOptIn = false
     private var surveysHandler: PostHogSurveysHandler? = null
 
     @Volatile
@@ -358,8 +358,9 @@ public class PostHog private constructor(
                 startSession()
 
                 // integrations are installed on optIn instead
+                startSessionReplayOnOptIn = isSessionReplayConfigEnabled()
                 if (!isOptedOut()) {
-                    installIntegrations(resumeSessionReplay = true)
+                    installIntegrations(resumeSessionReplay = true, startSessionReplay = isSessionReplayConfigEnabled())
                 }
 
                 // only because of testing in isolation, this flag is always enabled
@@ -416,7 +417,7 @@ public class PostHog private constructor(
 
     private fun installIntegrations(
         resumeSessionReplay: Boolean,
-        startSessionReplay: Boolean = true,
+        startSessionReplay: Boolean,
     ) {
         val config = config ?: return
         config.integrations.forEach {
@@ -426,7 +427,7 @@ public class PostHog private constructor(
                 if (it is PostHogSessionReplayHandler) {
                     sessionReplayHandler = it
 
-                    if (startSessionReplay && isSessionReplayConfigEnabled()) {
+                    if (startSessionReplay) {
                         startSessionReplay(resumeCurrent = resumeSessionReplay)
                     }
                 } else if (it is PostHogSurveysHandler) {
@@ -1242,22 +1243,25 @@ public class PostHog private constructor(
             return
         }
 
-        val wasOptedOut = isOptedOut()
-        synchronized(optOutLock) {
-            config?.optOut = false
-            if (config?.persistOptOut != false) {
-                getPreferences().setValue(OPT_OUT, false)
+        // under setupLock so the consent write and its integration transition apply together:
+        // a concurrent optOut can't land between them and leave integrations out of step
+        synchronized(setupLock) {
+            // close() may have run since the isEnabled() check above
+            if (!isEnabled()) {
+                return
             }
-            // an explicit runtime choice; the deferred read must not override it
-            optOutLoaded = true
-        }
-
-        if (wasOptedOut) {
-            synchronized(setupLock) {
-                // close() may have run since the isEnabled() check above
-                if (isEnabled()) {
-                    installIntegrations(resumeSessionReplay = false, startSessionReplay = startSessionReplayOnOptIn)
+            val wasOptedOut = isOptedOut()
+            synchronized(optOutLock) {
+                config?.optOut = false
+                if (config?.persistOptOut != false) {
+                    getPreferences().setValue(OPT_OUT, false)
                 }
+                // an explicit runtime choice; the deferred read must not override it
+                optOutLoaded = true
+            }
+
+            if (wasOptedOut) {
+                installIntegrations(resumeSessionReplay = false, startSessionReplay = startSessionReplayOnOptIn)
             }
         }
 
@@ -1278,28 +1282,30 @@ public class PostHog private constructor(
             return
         }
 
-        val wasOptedOut = isOptedOut()
-        if (!wasOptedOut) config.notifyIntegrationsChanged()
-        synchronized(optOutLock) {
-            config?.optOut = true
-            if (config?.persistOptOut != false) {
-                getPreferences().setValue(OPT_OUT, true)
+        // under setupLock for the same reason as optIn
+        synchronized(setupLock) {
+            if (!isEnabled()) {
+                return
             }
-            optOutLoaded = true
-            exceptionStepsBuffer?.clear()
+            val wasOptedOut = isOptedOut()
+            if (!wasOptedOut) config.notifyIntegrationsChanged()
+            synchronized(optOutLock) {
+                config?.optOut = true
+                if (config?.persistOptOut != false) {
+                    getPreferences().setValue(OPT_OUT, true)
+                }
+                optOutLoaded = true
+                exceptionStepsBuffer?.clear()
+            }
+
+            if (!wasOptedOut) {
+                startSessionReplayOnOptIn = sessionReplayHandler?.isActive() == true
+                uninstallIntegrations()
+            }
         }
         // Clear cached identity-token state so a stale token/401 flag isn't reused after
         // re-opting-in; the send guard in the manager already blocks sends while opted out.
         pushSubscriptionManager?.onOptOut()
-
-        if (!wasOptedOut) {
-            synchronized(setupLock) {
-                if (isEnabled()) {
-                    startSessionReplayOnOptIn = sessionReplayHandler?.isActive() == true
-                    uninstallIntegrations()
-                }
-            }
-        }
     }
 
     /**
