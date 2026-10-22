@@ -94,7 +94,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         sut.captureException(fixedThrowable(), mapOf("handled" to true, "component" to "checkout"))
         sut.flush()
 
-        val request = fixture.server.takeRequests("/flags/?v=2", "/batch").single { it.path == "/batch" }
+        val request = fixture.server.takeRequests(CONFIG_PATH, "/flags/?v=2", "/batch").single { it.path == "/batch" }
         val snapshot = requestSnapshot(request, fixture.config)
         normalizeBatchVolatileFields(snapshot)
 
@@ -118,7 +118,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         fixture.client.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
 
         assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags request did not finish")
-        val request = fixture.server.takeRequests("/flags/?v=2").single()
+        val request = fixture.server.takeRequests(CONFIG_PATH, "/flags/?v=2").single { it.path == "/flags/?v=2" }
 
         assertSnapshot("flags-request.json", requestSnapshot(request, fixture.config), fixture.config)
     }
@@ -152,7 +152,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         )
         fixture.client.flush()
 
-        val request = fixture.server.takeRequests("/s/").single()
+        val request = fixture.server.takeRequests(CONFIG_PATH, "/s/").single { it.path == "/s/" }
         val snapshot = requestSnapshot(request, fixture.config)
         normalizeReplayVolatileFields(snapshot)
 
@@ -163,6 +163,8 @@ internal class PostHogAndroidEventSnapshotsTest {
         mockContextAppStart(context, tmpDir)
         val server =
             MockWebServer().apply {
+                // setup always requests /config first
+                enqueue(MockResponse().setBody(CONFIG_RESPONSE).setHeader("Content-Type", "application/json"))
                 repeat(10) {
                     enqueue(MockResponse().setBody(FLAGS_RESPONSE).setHeader("Content-Type", "application/json"))
                 }
@@ -185,8 +187,6 @@ internal class PostHogAndroidEventSnapshotsTest {
                 flushIntervalSeconds = 60
                 maxBatchSize = 20
                 preloadFeatureFlags = false
-                @Suppress("DEPRECATION")
-                remoteConfig = false
                 captureApplicationLifecycleEvents = false
                 captureDeepLinks = false
                 captureScreenViews = false
@@ -412,6 +412,8 @@ internal class PostHogAndroidEventSnapshotsTest {
         private val FIXED_DATE = Date(FIXED_MILLIS)
         private val SESSION_ID = UUID.fromString("018bcfe5-687b-7abc-8def-0123456789ab")
         private const val FIXED_TIMESTAMP = "2023-11-14T22:13:20.123Z"
+        private const val CONFIG_PATH = "/array/$PROJECT_TOKEN/config"
+        private const val CONFIG_RESPONSE = """{"hasFeatureFlags":true}"""
         private const val FLAGS_RESPONSE =
             """{
                 "flags": {

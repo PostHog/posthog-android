@@ -34,7 +34,6 @@ internal class PostHogBeforeSendTest {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 replayStoragePrefix = tmpDir.newFolder().absolutePath
                 preloadFeatureFlags = false
-                remoteConfig = false
                 cachePreferences = PostHogMemoryPreferences()
                 hooks.forEach { addBeforeSend(it) }
             }

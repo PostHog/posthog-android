@@ -3054,15 +3054,9 @@ public class PostHogReplayIntegration(
     }
 
     // Whether to buffer until the live remote config resolves: only when a remote config holder
-    // exists and hasn't resolved yet, AND a fetch will actually be attempted at setup. If neither
-    // remoteConfig nor preloadFeatureFlags is enabled, PostHog.setup dispatches no /config or /flags
-    // request, so no onRemoteConfig callback ever arrives to disarm the gate —
-    // buffering would then grow unbounded for the whole session. Don't arm in that case.
+    // exists and hasn't resolved yet. PostHog.setup always requests /config, so the
+    // onRemoteConfig callback disarms the gate.
     private fun shouldAwaitFirstRemoteConfig(): Boolean {
-        @Suppress("DEPRECATION")
-        if (!config.remoteConfig && !config.preloadFeatureFlags) {
-            return false
-        }
         return config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
     }
 
