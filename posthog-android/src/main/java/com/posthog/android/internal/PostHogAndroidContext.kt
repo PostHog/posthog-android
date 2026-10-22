@@ -9,7 +9,9 @@ import com.posthog.internal.PostHogThreadFactory
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.Executor
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -23,8 +25,16 @@ internal class PostHogAndroidContext(
     private val config: PostHogAndroidConfig,
     private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
     private val networkPropertiesProvider: () -> Map<String, Any>,
+    // the worker exits when idle, so it needs no shutdown when the SDK closes
     private val networkCarrierExecutor: Executor =
-        Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNetworkCarrierThread")),
+        ThreadPoolExecutor(
+            1,
+            1,
+            30,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+            PostHogThreadFactory("PostHogNetworkCarrierThread"),
+        ).apply { allowCoreThreadTimeOut(true) },
 ) : PostHogContext {
     @Volatile
     private var networkCarrier: String? = null
