@@ -306,7 +306,6 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,

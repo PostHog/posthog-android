@@ -139,7 +139,6 @@ internal class PostHogSurveysRestartTest {
                         PostHogAndroidConfig(projectToken),
                     )
                 preloadFeatureFlags = false
-                remoteConfig = false
                 surveys = true
                 surveysConfig.surveysDelegate = renderer
                 surveysConfig.overrideDisplayLanguage = language
