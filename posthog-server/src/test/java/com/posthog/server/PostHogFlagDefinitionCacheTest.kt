@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 @Suppress("DEPRECATION")
 internal class PostHogFlagDefinitionCacheTest {
     private fun definitions(rolloutPercentage: Int = 100): Map<String, Any?> =
-        com.posthog.PostHogConfig(TEST_API_KEY).serializer.deserialize(
+        com.posthog.PostHogConfig(TEST_PROJECT_TOKEN).serializer.deserialize(
             StringReader(createLocalEvaluationResponse("cached-flag", rolloutPercentage = rolloutPercentage)),
         )
 
@@ -36,7 +36,7 @@ internal class PostHogFlagDefinitionCacheTest {
         var client: PostHogInterface? = null
         try {
             val config =
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(server.url("/").toString())
                     .localEvaluation(true)
                     .personalApiKey(" \t\n")
@@ -103,7 +103,7 @@ internal class PostHogFlagDefinitionCacheTest {
     @Test
     fun `provider-only refresh preserves matching version on failure and resets it on fresh omission`() {
         val cacheData: Map<String, Any?> =
-            com.posthog.PostHogConfig(TEST_API_KEY).serializer.deserialize(
+            com.posthog.PostHogConfig(TEST_PROJECT_TOKEN).serializer.deserialize(
                 StringReader(
                     """
                     {

@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogConfigTest {
-    private val config = PostHogConfig(API_KEY)
+    private val config = PostHogConfig(PROJECT_TOKEN)
 
     @Test
     fun `host is set app posthog com by default`() {
@@ -17,26 +17,26 @@ internal class PostHogConfigTest {
 
     @Test
     fun `trims whitespace-sensitive config values`() {
-        val config = PostHogConfig(" \n$API_KEY\t ", " \nhttps://eu.i.posthog.com/\t ")
+        val config = PostHogConfig(" \n$PROJECT_TOKEN\t ", " \nhttps://eu.i.posthog.com/\t ")
 
-        assertEquals(API_KEY, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
         assertEquals("https://eu.i.posthog.com/", config.host)
     }
 
     @Suppress("DEPRECATION")
     @Test
     fun `deprecated apiKey factory and getter alias projectToken`() {
-        val config = PostHogConfig(apiKey = " $API_KEY ", host = "https://eu.i.posthog.com", flushAt = 7)
+        val config = PostHogConfig(apiKey = " $PROJECT_TOKEN ", host = "https://eu.i.posthog.com", flushAt = 7)
 
-        assertEquals(API_KEY, config.projectToken)
-        assertEquals(API_KEY, config.apiKey)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.apiKey)
         assertEquals("https://eu.i.posthog.com", config.host)
         assertEquals(7, config.flushAt)
     }
 
     @Test
     fun `defaults a blank host after trimming whitespace`() {
-        val config = PostHogConfig(API_KEY, " \n\t ")
+        val config = PostHogConfig(PROJECT_TOKEN, " \n\t ")
 
         assertEquals(PostHogConfig.DEFAULT_HOST, config.host)
     }

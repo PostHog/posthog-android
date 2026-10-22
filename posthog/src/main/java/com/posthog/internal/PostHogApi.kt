@@ -107,7 +107,7 @@ public class PostHogApi(
 
     /**
      * Builds an OTLP/JSON payload for the supplied [records] and posts it to
-     * `/i/v1/logs?token=<apiKey>`. Throws [PostHogApiError] on a non-success
+     * `/i/v1/logs?token=<projectToken>`. Throws [PostHogApiError] on a non-success
      * status and [IOException] on a transport failure.
      *
      * `resourceAttributes` (e.g. `service.name`, `service.version`) is merged

@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
 internal class PostHogAndroidLoggerTest {
-    private val config = PostHogAndroidConfig("apiKey").apply { debug = false }
+    private val config = PostHogAndroidConfig("projectToken").apply { debug = false }
     private val sut = PostHogAndroidLogger(config)
 
     @BeforeTest

@@ -27,7 +27,7 @@ internal class PostHogScreenNameTest {
     private fun getSut(): PostHogInterface {
         val storage = tmpDir.newFolder().absolutePath
         config =
-            PostHogConfig(API_KEY, "http://localhost").apply {
+            PostHogConfig(PROJECT_TOKEN, "http://localhost").apply {
                 flushAt = 1
                 storagePrefix = File(storage, "events").absolutePath
                 replayStoragePrefix = File(storage, "snapshots").absolutePath

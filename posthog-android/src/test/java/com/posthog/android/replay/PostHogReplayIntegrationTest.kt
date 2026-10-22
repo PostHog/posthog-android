@@ -26,7 +26,7 @@ import com.posthog.PostHog
 import com.posthog.PostHogEvent
 import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
@@ -242,7 +242,7 @@ internal class PostHogReplayIntegrationTest {
         makeWindowVisible(activity.window.decorView)
         root.layout(0, 0, 100, 400)
         masked.layout(0, 200, 100, 300)
-        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(API_KEY), MainHandler())
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
 
         fun maskRects() = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }.rects
 
@@ -381,13 +381,13 @@ internal class PostHogReplayIntegrationTest {
                 on { getEventTriggers() } doReturn triggers
                 on { hasRemoteConfigFetched() } doReturn true
             }
-        return PostHogAndroidConfig(API_KEY).apply {
+        return PostHogAndroidConfig(PROJECT_TOKEN).apply {
             remoteConfigHolder = remoteConfig
             this.sessionReplay = sessionReplay
         }
     }
 
-    private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(API_KEY)): PostHogReplayIntegration {
+    private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(PROJECT_TOKEN)): PostHogReplayIntegration {
         return PostHogReplayIntegration(context, config, MainHandler())
     }
 
@@ -472,7 +472,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `running capture blocks duplicates but not other windows`() {
         val executor = createReplayExecutor()
-        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val sut = getSutWithExecutor(PostHogAndroidConfig(PROJECT_TOKEN), executor)
         val firstWindow = WindowDrawState()
         val secondWindow = WindowDrawState()
         val entered = CountDownLatch(1)
@@ -506,7 +506,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `capture gate releases after rejection and task failure`() {
         val executor = QueuedReplayExecutor(createReplayExecutor())
-        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val sut = getSutWithExecutor(PostHogAndroidConfig(PROJECT_TOKEN), executor)
         val drawState = WindowDrawState()
         executor.reject = true
         assertFalse(sut.submitCapture(drawState) {})
@@ -1005,7 +1005,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 sessionReplay = true
             }
@@ -1287,7 +1287,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `clears buffer when PostHogReplayIntegration is installed`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val replayQueue = createReplayQueue(config)
         config.replayQueueHolder = replayQueue
         replayQueue.add(createTestEvent("snapshot_1"))
@@ -1310,7 +1310,7 @@ internal class PostHogReplayIntegrationTest {
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
         whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 this.logger = logger
                 remoteConfigHolder = remoteConfig
             }
@@ -1340,7 +1340,7 @@ internal class PostHogReplayIntegrationTest {
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
         whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 this.logger = logger
                 remoteConfigHolder = remoteConfig
             }
@@ -1403,7 +1403,7 @@ internal class PostHogReplayIntegrationTest {
                 on { getRecordingMinimumDurationMs() } doReturn minimumDurationMs
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 this.sessionReplay = sessionReplay
                 this.preloadFeatureFlags = preloadFeatureFlags
@@ -1618,7 +1618,7 @@ internal class PostHogReplayIntegrationTest {
             samplingPasses.get()
         }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 sessionReplay = false
             }
@@ -2100,7 +2100,7 @@ internal class PostHogReplayIntegrationTest {
                 on { getRecordingMinimumDurationMs() } doReturn null
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfigMock
                 sessionReplay = true
                 @Suppress("DEPRECATION")
@@ -2239,7 +2239,7 @@ internal class PostHogReplayIntegrationTest {
                 override fun isConnected() = false
             }
         val config =
-            PostHogAndroidConfig(API_KEY, host = "http://localhost").apply {
+            PostHogAndroidConfig(PROJECT_TOKEN, host = "http://localhost").apply {
                 cachePreferences = preferences
                 networkStatus = offline
                 sessionReplay = true
@@ -2558,7 +2558,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
     fun `committed snapshot keeps its session when rotation precedes core enrichment`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         @Suppress("DEPRECATION")
         config.remoteConfig = false
         config.preloadFeatureFlags = false
@@ -4579,7 +4579,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports screenshot capture mode when the screenshot flag is on`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sessionReplayConfig.screenshot = true
         val sut = getSut(config)
 
@@ -4588,7 +4588,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports screenshot capture mode for the flutter host`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sdkName = "posthog-flutter"
         config.sessionReplayConfig.screenshot = false
         val sut = getSut(config)
@@ -4598,7 +4598,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports wireframe capture mode otherwise`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sessionReplayConfig.screenshot = false
         val sut = getSut(config)
 
@@ -4666,7 +4666,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
             }
         val sut = getSut(config)
@@ -4706,7 +4706,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
             }
         val sut = getSut(config)

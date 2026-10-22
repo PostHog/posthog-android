@@ -16,7 +16,7 @@ internal class PostHogBeforeSendTest {
     @get:Rule
     val tmpDir = TemporaryFolder()
 
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
 
     @Suppress("DEPRECATION")
     private fun captureWithHooks(
@@ -29,7 +29,7 @@ internal class PostHogBeforeSendTest {
         val remoteExecutor = Executors.newSingleThreadScheduledExecutor()
         val cachedExecutor = Executors.newSingleThreadScheduledExecutor()
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 flushAt = 1
                 storagePrefix = tmpDir.newFolder().absolutePath
                 replayStoragePrefix = tmpDir.newFolder().absolutePath

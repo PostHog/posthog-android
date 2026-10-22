@@ -8,8 +8,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogIntegration
-import com.posthog.android.API_KEY
 import com.posthog.android.FakeLifecycle
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
@@ -35,7 +35,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     private val fakeLifecycle = FakeLifecycle(Lifecycle.State.CREATED)
 
     private fun getSut(): PostHogLifecycleObserverIntegration {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val mainHandler = MainHandler()
         return PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
     }
@@ -126,7 +126,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val sut =
             PostHogLifecycleObserverIntegration(
                 context,
-                PostHogAndroidConfig(API_KEY),
+                PostHogAndroidConfig(PROJECT_TOKEN),
                 MainHandler(),
                 lifecycle = lifecycle,
                 packageInfoProvider = { null },
@@ -204,7 +204,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
     @Test
     fun `onStop flushes even when captureApplicationLifecycleEvents is disabled`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureApplicationLifecycleEvents = false
             }
         val mainHandler = MainHandler()
@@ -226,7 +226,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
             }
@@ -268,7 +268,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val replayHandler = FakeReplayHandler()
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
                 addIntegration(replayHandler)
@@ -304,7 +304,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
             }
@@ -337,7 +337,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
             }
@@ -373,7 +373,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
             }
@@ -410,7 +410,7 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
             }

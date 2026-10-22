@@ -34,7 +34,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -63,7 +63,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -108,7 +108,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -161,7 +161,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -189,7 +189,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -217,7 +217,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -258,7 +258,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -287,7 +287,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -321,7 +321,7 @@ internal class PostHogEvaluateFlagsTest {
             try {
                 postHog =
                     PostHog.with(
-                        PostHogConfig.builder(TEST_API_KEY)
+                        PostHogConfig.builder(TEST_PROJECT_TOKEN)
                             .host(mockServer.url("/").toString())
                             .build(),
                     )
@@ -356,7 +356,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -393,7 +393,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -428,7 +428,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -456,7 +456,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -496,7 +496,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -532,7 +532,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -1034,7 +1034,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),

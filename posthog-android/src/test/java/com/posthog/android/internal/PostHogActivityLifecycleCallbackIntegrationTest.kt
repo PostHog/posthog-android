@@ -8,7 +8,7 @@ import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogFake
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockActivityUri
@@ -52,7 +52,7 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
         capturePushNotificationOpened: Boolean = true,
         cachePreferences: PostHogMemoryPreferences? = null,
     ): PostHogAndroidConfig =
-        PostHogAndroidConfig(API_KEY).apply {
+        PostHogAndroidConfig(PROJECT_TOKEN).apply {
             this.captureDeepLinks = captureDeepLinks
             this.captureScreenViews = captureScreenViews
             this.capturePushNotificationOpened = capturePushNotificationOpened

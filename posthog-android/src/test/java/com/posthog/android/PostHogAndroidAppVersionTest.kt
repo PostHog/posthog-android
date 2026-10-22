@@ -37,13 +37,13 @@ internal class PostHogAndroidAppVersionTest {
 
     @Suppress("DEPRECATION")
     private fun createConfig(
-        apiKey: String,
+        projectToken: String,
         preferences: PostHogPreferences,
         captureLifecycle: Boolean,
         events: MutableList<PostHogEvent>,
         configure: PostHogAndroidConfig.() -> Unit = {},
     ): PostHogAndroidConfig =
-        PostHogAndroidConfig(apiKey).apply {
+        PostHogAndroidConfig(projectToken).apply {
             cachePreferences = preferences
             captureApplicationLifecycleEvents = captureLifecycle
             remoteConfig = false
@@ -64,7 +64,7 @@ internal class PostHogAndroidAppVersionTest {
     ): List<PostHogEvent> {
         prepareContext(version, build)
         val events = mutableListOf<PostHogEvent>()
-        val config = createConfig(API_KEY, preferences, captureLifecycle, events, configure)
+        val config = createConfig(PROJECT_TOKEN, preferences, captureLifecycle, events, configure)
         val client = PostHogAndroid.with(context, config)
         try {
             return events.toList()
@@ -133,7 +133,7 @@ internal class PostHogAndroidAppVersionTest {
         val owner = PostHogAndroid.with(context, createConfig("owner-project", PostHogMemoryPreferences(), true, mutableListOf()))
         try {
             val events = mutableListOf<PostHogEvent>()
-            val secondary = PostHogAndroid.with(context, createConfig(API_KEY, preferences, true, events))
+            val secondary = PostHogAndroid.with(context, createConfig(PROJECT_TOKEN, preferences, true, events))
             try {
                 assertTrue(events.isEmpty())
             } finally {

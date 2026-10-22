@@ -4,7 +4,7 @@ import android.app.Activity
 import android.view.MotionEvent
 import android.view.View
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.internal.PostHogDateProvider
@@ -37,7 +37,7 @@ internal class PostHogTouchActivityIntegrationTest {
             it.`when`<List<View>> { Curtains.rootViews }.thenReturn(listOf(window.decorView))
             it.`when`<MutableList<OnRootViewsChangedListener>> { Curtains.onRootViewsChangedListeners }.thenReturn(listeners)
         }
-    private val sut = PostHogTouchActivityIntegration(PostHogAndroidConfig(API_KEY))
+    private val sut = PostHogTouchActivityIntegration(PostHogAndroidConfig(PROJECT_TOKEN))
     private val wasReactNative = PostHogSessionManager.isReactNative
 
     @AfterTest

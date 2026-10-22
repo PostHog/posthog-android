@@ -9,7 +9,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.replay.internal.WindowDrawState
@@ -43,7 +43,7 @@ internal class PostHogReplayMaskWalkBenchmark {
     fun setUp() {
         assumeTrue(System.getenv("POSTHOG_BENCHMARK") == "1")
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 sessionReplayConfig.screenshot = true
                 sessionReplayConfig.verifyScreenshotMaskAlignment = true
             }

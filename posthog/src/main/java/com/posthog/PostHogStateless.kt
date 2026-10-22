@@ -65,7 +65,7 @@ public open class PostHogStateless protected constructor(
                     return
                 }
 
-                if (!apiKeys.add(config.projectToken)) {
+                if (!projectTokens.add(config.projectToken)) {
                     config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
@@ -125,7 +125,7 @@ public open class PostHogStateless protected constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.projectToken)
+                    projectTokens.remove(config.projectToken)
 
                     config.integrations.forEach {
                         try {
@@ -810,7 +810,7 @@ public open class PostHogStateless protected constructor(
                 "\$lib_version",
             )
 
-        private val apiKeys = mutableSetOf<String>()
+        private val projectTokens = mutableSetOf<String>()
 
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogStatelessInterface) {
