@@ -39,15 +39,6 @@ public class PostHogSessionReplayConfig
          */
         public var screenshot: Boolean = false,
         /**
-         * Debouncer delay used to reduce the number of snapshots captured and reduce performance impact.
-         * This is used for capturing the view as a wireframe or screenshot.
-         * The lower the number, the more snapshots are captured and the higher the performance impact.
-         * Defaults to 1000ms = 1s.
-         * Ps: it was 500ms by default until version 3.8.2.
-         */
-        @Deprecated("Use throttleDelayMs instead")
-        public var debouncerDelayMs: Long = 1000,
-        /**
          * Throttling delay used to reduce the number of snapshots captured and reduce performance impact.
          * This is used for capturing the view as a wireframe or screenshot.
          * The lower the number, the more snapshots are captured and the higher the performance impact.
@@ -118,12 +109,4 @@ public class PostHogSessionReplayConfig
         @PostHogExperimental
         @Volatile
         public var screenshotColorMode: PostHogScreenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
-
-        init {
-            // for keeping back compatibility
-            @Suppress("DEPRECATION")
-            if (debouncerDelayMs != 1000L) {
-                throttleDelayMs = debouncerDelayMs
-            }
-        }
     }
