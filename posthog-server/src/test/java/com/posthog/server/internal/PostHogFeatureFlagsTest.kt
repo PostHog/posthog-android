@@ -86,6 +86,125 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `fetched regex definitions use remote fallback only when unresolved`() {
+        data class Case(
+            val pattern: String,
+            val input: String?,
+            val cohort: Boolean,
+            val local: Boolean?,
+            val nestedNegation: Boolean = false,
+        )
+
+        val cases =
+            listOf(
+                Case("a(?=b)", "ab", false, null),
+                Case("^\\d+$", "١", false, null),
+                Case(".*\\bbot\\b.*", "a".repeat(140), false, null),
+                Case("a(?=b)", "ab", true, null),
+                Case("[", "present", true, null),
+                Case("[", "present", true, null, nestedNegation = true),
+                Case("[", "present", false, false),
+                Case("^pro$", "pro", false, true),
+                Case("^pro$", "free", false, false),
+                Case("^pro$", "free", true, true),
+                Case("", "é", false, true),
+                Case("^pro$", null, false, null),
+            )
+        for (operator in listOf("regex", "not_regex")) {
+            for (case in cases) {
+                val patternJson = createTestConfig().serializer.gson.toJson(case.pattern)
+                val leaf =
+                    """
+                    {"key":"value","value":$patternJson,"operator":"$operator","type":"person",
+                     "negation":${case.cohort && !case.nestedNegation}}
+                    """.trimIndent()
+                val condition =
+                    if (case.cohort) {
+                        """{"key":"id","value":${if (case.nestedNegation) 2 else 1},"type":"cohort","operator":"in"}"""
+                    } else {
+                        leaf
+                    }
+                val definitions =
+                    """
+                    {
+                      "flags":[{"id":1,"key":"regex-flag","active":true,"filters":{
+                        "groups":[{"properties":[$condition],"rollout_percentage":100}]
+                      }}],
+                      "group_type_mapping":{},
+                      "cohorts":{
+                        "1":{"type":"AND","values":[$leaf]},
+                        "2":{"type":"AND","values":[{"key":"id","value":1,"type":"cohort","negation":true}]}
+                      }
+                    }
+                    """.trimIndent()
+                val server =
+                    createMockHttp(
+                        jsonResponse(definitions),
+                        jsonResponse(createFlagsResponse("regex-flag", enabled = true, variant = "remote-result")),
+                    )
+                val config = createTestConfig(host = server.url("/").toString())
+                val flags =
+                    PostHogFeatureFlags(
+                        config,
+                        PostHogApi(config),
+                        60000,
+                        100,
+                        localEvaluation = true,
+                        personalApiKey = "test-personal-key",
+                        pollerEnabled = false,
+                    )
+                try {
+                    flags.loadFeatureFlagDefinitions()
+                    val props = case.input?.let { mapOf("value" to it) } ?: emptyMap()
+                    val snapshot =
+                        flags.evaluateFlags(
+                            distinctId = "test-user",
+                            groups = null,
+                            personProperties = props,
+                            groupProperties = null,
+                            flagKeys = listOf("regex-flag"),
+                            onlyEvaluateLocally = true,
+                            disableGeoip = false,
+                        )
+                    val label = "$operator $case"
+                    if (case.local == null) {
+                        assertTrue(snapshot.flags.isEmpty(), label)
+                    } else {
+                        assertEquals(setOf("regex-flag"), snapshot.flags.keys, label)
+                    }
+                    assertEquals(1, server.requestCount, "Local-only must not request /flags: $label")
+                    val expected =
+                        if (case.local == null) {
+                            "remote-result"
+                        } else if (case.pattern == "[") {
+                            false
+                        } else if (operator == "regex") {
+                            case.local
+                        } else {
+                            !case.local
+                        }
+                    assertEquals(
+                        expected,
+                        flags.getFeatureFlag("regex-flag", distinctId = "test-user", personProperties = props),
+                        label,
+                    )
+                    assertEquals(if (case.local == null) 2 else 1, server.requestCount, label)
+                    assertTrue(server.takeRequest(5, TimeUnit.SECONDS)?.path?.contains("/local_evaluation") == true)
+                    if (case.local == null) {
+                        val request = server.takeRequest(5, TimeUnit.SECONDS)
+                        assertTrue(request?.path?.startsWith("/flags/") == true, label)
+                        val body = request?.body?.unGzip().orEmpty()
+                        assertEquals(props.isNotEmpty(), body.contains("person_properties"), label)
+                    }
+                } finally {
+                    flags.shutDown()
+                    server.shutdown()
+                }
+            }
+        }
+    }
+
+    @Test
     fun `getFeatureFlag returns variant when available via API`() {
         val flagsResponse = createFlagsResponse("test-flag", enabled = true, variant = "variant-a")
         val mockServer = createMockHttp(jsonResponse(flagsResponse))
