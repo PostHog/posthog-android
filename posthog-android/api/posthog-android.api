@@ -70,9 +70,6 @@ public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
 	public static final fun base64 (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;I)Ljava/lang/String;
 	public static synthetic fun base64$default (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;IILjava/lang/Object;)Ljava/lang/String;
 	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
-	public static final fun isValid (Landroid/graphics/Bitmap;)Z
-	public static final fun webpBase64 (Landroid/graphics/Bitmap;I)Ljava/lang/String;
-	public static synthetic fun webpBase64$default (Landroid/graphics/Bitmap;IILjava/lang/Object;)Ljava/lang/String;
 }
 
 public abstract interface class com/posthog/android/replay/PostHogDrawableConverter {
@@ -150,22 +147,6 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun setScreenshotScale (F)V
 	public final fun setThrottleDelayMs (J)V
 	public final fun setVerifyScreenshotMaskAlignment (Z)V
-}
-
-public class com/posthog/android/replay/internal/LogLine {
-	public field level Ljava/lang/String;
-	public field tag Ljava/lang/String;
-	public field text Ljava/lang/String;
-	public field time Ljava/util/GregorianCalendar;
-	public fun <init> ()V
-}
-
-public class com/posthog/android/replay/internal/LogcatParser {
-	public static final field BUFFER_BEGIN_RE Ljava/util/regex/Pattern;
-	public static final field DATE_TIME_MS_PATTERN Ljava/lang/String;
-	public static final field UTC Ljava/util/TimeZone;
-	public fun <init> ()V
-	public fun parse (Ljava/lang/String;)Lcom/posthog/android/replay/internal/LogLine;
 }
 
 public final class com/posthog/android/surveys/PostHogSurveysIntegration : com/posthog/PostHogIntegration, com/posthog/internal/surveys/PostHogSurveysHandler {
