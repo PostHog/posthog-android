@@ -37,6 +37,7 @@ Prefer Make wrappers; see [development commands](./CONTRIBUTING.md#development-c
 
 ## PR process
 
+- Sign every commit; `main` rejects unsigned commits. Configure signing in the git config you commit with, as described in "Commit signing" in [CONTRIBUTING.md](./CONTRIBUTING.md).
 - Public API changes: follow "Public API changes" in [CONTRIBUTING.md](./CONTRIBUTING.md). As an agent, also:
     - When reviewing or fixing someone else's PR, don't ask for or open an issue. Note an external contributor's public API change when it has neither an agreed issue nor an API-defining published spec.
     - The author is a PostHog maintainer when the PR's `author_association` is `MEMBER` or `OWNER` (`gh api repos/PostHog/posthog-android/pulls/<number> --jq .author_association`) or, before a PR exists, when `gh api orgs/PostHog/members/$(gh api user --jq .login)` succeeds. If the check fails or can't run, treat the author as an external contributor.
