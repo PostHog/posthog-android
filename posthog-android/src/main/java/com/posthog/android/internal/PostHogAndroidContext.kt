@@ -5,8 +5,14 @@ import android.content.pm.PackageInfo
 import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogThreadFactory
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.Executor
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Reads the static and dynamic context
@@ -19,7 +25,25 @@ internal class PostHogAndroidContext(
     private val config: PostHogAndroidConfig,
     private val packageInfoProvider: () -> PackageInfo? = { getPackageInfo(context, config) },
     private val networkPropertiesProvider: () -> Map<String, Any>,
+    // the worker exits when idle, so it needs no shutdown when the SDK closes
+    private val networkCarrierExecutor: Executor =
+        ThreadPoolExecutor(
+            1,
+            1,
+            30,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+            PostHogThreadFactory("PostHogNetworkCarrierThread"),
+        ).apply { allowCoreThreadTimeOut(true) },
 ) : PostHogContext {
+    @Volatile
+    private var networkCarrier: String? = null
+    private val networkCarrierRefreshing = AtomicBoolean(false)
+
+    init {
+        refreshNetworkCarrier()
+    }
+
     private val cacheSdkInfo by lazy {
         val sdkInfo = mutableMapOf<String, Any>()
 
@@ -78,16 +102,35 @@ internal class PostHogAndroidContext(
 
         dynamicContext.putAll(networkPropertiesProvider())
 
-        context.telephonyManager()?.let {
-            // TelephonyCallback requires location permission to expose the operator name. Keep this
-            // property read, which primarily uses telephony system properties and cached mapping.
-            val networkOperatorName = it.networkOperatorName
-            if (!networkOperatorName.isNullOrEmpty()) {
-                dynamicContext["\$network_carrier"] = networkOperatorName
-            }
+        networkCarrier?.let {
+            dynamicContext["\$network_carrier"] = it
         }
+        refreshNetworkCarrier()
 
         return dynamicContext
+    }
+
+    // TelephonyManager.networkOperatorName can make a Binder call to the phone process when the
+    // default subscription cache misses, so it's read on a worker thread and events use the last
+    // value. TelephonyCallback isn't an option because it requires location permission.
+    private fun refreshNetworkCarrier() {
+        if (!networkCarrierRefreshing.compareAndSet(false, true)) {
+            return
+        }
+        try {
+            networkCarrierExecutor.execute {
+                try {
+                    networkCarrier = context.telephonyManager()?.networkOperatorName?.ifEmpty { null }
+                } catch (ignored: Throwable) {
+                    // keep the last known value
+                } finally {
+                    networkCarrierRefreshing.set(false)
+                }
+            }
+        } catch (ignored: Throwable) {
+            // RejectedExecutionException
+            networkCarrierRefreshing.set(false)
+        }
     }
 
     override fun getSdkInfo(): Map<String, Any> {
