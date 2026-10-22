@@ -1,6 +1,6 @@
 package com.posthog.logs
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
@@ -41,7 +41,7 @@ internal class PostHogLogsCaptureTest {
         servers.add(http)
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
                 this.replayStoragePrefix = File(storagePrefix, "snapshots").absolutePath
                 this.logsStoragePrefix = File(storagePrefix, "logs").absolutePath

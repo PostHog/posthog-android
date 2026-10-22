@@ -27,7 +27,7 @@ internal class PostHogIntegrationInstallFailureTest {
         @Suppress("DEPRECATION")
         client =
             PostHog.with(
-                PostHogConfig(API_KEY).apply {
+                PostHogConfig(PROJECT_TOKEN).apply {
                     logger = testLogger
                     cachePreferences = PostHogMemoryPreferences()
                     remoteConfig = false

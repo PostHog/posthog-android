@@ -218,7 +218,7 @@ public class PostHog private constructor(
                     return
                 }
 
-                if (!apiKeys.add(config.projectToken)) {
+                if (!projectTokens.add(config.projectToken)) {
                     config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
@@ -622,7 +622,7 @@ public class PostHog private constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.projectToken)
+                    projectTokens.remove(config.projectToken)
                     uninstallIntegrations()
                 }
 
@@ -2596,7 +2596,7 @@ public class PostHog private constructor(
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
 
-        private val apiKeys = mutableSetOf<String>()
+        private val projectTokens = mutableSetOf<String>()
 
         /**
          * Captures application log records into PostHog's logs product

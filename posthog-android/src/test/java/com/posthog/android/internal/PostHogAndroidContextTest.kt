@@ -3,7 +3,7 @@ package com.posthog.android.internal
 import android.content.Context
 import android.net.ConnectivityManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.mockAppInfo
 import com.posthog.android.mockDisplayMetrics
@@ -27,7 +27,7 @@ internal class PostHogAndroidContextTest {
     private val originalUserAgent = System.getProperty("http.agent")
 
     private fun getSut(networkProperties: Map<String, Any> = emptyMap()): PostHogAndroidContext {
-        config = PostHogAndroidConfig(API_KEY)
+        config = PostHogAndroidConfig(PROJECT_TOKEN)
         return PostHogAndroidContext(context, config) { networkProperties }
     }
 

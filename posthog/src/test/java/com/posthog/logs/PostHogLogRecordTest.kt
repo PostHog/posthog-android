@@ -1,6 +1,6 @@
 package com.posthog.logs
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -82,7 +82,7 @@ internal class PostHogLogRecordTest {
         // Goes through the actual production codec: toStorageMap -> Gson serialize ->
         // file bytes -> Gson deserialize -> fromStorageMap. Catches type-erasure
         // surprises (e.g. Gson's Int->Double widening on Map<String, Any> values).
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val original =
             PostHogLogRecord(
                 body = "round-trip",
@@ -110,7 +110,7 @@ internal class PostHogLogRecordTest {
         // = false) and must survive persist->reload as 0, not collapse to null.
         // Goes through the real codec to catch a JSON Number (Double/Long) that
         // `fromStorageMap` must coerce back to Int 0.
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val original = PostHogLogRecord(body = "zero", traceFlags = 0)
         // The key must be present after toStorageMap — a `?.let` that ever became
         // a falsy check (`takeIf { it != 0 }`) would silently drop it here.
