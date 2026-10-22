@@ -23,17 +23,6 @@ internal class PostHogConfigTest {
         assertEquals("https://eu.i.posthog.com/", config.host)
     }
 
-    @Suppress("DEPRECATION")
-    @Test
-    fun `deprecated apiKey factory and getter alias projectToken`() {
-        val config = PostHogConfig(apiKey = " $PROJECT_TOKEN ", host = "https://eu.i.posthog.com", flushAt = 7)
-
-        assertEquals(PROJECT_TOKEN, config.projectToken)
-        assertEquals(PROJECT_TOKEN, config.apiKey)
-        assertEquals("https://eu.i.posthog.com", config.host)
-        assertEquals(7, config.flushAt)
-    }
-
     @Test
     fun `defaults a blank host after trimming whitespace`() {
         val config = PostHogConfig(PROJECT_TOKEN, " \n\t ")

@@ -97,7 +97,6 @@ internal class PostHogTest {
         remoteConfig: Boolean = false,
         surveys: Boolean = false,
         cachePreferences: PostHogPreferences? = PostHogMemoryPreferences(),
-        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
@@ -121,7 +120,6 @@ internal class PostHogTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
-                this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
                 this.remoteConfig = remoteConfig
                 this.surveys = surveys
@@ -1009,8 +1007,7 @@ internal class PostHogTest {
     }
 
     @Test
-    @Suppress("DEPRECATION")
-    fun `getFeatureFlagPayload returns the value after reloaded`() {
+    fun `getFeatureFlagResult returns the payload after reloaded`() {
         val http =
             mockHttp(
                 response =
@@ -1025,7 +1022,7 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
+        assertTrue(sut.getFeatureFlagResult("4535-funnel-bar-viz", sendFeatureFlagEvent = false)?.payload as Boolean)
 
         sut.close()
     }
@@ -3066,48 +3063,6 @@ internal class PostHogTest {
         sut.debug(false)
 
         assertFalse(config.debug)
-    }
-
-    @Suppress("DEPRECATION")
-    @Test
-    fun `sanitize properties`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val propertiesSanitizer =
-            PostHogPropertiesSanitizer { properties ->
-                properties.apply {
-                    remove("prop")
-                }
-            }
-
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
-
-        sut.capture(
-            EVENT,
-            DISTINCT_ID,
-            // contains "prop"
-            props,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
-            groups = groups,
-        )
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        assertEquals(PROJECT_TOKEN, batch.projectToken)
-        assertNotNull(batch.sentAt)
-
-        val theEvent = batch.batch.first()
-        assertNull(theEvent.properties!!["prop"])
-
-        sut.close()
     }
 
     @Test
