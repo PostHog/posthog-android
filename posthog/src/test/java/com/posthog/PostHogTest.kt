@@ -28,6 +28,8 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -1637,6 +1639,63 @@ internal class PostHogTest {
 
         // whichever ran last, integrations match the final consent
         assertEquals(!sut.isOptOut(), integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not deadlock while feature flags are loading`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        // hold the /flags response so optIn runs while the remote config load is still in flight
+        http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(1, TimeUnit.SECONDS))
+        val url = http.url("/")
+        // optIn hands cached surveys to a surveys integration when it reinstalls it
+        val surveysIntegration =
+            object : PostHogIntegration, PostHogSurveysHandler {
+                override fun onReset() {}
+
+                override fun onEvent(
+                    event: String,
+                    properties: Map<String, Any>?,
+                ) {}
+
+                override fun onSurveysLoaded(surveys: List<Survey>) {}
+            }
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = surveysIntegration)
+        http.takeRequest()
+        http.takeRequest()
+
+        val consent =
+            thread {
+                sut.optOut()
+                sut.optIn()
+            }
+        consent.join(5000)
+        assertFalse(consent.isAlive)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn re-applies the cached remote config to reinstalled integrations`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = integration)
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, integration.remoteConfigCount)
+
+        sut.optOut()
+        sut.optIn()
+
+        assertEquals(2, integration.remoteConfigCount)
 
         sut.close()
     }

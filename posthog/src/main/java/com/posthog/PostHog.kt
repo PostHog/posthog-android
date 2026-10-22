@@ -42,6 +42,7 @@ import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
+import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -364,7 +365,11 @@ public class PostHog private constructor(
                 // integrations are installed on optIn instead
                 sessionReplayWanted = isSessionReplayConfigEnabled()
                 if (!isOptedOut()) {
-                    installIntegrations(resumeSessionReplay = true, startSessionReplay = isSessionReplayConfigEnabled())
+                    installIntegrations(
+                        resumeSessionReplay = true,
+                        startSessionReplay = isSessionReplayConfigEnabled(),
+                        surveys = cachedSurveys(),
+                    )
                 }
 
                 // only because of testing in isolation, this flag is always enabled
@@ -422,6 +427,7 @@ public class PostHog private constructor(
     private fun installIntegrations(
         resumeSessionReplay: Boolean,
         startSessionReplay: Boolean,
+        surveys: List<Survey>?,
     ) {
         val config = config ?: return
         config.integrations.forEach {
@@ -437,7 +443,7 @@ public class PostHog private constructor(
                 } else if (it is PostHogSurveysHandler) {
                     surveysHandler = it
                     try {
-                        remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
+                        surveys?.let(it::onSurveysLoaded)
                     } catch (e: Throwable) {
                         config.logger.log("Pushing cached surveys to integration failed: $e.")
                     }
@@ -447,6 +453,14 @@ public class PostHog private constructor(
             }
         }
     }
+
+    private fun cachedSurveys(): List<Survey>? =
+        try {
+            remoteConfig?.getSurveys()
+        } catch (e: Throwable) {
+            safeLog("Reading cached surveys failed: $e.")
+            null
+        }
 
     private fun uninstallIntegrations() {
         stopSessionReplay()
@@ -1247,6 +1261,10 @@ public class PostHog private constructor(
             return
         }
 
+        // read before setupLock: getSurveys() takes remoteConfigLock, which the remote config
+        // thread can hold while it waits on setupLock
+        val surveys = cachedSurveys()
+
         // under setupLock so the consent write and its integration transition apply together:
         // a concurrent optOut can't land between them and leave integrations out of step
         synchronized(setupLock) {
@@ -1265,7 +1283,12 @@ public class PostHog private constructor(
             }
 
             if (wasOptedOut) {
-                installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted)
+                installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
+                // install re-arms each integration from local config; re-apply the cached remote
+                // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
+                if (remoteConfig?.hasRemoteConfigFetched() == true) {
+                    config?.let { notifyIntegrationsRemoteConfig(it, loaded = true) }
+                }
             }
         }
 

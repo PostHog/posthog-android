@@ -318,6 +318,7 @@ public class PostHogRemoteConfig(
                 var shouldNotifyRemoteConfigLoaded = false
 
                 response?.let {
+                    var shouldLoadFeatureFlags = false
                     synchronized(remoteConfigLock) {
                         // The server keeps sessionRecording enabled here because web recording is still allowed.
                         if (it.quotaLimited?.contains("mobile_recordings") == true) {
@@ -339,23 +340,9 @@ public class PostHogRemoteConfig(
                         if (hasFlags) {
                             if (config.preloadFeatureFlags) {
                                 if (distinctId.isNotBlank()) {
-                                    // do not process session replay from flags API
-                                    // since its already cached via the remote config API
-                                    // do not notify onRemoteConfigLoaded since loadRemoteConfig does it
-                                    executeFeatureFlags(
-                                        distinctId,
-                                        anonymousId,
-                                        groups,
-                                        internalOnFeatureFlags = internalOnFeatureFlags,
-                                        onFeatureFlags = onFeatureFlags,
-                                        notifyRemoteConfigLoaded = false,
-                                    )
+                                    shouldLoadFeatureFlags = true
                                 } else {
                                     config.logger.log("Feature flags not loaded, distinctId is invalid: $distinctId")
-                                    runOnFeatureFlagsCallbacks(
-                                        internalOnFeatureFlags = internalOnFeatureFlags,
-                                        onFeatureFlags = onFeatureFlags,
-                                    )
                                 }
                             }
                         } else {
@@ -369,17 +356,34 @@ public class PostHogRemoteConfig(
                                 // re-apply the bootstrap snapshot; $used_bootstrap_value stays true.
                                 applyBootstrapSnapshotLocked()
                             }
-
-                            runOnFeatureFlagsCallbacks(
-                                internalOnFeatureFlags = internalOnFeatureFlags,
-                                onFeatureFlags = onFeatureFlags,
-                            )
                         }
-
-                        // mark to notify outside the lock
-                        remoteConfigHasFetched.set(true)
-                        shouldNotifyRemoteConfigLoaded = true
                     }
+
+                    // Load flags and run the callbacks outside remoteConfigLock: the callbacks call back
+                    // into PostHog, which takes setupLock, while optIn() holds setupLock and reads surveys
+                    // under remoteConfigLock. Holding both here in the opposite order deadlocks.
+                    if (shouldLoadFeatureFlags) {
+                        // do not process session replay from flags API
+                        // since its already cached via the remote config API
+                        // do not notify onRemoteConfigLoaded since loadRemoteConfig does it
+                        executeFeatureFlags(
+                            distinctId,
+                            anonymousId,
+                            groups,
+                            internalOnFeatureFlags = internalOnFeatureFlags,
+                            onFeatureFlags = onFeatureFlags,
+                            notifyRemoteConfigLoaded = false,
+                        )
+                    } else if (it.hasFeatureFlags != true || config.preloadFeatureFlags) {
+                        runOnFeatureFlagsCallbacks(
+                            internalOnFeatureFlags = internalOnFeatureFlags,
+                            onFeatureFlags = onFeatureFlags,
+                        )
+                    }
+
+                    // mark to notify below
+                    remoteConfigHasFetched.set(true)
+                    shouldNotifyRemoteConfigLoaded = true
                 } ?: run {
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
