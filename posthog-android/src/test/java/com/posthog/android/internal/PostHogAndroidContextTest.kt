@@ -172,4 +172,21 @@ internal class PostHogAndroidContextTest {
 
         assertEquals("name", sut.getDynamicContext()["\$network_carrier"])
     }
+
+    @Test
+    fun `keeps network carrier and refreshes again after a failed read`() {
+        val telephonyManager = mock<TelephonyManager>()
+        whenever(context.getSystemService(Context.TELEPHONY_SERVICE)).thenReturn(telephonyManager)
+        whenever(telephonyManager.networkOperatorName).thenReturn("name")
+
+        val sut = getSut()
+        runPendingTasks()
+        sut.getDynamicContext()
+
+        whenever(telephonyManager.networkOperatorName).thenThrow(SecurityException())
+        runPendingTasks()
+
+        assertEquals("name", sut.getDynamicContext()["\$network_carrier"])
+        assertEquals(1, pendingTasks.size)
+    }
 }
