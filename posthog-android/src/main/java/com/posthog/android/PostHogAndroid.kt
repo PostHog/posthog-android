@@ -116,6 +116,7 @@ public class PostHogAndroid private constructor() {
                 // config it rejected would gate and persist under a project nothing is sent to.
                 if (PostHog.getConfig<PostHogAndroidConfig>() === config) {
                     androidConfig = config
+                    recordAppVersionIfOptedOut(PostHog.isOptOut(), config)
                 }
             }
         }
@@ -136,7 +137,19 @@ public class PostHogAndroid private constructor() {
             config: T,
         ): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
-            return PostHog.with(config)
+            val postHog = PostHog.with(config)
+            recordAppVersionIfOptedOut(postHog.isOptOut(), config)
+            return postHog
+        }
+
+        // Integrations aren't installed while opted out, but version accounting must still run.
+        private fun recordAppVersionIfOptedOut(
+            optedOut: Boolean,
+            config: PostHogAndroidConfig,
+        ) {
+            if (optedOut) {
+                config.integrations.filterIsInstance<PostHogAppInstallIntegration>().forEach { it.recordAppVersion() }
+            }
         }
 
         private fun <T : PostHogAndroidConfig> setAndroidConfig(

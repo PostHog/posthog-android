@@ -2,9 +2,12 @@ package com.posthog.android.internal
 
 import android.content.Context
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
+import com.posthog.PostHogIntegration
 import com.posthog.android.API_KEY
 import com.posthog.android.FakeLifecycle
 import com.posthog.android.PostHogAndroidConfig
@@ -13,6 +16,7 @@ import com.posthog.android.mockPackageInfo
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
 import java.util.Calendar
@@ -47,6 +51,11 @@ internal class PostHogLifecycleObserverIntegrationTest {
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.setDateProvider(PostHogDeviceDateProvider())
         PostHogSessionManager.endSession()
+        // static, so an Application Opened in one test would otherwise leak into the next
+        PostHogLifecycleObserverIntegration::class.java.getDeclaredField("fromBackground").apply {
+            isAccessible = true
+            setBoolean(null, false)
+        }
     }
 
     @Test
@@ -107,6 +116,60 @@ internal class PostHogLifecycleObserverIntegrationTest {
         assertEquals(true, fake.properties?.get("from_background"))
 
         sut.uninstall()
+    }
+
+    @Test
+    fun `reinstall while the app is started does not capture app opened`() {
+        // held strongly: the registry only keeps a weak reference to its owner
+        val owner = mock<LifecycleOwner>()
+        val lifecycle = LifecycleRegistry.createUnsafe(owner)
+        val sut =
+            PostHogLifecycleObserverIntegration(
+                context,
+                PostHogAndroidConfig(API_KEY),
+                MainHandler(),
+                lifecycle = lifecycle,
+                packageInfoProvider = { null },
+            )
+
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.uninstall()
+
+        // e.g. optOut then optIn while the app is in the foreground: re-adding the observer
+        // replays onStart, which isn't the app opening
+        lifecycle.currentState = Lifecycle.State.RESUMED
+        sut.install(fake)
+
+        assertEquals(0, fake.captures)
+
+        sut.uninstall()
+        assertNotNull(owner)
+    }
+
+    @Test
+    fun `reinstall while the app is in the background marks it as backgrounded`() {
+        val baseTime = System.currentTimeMillis()
+        val fakeDateProvider = FakeDateProviderForTest(baseTime)
+        PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val sut = getSut()
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+        sut.uninstall()
+        // e.g. optIn while backgrounded: the app went to the background while uninstalled
+        PostHogSessionManager.setAppInBackground(false)
+        sut.install(fake)
+
+        PostHogSessionManager.startSession()
+        fakeDateProvider.currentTimeMs = baseTime + 1000L * 60 * 31
+
+        // an idle session is cleared in the background rather than rotated
+        assertNull(PostHogSessionManager.getActiveSessionId())
+
+        sut.uninstall()
+        PostHogSessionManager.setAppInBackground(false)
     }
 
     @Test
@@ -203,15 +266,16 @@ internal class PostHogLifecycleObserverIntegrationTest {
         val baseTime = System.currentTimeMillis()
         val fakeDateProvider = FakeDateProviderForTest(baseTime)
         PostHogSessionManager.setDateProvider(fakeDateProvider)
+        val replayHandler = FakeReplayHandler()
         val config =
             PostHogAndroidConfig(API_KEY).apply {
                 dateProvider = fakeDateProvider
                 captureApplicationLifecycleEvents = false
+                addIntegration(replayHandler)
             }
         val mainHandler = MainHandler()
         val sut = PostHogLifecycleObserverIntegration(context, config, mainHandler, lifecycle = fakeLifecycle)
         val fake = createPostHogFake()
-        fake.sessionReplayActive = true
         sut.install(fake)
 
         PostHogSessionManager.startSession()
@@ -225,8 +289,9 @@ internal class PostHogLifecycleObserverIntegrationTest {
         fakeDateProvider.currentTimeMs = baseTime + twentyFourHoursMs + oneMinuteMs
         sut.onStop(ProcessLifecycleOwner.get())
 
-        assertEquals(1, fake.stopSessionReplayCalls)
-        assertEquals(false, fake.sessionReplayActive)
+        // an SDK-internal stop: the public stop would clear the app's wish for replay
+        assertEquals(0, fake.stopSessionReplayCalls)
+        assertEquals(1, replayHandler.stopCalls)
         // Session was ended; the next onStart will create a fresh one.
         assertNull(PostHogSessionManager.getActiveSessionId())
 
@@ -387,5 +452,26 @@ internal class PostHogLifecycleObserverIntegrationTest {
         override fun currentTimeMillis(): Long = currentTimeMs
 
         override fun nanoTime(): Long = System.nanoTime()
+    }
+
+    private class FakeReplayHandler : PostHogIntegration, PostHogSessionReplayHandler {
+        var stopCalls = 0
+
+        override fun start(resumeCurrent: Boolean) {}
+
+        override fun stop() {
+            stopCalls++
+        }
+
+        override fun isActive(): Boolean = false
+
+        override fun debugProperties(): Map<String, Any> = emptyMap()
+
+        override fun onEvent(
+            event: String,
+            properties: Map<String, Any>?,
+        ) {}
+
+        override fun onSessionIdChanged() {}
     }
 }

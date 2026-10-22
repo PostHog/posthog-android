@@ -10,6 +10,7 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogSessionManager
+import com.posthog.internal.replay.PostHogSessionReplayHandler
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.atomic.AtomicBoolean
@@ -36,6 +37,12 @@ internal class PostHogLifecycleObserverIntegration(
     private var postHog: PostHogInterface? = null
     private var ownsInstallation = false
 
+    // Set once installed, so a later install (e.g. optIn after optOut) is known to be a reinstall.
+    private var wasInstalled = false
+
+    // True while addObserver replays onStart for an app that is already started; main thread only.
+    private var isReplayingStart = false
+
     private companion object {
         // in case there are multiple instances or the SDK is closed/setup again
         // the value is still cached
@@ -55,7 +62,8 @@ internal class PostHogLifecycleObserverIntegration(
         PostHogSessionManager.touchSession()
         postHog?.startSession()
 
-        if (config.captureApplicationLifecycleEvents) {
+        // A reinstall while the app is in the foreground isn't the app opening.
+        if (config.captureApplicationLifecycleEvents && !isReplayingStart) {
             val props = mutableMapOf<String, Any>()
             props["from_background"] = fromBackground
 
@@ -114,16 +122,29 @@ internal class PostHogLifecycleObserverIntegration(
         if (wasExpired) {
             cancelTask()
             // Force the rotation now and stop replay synchronously — process may suspend
-            // before the listener's main-thread post can run.
+            // before the listener's main-thread post can run. Stops the handler directly: the
+            // public stopSessionReplay() would record that the app no longer wants replay.
             postHog?.endSession()
-            postHog?.stopSessionReplay()
+            config.integrations.filterIsInstance<PostHogSessionReplayHandler>().forEach { it.stop() }
         } else {
             scheduleEndSession()
         }
     }
 
     private fun add() {
-        lifecycle.addObserver(this)
+        // While uninstalled (opted out) no onStop marked the app as backgrounded, so a reinstall
+        // while it isn't started sets that here; otherwise the next onStart does.
+        if (wasInstalled && !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            PostHogSessionManager.setAppInBackground(true)
+        }
+        // addObserver replays onStart synchronously when the app is already started.
+        isReplayingStart = wasInstalled && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        try {
+            lifecycle.addObserver(this)
+        } finally {
+            isReplayingStart = false
+            wasInstalled = true
+        }
     }
 
     @Synchronized

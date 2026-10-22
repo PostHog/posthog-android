@@ -2542,7 +2542,8 @@ public class PostHogReplayIntegration(
                 synchronized(decorViews) {
                     // Re-check under the lock: callers gate outside it, and stop() can clear the
                     // manual-start marker in between, which would otherwise leave this start live.
-                    if (!isAutomaticStartPermitted()) {
+                    // A start queued on main before uninstall (e.g. optOut) must not run after it.
+                    if (!isAutomaticStartPermitted() || postHog == null) {
                         false
                     } else {
                         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)

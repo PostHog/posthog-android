@@ -28,6 +28,8 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -102,6 +104,7 @@ internal class PostHogTest {
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
         exceptionStepsEnabled: Boolean = true,
         exceptionStepsMaxBytes: Int = 32768,
+        sessionReplay: Boolean = false,
     ): PostHogInterface {
         config =
             PostHogConfig(API_KEY, host).apply {
@@ -130,6 +133,7 @@ internal class PostHogTest {
                 this.errorTrackingConfig.exceptionSteps.maxBytes = exceptionStepsMaxBytes
                 this.context = context
                 this.personProfiles = personProfiles
+                this.sessionReplay = sessionReplay
             }
         return PostHog.withInternal(
             config,
@@ -1310,6 +1314,450 @@ internal class PostHogTest {
         sut.optIn()
 
         assertEquals(1, integration.onOptInCount)
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut uninstalls integrations and optIn reinstalls them`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        assertTrue(integration.installed)
+
+        sut.optOut()
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay that was recording at optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not restart session replay the app stopped`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay the app started itself`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        // sessionReplay config stays off: the app starts the recording by hand
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay the app started that is waiting for an event trigger`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        integration.activateOnStart = false
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+        assertFalse(integration.isActive())
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn ignores a session replay stop made while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        sut.optOut()
+        sut.stopSessionReplay()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn starts session replay when launched opted out with it enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(
+                url.toString(),
+                optOut = true,
+                sessionReplay = true,
+                cachePreferences = myPrefs,
+                preloadFeatureFlags = false,
+                integration = integration,
+            )
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn ignores a session replay start made while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.optOut()
+        sut.startSessionReplay()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not start session replay when launched opted out with it disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(url.toString(), optOut = true, cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `flags-loaded replay start can't land after a concurrent optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        val onFlagsLoaded =
+            PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
+                .apply { isAccessible = true }
+                .get(sut) as PostHogOnFeatureFlags
+
+        // optOut runs while the flags-loaded callback is between reading the handler and starting it
+        var optOut: Thread? = null
+        integration.onIsActive = {
+            if (optOut == null) {
+                optOut = thread { sut.optOut() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (optOut!!.state != Thread.State.BLOCKED && optOut!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "optOut never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        onFlagsLoaded.loaded()
+        optOut!!.join()
+
+        assertTrue(sut.isOptOut())
+        assertFalse(integration.isActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent stopSessionReplay and startSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        // startSessionReplay runs while stopSessionReplay has recorded its intent but not yet stopped
+        var start: Thread? = null
+        integration.onStop = {
+            if (start == null) {
+                start = thread { sut.startSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (start!!.state != Thread.State.BLOCKED && start!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "start never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.stopSessionReplay()
+        start!!.join()
+        integration.onStop = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        // optIn restarts replay only if it was still recording, i.e. the start took effect
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent startSessionReplay and stopSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        // stopSessionReplay runs while startSessionReplay has recorded its intent but not yet started
+        var stop: Thread? = null
+        integration.onIsActive = {
+            if (stop == null) {
+                stop = thread { sut.stopSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (stop!!.state != Thread.State.BLOCKED && stop!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "stop never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.startSessionReplay()
+        stop!!.join()
+        integration.onIsActive = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut applies consent together with its integration transition`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+        val setupLock =
+            PostHogStateless::class.java.getDeclaredField("setupLock").apply { isAccessible = true }.get(sut)
+
+        val optOut: Thread
+        val optIn: Thread
+        synchronized(setupLock) {
+            optOut = thread { sut.optOut() }
+            awaitBlocked(optOut)
+            // optOut is waiting to uninstall, so its consent must not be visible yet
+            assertFalse(sut.isOptOut())
+
+            optIn = thread { sut.optIn() }
+            awaitBlocked(optIn)
+        }
+        optOut.join()
+        optIn.join()
+
+        // whichever ran last, integrations match the final consent
+        assertEquals(!sut.isOptOut(), integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not deadlock while feature flags are loading`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        // hold the /flags response so optIn runs while the remote config load is still in flight
+        http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(1, TimeUnit.SECONDS))
+        val url = http.url("/")
+        // optIn hands cached surveys to a surveys integration when it reinstalls it
+        val surveysIntegration =
+            object : PostHogIntegration, PostHogSurveysHandler {
+                override fun onReset() {}
+
+                override fun onEvent(
+                    event: String,
+                    properties: Map<String, Any>?,
+                ) {}
+
+                override fun onSurveysLoaded(surveys: List<Survey>) {}
+            }
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = surveysIntegration)
+        http.takeRequest()
+        http.takeRequest()
+
+        val consent =
+            thread {
+                sut.optOut()
+                sut.optIn()
+            }
+        consent.join(5000)
+        assertFalse(consent.isAlive)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn re-applies the cached remote config to reinstalled integrations`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = integration)
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, integration.remoteConfigCount)
+
+        sut.optOut()
+        sut.optIn()
+
+        assertEquals(2, integration.remoteConfigCount)
+
+        sut.close()
+    }
+
+    private fun awaitBlocked(thread: Thread) {
+        val deadline = System.currentTimeMillis() + 5000
+        while (thread.state != Thread.State.BLOCKED) {
+            check(System.currentTimeMillis() < deadline) { "thread never blocked" }
+            Thread.sleep(1)
+        }
+    }
+
+    @Test
+    fun `setup does not install integrations while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration, preloadFeatureFlags = false)
+
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn and optOut only reinstall integrations when the state changes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        sut.optIn()
+        assertEquals(1, integration.installCount)
+
+        sut.optOut()
+        sut.optOut()
+        assertEquals(1, integration.uninstallCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote config does not reach integrations while opted out`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, integration.remoteConfigCount)
 
         sut.close()
     }
