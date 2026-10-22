@@ -1404,10 +1404,23 @@ public class PostHog private constructor(
             return
         }
 
+        // Resolved once and passed to capture too, so the envelope and the property can't diverge
+        // under a concurrent identify(). Guarded because a custom getAnonymousId may throw.
+        val sourceDistinctId =
+            try {
+                distinctId
+            } catch (e: Throwable) {
+                config?.logger?.log("alias call failed to resolve distinctId: $e.")
+                return
+            }
+
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
+        // The source identity is also duplicated into the properties so consumers that only
+        // read the event properties can resolve both sides of the alias linkage.
+        props["distinct_id"] = sourceDistinctId
 
-        capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
+        capture(PostHogEventName.CREATE_ALIAS.event, distinctId = sourceDistinctId, properties = props)
     }
 
     public override fun captureFeatureView(
