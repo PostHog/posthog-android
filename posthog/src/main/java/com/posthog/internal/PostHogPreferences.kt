@@ -56,8 +56,7 @@ public interface PostHogPreferences {
         @PostHogInternal
         public const val PUSH_OPENED_MESSAGE_IDS: String = "pushOpenedMessageIds"
 
-        @PostHogInternal
-        public const val PUSH_SUBSCRIPTION_REJECTED: String = "pushSubscriptionRejected"
+        internal const val PUSH_SUBSCRIPTION_REJECTED: String = "pushSubscriptionRejected"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_PROGRESS: String = "surveyProgress"

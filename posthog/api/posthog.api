@@ -606,11 +606,6 @@ public final class com/posthog/errortracking/PostHogExceptionStepsConfig {
 	public final fun setMaxBytes (I)V
 }
 
-public final class com/posthog/internal/CustomHeadersInterceptor : okhttp3/Interceptor {
-	public fun <init> (Lcom/posthog/PostHogConfig;)V
-	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
-}
-
 public final class com/posthog/internal/EndpointSpec {
 	public static final field Companion Lcom/posthog/internal/EndpointSpec$Companion;
 	public static final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
@@ -731,11 +726,6 @@ public final class com/posthog/internal/FlagProperty {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class com/posthog/internal/GzipRequestInterceptor : okhttp3/Interceptor {
-	public fun <init> (Lcom/posthog/PostHogConfig;)V
-	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
-}
-
 public final class com/posthog/internal/LocalEvaluationApiResponse {
 	public static final field Companion Lcom/posthog/internal/LocalEvaluationApiResponse$Companion;
 	public synthetic fun <init> (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;ZLkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -825,10 +815,6 @@ public abstract interface class com/posthog/internal/PostHogContext {
 	public abstract fun getDynamicContext ()Ljava/util/Map;
 	public abstract fun getSdkInfo ()Ljava/util/Map;
 	public abstract fun getStaticContext ()Ljava/util/Map;
-}
-
-public final class com/posthog/internal/PostHogContextKt {
-	public static final fun personPropertiesContext (Lcom/posthog/internal/PostHogContext;)Ljava/util/Map;
 }
 
 public abstract interface class com/posthog/internal/PostHogDateProvider {
@@ -963,7 +949,6 @@ public abstract interface class com/posthog/internal/PostHogPreferences {
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field PUSH_OPENED_MESSAGE_IDS Ljava/lang/String;
-	public static final field PUSH_SUBSCRIPTION_REJECTED Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_PROGRESS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
@@ -986,7 +971,6 @@ public final class com/posthog/internal/PostHogPreferences$Companion {
 	public static final field GROUPS Ljava/lang/String;
 	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
 	public static final field PUSH_OPENED_MESSAGE_IDS Ljava/lang/String;
-	public static final field PUSH_SUBSCRIPTION_REJECTED Ljava/lang/String;
 	public static final field STRINGIFIED_KEYS Ljava/lang/String;
 	public static final field SURVEY_PROGRESS Ljava/lang/String;
 	public static final field SURVEY_SEEN Ljava/lang/String;
@@ -998,13 +982,6 @@ public final class com/posthog/internal/PostHogPreferences$DefaultImpls {
 	public static synthetic fun clear$default (Lcom/posthog/internal/PostHogPreferences;Ljava/util/List;ILjava/lang/Object;)V
 	public static synthetic fun getValue$default (Lcom/posthog/internal/PostHogPreferences;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun isAvailable (Lcom/posthog/internal/PostHogPreferences;)Z
-}
-
-public final class com/posthog/internal/PostHogPrintLogger : com/posthog/internal/PostHogLogger {
-	public fun <init> (Lcom/posthog/PostHogConfig;)V
-	public fun isEnabled ()Z
-	public fun log (Ljava/lang/String;)V
-	public fun logWarning (Ljava/lang/String;)V
 }
 
 public final class com/posthog/internal/PostHogQueue : com/posthog/internal/PostHogQueueInterface {
@@ -1151,12 +1128,6 @@ public final class com/posthog/internal/PropertyGroup {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class com/posthog/internal/PropertyGroupDeserializer : com/google/gson/JsonDeserializer {
-	public fun <init> ()V
-	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyGroup;
-	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
-}
-
 public final class com/posthog/internal/PropertyOperator : java/lang/Enum {
 	public static final field Companion Lcom/posthog/internal/PropertyOperator$Companion;
 	public static final field ENDS_WITH Lcom/posthog/internal/PropertyOperator;
@@ -1242,12 +1213,6 @@ public final class com/posthog/internal/PropertyValue$PropertyGroups : com/posth
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class com/posthog/internal/PropertyValueDeserializer : com/google/gson/JsonDeserializer {
-	public fun <init> ()V
-	public fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Lcom/posthog/internal/PropertyValue;
-	public synthetic fun deserialize (Lcom/google/gson/JsonElement;Ljava/lang/reflect/Type;Lcom/google/gson/JsonDeserializationContext;)Ljava/lang/Object;
-}
-
 public final class com/posthog/internal/VariantDefinition {
 	public fun <init> (Ljava/lang/String;D)V
 	public final fun getKey ()Ljava/lang/String;
@@ -1260,8 +1225,6 @@ public final class com/posthog/internal/errortracking/ThrowableCoercer {
 	public static final field MAX_EXCEPTION_LIST_SIZE I
 	public static final field MAX_FRAMES_PER_STACKTRACE I
 	public fun <init> ()V
-	public final fun fromThrowableToPostHogProperties (Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map;
-	public static synthetic fun fromThrowableToPostHogProperties$default (Lcom/posthog/internal/errortracking/ThrowableCoercer;Ljava/lang/Throwable;Ljava/util/List;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ljava/util/Map;
 }
 
 public abstract interface class com/posthog/internal/replay/PostHogSessionReplayHandler {
@@ -1280,14 +1243,6 @@ public final class com/posthog/internal/replay/PostHogSessionReplayHandler$Defau
 
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
-}
-
-public final class com/posthog/internal/replay/RRDocumentNode : com/posthog/internal/replay/RREvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/Object;J)V
-}
-
-public final class com/posthog/internal/replay/RRDomContentLoadedEvent : com/posthog/internal/replay/RREvent {
-	public fun <init> (J)V
 }
 
 public class com/posthog/internal/replay/RREvent {
@@ -1380,10 +1335,6 @@ public final class com/posthog/internal/replay/RRIncrementalSource : java/lang/E
 
 public final class com/posthog/internal/replay/RRIncrementalSource$Companion {
 	public final fun fromValue (I)Lcom/posthog/internal/replay/RRIncrementalSource;
-}
-
-public final class com/posthog/internal/replay/RRLoadedEvent : com/posthog/internal/replay/RREvent {
-	public fun <init> (J)V
 }
 
 public final class com/posthog/internal/replay/RRMetaEvent : com/posthog/internal/replay/RREvent {
@@ -1582,7 +1533,6 @@ public final class com/posthog/internal/surveys/ResolvedSurveyTranslations {
 
 public final class com/posthog/internal/surveys/SurveyLanguageDetectionKt {
 	public static final fun detectSurveyLanguage (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/lang/String;
-	public static final fun findBestTranslationMatch (Ljava/util/Map;Ljava/lang/String;)Ljava/lang/String;
 }
 
 public final class com/posthog/internal/surveys/SurveyTranslationApplierKt {
