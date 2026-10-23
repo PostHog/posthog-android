@@ -467,6 +467,26 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `onFeatureFlags drops a load that finishes after close`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags).setHeadersDelay(500, TimeUnit.MILLISECONDS))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        http.takeRequest(5, TimeUnit.SECONDS)
+
+        sut.close()
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        sut.setup(config)
+        sut.onFeatureFlags { updates.add(it) }
+
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertNull(updates.poll())
+    }
+
+    @Test
     fun `onFeatureFlags listener is not invoked by a reload while disabled`() {
         val sut = getSut(mockHttp().url("/").toString(), preloadFeatureFlags = false)
         val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
