@@ -1,6 +1,6 @@
 package com.posthog.surveys
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.surveys.resolveSurveyTranslations
@@ -13,7 +13,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 internal class SurveyTranslationsTest {
-    private val serializer: PostHogSerializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer: PostHogSerializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
 
     private fun decodeSurvey(json: String): Survey {
         return serializer.deserialize<Survey>(StringReader(json))

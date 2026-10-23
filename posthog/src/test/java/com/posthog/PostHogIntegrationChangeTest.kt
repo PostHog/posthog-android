@@ -26,7 +26,7 @@ internal class PostHogIntegrationChangeTest {
     @Suppress("DEPRECATION")
     private val client =
         PostHog.with(
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 cachePreferences = PostHogMemoryPreferences()
                 remoteConfig = false
                 preloadFeatureFlags = false

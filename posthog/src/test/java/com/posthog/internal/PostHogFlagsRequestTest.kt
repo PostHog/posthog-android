@@ -1,8 +1,8 @@
 package com.posthog.internal
 
 import com.posthog.ANON_ID
-import com.posthog.API_KEY
 import com.posthog.DISTINCT_ID
+import com.posthog.PROJECT_TOKEN
 import com.posthog.groups
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +15,7 @@ internal class PostHogFlagsRequestTest {
         val groupProperties = mapOf("org_123" to mapOf("size" to "large"))
         val request =
             PostHogFlagsRequest(
-                API_KEY,
+                PROJECT_TOKEN,
                 DISTINCT_ID,
                 anonymousId = ANON_ID,
                 groups = groups,
@@ -23,7 +23,7 @@ internal class PostHogFlagsRequestTest {
                 groupProperties = groupProperties,
             )
 
-        assertEquals(API_KEY, request["api_key"])
+        assertEquals(PROJECT_TOKEN, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(ANON_ID, request["\$anon_distinct_id"])
         assertEquals(groups, request["groups"])
@@ -36,21 +36,21 @@ internal class PostHogFlagsRequestTest {
         val evaluationContexts = listOf("production", "web", "checkout")
         val request =
             PostHogFlagsRequest(
-                API_KEY,
+                PROJECT_TOKEN,
                 DISTINCT_ID,
                 evaluationContexts = evaluationContexts,
             )
 
-        assertEquals(API_KEY, request["api_key"])
+        assertEquals(PROJECT_TOKEN, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertEquals(evaluationContexts, request["evaluation_contexts"])
     }
 
     @Test
     fun `excludes evaluation_contexts when null`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
+        val request = PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID)
 
-        assertEquals(API_KEY, request["api_key"])
+        assertEquals(PROJECT_TOKEN, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertFalse(request.containsKey("evaluation_contexts"))
     }
@@ -59,12 +59,12 @@ internal class PostHogFlagsRequestTest {
     fun `excludes evaluation_contexts when empty`() {
         val request =
             PostHogFlagsRequest(
-                API_KEY,
+                PROJECT_TOKEN,
                 DISTINCT_ID,
                 evaluationContexts = emptyList(),
             )
 
-        assertEquals(API_KEY, request["api_key"])
+        assertEquals(PROJECT_TOKEN, request["api_key"])
         assertEquals(DISTINCT_ID, request["distinct_id"])
         assertFalse(request.containsKey("evaluation_contexts"))
     }
@@ -73,7 +73,7 @@ internal class PostHogFlagsRequestTest {
     fun `includes device_id when provided`() {
         val request =
             PostHogFlagsRequest(
-                API_KEY,
+                PROJECT_TOKEN,
                 DISTINCT_ID,
                 deviceId = "device-123",
             )
@@ -83,7 +83,7 @@ internal class PostHogFlagsRequestTest {
 
     @Test
     fun `excludes device_id when null`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
+        val request = PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID)
 
         assertFalse(request.containsKey("\$device_id"))
     }
@@ -92,7 +92,7 @@ internal class PostHogFlagsRequestTest {
     fun `excludes device_id when blank`() {
         val request =
             PostHogFlagsRequest(
-                API_KEY,
+                PROJECT_TOKEN,
                 DISTINCT_ID,
                 deviceId = "",
             )
@@ -102,7 +102,7 @@ internal class PostHogFlagsRequestTest {
 
     @Test
     fun `defaults groups and group_properties to empty objects`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID)
+        val request = PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID)
 
         assertEquals(emptyMap<String, String>(), request["groups"])
         assertEquals(emptyMap<String, Map<String, Any?>>(), request["group_properties"])
@@ -116,7 +116,7 @@ internal class PostHogFlagsRequestTest {
         ).forEach { personProperties ->
             val request =
                 PostHogFlagsRequest(
-                    API_KEY,
+                    PROJECT_TOKEN,
                     DISTINCT_ID,
                     personProperties = personProperties,
                 )
@@ -127,14 +127,14 @@ internal class PostHogFlagsRequestTest {
 
     @Test
     fun `includes geoip_disable when false`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, disableGeoip = false)
+        val request = PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID, disableGeoip = false)
 
         assertFalse(request["geoip_disable"] as Boolean)
     }
 
     @Test
     fun `includes flag keys to evaluate`() {
-        val request = PostHogFlagsRequest(API_KEY, DISTINCT_ID, flagKeys = listOf("my-flag"))
+        val request = PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID, flagKeys = listOf("my-flag"))
 
         assertEquals(listOf("my-flag"), request["flag_keys_to_evaluate"])
     }

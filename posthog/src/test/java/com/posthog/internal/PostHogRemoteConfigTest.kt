@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
@@ -82,7 +82,7 @@ internal class PostHogRemoteConfigTest {
         cachePreferences: PostHogPreferences = preferences,
     ): PostHogRemoteConfig {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 this.networkStatus = networkStatus
                 this.surveys = surveys
                 this.bootstrap = bootstrap
@@ -1091,7 +1091,7 @@ internal class PostHogRemoteConfigTest {
         val url = http.url("/")
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
@@ -1156,7 +1156,7 @@ internal class PostHogRemoteConfigTest {
         val url = http.url("/")
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
@@ -1428,7 +1428,7 @@ internal class PostHogRemoteConfigTest {
         val url = http.url("/")
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
                 errorTrackingConfig.autoCapture = true
             }
@@ -1497,7 +1497,7 @@ internal class PostHogRemoteConfigTest {
         val url = http.url("/")
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
                 errorTrackingConfig.autoCapture = true
             }
@@ -1832,7 +1832,7 @@ internal class PostHogRemoteConfigTest {
         var callbackCount = 0
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
@@ -1879,7 +1879,7 @@ internal class PostHogRemoteConfigTest {
         var callbackCount = 0
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
                 preloadFeatureFlags = true
             }
@@ -2358,7 +2358,7 @@ internal class PostHogRemoteConfigTest {
         var callbackCount = 0
 
         val localConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 cachePreferences = preferences
             }
         val api = PostHogApi(localConfig)
@@ -2931,7 +2931,7 @@ internal class PostHogRemoteConfigTest {
             http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(300, TimeUnit.MILLISECONDS))
         }
         val overlapping = Executors.newFixedThreadPool(4, PostHogThreadFactory("TestOverlap"))
-        val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
+        val config = PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply { cachePreferences = preferences }
         val sut =
             PostHogRemoteConfig(
                 config,
@@ -2971,7 +2971,7 @@ internal class PostHogRemoteConfigTest {
         val release = CountDownLatch(1)
         val http = gatedFlagsServer(release)
         val overlapping = Executors.newFixedThreadPool(2, PostHogThreadFactory("TestShared"))
-        val config = PostHogConfig(API_KEY, http.url("/").toString()).apply { cachePreferences = preferences }
+        val config = PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply { cachePreferences = preferences }
         val sut =
             PostHogRemoteConfig(
                 config,
@@ -3018,7 +3018,7 @@ internal class PostHogRemoteConfigTest {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         repeat(3) { http.enqueue(MockResponse().setBody(responseFlagsApi)) }
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 cachePreferences = preferences
                 logger =
                     object : PostHogLogger {

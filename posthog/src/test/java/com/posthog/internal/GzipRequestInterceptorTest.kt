@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -45,7 +45,7 @@ internal class GzipRequestInterceptorTest {
             whenever(chain.request()).thenReturn(request)
             whenever(chain.proceed(compressedRequest.capture())).thenReturn(response)
 
-            GzipRequestInterceptor(PostHogConfig(API_KEY)).intercept(chain)
+            GzipRequestInterceptor(PostHogConfig(PROJECT_TOKEN)).intercept(chain)
 
             verify(chain).proceed(compressedRequest.lastValue)
             val compressedBody = compressedRequest.lastValue.body!!

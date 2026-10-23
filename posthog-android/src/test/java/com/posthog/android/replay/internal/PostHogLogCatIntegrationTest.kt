@@ -2,7 +2,7 @@ package com.posthog.android.replay.internal
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogInterface
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogRemoteConfig
 import org.junit.runner.RunWith
@@ -22,7 +22,7 @@ internal class PostHogLogCatIntegrationTest {
     private val mockRemoteConfig = mock<PostHogRemoteConfig>()
 
     private fun createConfig(captureLogcat: Boolean = true): PostHogAndroidConfig {
-        return PostHogAndroidConfig(API_KEY).apply {
+        return PostHogAndroidConfig(PROJECT_TOKEN).apply {
             sessionReplayConfig.captureLogcat = captureLogcat
         }
     }

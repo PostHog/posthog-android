@@ -13,7 +13,7 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-public const val API_KEY: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
+public const val PROJECT_TOKEN: String = "_6SG-F7I1vCuZ-HdJL3VZQqjBlaSb1_20hDPwqMNnGI"
 
 public fun ExecutorService.shutdownAndAwaitTermination() {
     shutdown() // Disable new tasks from being submitted

@@ -11,7 +11,7 @@ import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
 
 /**
  * Reads and writes to the SDKs shared preferences
- * The shared pref is called "posthog-android-$apiKey"
+ * The shared pref is called "posthog-android-$projectToken"
  *
  * The underlying [SharedPreferences] is resolved lazily: in Direct Boot mode (after a reboot,
  * before the user first unlocks the device) credential encrypted storage is unavailable and

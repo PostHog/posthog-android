@@ -73,7 +73,7 @@ internal class PostHogTest {
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
 
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
@@ -107,7 +107,7 @@ internal class PostHogTest {
         sessionReplay: Boolean = false,
     ): PostHogInterface {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 // for testing
                 this.flushAt = flushAt
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
@@ -417,7 +417,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", request.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", request.path)
 
         sut.close()
     }
@@ -446,7 +446,7 @@ internal class PostHogTest {
         val remoteConfigRequest = http.takeRequest()
 
         assertEquals(2, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", remoteConfigRequest.path)
 
         val flagsApiRequest = http.takeRequest()
         assertEquals("/flags/?v=2", flagsApiRequest.path)
@@ -478,7 +478,7 @@ internal class PostHogTest {
         val remoteConfigRequest = http.takeRequest()
 
         assertEquals(1, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", remoteConfigRequest.path)
 
         sut.close()
     }
@@ -1110,7 +1110,7 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlagResult returns null when SDK not enabled`() {
-        val sut = PostHog.with(PostHogConfig(API_KEY))
+        val sut = PostHog.with(PostHogConfig(PROJECT_TOKEN))
         sut.close()
 
         val result = sut.getFeatureFlagResult("4535-funnel-bar-viz")
@@ -1786,7 +1786,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2118,7 +2118,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2488,7 +2488,7 @@ internal class PostHogTest {
         var aliasEvents = 0
 
         val config =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 preloadFeatureFlags = false
                 getAnonymousId = { throw IllegalStateException("id provider unavailable") }
@@ -2722,7 +2722,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2785,7 +2785,7 @@ internal class PostHogTest {
         val url = http.url("/")
 
         val myPrefs = PostHogMemoryPreferences()
-        myPrefs.setValue(API_KEY, """{"anonymousId":"anonId","distinctId":"disId"}""")
+        myPrefs.setValue(PROJECT_TOKEN, """{"anonymousId":"anonId","distinctId":"disId"}""")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
 
         sut.capture(
@@ -2798,7 +2798,7 @@ internal class PostHogTest {
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertNull(myPrefs.getValue(API_KEY))
+        assertNull(myPrefs.getValue(PROJECT_TOKEN))
 
         val request = http.takeRequest()
 
@@ -2940,7 +2940,7 @@ internal class PostHogTest {
     fun `allows for modification of the uuid generation mechanism`() {
         val expected = TimeBasedEpochGenerator.generate()
         val config =
-            PostHogConfig(API_KEY, getAnonymousId = {
+            PostHogConfig(PROJECT_TOKEN, getAnonymousId = {
                 assertNotEquals(it, expected, "Expect two unique UUIDs")
                 expected
             })
@@ -2951,7 +2951,7 @@ internal class PostHogTest {
 
     @Test
     fun `enables debug mode`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val sut = PostHog.with(config)
 
         sut.debug(true)
@@ -2964,7 +2964,7 @@ internal class PostHogTest {
     @Test
     fun `disables debug mode`() {
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 debug = true
             }
         val sut = PostHog.with(config)
@@ -3007,7 +3007,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -3826,7 +3826,7 @@ internal class PostHogTest {
 
         val carried = CopyOnWriteArrayList<Boolean>()
         val newConfig =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 preloadFeatureFlags = false
                 addIntegration(replayHandlerWithFullBundle())
@@ -4472,7 +4472,7 @@ internal class PostHogTest {
 
         // Create config with setDefaultPersonProperties = false
         config =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.setDefaultPersonProperties = false
                 this.preloadFeatureFlags = false
@@ -5272,7 +5272,7 @@ internal class PostHogTest {
         sut.close()
 
         val newConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.preloadFeatureFlags = false
                 this.cachePreferences = preferences

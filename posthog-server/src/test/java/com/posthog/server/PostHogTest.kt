@@ -32,7 +32,7 @@ internal class PostHogTest {
         server.start()
         var client: PostHogInterface? = null
         try {
-            val config = PostHogConfig(TEST_API_KEY, host = server.url("/").toString(), flushIntervalSeconds = 3600)
+            val config = PostHogConfig(TEST_PROJECT_TOKEN, host = server.url("/").toString(), flushIntervalSeconds = 3600)
             configure(config)
             client = create(config)
             block(client, server)
@@ -97,7 +97,7 @@ internal class PostHogTest {
                 val loaded = CountDownLatch(1)
                 val config =
                     PostHogConfig(
-                        TEST_API_KEY,
+                        TEST_PROJECT_TOKEN,
                         host = server.url("/").toString(),
                         localEvaluation = true,
                         personalApiKey = "test-personal-key",
@@ -405,7 +405,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .releaseIdentifier("release-123")
@@ -441,7 +441,7 @@ internal class PostHogTest {
         // instead of auto-flushing on capture; only close() should deliver it
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .build(),
             )
@@ -464,7 +464,7 @@ internal class PostHogTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -490,7 +490,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -534,7 +534,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -581,7 +581,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -642,7 +642,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -737,7 +737,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -785,7 +785,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -825,7 +825,7 @@ internal class PostHogTest {
         vararg ignored: Class<out Throwable>,
     ): PostHog {
         val coreConfig =
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(url)
                 .flushAt(1)
                 .build()
@@ -851,7 +851,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -915,7 +915,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -955,7 +955,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -990,7 +990,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -1032,7 +1032,7 @@ internal class PostHogTest {
         val url = mockServer.url("/").toString()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(url)
                     .flushAt(1)
                     .build(),
@@ -1205,7 +1205,7 @@ internal class PostHogTest {
         mockServer.start()
 
         val coreConfig =
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(mockServer.url("/").toString())
                 .flushAt(1)
                 .build()

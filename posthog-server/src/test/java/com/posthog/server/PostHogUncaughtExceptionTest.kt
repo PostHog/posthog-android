@@ -56,7 +56,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host("https://example.com")
                     .build(),
             )
@@ -81,7 +81,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),
@@ -117,7 +117,7 @@ internal class PostHogUncaughtExceptionTest {
         // the event, so a low threshold would mask whether that path works at all.
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),
@@ -170,7 +170,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     // A worker-thread capture takes the regular async path, so a threshold of one
                     // is what delivers it within the test.
@@ -216,7 +216,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val mockServer = startServer()
         val config =
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(mockServer.url("/").toString())
                 .flushAt(1)
                 .captureUncaughtExceptions(true)
@@ -245,7 +245,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -255,7 +255,7 @@ internal class PostHogUncaughtExceptionTest {
         // The base client ignores a second setup and keeps its original config, so opting in through
         // that rejected call must not install a handler either.
         postHog.setup(
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(mockServer.url("/").toString())
                 .captureUncaughtExceptions(true)
                 .build(),
@@ -276,7 +276,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .captureUncaughtExceptions(true)
@@ -290,7 +290,7 @@ internal class PostHogUncaughtExceptionTest {
         // process-global install guard makes the second install a no-op).
         val second =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .captureUncaughtExceptions(true)
@@ -341,7 +341,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(2)
                     // Long enough that only the crash path can deliver the event within the test.
@@ -414,7 +414,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),

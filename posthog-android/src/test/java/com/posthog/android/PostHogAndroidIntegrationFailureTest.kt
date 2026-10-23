@@ -24,7 +24,7 @@ internal class PostHogAndroidIntegrationFailureTest {
     }
 
     private val logger = RecordingLogger()
-    private val config = PostHogAndroidConfig("apiKey").apply { this.logger = this@PostHogAndroidIntegrationFailureTest.logger }
+    private val config = PostHogAndroidConfig("projectToken").apply { this.logger = this@PostHogAndroidIntegrationFailureTest.logger }
 
     @Test
     fun `an integration that cannot be built is reported and the others are kept`() {

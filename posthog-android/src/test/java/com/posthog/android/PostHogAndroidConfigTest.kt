@@ -7,27 +7,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class PostHogAndroidConfigTest {
-    private val config = PostHogAndroidConfig(API_KEY)
+    private val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
     @Test
     fun `captureApplicationLifecycleEvents sets given projectToken`() {
-        assertEquals(API_KEY, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
     }
 
     @Test
     fun `trims whitespace-sensitive config values`() {
-        val config = PostHogAndroidConfig(" \n$API_KEY\t ")
+        val config = PostHogAndroidConfig(" \n$PROJECT_TOKEN\t ")
 
-        assertEquals(API_KEY, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
     }
 
     @Suppress("DEPRECATION")
     @Test
     fun `deprecated apiKey factory and getter alias projectToken`() {
-        val config = PostHogAndroidConfig(apiKey = " $API_KEY ", captureDeepLinks = false, capturePushNotificationOpened = false)
+        val config = PostHogAndroidConfig(apiKey = " $PROJECT_TOKEN ", captureDeepLinks = false, capturePushNotificationOpened = false)
 
-        assertEquals(API_KEY, config.projectToken)
-        assertEquals(API_KEY, config.apiKey)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.apiKey)
         assertFalse(config.captureDeepLinks)
         assertFalse(config.capturePushNotificationOpened)
         assertTrue(config.captureScreenViews)
