@@ -69,8 +69,12 @@ internal class PostHogTest {
                 )
             } +
                 listOf(
+                    Case("^(?:(?:a{0,1000}){1000}){1000}.$", "\r"),
+                    Case("^(?:(?:a{0,1000}){1000}){1000}$", ""),
+                    Case("^(?:a{2}){2}$", "aaaa"),
                     Case("^a{0,1000}.$", "\r", true),
                     Case("^(?:ab){2,3}.$", "abab\r", true),
+                    Case("^(?:(?:ab)){2,3}.$", "abab\r", true),
                     Case("^a*.$", "\r", true),
                     Case("^pro$", "free", false),
                     Case("^pro$", null),

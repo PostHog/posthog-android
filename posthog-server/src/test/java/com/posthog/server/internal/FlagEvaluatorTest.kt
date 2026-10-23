@@ -165,7 +165,15 @@ internal class FlagEvaluatorTest {
                     "^a{0,$count}$" to "",
                     "^(?:a{0,$count}){1}$" to "",
                 )
-            } + listOf("^a{0,1001}$" to "", "^a{1001}$" to "", "^a{1001,}$" to "")
+            } +
+                listOf(
+                    "^a{0,1001}$" to "",
+                    "^a{1001}$" to "",
+                    "^a{1001,}$" to "",
+                    "^(?:(?:a{0,1000}){1000}){1000}.$" to "\r",
+                    "^(?:(?:a{0,1000}){1000}){1000}$" to "",
+                    "^(?:a{2}){2}$" to "aaaa",
+                )
         for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
             for ((pattern, input) in cases) {
                 val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
@@ -194,6 +202,7 @@ internal class FlagEvaluatorTest {
                 Triple("^a{2,}$", "aaa", true),
                 Triple("^a*.$", "\r", true),
                 Triple("^(?:ab){2,3}.$", "abab\r", true),
+                Triple("^(?:(?:ab)){2,3}.$", "abab\r", true),
                 Triple("^a{2}$", "a", false),
                 Triple("^a\\{1001\\}$", "a{1001}", true),
                 Triple("^[a{1001}]+$", "a{1001}", true),

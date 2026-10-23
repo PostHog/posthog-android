@@ -432,6 +432,8 @@ internal class FlagEvaluator(
         var classStart = -1
         var classHasEscape = false
         var classHasRange = false
+        val groupsWithBoundedRepetition = mutableListOf(false)
+        var closedGroupHasBoundedRepetition = false
         var previous = ""
         var index = 0
         while (index < pattern.length) {
@@ -488,12 +490,27 @@ internal class FlagEvaluator(
                 character == '(' && pattern.getOrNull(index + 1) == '?' -> {
                     if (pattern.getOrNull(index + 2) != ':') unsupported()
                     result.append("(?:")
+                    groupsWithBoundedRepetition.add(false)
                     previous = "("
                     index += 3
                     continue
                 }
+                character == '(' -> groupsWithBoundedRepetition.add(false)
+                character == ')' -> {
+                    closedGroupHasBoundedRepetition =
+                        if (groupsWithBoundedRepetition.size > 1) {
+                            groupsWithBoundedRepetition.removeAt(groupsWithBoundedRepetition.lastIndex)
+                        } else {
+                            false
+                        }
+                    if (closedGroupHasBoundedRepetition) {
+                        groupsWithBoundedRepetition[groupsWithBoundedRepetition.lastIndex] = true
+                    }
+                }
                 character == '{' -> {
                     if (previous in listOf("", "|", "(", "^", "$", "empty group", "quantifier", "lazy quantifier")) unsupported()
+                    // Nested bounds can exceed the service compiler's limit even when each count is small.
+                    if (previous == ")" && closedGroupHasBoundedRepetition) unsupported()
                     val repetition = Regex("\\{([0-9]+)(?:,([0-9]*))?}").find(pattern, index)
                     if (repetition == null || repetition.range.first != index) unsupported()
                     if (repetition.groupValues.drop(1).any {
@@ -502,6 +519,7 @@ internal class FlagEvaluator(
                     ) {
                         unsupported()
                     }
+                    groupsWithBoundedRepetition[groupsWithBoundedRepetition.lastIndex] = true
                     result.append(repetition.value)
                     previous = "quantifier"
                     index = repetition.range.last + 1
