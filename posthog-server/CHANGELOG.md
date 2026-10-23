@@ -1,5 +1,11 @@
 ## Next
 
+## 2.21.5
+
+### Patch Changes
+
+- ed475dd: Fall back to server evaluation for incompatible feature flag regex criteria and keep invalid negative criteria from matching.
+
 ## 2.21.4
 
 ### Patch Changes
