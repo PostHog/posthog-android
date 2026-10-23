@@ -312,7 +312,6 @@ public open class PostHogConfig constructor(
                 maxBatchSize = maxBatchSize,
                 flushIntervalSeconds = flushIntervalSeconds,
                 encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
                 remoteConfigProvider = { config, api, _, _, _, _ ->
                     PostHogFeatureFlags(
