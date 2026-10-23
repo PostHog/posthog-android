@@ -3,8 +3,8 @@ package com.posthog.android
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.gson.GsonBuilder
+import com.posthog.PostHogFeatureFlagsCallback
 import com.posthog.PostHogInterface
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogDeviceDateProvider
@@ -67,7 +67,7 @@ internal class PostHogAndroidEventSnapshotsTest {
     fun `batch request and enriched event shapes match snapshot`() {
         val fixture = createFixture()
         val flagsLoaded = CountDownLatch(1)
-        fixture.config.onFeatureFlags = PostHogOnFeatureFlags { flagsLoaded.countDown() }
+        fixture.config.onFeatureFlags = PostHogFeatureFlagsCallback { flagsLoaded.countDown() }
         val sut = fixture.client
 
         sut.capture(
@@ -115,7 +115,7 @@ internal class PostHogAndroidEventSnapshotsTest {
             mapOf("industry" to "analytics"),
             reloadFeatureFlags = false,
         )
-        fixture.client.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
+        fixture.client.reloadFeatureFlags(PostHogFeatureFlagsCallback { loaded.countDown() })
 
         assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags request did not finish")
         val request = fixture.server.takeRequests("/flags/?v=2").single()

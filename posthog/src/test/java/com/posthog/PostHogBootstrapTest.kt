@@ -42,7 +42,7 @@ internal class PostHogBootstrapTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         logger: TestLogger? = null,
         optOut: Boolean = false,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -367,14 +367,15 @@ internal class PostHogBootstrapTest {
 
     @Test
     fun `bootstrap flags fire the flags-loaded callback immediately`() {
-        var loaded = false
+        var loaded: PostHogFeatureFlagsLoaded? = null
         val sut =
             getSut(
-                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
-                onFeatureFlags = PostHogOnFeatureFlags { loaded = true },
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true, "checkout" to "test")),
+                onFeatureFlags = PostHogFeatureFlagsCallback { loaded = it },
             )
 
-        assertTrue(loaded)
+        assertEquals(mapOf("beta-ui" to true, "checkout" to "test"), loaded!!.variants)
+        assertFalse(loaded!!.errorsLoading)
         assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
 
         sut.close()
