@@ -109,15 +109,6 @@ public open class PostHogConfig(
      */
     public var setDefaultPersonProperties: Boolean = true,
     /**
-     * Preload PostHog remote config automatically
-     * Defaults to true
-     */
-    @Deprecated(
-        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
-        level = DeprecationLevel.WARNING,
-    )
-    public var remoteConfig: Boolean = true,
-    /**
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */

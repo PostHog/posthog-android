@@ -48,11 +48,11 @@ internal class PostHogFeatureFlagsTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
-        reloadFeatureFlags: Boolean = true,
+        // setup always requests /config; skip it when the test doesn't preload flags
+        reloadFeatureFlags: Boolean = preloadFeatureFlags,
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
@@ -73,7 +73,6 @@ internal class PostHogFeatureFlagsTest {
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
                 this.evaluationContexts = evaluationContexts
-                this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }

@@ -393,7 +393,6 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
-                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
@@ -401,15 +400,10 @@ public class PostHog private constructor(
                         notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
                         notifyFeatureFlagsCallback(config.onFeatureFlags)
                     }
-                    when {
-                        config.remoteConfig ->
-                            loadRemoteConfigRequest(
-                                internalOnFeatureFlagsLoaded,
-                                config.onFeatureFlags,
-                            )
-
-                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
-                    }
+                    loadRemoteConfigRequest(
+                        internalOnFeatureFlagsLoaded,
+                        config.onFeatureFlags,
+                    )
                 }
 
                 // Reconcile a differing identified bootstrap after the setup reload is dispatched.
