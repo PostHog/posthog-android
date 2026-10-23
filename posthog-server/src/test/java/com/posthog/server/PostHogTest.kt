@@ -56,7 +56,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `public evaluation defers very large regex repetitions and preserves local controls`() {
+    fun `public evaluation defers unsupported regex syntax and preserves local controls`() {
         data class Case(val pattern: String, val input: String?, val localMatch: Boolean? = null)
 
         val cases =
@@ -72,6 +72,8 @@ internal class PostHogTest {
                     Case("^(?:(?:a{0,1000}){1000}){1000}.$", "\r"),
                     Case("^(?:(?:a{0,1000}){1000}){1000}$", ""),
                     Case("^(?:a{2}){2}$", "aaaa"),
+                    Case("[\\b]", "\b"),
+                    Case("[\\b]", "abc"),
                     Case("^a{0,1000}.$", "\r", true),
                     Case("^(?:ab){2,3}.$", "abab\r", true),
                     Case("^(?:(?:ab)){2,3}.$", "abab\r", true),

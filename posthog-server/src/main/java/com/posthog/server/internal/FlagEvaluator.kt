@@ -453,9 +453,8 @@ internal class FlagEvaluator(
                         result.append("\\x").append(digits)
                         index += 2
                     }
-                    // Boundaries can exhaust the service's 10,000-step budget on short ASCII input.
-                    escaped == 'B' || (escaped in "b<>" && classStart == -1) -> unsupported()
-                    escaped == 'b' -> result.append("\\x08")
+                    // The service rejects class \b; other boundaries can exhaust its 10,000-step budget.
+                    escaped in "bB" || (escaped in "<>" && classStart == -1) -> unsupported()
                     escaped == 'v' -> result.append("\\x0B")
                     escaped in "dDsSwWfnrt" || (escaped.code in 0x20..0x7e && !escaped.isLetterOrDigit()) ->
                         result.append('\\').append(escaped)

@@ -136,6 +136,8 @@ internal class FlagEvaluatorTest {
                 ".*\\bbot\\b.*" to "a".repeat(140),
                 ".*\\Bbot\\B.*" to "a".repeat(140),
                 "[\\B]" to "B",
+                "[\\b]" to "\b",
+                "[\\b]" to "abc",
                 "\\<foo\\>" to "foo",
                 "^\\<$" to "<",
                 "^\\>$" to ">",
@@ -209,7 +211,7 @@ internal class FlagEvaluatorTest {
                 Triple("^\\x41+$", "AA", true),
                 Triple("^\\\\p\\{L\\}$", "\\p{L}", true),
                 Triple("^\\(\\?i\\)$", "(?i)", true),
-                Triple("[\\b]", "\b", true),
+                Triple("[\\x08]", "\b", true),
                 Triple("[\\<\\>]", "<", true),
                 Triple("^a<b>$", "a<b>", true),
                 Triple("\\v", "\n", false),
@@ -244,7 +246,7 @@ internal class FlagEvaluatorTest {
     @Test
     internal fun testRegexErrorsCannotBecomeTrueThroughCohortLeafNegation() {
         for (operator in listOf("regex", "not_regex")) {
-            for (pattern in listOf("[", "a(?=b)", ".*\\bbot\\b.*")) {
+            for (pattern in listOf("[", "a(?=b)", ".*\\bbot\\b.*", "[\\b]")) {
                 for (groupType in listOf("AND", "OR")) {
                     val patternJson = config.serializer.gson.toJson(pattern)
                     val group =
