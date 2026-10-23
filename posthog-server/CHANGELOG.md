@@ -1,5 +1,11 @@
 ## Next
 
+## 2.22.0
+
+### Minor Changes
+
+- 990c60c: Add the active OpenTelemetry trace and span IDs to captured server exceptions when the application provides OpenTelemetry.
+
 ## 2.21.5
 
 ### Patch Changes
