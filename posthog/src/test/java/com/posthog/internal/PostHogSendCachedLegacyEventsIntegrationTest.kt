@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.TestHttpServers
 import com.posthog.shutdownAndAwaitTermination
@@ -37,7 +37,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
         val config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 this.legacyStoragePrefix = legacyStoragePrefix
                 this.networkStatus = networkStatus
                 this.maxBatchSize = maxBatchSize
@@ -57,7 +57,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         PostHogSendCachedEventsIntegration.resetInstallationForTesting()
     }
 
-    private fun legacyFile(prefix: String): QueueFile = QueueFile.Builder(File(prefix, "$API_KEY.tmp")).forceLegacy(true).build()
+    private fun legacyFile(prefix: String): QueueFile = QueueFile.Builder(File(prefix, "$PROJECT_TOKEN.tmp")).forceLegacy(true).build()
 
     private fun writeLegacyFile(content: List<String>): String =
         tmpDir.newFolder().absolutePath.also { prefix ->
@@ -104,7 +104,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         assertEquals(emptyList(), retained(prefix))
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
-        val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+        val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
         val batch = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
         val sent = batch.batch.single()
         assertEquals("testEvent", sent.event)

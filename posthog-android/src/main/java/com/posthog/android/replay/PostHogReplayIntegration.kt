@@ -1059,6 +1059,7 @@ public class PostHogReplayIntegration(
         // Scratch objects; a walk is confined to a single thread.
         val scratchRect = Rect()
         val scratchPoint = Point()
+        val scratchLocation = IntArray(2)
         val visitedViews = IntHashSet()
 
         fun resetForCompareAgainst(baselineRects: List<Rect>) {
@@ -1188,9 +1189,18 @@ public class PostHogReplayIntegration(
 
     private fun View.addGlobalVisibleRect(walk: MaskWalk) {
         if (isViewStateStableForMatrixOperations()) {
-            getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+            getWindowVisibleRect(walk)
             walk.addRect(walk.scratchRect)
         }
+    }
+
+    // getGlobalVisibleRect ignores the window pan applied while the soft keyboard is open
+    // (adjustPan), but the captured pixels include it. The root's location in the window
+    // carries that pan, so shift the rect by it to match the screenshot.
+    private fun View.getWindowVisibleRect(walk: MaskWalk) {
+        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        rootView.getLocationInWindow(walk.scratchLocation)
+        walk.scratchRect.offset(walk.scratchLocation[0], walk.scratchLocation[1])
     }
 
     /**
@@ -1202,7 +1212,7 @@ public class PostHogReplayIntegration(
         if (!isViewStateStableForMatrixOperations()) {
             return
         }
-        getGlobalVisibleRect(walk.scratchRect, walk.scratchPoint)
+        getWindowVisibleRect(walk)
         val rect = walk.scratchRect
         // Only adjust bounds for views that typically have significant padding or compound
         // drawables (EditText border/underline, Button background padding).
@@ -2532,7 +2542,8 @@ public class PostHogReplayIntegration(
                 synchronized(decorViews) {
                     // Re-check under the lock: callers gate outside it, and stop() can clear the
                     // manual-start marker in between, which would otherwise leave this start live.
-                    if (!isAutomaticStartPermitted()) {
+                    // A start queued on main before uninstall (e.g. optOut) must not run after it.
+                    if (!isAutomaticStartPermitted() || postHog == null) {
                         false
                     } else {
                         resetSessionStateIfNeeded(currentSessionId, force = !resumeCurrent)
@@ -2636,7 +2647,6 @@ public class PostHogReplayIntegration(
 
         val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
         props["\$sdk_debug_replay_capture_mode"] = captureMode
-        props["\$sdk_debug_replay_throttle_delay_ms"] = config.sessionReplayConfig.throttleDelayMs
         props["\$sdk_debug_replay_internal_buffer_length"] =
             if (buffering) replayQueue?.bufferDepth ?: 0 else replayQueue?.size ?: 0
 

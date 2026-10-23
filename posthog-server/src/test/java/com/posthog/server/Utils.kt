@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Test utilities for posthog-server tests
  */
 
-public const val TEST_API_KEY: String = "test-api-key"
+public const val TEST_PROJECT_TOKEN: String = "test-api-key"
 
 // Executor utilities
 public fun ExecutorService.awaitExecution() {
@@ -220,11 +220,11 @@ public fun createMockHttp(vararg responses: MockResponse): MockWebServer {
 public fun createTestConfig(
     logger: PostHogLogger = TestLogger(),
     host: String = "https://example.com",
-    apiKey: String = TEST_API_KEY,
+    projectToken: String = TEST_PROJECT_TOKEN,
 ): PostHogConfig {
     val config =
         PostHogConfig(
-            projectToken = apiKey,
+            projectToken = projectToken,
             host = host,
         )
     config.logger = logger

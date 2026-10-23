@@ -102,7 +102,7 @@ internal class PostHogPushSubscriptionManager(
 
     private val pendingFile: File? by lazy {
         val prefix = config.storagePrefix ?: return@lazy null
-        // Must stay out of <storagePrefix>/<apiKey>: PostHogQueue scans that whole directory as
+        // Must stay out of <storagePrefix>/<projectToken>: PostHogQueue scans that whole directory as
         // cached event files and would send the record as an empty event, then delete it.
         File(File(File(prefix, "push"), config.projectToken), PENDING_FILE_NAME)
     }

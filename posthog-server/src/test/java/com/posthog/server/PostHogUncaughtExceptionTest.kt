@@ -1,6 +1,10 @@
 package com.posthog.server
 
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -56,7 +60,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host("https://example.com")
                     .build(),
             )
@@ -81,7 +85,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),
@@ -117,7 +121,7 @@ internal class PostHogUncaughtExceptionTest {
         // the event, so a low threshold would mask whether that path works at all.
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),
@@ -128,7 +132,12 @@ internal class PostHogUncaughtExceptionTest {
 
         // The thread argument is data to the handler, so a main-named stand-in exercises the
         // process-fatal policy without crashing the suite's real main thread.
-        handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
+        val traceId = "00000000000000000000000000000003"
+        val spanId = "0000000000000004"
+        val context = SpanContext.create(traceId, spanId, TraceFlags.getDefault(), TraceState.getDefault())
+        Span.wrap(context).makeCurrent().use {
+            handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
+        }
 
         // Already sent when the handler returned, so this should not have to wait.
         val request = mockServer.takeRequest(1, TimeUnit.SECONDS)
@@ -140,6 +149,8 @@ internal class PostHogUncaughtExceptionTest {
 
         val props = batch.eventProperties("\$exception")
         assertEquals("fatal", props["\$exception_level"], "Uncaught exceptions must be fatal")
+        assertEquals(traceId, props["\$trace_id"])
+        assertEquals(spanId, props["\$span_id"])
 
         @Suppress("UNCHECKED_CAST")
         val exceptionList = props["\$exception_list"] as? List<Map<String, Any?>>
@@ -170,7 +181,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     // A worker-thread capture takes the regular async path, so a threshold of one
                     // is what delivers it within the test.
@@ -216,7 +227,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val mockServer = startServer()
         val config =
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(mockServer.url("/").toString())
                 .flushAt(1)
                 .captureUncaughtExceptions(true)
@@ -245,7 +256,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -255,7 +266,7 @@ internal class PostHogUncaughtExceptionTest {
         // The base client ignores a second setup and keeps its original config, so opting in through
         // that rejected call must not install a handler either.
         postHog.setup(
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(mockServer.url("/").toString())
                 .captureUncaughtExceptions(true)
                 .build(),
@@ -276,7 +287,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .captureUncaughtExceptions(true)
@@ -290,7 +301,7 @@ internal class PostHogUncaughtExceptionTest {
         // process-global install guard makes the second install a no-op).
         val second =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .captureUncaughtExceptions(true)
@@ -341,7 +352,7 @@ internal class PostHogUncaughtExceptionTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(2)
                     // Long enough that only the crash path can deliver the event within the test.
@@ -414,7 +425,7 @@ internal class PostHogUncaughtExceptionTest {
         val mockServer = startServer()
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .captureUncaughtExceptions(true)
                     .build(),

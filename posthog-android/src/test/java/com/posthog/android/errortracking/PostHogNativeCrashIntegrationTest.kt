@@ -9,7 +9,7 @@ import android.os.Process
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogInterface
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.errortracking.NativeCrashClockOffsetStore
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
@@ -99,7 +99,7 @@ internal class PostHogNativeCrashIntegrationTest {
     @Before
     fun setUp() {
         config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 dateProvider = this@PostHogNativeCrashIntegrationTest.dateProvider
                 errorTrackingConfig.captureNativeCrashes = true
                 remoteConfigHolder =

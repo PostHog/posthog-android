@@ -1,8 +1,8 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
 import com.posthog.BuildConfig
 import com.posthog.DISTINCT_ID
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.TestHttpServers
@@ -65,7 +65,7 @@ internal class PostHogApiTest {
         requestHeaders: Map<String, String>? = null,
         compression: PostHogCompression = PostHogCompression.GZIP,
     ): PostHogApi {
-        val config = PostHogConfig(API_KEY, host)
+        val config = PostHogConfig(PROJECT_TOKEN, host)
         config.compression = compression
         config.proxy = proxy
         config.debug = debug
@@ -184,7 +184,7 @@ internal class PostHogApiTest {
         val http = mockHttp()
 
         // Configured host differs from the request host, mirroring the static-config CDN.
-        val config = PostHogConfig(API_KEY, "https://different-host.example.com")
+        val config = PostHogConfig(PROJECT_TOKEN, "https://different-host.example.com")
         config.requestHeaders = mapOf("Authorization" to "Bearer test-jwt")
         val client = OkHttpClient.Builder().addInterceptor(CustomHeadersInterceptor(config)).build()
 
@@ -475,7 +475,7 @@ internal class PostHogApiTest {
         assertNotNull(response)
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertEquals("GET", request.method)
-        assertEquals("/array/${API_KEY}/config", request.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", request.path)
         assertEquals("gzip", request.headers["Accept-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
     }
@@ -510,7 +510,7 @@ internal class PostHogApiTest {
 
             assertNotNull(sut.remoteConfig())
             val request = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
-            assertEquals("GET http://origin.invalid/array/$API_KEY/config HTTP/1.1", request.requestLine)
+            assertEquals("GET http://origin.invalid/array/$PROJECT_TOKEN/config HTTP/1.1", request.requestLine)
         } finally {
             server.shutdown()
         }
@@ -775,7 +775,7 @@ internal class PostHogApiTest {
 
         val request = http.takeRequest()
         assertEquals("POST", request.method)
-        assertEquals("/i/v1/logs?token=$API_KEY", request.path)
+        assertEquals("/i/v1/logs?token=$PROJECT_TOKEN", request.path)
         assertEquals("gzip", request.headers["Content-Encoding"])
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
 
@@ -847,9 +847,9 @@ internal class PostHogApiTest {
         assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
 
         val body = request.body.unGzip()
-        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(body.reader())
+        val parsed = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(body.reader())
         // Vector 3: the body serializes exactly the five snake_case names.
-        assertEquals(API_KEY, parsed["api_key"])
+        assertEquals(PROJECT_TOKEN, parsed["api_key"])
         assertEquals("distinctId", parsed["distinct_id"])
         assertEquals("fcm-token-123", parsed["device_token"])
         assertFalse(parsed.containsKey("platform"))
@@ -873,7 +873,7 @@ internal class PostHogApiTest {
         )
 
         val request = http.takeRequest()
-        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        val parsed = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals("jwt-abc", parsed["identity_token"])
     }
 
@@ -914,9 +914,9 @@ internal class PostHogApiTest {
         assertEquals("/api/push_subscriptions/", request.path)
 
         val body = request.body.unGzip()
-        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(body.reader())
+        val parsed = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(body.reader())
         // Same 5 snake_case fields as the POST register (decision 6).
-        assertEquals(API_KEY, parsed["api_key"])
+        assertEquals(PROJECT_TOKEN, parsed["api_key"])
         assertEquals("distinctId", parsed["distinct_id"])
         assertEquals("fcm-token-123", parsed["device_token"])
         assertFalse(parsed.containsKey("platform"))
@@ -941,7 +941,7 @@ internal class PostHogApiTest {
 
         val request = http.takeRequest()
         assertEquals("DELETE", request.method)
-        val parsed = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        val parsed = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals("jwt-abc", parsed["identity_token"])
     }
 
@@ -977,7 +977,7 @@ internal class PostHogApiFlagsRetryableHttpErrorTest(
         val url = http.url("/")
 
         try {
-            val sut = PostHogApi(PostHogConfig(API_KEY, url.toString()))
+            val sut = PostHogApi(PostHogConfig(PROJECT_TOKEN, url.toString()))
 
             val response = sut.flags("distinctId", anonymousId = "anonId", groups = emptyMap())
 
@@ -995,7 +995,7 @@ internal class PostHogApiFlagsRetryableHttpErrorTest(
         val url = http.url("/")
 
         try {
-            val config = PostHogConfig(API_KEY, url.toString())
+            val config = PostHogConfig(PROJECT_TOKEN, url.toString())
             config.featureFlagRequestMaxRetries = 0
             val sut = PostHogApi(config)
 
@@ -1019,7 +1019,7 @@ internal class PostHogApiFlagsRetryableHttpErrorTest(
         val url = http.url("/")
 
         try {
-            val config = PostHogConfig(API_KEY, url.toString())
+            val config = PostHogConfig(PROJECT_TOKEN, url.toString())
             config.featureFlagRequestMaxRetries = 2
             val sut = PostHogApi(config)
 
@@ -1045,7 +1045,7 @@ internal class PostHogApiFlagsRetryableHttpErrorTest(
         val url = http.url("/")
 
         try {
-            val config = PostHogConfig(API_KEY, url.toString())
+            val config = PostHogConfig(PROJECT_TOKEN, url.toString())
             config.featureFlagRequestMaxRetries = 2
             val sut = PostHogApi(config)
 
@@ -1080,7 +1080,7 @@ internal class PostHogApiFlagsHttpErrorTest(
         val url = http.url("/")
 
         try {
-            val sut = PostHogApi(PostHogConfig(API_KEY, url.toString()))
+            val sut = PostHogApi(PostHogConfig(PROJECT_TOKEN, url.toString()))
 
             val exc =
                 assertThrows(PostHogApiError::class.java) {

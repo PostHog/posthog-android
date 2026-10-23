@@ -1,5 +1,29 @@
 ## Next
 
+## 2.22.0
+
+### Minor Changes
+
+- 990c60c: Add the active OpenTelemetry trace and span IDs to captured server exceptions when the application provides OpenTelemetry.
+
+## 2.21.5
+
+### Patch Changes
+
+- ed475dd: Fall back to server evaluation for incompatible feature flag regex criteria and keep invalid negative criteria from matching.
+
+## 2.21.4
+
+### Patch Changes
+
+- 25e65fe: Fix numeric-string ordering in server-side local feature flag evaluation. `gt`, `gte`, `lt`, and `lte` now compare finite numbers rather than strings, which can change flag membership for numeric-string properties. Invalid property values no longer match through lexicographic comparison, and invalid numeric conditions remain eligible for remote fallback.
+
+## 2.21.3
+
+### Patch Changes
+
+- d09a92a: Log a message when `evaluateFlags(onlyEvaluateLocally = true)` omits flags because experience continuity is on. Local evaluation cannot resolve these flags, so a local-only snapshot does not contain them. The message names the flags. Like all SDK logs, it shows only when `debug` is on.
+
 ## 2.21.2
 
 ### Patch Changes

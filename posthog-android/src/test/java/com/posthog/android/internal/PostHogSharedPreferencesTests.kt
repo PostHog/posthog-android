@@ -2,8 +2,8 @@ package com.posthog.android.internal
 
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
 import com.posthog.android.FakeSharedPreferences
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
@@ -22,7 +22,7 @@ internal class PostHogSharedPreferencesTests {
     private val context = mock<Context>()
 
     private fun getSut(): PostHogSharedPreferences {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         return PostHogSharedPreferences(context, config, sharedPreferences = FakeSharedPreferences())
     }
 
@@ -267,7 +267,7 @@ internal class PostHogSharedPreferencesTests {
     }
 
     private fun getDirectBootSut(directBootContext: DirectBootContext): PostHogSharedPreferences {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         return PostHogSharedPreferences(directBootContext.context, config)
     }
 

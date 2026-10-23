@@ -28,12 +28,15 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
+import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.Date
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -50,6 +53,8 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+
+private const val SDK_EVENT = "\$sdk_event"
 
 internal class PostHogTest {
     @get:Rule
@@ -68,7 +73,7 @@ internal class PostHogTest {
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
 
     private val file = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json")
@@ -99,9 +104,10 @@ internal class PostHogTest {
         personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
         exceptionStepsEnabled: Boolean = true,
         exceptionStepsMaxBytes: Int = 32768,
+        sessionReplay: Boolean = false,
     ): PostHogInterface {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 // for testing
                 this.flushAt = flushAt
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
@@ -127,6 +133,7 @@ internal class PostHogTest {
                 this.errorTrackingConfig.exceptionSteps.maxBytes = exceptionStepsMaxBytes
                 this.context = context
                 this.personProfiles = personProfiles
+                this.sessionReplay = sessionReplay
             }
         return PostHog.withInternal(
             config,
@@ -410,7 +417,7 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         assertEquals(1, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", request.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", request.path)
 
         sut.close()
     }
@@ -439,7 +446,7 @@ internal class PostHogTest {
         val remoteConfigRequest = http.takeRequest()
 
         assertEquals(2, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", remoteConfigRequest.path)
 
         val flagsApiRequest = http.takeRequest()
         assertEquals("/flags/?v=2", flagsApiRequest.path)
@@ -471,7 +478,7 @@ internal class PostHogTest {
         val remoteConfigRequest = http.takeRequest()
 
         assertEquals(1, http.requestCount)
-        assertEquals("/array/${API_KEY}/config", remoteConfigRequest.path)
+        assertEquals("/array/${PROJECT_TOKEN}/config", remoteConfigRequest.path)
 
         sut.close()
     }
@@ -753,6 +760,8 @@ internal class PostHogTest {
         assertEquals(true, theEvent.properties!!["\$feature/4535-funnel-bar-viz"])
         assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
         assertEquals("disabled", theEvent.properties!!["\$recording_status"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_session_start"))
+        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
 
         sut.close()
     }
@@ -1101,7 +1110,7 @@ internal class PostHogTest {
 
     @Test
     fun `getFeatureFlagResult returns null when SDK not enabled`() {
-        val sut = PostHog.with(PostHogConfig(API_KEY))
+        val sut = PostHog.with(PostHogConfig(PROJECT_TOKEN))
         sut.close()
 
         val result = sut.getFeatureFlagResult("4535-funnel-bar-viz")
@@ -1305,6 +1314,450 @@ internal class PostHogTest {
         sut.optIn()
 
         assertEquals(1, integration.onOptInCount)
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut uninstalls integrations and optIn reinstalls them`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        assertTrue(integration.installed)
+
+        sut.optOut()
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay that was recording at optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not restart session replay the app stopped`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay the app started itself`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        // sessionReplay config stays off: the app starts the recording by hand
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn restarts session replay the app started that is waiting for an event trigger`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        integration.activateOnStart = false
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+        assertFalse(integration.isActive())
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn ignores a session replay stop made while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        sut.optOut()
+        sut.stopSessionReplay()
+        integration.reset()
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn starts session replay when launched opted out with it enabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(
+                url.toString(),
+                optOut = true,
+                sessionReplay = true,
+                cachePreferences = myPrefs,
+                preloadFeatureFlags = false,
+                integration = integration,
+            )
+        sut.optIn()
+
+        assertTrue(integration.startCalled)
+        assertEquals(false, integration.resumeCurrent)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn ignores a session replay start made while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.optOut()
+        sut.startSessionReplay()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not start session replay when launched opted out with it disabled`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(url.toString(), optOut = true, cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `flags-loaded replay start can't land after a concurrent optOut`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        val onFlagsLoaded =
+            PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
+                .apply { isAccessible = true }
+                .get(sut) as PostHogOnFeatureFlags
+
+        // optOut runs while the flags-loaded callback is between reading the handler and starting it
+        var optOut: Thread? = null
+        integration.onIsActive = {
+            if (optOut == null) {
+                optOut = thread { sut.optOut() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (optOut!!.state != Thread.State.BLOCKED && optOut!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "optOut never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        onFlagsLoaded.loaded()
+        optOut!!.join()
+
+        assertTrue(sut.isOptOut())
+        assertFalse(integration.isActive())
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent stopSessionReplay and startSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.startSessionReplay()
+
+        // startSessionReplay runs while stopSessionReplay has recorded its intent but not yet stopped
+        var start: Thread? = null
+        integration.onStop = {
+            if (start == null) {
+                start = thread { sut.startSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (start!!.state != Thread.State.BLOCKED && start!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "start never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.stopSessionReplay()
+        start!!.join()
+        integration.onStop = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        // optIn restarts replay only if it was still recording, i.e. the start took effect
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `concurrent startSessionReplay and stopSessionReplay leave intent matching the recording`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+
+        // stopSessionReplay runs while startSessionReplay has recorded its intent but not yet started
+        var stop: Thread? = null
+        integration.onIsActive = {
+            if (stop == null) {
+                stop = thread { sut.stopSessionReplay() }
+                val deadline = System.currentTimeMillis() + 5000
+                while (stop!!.state != Thread.State.BLOCKED && stop!!.state != Thread.State.TERMINATED) {
+                    check(System.currentTimeMillis() < deadline) { "stop never blocked or finished" }
+                    Thread.sleep(1)
+                }
+            }
+        }
+        sut.startSessionReplay()
+        stop!!.join()
+        integration.onIsActive = null
+        val recording = integration.isActive()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertEquals(recording, integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optOut applies consent together with its integration transition`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+        val setupLock =
+            PostHogStateless::class.java.getDeclaredField("setupLock").apply { isAccessible = true }.get(sut)
+
+        val optOut: Thread
+        val optIn: Thread
+        synchronized(setupLock) {
+            optOut = thread { sut.optOut() }
+            awaitBlocked(optOut)
+            // optOut is waiting to uninstall, so its consent must not be visible yet
+            assertFalse(sut.isOptOut())
+
+            optIn = thread { sut.optIn() }
+            awaitBlocked(optIn)
+        }
+        optOut.join()
+        optIn.join()
+
+        // whichever ran last, integrations match the final consent
+        assertEquals(!sut.isOptOut(), integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn does not deadlock while feature flags are loading`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        // hold the /flags response so optIn runs while the remote config load is still in flight
+        http.enqueue(MockResponse().setBody(responseFlagsApi).setBodyDelay(1, TimeUnit.SECONDS))
+        val url = http.url("/")
+        // optIn hands cached surveys to a surveys integration when it reinstalls it
+        val surveysIntegration =
+            object : PostHogIntegration, PostHogSurveysHandler {
+                override fun onReset() {}
+
+                override fun onEvent(
+                    event: String,
+                    properties: Map<String, Any>?,
+                ) {}
+
+                override fun onSurveysLoaded(surveys: List<Survey>) {}
+            }
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = surveysIntegration)
+        http.takeRequest()
+        http.takeRequest()
+
+        val consent =
+            thread {
+                sut.optOut()
+                sut.optIn()
+            }
+        consent.join(5000)
+        assertFalse(consent.isAlive)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertFalse(sut.isOptOut())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn re-applies the cached remote config to reinstalled integrations`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = integration)
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        assertEquals(1, integration.remoteConfigCount)
+
+        sut.optOut()
+        sut.optIn()
+
+        assertEquals(2, integration.remoteConfigCount)
+
+        sut.close()
+    }
+
+    private fun awaitBlocked(thread: Thread) {
+        val deadline = System.currentTimeMillis() + 5000
+        while (thread.state != Thread.State.BLOCKED) {
+            check(System.currentTimeMillis() < deadline) { "thread never blocked" }
+            Thread.sleep(1)
+        }
+    }
+
+    @Test
+    fun `setup does not install integrations while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration, preloadFeatureFlags = false)
+
+        assertFalse(integration.installed)
+
+        sut.optIn()
+        assertTrue(integration.installed)
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn and optOut only reinstall integrations when the state changes`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = FakePostHogIntegration()
+
+        val sut = getSut(url.toString(), integration = integration, preloadFeatureFlags = false)
+
+        sut.optIn()
+        assertEquals(1, integration.installCount)
+
+        sut.optOut()
+        sut.optOut()
+        assertEquals(1, integration.uninstallCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote config does not reach integrations while opted out`() {
+        val integration = FakePostHogIntegration()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, integration = integration)
+
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, integration.remoteConfigCount)
 
         sut.close()
     }
@@ -1333,7 +1786,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -1665,7 +2118,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2023,8 +2476,45 @@ internal class PostHogTest {
         assertEquals("\$create_alias", theEvent.event)
         assertNotNull(theEvent.distinctId)
         assertEquals("theAlias", theEvent.properties!!["alias"] as String)
+        assertEquals(theEvent.distinctId, theEvent.properties!!["distinct_id"] as String)
 
         sut.close()
+    }
+
+    @Test
+    fun `alias does not throw when getAnonymousId throws`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        var aliasEvents = 0
+
+        val config =
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
+                storagePrefix = tmpDir.newFolder().absolutePath
+                preloadFeatureFlags = false
+                getAnonymousId = { throw IllegalStateException("id provider unavailable") }
+                addBeforeSend { event ->
+                    if (event.event == "\$create_alias") aliasEvents++
+                    event
+                }
+            }
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                false,
+            )
+
+        assertNull(runCatching { sut.alias("theAlias") }.exceptionOrNull())
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, aliasEvents)
+
+        sut.close()
+        http.shutdown()
     }
 
     @Test
@@ -2232,7 +2722,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2295,7 +2785,7 @@ internal class PostHogTest {
         val url = http.url("/")
 
         val myPrefs = PostHogMemoryPreferences()
-        myPrefs.setValue(API_KEY, """{"anonymousId":"anonId","distinctId":"disId"}""")
+        myPrefs.setValue(PROJECT_TOKEN, """{"anonymousId":"anonId","distinctId":"disId"}""")
         val sut = getSut(url.toString(), preloadFeatureFlags = false, cachePreferences = myPrefs)
 
         sut.capture(
@@ -2308,7 +2798,7 @@ internal class PostHogTest {
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        assertNull(myPrefs.getValue(API_KEY))
+        assertNull(myPrefs.getValue(PROJECT_TOKEN))
 
         val request = http.takeRequest()
 
@@ -2450,7 +2940,7 @@ internal class PostHogTest {
     fun `allows for modification of the uuid generation mechanism`() {
         val expected = TimeBasedEpochGenerator.generate()
         val config =
-            PostHogConfig(API_KEY, getAnonymousId = {
+            PostHogConfig(PROJECT_TOKEN, getAnonymousId = {
                 assertNotEquals(it, expected, "Expect two unique UUIDs")
                 expected
             })
@@ -2461,7 +2951,7 @@ internal class PostHogTest {
 
     @Test
     fun `enables debug mode`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val sut = PostHog.with(config)
 
         sut.debug(true)
@@ -2474,7 +2964,7 @@ internal class PostHogTest {
     @Test
     fun `disables debug mode`() {
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 debug = true
             }
         val sut = PostHog.with(config)
@@ -2517,7 +3007,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(API_KEY, batch.apiKey)
+        assertEquals(PROJECT_TOKEN, batch.projectToken)
         assertNotNull(batch.sentAt)
 
         val theEvent = batch.batch.first()
@@ -2807,19 +3297,12 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `custom event carries debug properties from the replay handler`() {
+    fun `custom event carries only the required replay debug keys from the replay handler`() {
         val http = mockHttp()
         val url = http.url("/")
-        val integration =
-            PostHogSessionReplayHandlerFake(false).apply {
-                debugProperties =
-                    mapOf(
-                        "\$recording_status" to "disabled",
-                        "\$sdk_debug_replay_capture_mode" to "wireframe",
-                        "\$sdk_debug_replay_throttle_delay_ms" to 1000,
-                    )
-            }
+        val integration = replayHandlerWithFullBundle()
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        sut.startSession()
 
         sut.capture(EVENT)
 
@@ -2829,13 +3312,16 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        val theEvent = batch.batch.first()
-        assertEquals("disabled", theEvent.properties!!["\$recording_status"])
-        assertEquals("wireframe", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
-        assertEquals(1000, theEvent.properties!!["\$sdk_debug_replay_throttle_delay_ms"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+        val props = batch.batch.first().properties!!
+        assertEquals("buffering", props["\$recording_status"])
+        assertEquals("trigger_pending", props["\$sdk_debug_replay_event_trigger_status"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+        assertEquals(1, (props["\$sdk_debug_replay_internal_buffer_length"] as Number).toInt())
+        assertNotNull(props["\$sdk_debug_pending_queue_size"])
+        assertFalse(props.containsKey("\$sdk_debug_replay_capture_mode"))
+        assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
+        assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+        assertFalse(props.containsKey("\$sdk_debug_session_start"))
 
         sut.close()
     }
@@ -2850,7 +3336,6 @@ internal class PostHogTest {
                     mapOf(
                         "\$recording_status" to "disabled",
                         "\$sdk_debug_replay_capture_mode" to "wireframe",
-                        "\$sdk_debug_replay_throttle_delay_ms" to 1000,
                     )
             }
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
@@ -2867,10 +3352,10 @@ internal class PostHogTest {
         assertEquals("\$exception", theEvent.event)
         assertEquals("disabled", theEvent.properties!!["\$recording_status"])
         assertEquals("wireframe", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
-        assertEquals(1000, theEvent.properties!!["\$sdk_debug_replay_throttle_delay_ms"])
         assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
         assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_replay_throttle_delay_ms"))
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_current_session_duration"))
 
         sut.close()
     }
@@ -2910,7 +3395,7 @@ internal class PostHogTest {
             }
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
 
-        sut.capture(EVENT)
+        sut.capture(SDK_EVENT)
 
         queueExecutor.shutdownAndAwaitTermination()
 
@@ -2991,7 +3476,7 @@ internal class PostHogTest {
             }
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
 
-        sut.capture(EVENT)
+        sut.capture(SDK_EVENT)
 
         queueExecutor.shutdownAndAwaitTermination()
 
@@ -3000,13 +3485,362 @@ internal class PostHogTest {
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         val theEvent = batch.batch.first()
-        assertEquals(EVENT, theEvent.event)
+        assertEquals(SDK_EVENT, theEvent.event)
         assertNotNull(theEvent.properties!!["\$sdk_debug_error_capturing_properties"])
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
         // The session and queue keys do not come from the replay handler, so they survive its throw.
         assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_current_session_duration"])
         assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+
+        sut.close()
+    }
+
+    private fun replayHandlerWithFullBundle(): PostHogSessionReplayHandlerFake =
+        PostHogSessionReplayHandlerFake(false).apply {
+            debugProperties =
+                mapOf(
+                    "\$recording_status" to "buffering",
+                    "\$sdk_debug_replay_event_trigger_status" to "trigger_pending",
+                    "\$sdk_debug_replay_linked_flag_trigger_status" to "trigger_disabled",
+                    "\$sdk_debug_replay_internal_buffer_length" to 1,
+                    "\$sdk_debug_replay_flush_hold_reason" to "awaiting_remote_config",
+                    "\$sdk_debug_replay_pending_trigger_conditions" to listOf("event_trigger"),
+                    "\$sdk_debug_replay_capture_mode" to "wireframe",
+                )
+        }
+
+    private fun capturedEvents(http: MockWebServer): List<PostHogEvent> {
+        queueExecutor.shutdownAndAwaitTermination()
+        return serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!.batch
+    }
+
+    private val PostHogEvent.carriesReplayDebugBundle: Boolean
+        get() = properties!!.containsKey("\$sdk_debug_replay_capture_mode")
+
+    private fun replayDebugSut(
+        http: MockWebServer,
+        flushAt: Int,
+        beforeSend: PostHogBeforeSend? = null,
+    ): PostHogInterface =
+        getSut(
+            http.url("/").toString(),
+            flushAt = flushAt,
+            preloadFeatureFlags = false,
+            reloadFeatureFlags = false,
+            integration = replayHandlerWithFullBundle(),
+            beforeSend = beforeSend,
+        )
+
+    @Test
+    fun `replay debug bundle is attached at most once every 30 seconds while required keys stay on every event`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 3)
+        config.dateProvider = clock
+
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 29_000
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT)
+
+        val events = capturedEvents(http)
+        assertEquals(listOf(true, false, true), events.map { it.carriesReplayDebugBundle })
+        events.forEach {
+            assertEquals("buffering", it.properties!!["\$recording_status"])
+            assertEquals("trigger_pending", it.properties!!["\$sdk_debug_replay_event_trigger_status"])
+            assertEquals("trigger_disabled", it.properties!!["\$sdk_debug_replay_linked_flag_trigger_status"])
+            assertNotNull(it.properties!!["\$sdk_debug_replay_internal_buffer_length"])
+            assertNotNull(it.properties!!["\$sdk_debug_pending_queue_size"])
+        }
+
+        sut.close()
+    }
+
+    @Test
+    fun `replay debug bundle follows the wall clock, not a future event timestamp`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 3)
+        config.dateProvider = clock
+
+        sut.capture(SDK_EVENT, timestamp = Date(clock.nowMs + 60 * 60 * 1000))
+        clock.nowMs += 30_000
+        sut.capture(SDK_EVENT, timestamp = Date(clock.nowMs))
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT, timestamp = Date(clock.nowMs))
+
+        assertEquals(listOf(true, true, false), capturedEvents(http).map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `replay debug window stays shut when the wall clock moves backwards until it catches up`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 3)
+        config.dateProvider = clock
+
+        sut.capture(SDK_EVENT)
+        clock.nowMs -= 60_000
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 90_000
+        sut.capture(SDK_EVENT)
+
+        assertEquals(listOf(true, false, true), capturedEvents(http).map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `feature flag called and custom events carry the required replay keys but never the bundle, and do not arm the window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 3)
+        config.dateProvider = clock
+
+        sut.capture(PostHogEventName.FEATURE_FLAG_CALLED.event, properties = mapOf("\$feature_flag" to "flag"))
+        sut.capture(EVENT)
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT)
+
+        val events = capturedEvents(http)
+        assertEquals(listOf(false, false, true), events.map { it.carriesReplayDebugBundle })
+        events.forEach {
+            assertEquals("buffering", it.properties!!["\$recording_status"])
+            assertNotNull(it.properties!!["\$sdk_debug_pending_queue_size"])
+        }
+
+        sut.close()
+    }
+
+    @Test
+    fun `an event dropped by beforeSend releases its claim without starting the window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 2, beforeSend = { if (it.event == "\$dropped") null else it })
+        config.dateProvider = clock
+
+        sut.capture("\$dropped")
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT)
+
+        val events = capturedEvents(http)
+        assertEquals(listOf(SDK_EVENT, SDK_EVENT), events.map { it.event })
+        assertEquals(listOf(true, false), events.map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `an event without the bundle does not consume the window when the interval elapses mid-capture`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut =
+            replayDebugSut(http, flushAt = 3, beforeSend = {
+                if (it.event == "\$inside") clock.nowMs += 6_000
+                it
+            })
+        config.dateProvider = clock
+
+        sut.capture("\$first")
+        clock.nowMs += 29_000
+        sut.capture("\$inside")
+        clock.nowMs += 1_000
+        sut.capture("\$after")
+
+        assertEquals(listOf(true, false, true), capturedEvents(http).map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `a deduplicated identify set does not arm the window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 4)
+        config.dateProvider = clock
+
+        sut.identify("user_dedup")
+        clock.nowMs += 31_000
+        sut.identify("user_dedup", userProperties = mapOf("name" to "John"))
+        clock.nowMs += 31_000
+        sut.identify("user_dedup", userProperties = mapOf("name" to "John"))
+        sut.capture("\$after")
+        clock.nowMs += 1_000
+        sut.capture("\$throttled")
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$identify", "\$set", "\$after", "\$throttled"), events.map { it.event })
+        assertEquals(listOf(true, true, true, false), events.map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `an SDK event captured from inside beforeSend does not also carry the bundle`() {
+        val http = mockHttp()
+        lateinit var sut: PostHogInterface
+        // beforeSend runs twice per stateful capture (PostHog.capture, then captureStateless), so the
+        // nested capture fires twice.
+        sut =
+            replayDebugSut(http, flushAt = 3, beforeSend = {
+                if (it.event == "\$outer") sut.capture("\$inner")
+                it
+            })
+
+        sut.capture("\$outer")
+
+        val carriers = capturedEvents(http).filter { it.carriesReplayDebugBundle }
+        assertEquals(listOf("\$outer"), carriers.map { it.event })
+
+        sut.close()
+    }
+
+    @Test
+    fun `an SDK event renamed by beforeSend still carries the bundle and consumes the window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 2, beforeSend = { if (it.event == "\$renamed") it.copy(event = "custom name") else it })
+        config.dateProvider = clock
+
+        sut.capture("\$renamed")
+        clock.nowMs += 1_000
+        sut.capture("\$after")
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("custom name", "\$after"), events.map { it.event })
+        assertEquals(listOf(true, false), events.map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `a custom event renamed to an SDK name by beforeSend carries no bundle and does not consume the window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 2, beforeSend = { if (it.event == "custom name") it.copy(event = "\$renamed") else it })
+        config.dateProvider = clock
+
+        sut.capture("custom name")
+        clock.nowMs += 1_000
+        sut.capture("\$after")
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$renamed", "\$after"), events.map { it.event })
+        assertEquals(listOf(false, true), events.map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `the replay debug window starts when the event is accepted, not while beforeSend runs`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut =
+            replayDebugSut(http, flushAt = 2, beforeSend = {
+                if (it.event == "\$slow") clock.nowMs += 31_000
+                it
+            })
+        config.dateProvider = clock
+
+        sut.capture("\$slow")
+        sut.capture("\$next")
+
+        assertEquals(listOf(true, false), capturedEvents(http).map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `an outstanding claim does not expire while beforeSend outlasts the interval`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        lateinit var sut: PostHogInterface
+        var nested = false
+        sut =
+            replayDebugSut(http, flushAt = 2, beforeSend = {
+                if (it.event == "\$slow" && !nested) {
+                    nested = true
+                    clock.nowMs += 31_000
+                    sut.capture("\$inner")
+                }
+                it
+            })
+        config.dateProvider = clock
+
+        sut.capture("\$slow")
+
+        val carriers = capturedEvents(http).filter { it.carriesReplayDebugBundle }
+        assertEquals(listOf("\$slow"), carriers.map { it.event })
+
+        sut.close()
+    }
+
+    @Test
+    fun `a claimer routed to the replay queue as a snapshot releases its claim`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut =
+            replayDebugSut(http, flushAt = 2, beforeSend = {
+                if (it.event == "\$becomes_snapshot") it.copy(event = PostHogEventName.SNAPSHOT.event) else it
+            })
+        config.dateProvider = clock
+
+        sut.capture("\$becomes_snapshot")
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT)
+
+        assertEquals(listOf(true, false), capturedEvents(http).map { it.carriesReplayDebugBundle })
+
+        sut.close()
+    }
+
+    @Test
+    fun `no internal replay debug state reaches a queued event`() {
+        val http = mockHttp()
+        val sut = replayDebugSut(http, flushAt = 1)
+
+        sut.capture(SDK_EVENT)
+
+        val props = capturedEvents(http).single().properties!!
+        assertTrue(props.keys.none { it.startsWith("\$__") }, "unexpected internal keys: ${props.keys}")
+
+        sut.close()
+    }
+
+    @Test
+    fun `closing the SDK clears the replay debug window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 2)
+        config.dateProvider = clock
+
+        sut.capture(SDK_EVENT)
+        sut.capture(SDK_EVENT)
+        assertEquals(listOf(true, false), capturedEvents(http).map { it.carriesReplayDebugBundle })
+        sut.close()
+
+        val carried = CopyOnWriteArrayList<Boolean>()
+        val newConfig =
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
+                storagePrefix = tmpDir.newFolder().absolutePath
+                preloadFeatureFlags = false
+                addIntegration(replayHandlerWithFullBundle())
+                dateProvider = clock
+                addBeforeSend {
+                    carried.add(it.properties!!.containsKey("\$sdk_debug_replay_capture_mode"))
+                    it
+                }
+            }
+        sut.setup(newConfig)
+        sut.capture(SDK_EVENT)
+
+        assertTrue(carried.isNotEmpty())
+        assertTrue(carried.all { it })
 
         sut.close()
     }
@@ -3638,7 +4472,7 @@ internal class PostHogTest {
 
         // Create config with setDefaultPersonProperties = false
         config =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.setDefaultPersonProperties = false
                 this.preloadFeatureFlags = false
@@ -4438,7 +5272,7 @@ internal class PostHogTest {
         sut.close()
 
         val newConfig =
-            PostHogConfig(API_KEY, url.toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, url.toString()).apply {
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.preloadFeatureFlags = false
                 this.cachePreferences = preferences
@@ -5447,13 +6281,12 @@ internal class PostHogTest {
         val callerSessionId = TimeBasedEpochGenerator.generate()
         TimeBasedEpochGenerator.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
 
-        sut.capture(EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to callerSessionId.toString()))
+        sut.capture(SDK_EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to callerSessionId.toString()))
         queueExecutor.shutdownAndAwaitTermination()
 
         val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
         assertEquals(callerSessionId.toString(), props["\$session_id"])
         assertEquals(managerStart - oneHourMs, (props["\$sdk_debug_session_start"] as Number).toLong())
-        assertTrue((props["\$sdk_debug_current_session_duration"] as Number).toLong() >= oneHourMs)
 
         sut.close()
     }
@@ -5465,13 +6298,12 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
         sut.startSession()
 
-        sut.capture(EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to java.util.UUID.randomUUID().toString()))
+        sut.capture(SDK_EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to java.util.UUID.randomUUID().toString()))
         queueExecutor.shutdownAndAwaitTermination()
 
         val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
         assertEquals("disabled", props["\$recording_status"])
         assertFalse(props.containsKey("\$sdk_debug_session_start"))
-        assertFalse(props.containsKey("\$sdk_debug_current_session_duration"))
 
         sut.close()
     }
@@ -5513,7 +6345,7 @@ internal class PostHogTest {
         sut.startSession()
         val start = PostHogSessionManager.getSessionStartedAt()
 
-        sut.capture(EVENT, DISTINCT_ID, timestamp = java.util.Date(start + 1))
+        sut.capture(SDK_EVENT, DISTINCT_ID, timestamp = java.util.Date(start + 1))
         queueExecutor.shutdownAndAwaitTermination()
 
         val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!

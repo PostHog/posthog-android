@@ -42,6 +42,7 @@ import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
+import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
@@ -50,6 +51,21 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 private const val MAX_DEBUG_ERROR_LENGTH = 500
+private const val REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS = 30_000L
+
+// Kept on every event because the app reads them per event; the rest of the replay debug bundle is throttled.
+private val REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS =
+    setOf(
+        "\$recording_status",
+        "\$sdk_debug_replay_event_trigger_status",
+        "\$sdk_debug_replay_linked_flag_trigger_status",
+        "\$sdk_debug_replay_internal_buffer_length",
+    )
+
+private fun isReplayDebugEvent(event: String): Boolean =
+    event.startsWith("\$") &&
+        event != PostHogEventName.FEATURE_FLAG_CALLED.event &&
+        event != PostHogEventName.SNAPSHOT.event
 
 // A duplicate report of one tap arrives within the same launch: milliseconds after a warm tap, seconds
 // after a cold start while the host's JS/Dart handlers register. Finite so that a re-send carrying no
@@ -100,6 +116,11 @@ public class PostHog private constructor(
 
     private val featureFlagsCalledLock = Any()
     private val cachedPersonPropertiesLock = Any()
+    private val replayDebugPropertiesLock = Any()
+
+    // Guarded by replayDebugPropertiesLock.
+    private var lastReplayDebugPropertiesAt: Long? = null
+    private var replayDebugClaimOutstanding = false
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -153,6 +174,11 @@ public class PostHog private constructor(
 
     @Volatile
     private var sessionReplayHandler: PostHogSessionReplayHandler? = null
+
+    // Whether the app wants session replay on, so optIn restarts it: the sessionReplay config at setup,
+    // then the app's own start/stop calls made while opted in. Internal stops don't change it.
+    @Volatile
+    private var sessionReplayWanted = false
     private var surveysHandler: PostHogSurveysHandler? = null
 
     @Volatile
@@ -164,10 +190,13 @@ public class PostHog private constructor(
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
-            sessionReplayHandler?.let {
-                if (isSessionReplayConfigEnabled()) {
-                    // start will bail if session replay is already active anyway
-                    startSessionReplay(resumeCurrent = true)
+            // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
+            synchronized(setupLock) {
+                sessionReplayHandler?.let {
+                    if (isSessionReplayConfigEnabled()) {
+                        // start will bail if session replay is already active anyway
+                        startSessionReplayInternal(resumeCurrent = true)
+                    }
                 }
             }
         }
@@ -189,7 +218,7 @@ public class PostHog private constructor(
                     return
                 }
 
-                if (!apiKeys.add(config.projectToken)) {
+                if (!projectTokens.add(config.projectToken)) {
                     config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
@@ -353,31 +382,14 @@ public class PostHog private constructor(
 
                 startSession()
 
-                config.integrations.forEach {
-                    try {
-                        it.install(this)
-
-                        if (it is PostHogSessionReplayHandler) {
-                            sessionReplayHandler = it
-
-                            // resume because we just created the session id above with
-                            // the startSession call
-                            if (isSessionReplayConfigEnabled()) {
-                                startSessionReplay(resumeCurrent = true)
-                            }
-                        } else if (it is PostHogSurveysHandler) {
-                            // surveys integration so we can notify it about captured events
-                            surveysHandler = it
-                            // Immediately push any cached surveys from remote config
-                            try {
-                                remoteConfig?.getSurveys()?.let(it::onSurveysLoaded)
-                            } catch (e: Throwable) {
-                                config.logger.log("Pushing cached surveys to integration failed: $e.")
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        config.logIntegrationFailure(it.javaClass.name, e)
-                    }
+                // integrations are installed on optIn instead
+                sessionReplayWanted = isSessionReplayConfigEnabled()
+                if (!isOptedOut()) {
+                    installIntegrations(
+                        resumeSessionReplay = true,
+                        startSessionReplay = isSessionReplayConfigEnabled(),
+                        surveys = cachedSurveys(),
+                    )
                 }
 
                 // only because of testing in isolation, this flag is always enabled
@@ -416,11 +428,74 @@ public class PostHog private constructor(
         config: PostHogConfig,
         loaded: Boolean,
     ) {
-        config.integrations.forEach { integration ->
+        // under setupLock so it can't interleave with optOut/optIn, where some integrations would
+        // otherwise reinstall themselves while opted out
+        synchronized(setupLock) {
+            if (isOptedOut()) {
+                return
+            }
+            config.integrations.forEach { integration ->
+                try {
+                    integration.onRemoteConfig(loaded)
+                } catch (e: Throwable) {
+                    config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+                }
+            }
+        }
+    }
+
+    private fun installIntegrations(
+        resumeSessionReplay: Boolean,
+        startSessionReplay: Boolean,
+        surveys: List<Survey>?,
+    ) {
+        val config = config ?: return
+        config.integrations.forEach {
             try {
-                integration.onRemoteConfig(loaded)
+                it.install(this)
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = it
+
+                    if (startSessionReplay) {
+                        startSessionReplayInternal(resumeCurrent = resumeSessionReplay)
+                    }
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = it
+                    try {
+                        surveys?.let(it::onSurveysLoaded)
+                    } catch (e: Throwable) {
+                        config.logger.log("Pushing cached surveys to integration failed: $e.")
+                    }
+                }
             } catch (e: Throwable) {
-                config.logger.log("Integration ${integration.javaClass.name} onRemoteConfig failed: $e.")
+                config.logIntegrationFailure(it.javaClass.name, e)
+            }
+        }
+    }
+
+    private fun cachedSurveys(): List<Survey>? =
+        try {
+            remoteConfig?.getSurveys()
+        } catch (e: Throwable) {
+            safeLog("Reading cached surveys failed: $e.")
+            null
+        }
+
+    private fun uninstallIntegrations() {
+        stopSessionReplay()
+        val config = config ?: return
+        config.integrations.forEach {
+            try {
+                it.uninstall()
+
+                if (it is PostHogSessionReplayHandler) {
+                    sessionReplayHandler = null
+                } else if (it is PostHogSurveysHandler) {
+                    surveysHandler = null
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Integration ${it.javaClass.name} failed to uninstall: $e.")
             }
         }
     }
@@ -547,22 +622,8 @@ public class PostHog private constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.projectToken)
-
-                    config.integrations.forEach {
-                        try {
-                            it.uninstall()
-
-                            if (it is PostHogSessionReplayHandler) {
-                                sessionReplayHandler = null
-                            } else if (it is PostHogSurveysHandler) {
-                                surveysHandler = null
-                            }
-                        } catch (e: Throwable) {
-                            config.logger
-                                .log("Integration ${it.javaClass.name} failed to uninstall: $e.")
-                        }
-                    }
+                    projectTokens.remove(config.projectToken)
+                    uninstallIntegrations()
                 }
 
                 queue?.stop()
@@ -573,6 +634,10 @@ public class PostHog private constructor(
 
                 featureFlagsCalled.clear()
                 lastScreenName = null
+                synchronized(replayDebugPropertiesLock) {
+                    lastReplayDebugPropertiesAt = null
+                    replayDebugClaimOutstanding = false
+                }
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
 
@@ -672,6 +737,7 @@ public class PostHog private constructor(
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
         timestamp: Date? = null,
+        claimReplayDebugBundle: () -> Boolean = { false },
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -765,7 +831,7 @@ public class PostHog private constructor(
         // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
         // never precedes a rotation triggered by getActiveSessionId() above.
         if (appendSharedProps) {
-            props.putAll(sdkDebugProperties(sessionIdString, timestamp))
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
         }
 
         // only Session replay needs distinct_id also in the props
@@ -782,6 +848,7 @@ public class PostHog private constructor(
     private fun sdkDebugProperties(
         sessionId: String?,
         timestamp: Date?,
+        claimReplayDebugBundle: () -> Boolean,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
         val managerStart = PostHogSessionManager.getSessionStartedAt()
@@ -790,23 +857,65 @@ public class PostHog private constructor(
         if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
             return props
         }
+        val claimed = claimReplayDebugBundle()
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            props.putAll(sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled"))
+            val replayProps = sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+            if (claimed) {
+                props.putAll(replayProps)
+            } else {
+                REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS.forEach { key -> replayProps[key]?.let { props[key] = it } }
+            }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         try {
-            sessionStart(sessionId, managerStart)?.let { start ->
-                props["\$sdk_debug_session_start"] = start
-                props["\$sdk_debug_current_session_duration"] = PostHogSessionManager.currentTimeMillis() - start
+            if (claimed) {
+                sessionStart(sessionId, managerStart)?.let { props["\$sdk_debug_session_start"] = it }
             }
             queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
         return props
+    }
+
+    private fun currentTimeMillis(): Long = config?.dateProvider?.currentTimeMillis() ?: System.currentTimeMillis()
+
+    private fun isWithinReplayDebugInterval(
+        since: Long?,
+        now: Long,
+    ): Boolean = since != null && now - since < REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS
+
+    /**
+     * Single outstanding claim, so a capture inside `beforeSend` can't also take it. It never expires
+     * by age: the claiming capture already carries the bundle however long `beforeSend` takes, and
+     * always releases on exit. The window starts at commit, on wall clock so a future-dated capture
+     * can't hold it shut.
+     */
+    private fun claimReplayDebugPropertiesWindow(): Boolean {
+        synchronized(replayDebugPropertiesLock) {
+            if (replayDebugClaimOutstanding ||
+                isWithinReplayDebugInterval(lastReplayDebugPropertiesAt, currentTimeMillis())
+            ) {
+                return false
+            }
+            replayDebugClaimOutstanding = true
+            return true
+        }
+    }
+
+    private fun commitReplayDebugPropertiesWindow() {
+        synchronized(replayDebugPropertiesLock) {
+            lastReplayDebugPropertiesAt = currentTimeMillis()
+        }
+    }
+
+    private fun releaseReplayDebugPropertiesClaim() {
+        synchronized(replayDebugPropertiesLock) {
+            replayDebugClaimOutstanding = false
+        }
     }
 
     // The manager's clock for its own session. A caller-supplied id (the RN/Flutter bridges) carries
@@ -851,6 +960,9 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
+        // Tracked on this call rather than derived from the event, so it survives beforeSend renaming
+        // or replacing the event.
+        var claimedReplayDebugBundle = false
         try {
             if (!isEnabled()) {
                 return
@@ -920,6 +1032,9 @@ public class PostHog private constructor(
                     // only append groups if not a group identify event and not a snapshot
                     appendGroups = !groupIdentify,
                     timestamp = timestamp,
+                    claimReplayDebugBundle = {
+                        isReplayDebugEvent(event) && claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
+                    },
                 )
 
             val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
@@ -945,15 +1060,19 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
             } else {
-                super.captureStateless(
-                    postHogEvent.event,
-                    newDistinctId,
-                    postHogEvent.properties ?: emptyMap(),
-                    userProperties,
-                    userPropertiesSetOnce,
-                    groups,
-                    timestamp,
-                )
+                val queued =
+                    captureStatelessInternal(
+                        postHogEvent.event,
+                        newDistinctId,
+                        postHogEvent.properties ?: emptyMap(),
+                        userProperties,
+                        userPropertiesSetOnce,
+                        groups,
+                        timestamp,
+                    )
+                if (queued && claimedReplayDebugBundle) {
+                    commitReplayDebugPropertiesWindow()
+                }
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event, mergedProperties)
                 // Notify session replay handler about the event for event triggers
@@ -961,6 +1080,10 @@ public class PostHog private constructor(
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
+        } finally {
+            if (claimedReplayDebugBundle) {
+                releaseReplayDebugPropertiesClaim()
+            }
         }
     }
 
@@ -1220,13 +1343,35 @@ public class PostHog private constructor(
             return
         }
 
-        synchronized(optOutLock) {
-            config?.optOut = false
-            if (config?.persistOptOut != false) {
-                getPreferences().setValue(OPT_OUT, false)
+        // read before setupLock: getSurveys() takes remoteConfigLock, which the remote config
+        // thread can hold while it waits on setupLock
+        val surveys = cachedSurveys()
+
+        // under setupLock so the consent write and its integration transition apply together:
+        // a concurrent optOut can't land between them and leave integrations out of step
+        synchronized(setupLock) {
+            // close() may have run since the isEnabled() check above
+            if (!isEnabled()) {
+                return
             }
-            // an explicit runtime choice; the deferred read must not override it
-            optOutLoaded = true
+            val wasOptedOut = isOptedOut()
+            synchronized(optOutLock) {
+                config?.optOut = false
+                if (config?.persistOptOut != false) {
+                    getPreferences().setValue(OPT_OUT, false)
+                }
+                // an explicit runtime choice; the deferred read must not override it
+                optOutLoaded = true
+            }
+
+            if (wasOptedOut) {
+                installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
+                // install re-arms each integration from local config; re-apply the cached remote
+                // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
+                if (remoteConfig?.hasRemoteConfigFetched() == true) {
+                    config?.let { notifyIntegrationsRemoteConfig(it, loaded = true) }
+                }
+            }
         }
 
         // Re-arm integrations that stood down while opted out (e.g. push refetches the token and
@@ -1246,14 +1391,25 @@ public class PostHog private constructor(
             return
         }
 
-        if (!isOptedOut()) config.notifyIntegrationsChanged()
-        synchronized(optOutLock) {
-            config?.optOut = true
-            if (config?.persistOptOut != false) {
-                getPreferences().setValue(OPT_OUT, true)
+        // under setupLock for the same reason as optIn
+        synchronized(setupLock) {
+            if (!isEnabled()) {
+                return
             }
-            optOutLoaded = true
-            exceptionStepsBuffer?.clear()
+            val wasOptedOut = isOptedOut()
+            if (!wasOptedOut) config.notifyIntegrationsChanged()
+            synchronized(optOutLock) {
+                config?.optOut = true
+                if (config?.persistOptOut != false) {
+                    getPreferences().setValue(OPT_OUT, true)
+                }
+                optOutLoaded = true
+                exceptionStepsBuffer?.clear()
+            }
+
+            if (!wasOptedOut) {
+                uninstallIntegrations()
+            }
         }
         // Clear cached identity-token state so a stale token/401 flag isn't reused after
         // re-opting-in; the send guard in the manager already blocks sends while opted out.
@@ -1322,10 +1478,23 @@ public class PostHog private constructor(
             return
         }
 
+        // Resolved once and passed to capture too, so the envelope and the property can't diverge
+        // under a concurrent identify(). Guarded because a custom getAnonymousId may throw.
+        val sourceDistinctId =
+            try {
+                distinctId
+            } catch (e: Throwable) {
+                config?.logger?.log("alias call failed to resolve distinctId: $e.")
+                return
+            }
+
         val props = mutableMapOf<String, Any>()
         props["alias"] = alias
+        // The source identity is also duplicated into the properties so consumers that only
+        // read the event properties can resolve both sides of the alias linkage.
+        props["distinct_id"] = sourceDistinctId
 
-        capture(PostHogEventName.CREATE_ALIAS.event, properties = props)
+        capture(PostHogEventName.CREATE_ALIAS.event, distinctId = sourceDistinctId, properties = props)
     }
 
     public override fun captureFeatureView(
@@ -2348,6 +2517,22 @@ public class PostHog private constructor(
             return
         }
 
+        // under setupLock so the intent and the start apply together, against a concurrent
+        // stopSessionReplay or optOut
+        synchronized(setupLock) {
+            // a start asked for while opted out is ignored, so it doesn't change the intent either
+            if (!isOptedOut()) {
+                sessionReplayWanted = true
+            }
+            startSessionReplayInternal(resumeCurrent)
+        }
+    }
+
+    private fun startSessionReplayInternal(resumeCurrent: Boolean) {
+        if (!isEnabled()) {
+            return
+        }
+
         if (!isSessionReplayFlagEnabled()) {
             config?.logger?.log(
                 "Could not start recording. Session replay is disabled, or remote config and feature flags are still being executed.",
@@ -2387,8 +2572,15 @@ public class PostHog private constructor(
             return
         }
 
-        sessionReplayHandler?.stop() ?: run {
-            config?.logger?.log("Session replay isn't installed.")
+        // under setupLock for the same reason as startSessionReplay
+        synchronized(setupLock) {
+            // also reached from optOut's uninstall, by which point consent is already opted out
+            if (!isOptedOut()) {
+                sessionReplayWanted = false
+            }
+            sessionReplayHandler?.stop() ?: run {
+                config?.logger?.log("Session replay isn't installed.")
+            }
         }
     }
 
@@ -2404,7 +2596,7 @@ public class PostHog private constructor(
         private var shared: PostHogInterface = PostHog()
         private var defaultSharedInstance = shared
 
-        private val apiKeys = mutableSetOf<String>()
+        private val projectTokens = mutableSetOf<String>()
 
         /**
          * Captures application log records into PostHog's logs product

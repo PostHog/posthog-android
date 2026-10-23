@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
 import com.posthog.TestHttpServers
@@ -91,7 +91,7 @@ internal class PostHogPushSubscriptionManagerTest {
     ): Triple<PostHogPushSubscriptionManager, PostHogConfig, String?> {
         servers.track(http)
         val config =
-            PostHogConfig(API_KEY, host = http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, host = http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.networkStatus = networkStatus
                 this.maxRetries = maxRetries
@@ -105,10 +105,14 @@ internal class PostHogPushSubscriptionManagerTest {
         return Triple(manager, config, storagePrefix)
     }
 
-    private fun pendingFile(storagePrefix: String): File = File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.pending")
+    private fun pendingFile(storagePrefix: String): File =
+        File(
+            File(File(storagePrefix, "push"), PROJECT_TOKEN),
+            "push_subscription.pending",
+        )
 
     private fun pendingUnregisterFile(storagePrefix: String): File =
-        File(File(File(storagePrefix, "push"), API_KEY), "push_subscription.unregister.pending")
+        File(File(File(storagePrefix, "push"), PROJECT_TOKEN), "push_subscription.unregister.pending")
 
     private fun flush() {
         executor.submit {}.get(5, TimeUnit.SECONDS)
@@ -345,7 +349,7 @@ internal class PostHogPushSubscriptionManagerTest {
         // The re-probe is the only way back if a key is ever marked wrongly, so an expired verdict
         // has to let one registration through and then stop claiming the key is rejected.
         val http = mockHttp(total = 2)
-        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}"}""")
+        preferences.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$PROJECT_TOKEN":"${clock.nowMs}"}""")
         val (sut, _, _) = getSut(http)
         clock.advance(8L * 24 * 60 * 60 * 1000)
 
@@ -371,7 +375,7 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         // A second instance on another key records its own verdict in the same store.
-        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$API_KEY":"${clock.nowMs}","phc_other":"1"}""")
+        shared.setValue(PUSH_SUBSCRIPTION_REJECTED, """{"$PROJECT_TOKEN":"${clock.nowMs}","phc_other":"1"}""")
 
         val (relaunched, _, _) = getSut(http)
         relaunched.register("fcm-token-2", "firebase-project")
@@ -1626,7 +1630,7 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     private fun parsedDistinctId(request: okhttp3.mockwebserver.RecordedRequest): String? {
-        val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+        val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
         return parsed["distinct_id"] as? String
     }

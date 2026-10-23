@@ -26,7 +26,7 @@ import com.posthog.PostHog
 import com.posthog.PostHogEvent
 import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
@@ -229,6 +229,35 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // While the soft keyboard is open in adjustPan mode, the window content is drawn shifted
+    // up by ViewRootImpl.mCurScrollY. Masks must follow the shifted pixels.
+    @Test
+    fun `mask rects follow the window pan applied by the soft keyboard`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        val masked = View(activity).apply { tag = "ph-no-capture" }
+        root.addView(masked)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        masked.layout(0, 200, 100, 300)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        fun maskRects() = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }.rects
+
+        val unpanned = maskRects()
+        val viewRootImpl = activity.window.decorView.parent
+        viewRootImpl.javaClass.getDeclaredField("mCurScrollY").apply {
+            isAccessible = true
+            setInt(viewRootImpl, 150)
+        }
+        val panned = maskRects()
+
+        assertEquals(1, unpanned.size)
+        assertEquals(listOf(Rect(unpanned[0]).apply { offset(0, -150) }), panned)
+    }
+
     @Test
     fun `timed out view collection does not run later or emit a snapshot`() {
         val h = screenshotCaptureHarness()
@@ -352,13 +381,13 @@ internal class PostHogReplayIntegrationTest {
                 on { getEventTriggers() } doReturn triggers
                 on { hasRemoteConfigFetched() } doReturn true
             }
-        return PostHogAndroidConfig(API_KEY).apply {
+        return PostHogAndroidConfig(PROJECT_TOKEN).apply {
             remoteConfigHolder = remoteConfig
             this.sessionReplay = sessionReplay
         }
     }
 
-    private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(API_KEY)): PostHogReplayIntegration {
+    private fun getSut(config: PostHogAndroidConfig = PostHogAndroidConfig(PROJECT_TOKEN)): PostHogReplayIntegration {
         return PostHogReplayIntegration(context, config, MainHandler())
     }
 
@@ -443,7 +472,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `running capture blocks duplicates but not other windows`() {
         val executor = createReplayExecutor()
-        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val sut = getSutWithExecutor(PostHogAndroidConfig(PROJECT_TOKEN), executor)
         val firstWindow = WindowDrawState()
         val secondWindow = WindowDrawState()
         val entered = CountDownLatch(1)
@@ -477,7 +506,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `capture gate releases after rejection and task failure`() {
         val executor = QueuedReplayExecutor(createReplayExecutor())
-        val sut = getSutWithExecutor(PostHogAndroidConfig(API_KEY), executor)
+        val sut = getSutWithExecutor(PostHogAndroidConfig(PROJECT_TOKEN), executor)
         val drawState = WindowDrawState()
         executor.reject = true
         assertFalse(sut.submitCapture(drawState) {})
@@ -976,7 +1005,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 sessionReplay = true
             }
@@ -1004,6 +1033,47 @@ internal class PostHogReplayIntegrationTest {
             assertFalse(sut.isActive())
         } finally {
             sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `remote config with unchanged event triggers keeps a trigger started recording`() {
+        val cachedTriggers = linkedSetOf("checkout_started", "deep_link_failed")
+        val cases =
+            listOf(
+                "same order" to cachedTriggers,
+                "reordered" to linkedSetOf("deep_link_failed", "checkout_started"),
+            )
+
+        for ((name, liveTriggers) in cases) {
+            val config = configWithSampling(flagActive = true, samplingPasses = true, triggers = cachedTriggers)
+            val remoteConfig = config.remoteConfigHolder!!
+            // Cached config only: the live fetch has not completed yet.
+            whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(false)
+            val sut = getSut(config)
+            val postHog = mock<PostHogInterface>()
+            whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+            sut.install(postHog)
+            try {
+                PostHogSessionManager.startSession()
+                val sessionId = PostHogSessionManager.peekSessionId()
+                sut.onEvent("deep_link_failed", null)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), name)
+
+                whenever(remoteConfig.getEventTriggers()).thenReturn(liveTriggers)
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "first live config stopped the recording ($name)")
+
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "later config reload stopped the recording ($name)")
+                assertEquals(sessionId, PostHogSessionManager.peekSessionId(), name)
+            } finally {
+                sut.uninstall()
+                PostHogSessionManager.endSession()
+            }
         }
     }
 
@@ -1128,6 +1198,64 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `restart queued by a session change does not run after uninstall`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+
+            // e.g. optOut uninstalls before the queued restart runs on main
+            sut.uninstall()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `restart after reinstall keeps a manual start waiting for an event trigger`() {
+        val config =
+            configWithSampling(
+                flagActive = true,
+                samplingPasses = true,
+                sessionReplay = false,
+                triggers = setOf("checkout_started"),
+            )
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+
+            // opt-out uninstalls the integration; opt-in reinstalls it and starts a new session
+            sut.uninstall()
+            sut.install(postHog)
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = false)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive())
+
+            sut.onEvent("checkout_started", null)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
     fun `explicit stop cancels a manual start waiting for an event trigger`() {
         val config =
             configWithSampling(
@@ -1200,7 +1328,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `clears buffer when PostHogReplayIntegration is installed`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val replayQueue = createReplayQueue(config)
         config.replayQueueHolder = replayQueue
         replayQueue.add(createTestEvent("snapshot_1"))
@@ -1223,7 +1351,7 @@ internal class PostHogReplayIntegrationTest {
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
         whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 this.logger = logger
                 remoteConfigHolder = remoteConfig
             }
@@ -1253,7 +1381,7 @@ internal class PostHogReplayIntegrationTest {
         whenever(remoteConfig.getRecordingMinimumDurationMs()).thenReturn(1L)
         whenever(remoteConfig.hasRemoteConfigFetched()).thenReturn(true)
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 this.logger = logger
                 remoteConfigHolder = remoteConfig
             }
@@ -1316,7 +1444,7 @@ internal class PostHogReplayIntegrationTest {
                 on { getRecordingMinimumDurationMs() } doReturn minimumDurationMs
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 this.sessionReplay = sessionReplay
                 this.preloadFeatureFlags = preloadFeatureFlags
@@ -1531,7 +1659,7 @@ internal class PostHogReplayIntegrationTest {
             samplingPasses.get()
         }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
                 sessionReplay = false
             }
@@ -2013,7 +2141,7 @@ internal class PostHogReplayIntegrationTest {
                 on { getRecordingMinimumDurationMs() } doReturn null
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfigMock
                 sessionReplay = true
                 @Suppress("DEPRECATION")
@@ -2152,7 +2280,7 @@ internal class PostHogReplayIntegrationTest {
                 override fun isConnected() = false
             }
         val config =
-            PostHogAndroidConfig(API_KEY, host = "http://localhost").apply {
+            PostHogAndroidConfig(PROJECT_TOKEN, host = "http://localhost").apply {
                 cachePreferences = preferences
                 networkStatus = offline
                 sessionReplay = true
@@ -2471,7 +2599,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
     fun `committed snapshot keeps its session when rotation precedes core enrichment`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         @Suppress("DEPRECATION")
         config.remoteConfig = false
         config.preloadFeatureFlags = false
@@ -4492,7 +4620,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports screenshot capture mode when the screenshot flag is on`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sessionReplayConfig.screenshot = true
         val sut = getSut(config)
 
@@ -4501,7 +4629,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports screenshot capture mode for the flutter host`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sdkName = "posthog-flutter"
         config.sessionReplayConfig.screenshot = false
         val sut = getSut(config)
@@ -4511,12 +4639,12 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     fun `debugProperties reports wireframe capture mode otherwise`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sessionReplayConfig.screenshot = false
         val sut = getSut(config)
 
         assertEquals("wireframe", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
-        assertEquals(1000L, sut.debugProperties()["\$sdk_debug_replay_throttle_delay_ms"])
+        assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_throttle_delay_ms"))
     }
 
     @Test
@@ -4579,7 +4707,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
             }
         val sut = getSut(config)
@@ -4619,7 +4747,7 @@ internal class PostHogReplayIntegrationTest {
                 on { hasRemoteConfigFetched() } doReturn true
             }
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
             }
         val sut = getSut(config)
@@ -4650,7 +4778,6 @@ internal class PostHogReplayIntegrationTest {
             assertEquals("disabled", props["\$recording_status"])
             assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
             assertEquals("wireframe", props["\$sdk_debug_replay_capture_mode"])
-            assertEquals(1000L, props["\$sdk_debug_replay_throttle_delay_ms"])
             assertEquals(0, props["\$sdk_debug_replay_internal_buffer_length"])
         } finally {
             sut.uninstall()
@@ -4709,7 +4836,7 @@ internal class PostHogReplayIntegrationTest {
                     "linked_flag".takeIf { props["\$sdk_debug_replay_linked_flag_trigger_status"] == "trigger_pending" },
                 )
             assertEquals(pending.ifEmpty { null }, props["\$sdk_debug_replay_pending_trigger_conditions"], "pending conditions vs statuses")
-            assertTrue(props.containsKey("\$sdk_debug_replay_capture_mode") && props.containsKey("\$sdk_debug_replay_throttle_delay_ms"))
+            assertTrue(props.containsKey("\$sdk_debug_replay_capture_mode"))
         }
         assertEquals("disabled", sut.debugProperties()["\$recording_status"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))

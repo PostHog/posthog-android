@@ -3,7 +3,7 @@ package com.posthog.android.internal
 import android.content.Context
 import android.content.res.AssetManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
@@ -20,7 +20,7 @@ import kotlin.test.assertEquals
 internal class PostHogMetaPropertiesApplierTest {
     private val context = mock<Context>()
     private val assets = mock<AssetManager>()
-    private val config = PostHogAndroidConfig(API_KEY)
+    private val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
     private val sut = PostHogMetaPropertiesApplier()
 

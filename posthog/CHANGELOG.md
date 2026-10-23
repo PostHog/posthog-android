@@ -1,5 +1,24 @@
 ## Next
 
+## 6.47.4
+
+### Patch Changes
+
+- 98315b9: Stop session replay, autocapture and other integrations while opted out, and restart them on `optIn()`. Replay restarts in a new session if the app wanted it on at opt-out: `sessionReplay` is enabled or the app called `startSessionReplay()`, and the app hasn't called `stopSessionReplay()` since.
+
+## 6.47.3
+
+### Patch Changes
+
+- ee5e1e3: `alias()` now also sends the current `distinct_id` in the `$create_alias` event properties, alongside `alias`, matching posthog-js
+- 9192756: Keep `$recording_status`, the replay trigger statuses and the replay buffer length on every captured event. Add the remaining `$sdk_debug_*` session replay properties and `$sdk_debug_session_start` only to SDK events (names starting with `$`, excluding `$feature_flag_called` and `$snapshot`), at most once every 30 seconds. Remove `$sdk_debug_current_session_duration` and `$sdk_debug_replay_throttle_delay_ms`.
+
+## 6.47.2
+
+### Patch Changes
+
+- c5e788b: Report a missing runtime dependency instead of disabling an integration in silence. When an integration cannot be built or installed because a class is absent, the SDK now logs a warning that names the Maven artifact the build excludes, even when debug is off, and keeps the other integrations. A build that excludes `com.squareup.curtains:curtains` turns off session replay, interaction autocapture and touch tracking, and said nothing useful about it before.
+
 ## 6.47.1
 
 ### Patch Changes

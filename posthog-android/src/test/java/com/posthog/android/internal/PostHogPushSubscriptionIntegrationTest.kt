@@ -7,7 +7,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHog
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.internal.PostHogLogger
@@ -61,7 +61,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
     @Test
     fun `install registers the fetched token and app id`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val fetcher = PushTokenFetcher { onToken -> onToken("fcm-token", "firebase-project") }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
@@ -77,7 +77,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
     @Test
     fun `a second install is a no-op while already installed`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         var fetchCount = 0
         val fetcher =
             PushTokenFetcher { onToken ->
@@ -97,7 +97,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
     @Test
     fun `onOptIn refetches the token and re-registers the device`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         var fetchCount = 0
         val fetcher =
             PushTokenFetcher { onToken ->
@@ -122,7 +122,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
     @Test
     fun `install does not register when the fetcher yields no token`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val fetcher = PushTokenFetcher { /* no token available */ }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
@@ -137,7 +137,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
     @Test
     fun `FirebasePushTokenFetcher skips and logs when Firebase is absent from the classpath`() {
         val logger = CapturingLogger()
-        val config = PostHogAndroidConfig(API_KEY).apply { this.logger = logger }
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
         // firebase-messaging is a test dependency, so simulate absence via an unresolvable name.
         val fetcher = FirebasePushTokenFetcher(config, messagingClassName = "com.google.firebase.messaging.NotOnClasspath")
 
@@ -151,7 +151,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
     @Suppress("DEPRECATION")
     @Test
     fun `FirebasePushTokenFetcher fetches the token and project id when Firebase is present`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         val options = mock<FirebaseOptions>()
         whenever(options.projectId).thenReturn("firebase-project")
@@ -190,7 +190,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
     @Test
     fun `FirebasePushTokenFetcher skips when the Firebase project id is missing`() {
         val logger = CapturingLogger()
-        val config = PostHogAndroidConfig(API_KEY).apply { this.logger = logger }
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
 
         val options = mock<FirebaseOptions>()
         whenever(options.projectId).thenReturn(null)
@@ -211,7 +211,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
     @Test
     fun `FirebasePushTokenFetcher skips when Firebase is not initialized`() {
         val logger = CapturingLogger()
-        val config = PostHogAndroidConfig(API_KEY).apply { this.logger = logger }
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
 
         // No FirebaseApp.initializeApp ran in this process, so getInstance throws.
         var called = false

@@ -180,7 +180,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         preferences.setValue("feature_flag_request_id", "flag-request-123")
 
         val config =
-            PostHogAndroidConfig(API_KEY, server.url("/").toString()).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN, server.url("/").toString()).apply {
                 flushAt = 20
                 flushIntervalSeconds = 60
                 maxBatchSize = 20
