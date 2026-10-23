@@ -48,6 +48,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun isOptOut ()Z
 	public fun isSessionActive ()Z
 	public fun isSessionReplayActive ()Z
+	public fun onFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)Lcom/posthog/PostHogFeatureFlagsSubscription;
 	public fun optIn ()V
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
@@ -96,6 +97,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun isOptOut ()Z
 	public fun isSessionActive ()Z
 	public fun isSessionReplayActive ()Z
+	public fun onFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)Lcom/posthog/PostHogFeatureFlagsSubscription;
 	public fun optIn ()V
 	public fun optOut ()V
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
@@ -357,6 +359,11 @@ public final class com/posthog/PostHogFeatureFlagsLoaded {
 	public final fun getVariants ()Ljava/util/Map;
 }
 
+public final class com/posthog/PostHogFeatureFlagsSubscription {
+	public fun <init> (Lkotlin/jvm/functions/Function0;)V
+	public final fun unsubscribe ()V
+}
+
 public abstract interface class com/posthog/PostHogIntegration {
 	public fun install (Lcom/posthog/PostHogInterface;)V
 	public fun onChange ()V
@@ -407,6 +414,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public static synthetic fun isFeatureEnabled$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;ZLjava/lang/Boolean;ILjava/lang/Object;)Z
 	public abstract fun isSessionActive ()Z
 	public abstract fun isSessionReplayActive ()Z
+	public abstract fun onFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)Lcom/posthog/PostHogFeatureFlagsSubscription;
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public abstract fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)V
@@ -1069,10 +1077,10 @@ public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/intern
 	public fun isMinimalFlagCalledEventsEnabled ()Z
 	public final fun isNativeCrashCaptureEnabled ()Z
 	public final fun isSessionReplayFlagActive ()Z
-	public final fun loadFeatureFlags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function0;Lcom/posthog/PostHogFeatureFlagsCallback;)V
-	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function0;Lcom/posthog/PostHogFeatureFlagsCallback;ILjava/lang/Object;)V
-	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function0;Lcom/posthog/PostHogFeatureFlagsCallback;)V
-	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function0;Lcom/posthog/PostHogFeatureFlagsCallback;ILjava/lang/Object;)V
+	public final fun loadFeatureFlags (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lcom/posthog/PostHogFeatureFlagsCallback;)V
+	public static synthetic fun loadFeatureFlags$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lcom/posthog/PostHogFeatureFlagsCallback;ILjava/lang/Object;)V
+	public final fun loadRemoteConfig (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lcom/posthog/PostHogFeatureFlagsCallback;)V
+	public static synthetic fun loadRemoteConfig$default (Lcom/posthog/internal/PostHogRemoteConfig;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Lkotlin/jvm/functions/Function1;Lcom/posthog/PostHogFeatureFlagsCallback;ILjava/lang/Object;)V
 	public final fun makeSamplingDecision (Ljava/lang/String;)Z
 	public final fun persistPushConfigCache ()V
 	public final fun resetGroupPropertiesForFlags (Ljava/lang/String;)V

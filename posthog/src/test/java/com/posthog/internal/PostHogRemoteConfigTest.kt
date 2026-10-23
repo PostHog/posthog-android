@@ -924,7 +924,7 @@ internal class PostHogRemoteConfigTest {
                 called = true
             }
 
-        val internalOnFeatureFlags = {
+        val internalOnFeatureFlags = { _: Boolean ->
             calledInternal = true
         }
 
