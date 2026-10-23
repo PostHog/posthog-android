@@ -1,6 +1,5 @@
 package com.posthog.server
 
-import com.posthog.PostHogFeatureFlagsLoaded
 import com.posthog.PostHogOnFeatureFlags
 import java.net.Proxy
 import kotlin.test.Test
@@ -149,8 +148,7 @@ internal class PostHogConfigTest {
     @Test
     fun `asCoreConfig creates core config with all properties`() {
         val mockEncryption = createMockEncryption()
-        var onFeatureFlagsCalls = 0
-        val mockOnFeatureFlags = PostHogOnFeatureFlags { onFeatureFlagsCalls++ }
+        val mockOnFeatureFlags = PostHogOnFeatureFlags { }
 
         val config =
             PostHogConfig(
@@ -183,8 +181,7 @@ internal class PostHogConfigTest {
         assertEquals(30, coreConfig.maxBatchSize)
         assertEquals(45, coreConfig.flushIntervalSeconds)
         assertEquals(mockEncryption, coreConfig.encryption)
-        coreConfig.onFeatureFlags!!.loaded(PostHogFeatureFlagsLoaded(emptyMap(), errorsLoading = false))
-        assertEquals(1, onFeatureFlagsCalls)
+        assertNull(coreConfig.onFeatureFlags)
     }
 
     @Test
