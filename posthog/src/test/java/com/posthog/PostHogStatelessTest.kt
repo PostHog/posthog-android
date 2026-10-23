@@ -1088,41 +1088,6 @@ internal class PostHogStatelessTest {
     }
 
     @Test
-    fun `properties sanitizer is applied to events`() {
-        val mockQueue = MockQueue()
-        sut = createStatelessInstance()
-        config =
-            createConfig().apply {
-                @Suppress("DEPRECATION")
-                propertiesSanitizer =
-                    PostHogPropertiesSanitizer { properties ->
-                        properties.apply {
-                            remove("sensitive")
-                            put("sanitized", true)
-                        }
-                    }
-            }
-
-        sut.setup(config)
-        sut.setMockQueue(mockQueue)
-
-        sut.captureStateless(
-            "test",
-            "user123",
-            mapOf(
-                "safe" to "value",
-                "sensitive" to "secret",
-            ),
-        )
-
-        assertEquals(1, mockQueue.events.size)
-        val event = mockQueue.events.first()
-        assertEquals("value", event.properties!!["safe"])
-        assertNull(event.properties!!["sensitive"])
-        assertEquals(true, event.properties!!["sanitized"])
-    }
-
-    @Test
     fun `feature flag called events are sent when feature flags accessed`() {
         val mockQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()

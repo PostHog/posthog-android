@@ -96,40 +96,4 @@ public open class PostHogAndroidConfig
         public var captureDeadClicks: Boolean = false
 
         internal var replayQueueHolder: PostHogReplayQueue? = null
-
-        public companion object {
-            /**
-             * Deprecated form of the [PostHogAndroidConfig] constructor that takes `apiKey` instead
-             * of `projectToken`, kept so Kotlin calls such as `PostHogAndroidConfig(apiKey = "phc_...")`
-             * still compile. Every other parameter and default matches the constructor.
-             *
-             * ```kotlin
-             * val config = PostHogAndroidConfig(projectToken = "phc_your_project_token") // instead of apiKey =
-             * ```
-             */
-            @Deprecated(
-                "Deprecated in favor of projectToken. This will be removed in the next major version.",
-            )
-            @JvmSynthetic
-            public operator fun invoke(
-                apiKey: String,
-                host: String = PostHogConfig.DEFAULT_HOST,
-                captureApplicationLifecycleEvents: Boolean = true,
-                captureDeepLinks: Boolean = true,
-                captureScreenViews: Boolean = true,
-                sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-                capturePushNotificationSubscriptions: Boolean = true,
-                capturePushNotificationOpened: Boolean = true,
-            ): PostHogAndroidConfig =
-                PostHogAndroidConfig(
-                    projectToken = apiKey,
-                    host = host,
-                    captureApplicationLifecycleEvents = captureApplicationLifecycleEvents,
-                    captureDeepLinks = captureDeepLinks,
-                    captureScreenViews = captureScreenViews,
-                    sessionReplayConfig = sessionReplayConfig,
-                    capturePushNotificationSubscriptions = capturePushNotificationSubscriptions,
-                    capturePushNotificationOpened = capturePushNotificationOpened,
-                )
-        }
     }

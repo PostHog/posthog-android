@@ -312,20 +312,17 @@ public open class PostHogStateless protected constructor(
         }
     }
 
-    @Suppress("DEPRECATION")
     protected fun buildEvent(
         event: String,
         distinctId: String,
         properties: MutableMap<String, Any>,
         timestamp: Date? = null,
     ): PostHogEvent? {
-        // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
         val postHogEvent =
             PostHogEvent(
                 event,
                 distinctId,
-                properties = sanitizedProperties,
+                properties = properties,
                 timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
             )
         var eventChecked: PostHogEvent = postHogEvent
