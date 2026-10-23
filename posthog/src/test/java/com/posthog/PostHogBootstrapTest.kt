@@ -12,6 +12,8 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -378,6 +380,26 @@ internal class PostHogBootstrapTest {
         assertEquals(mapOf("beta-ui" to true, "checkout" to "test"), loaded!!.variants)
         assertFalse(loaded!!.errorsLoading)
         assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
+
+        sut.close()
+    }
+
+    @Test
+    fun `onFeatureFlags replays bootstrapped flags to a listener registered after setup`() {
+        val sut =
+            getSut(
+                host = "http://127.0.0.1:1",
+                // the replay comes from setup's flag loading, before /config answers
+                reloadFeatureFlags = true,
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
+            )
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+
+        // setup's load to the unreachable host may already have failed, which keeps the bootstrapped flags
+        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(mapOf<String, Any>("beta-ui" to true), loaded.variants)
 
         sut.close()
     }

@@ -64,7 +64,7 @@ public class PostHogRemoteConfig(
         val distinctId: String,
         val anonymousId: String?,
         val groups: Map<String, String>?,
-        val internalOnFeatureFlags: List<() -> Unit>,
+        val internalOnFeatureFlags: List<(errorsLoading: Boolean) -> Unit>,
         val onFeatureFlags: List<PostHogFeatureFlagsCallback>,
     )
 
@@ -257,13 +257,11 @@ public class PostHogRemoteConfig(
     }
 
     @JvmName("asSingleInternalCallback")
-    private fun List<() -> Unit>.asSingleCallback(): (() -> Unit)? =
+    private fun List<(errorsLoading: Boolean) -> Unit>.asSingleCallback(): ((errorsLoading: Boolean) -> Unit)? =
         when (size) {
             0 -> null
             1 -> first()
-            else -> {
-                { forEach { runSafely(it) } }
-            }
+            else -> { errorsLoading -> forEach { runSafely { it(errorsLoading) } } }
         }
 
     private fun List<PostHogFeatureFlagsCallback>.asSingleCallback(): PostHogFeatureFlagsCallback? =
@@ -286,13 +284,13 @@ public class PostHogRemoteConfig(
     }
 
     private fun runOnFeatureFlagsCallbacks(
-        internalOnFeatureFlags: (() -> Unit)?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
         onFeatureFlags: PostHogFeatureFlagsCallback?,
         errorsLoading: Boolean,
     ) {
         // if we don't load the feature flags (because there are none), we need to call the callback
         // because the app might be waiting for it.
-        internalOnFeatureFlags?.let { runSafely(it) }
+        internalOnFeatureFlags?.let { runSafely { it(errorsLoading) } }
         onFeatureFlags?.let { callback ->
             runSafely {
                 // a failed first load still reports the persisted flags, so hydrate them first
@@ -317,7 +315,7 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: (() -> Unit)? = null,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)? = null,
         onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {
@@ -858,7 +856,7 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: (() -> Unit)?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
         onFeatureFlags: PostHogFeatureFlagsCallback?,
         notifyRemoteConfigLoaded: Boolean = true,
     ) {
@@ -1121,7 +1119,7 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: (() -> Unit)? = null,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)? = null,
         onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {

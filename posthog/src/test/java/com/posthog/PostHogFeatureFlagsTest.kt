@@ -9,11 +9,16 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
@@ -400,5 +405,79 @@ internal class PostHogFeatureFlagsTest {
         assertTrue(result!!.errorsLoading)
         assertTrue(result!!.flags.isEmpty())
         assertTrue(result!!.variants.isEmpty())
+    }
+
+    @Test
+    fun `onFeatureFlags listener receives each load until unsubscribed`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        http.enqueue(MockResponse().setResponseCode(500))
+        http.enqueue(MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val enabled = mapOf("4535-funnel-bar-viz" to true, "splashScreenName" to "SplashV2")
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val subscription = sut.onFeatureFlags { updates.add(it) }
+
+        sut.reloadFeatureFlags()
+        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(enabled, loaded.variants)
+        assertFalse(loaded.errorsLoading)
+
+        sut.reloadFeatureFlags()
+        val failed = updates.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(enabled, failed.variants)
+        assertTrue(failed.errorsLoading)
+
+        subscription.unsubscribe()
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        assertNull(updates.poll())
+    }
+
+    @Test
+    fun `onFeatureFlags replays loaded flags to a late listener`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+
+        assertEquals(setOf("4535-funnel-bar-viz", "splashScreenName"), updates.poll(5, TimeUnit.SECONDS)!!.flags.toSet())
+    }
+
+    @Test
+    fun `onFeatureFlags listener survives close and setup`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+
+        sut.close()
+        sut.setup(config)
+        sut.reloadFeatureFlags()
+
+        assertFalse(updates.poll(5, TimeUnit.SECONDS)!!.errorsLoading)
+    }
+
+    @Test
+    fun `onFeatureFlags listener is not invoked by a reload while disabled`() {
+        val sut = getSut(mockHttp().url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        sut.close()
+
+        var result: PostHogFeatureFlagsLoaded? = null
+        sut.reloadFeatureFlags { result = it }
+
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertTrue(result!!.errorsLoading)
+        assertNull(updates.poll())
     }
 }
