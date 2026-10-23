@@ -1517,9 +1517,9 @@ internal class PostHogTest {
         config.sessionReplay = true
         @Suppress("UNCHECKED_CAST")
         val onFlagsLoaded =
-            PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
+            PostHog::class.java.getDeclaredMethod("internalOnFeatureFlagsLoaded")
                 .apply { isAccessible = true }
-                .get(sut) as () -> Unit
+                .invoke(sut) as (Boolean) -> Unit
 
         // optOut runs while the flags-loaded callback is between reading the handler and starting it
         var optOut: Thread? = null
@@ -1533,7 +1533,7 @@ internal class PostHogTest {
                 }
             }
         }
-        onFlagsLoaded()
+        onFlagsLoaded(false)
         optOut!!.join()
 
         assertTrue(sut.isOptOut())
