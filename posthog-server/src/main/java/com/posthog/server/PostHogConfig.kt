@@ -4,6 +4,7 @@ import com.posthog.BuildConfig
 import com.posthog.PostHogBeforeSend
 import com.posthog.PostHogEncryption
 import com.posthog.PostHogExperimental
+import com.posthog.PostHogFeatureFlagsCallback
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogOnFeatureFlags
 import com.posthog.server.internal.PostHogFeatureFlags
@@ -311,7 +312,7 @@ public open class PostHogConfig constructor(
                 maxBatchSize = maxBatchSize,
                 flushIntervalSeconds = flushIntervalSeconds,
                 encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
+                onFeatureFlags = onFeatureFlags?.let { callback -> PostHogFeatureFlagsCallback { callback.loaded() } },
                 proxy = proxy,
                 remoteConfigProvider = { config, api, _, _, _, _ ->
                     PostHogFeatureFlags(

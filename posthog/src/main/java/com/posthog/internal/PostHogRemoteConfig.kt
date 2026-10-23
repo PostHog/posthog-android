@@ -5,8 +5,9 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.MalformedJsonException
 import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
+import com.posthog.PostHogFeatureFlagsCallback
+import com.posthog.PostHogFeatureFlagsLoaded
 import com.posthog.PostHogInternal
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
@@ -63,8 +64,8 @@ public class PostHogRemoteConfig(
         val distinctId: String,
         val anonymousId: String?,
         val groups: Map<String, String>?,
-        val internalOnFeatureFlags: List<PostHogOnFeatureFlags>,
-        val onFeatureFlags: List<PostHogOnFeatureFlags>,
+        val internalOnFeatureFlags: List<() -> Unit>,
+        val onFeatureFlags: List<PostHogFeatureFlagsCallback>,
     )
 
     private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
@@ -251,16 +252,26 @@ public class PostHogRemoteConfig(
         return recordingActive
     }
 
-    private fun List<PostHogOnFeatureFlags>.asSingleCallback(): PostHogOnFeatureFlags? =
+    @JvmName("asSingleInternalCallback")
+    private fun List<() -> Unit>.asSingleCallback(): (() -> Unit)? =
         when (size) {
             0 -> null
             1 -> first()
-            else -> PostHogOnFeatureFlags { forEach { it.runSafely() } }
+            else -> {
+                { forEach { runSafely(it) } }
+            }
         }
 
-    private fun PostHogOnFeatureFlags.runSafely() {
+    private fun List<PostHogFeatureFlagsCallback>.asSingleCallback(): PostHogFeatureFlagsCallback? =
+        when (size) {
+            0 -> null
+            1 -> first()
+            else -> PostHogFeatureFlagsCallback { result -> forEach { runSafely { it.loaded(result) } } }
+        }
+
+    private fun runSafely(callback: () -> Unit) {
         try {
-            loaded()
+            callback()
         } catch (e: Throwable) {
             try {
                 config.logger.log("Executing the feature flags callback failed: $e")
@@ -271,13 +282,16 @@ public class PostHogRemoteConfig(
     }
 
     private fun runOnFeatureFlagsCallbacks(
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: (() -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
+        errorsLoading: Boolean,
     ) {
         // if we don't load the feature flags (because there are none), we need to call the callback
         // because the app might be waiting for it.
-        internalOnFeatureFlags?.runSafely()
-        onFeatureFlags?.runSafely()
+        internalOnFeatureFlags?.let { runSafely(it) }
+        onFeatureFlags?.let { callback ->
+            runSafely { callback.loaded(PostHogFeatureFlagsLoaded(getFeatureFlags() ?: emptyMap(), errorsLoading)) }
+        }
     }
 
     // Notifies that a remote config resolution attempt finished. Callers set
@@ -295,8 +309,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: (() -> Unit)? = null,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -304,6 +318,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = true,
                 )
                 if (!remoteConfigHasFetched.get()) {
                     notifyRemoteConfigResolved()
@@ -382,6 +397,8 @@ public class PostHogRemoteConfig(
                         runOnFeatureFlagsCallbacks(
                             internalOnFeatureFlags = internalOnFeatureFlags,
                             onFeatureFlags = onFeatureFlags,
+                            // the project has flags, but the distinctId was invalid so none were loaded
+                            errorsLoading = it.hasFeatureFlags == true,
                         )
                     }
 
@@ -392,6 +409,7 @@ public class PostHogRemoteConfig(
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
+                        errorsLoading = true,
                     )
                     if (!remoteConfigHasFetched.get()) {
                         notifyRemoteConfigResolved()
@@ -405,6 +423,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = true,
                 )
                 config.logger.log("Loading remote config failed: $e")
                 if (!remoteConfigHasFetched.get()) {
@@ -831,8 +850,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: (() -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
         notifyRemoteConfigLoaded: Boolean = true,
     ) {
         if (config.networkStatus?.isConnected() == false) {
@@ -840,6 +859,7 @@ public class PostHogRemoteConfig(
             runOnFeatureFlagsCallbacks(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
+                errorsLoading = true,
             )
             if (notifyRemoteConfigLoaded && !remoteConfigHasFetched.get()) {
                 notifyRemoteConfigResolved()
@@ -879,6 +899,7 @@ public class PostHogRemoteConfig(
             return
         }
 
+        var errorsLoading = true
         try {
             val deviceId = config.cachePreferences?.getValue(DEVICE_ID) as? String
 
@@ -920,6 +941,8 @@ public class PostHogRemoteConfig(
                         // remote config for the current identity — mark fetched + notify (outside the
                         // lock) so the replay buffer-and-decide gate disarms instead of staying stuck.
                         quotaLimited = true
+                        // like posthog-ios, a quota-limited response counts as loaded with the cached flags
+                        errorsLoading = false
                         return@let
                     }
 
@@ -1029,6 +1052,7 @@ public class PostHogRemoteConfig(
                 }
                 isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
+                errorsLoading = false
 
                 if (notifyRemoteConfigLoaded) {
                     // The flags path also resolves the remote config for the current identity (it's
@@ -1058,6 +1082,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = errorsLoading,
                 )
             } catch (ignored: Throwable) {
                 // never skip the release below: leaving the claim set stops all future flag loads
@@ -1088,8 +1113,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: (() -> Unit)? = null,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {
             executeFeatureFlags(
