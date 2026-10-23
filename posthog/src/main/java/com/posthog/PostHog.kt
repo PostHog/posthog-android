@@ -198,6 +198,11 @@ public class PostHog private constructor(
     @Volatile
     private var lastFeatureFlagsLoaded: PostHogFeatureFlagsLoaded? = null
 
+    // Bumped by reset() and close(), so a flags load that started before them can't reach listeners.
+    @Volatile
+    private var featureFlagsGeneration = 0
+    private val featureFlagsGenerationLock = Any()
+
     private class FeatureFlagsListener(val callback: PostHogFeatureFlagsCallback) {
         @Volatile
         var active = true
@@ -207,11 +212,21 @@ public class PostHog private constructor(
     }
 
     // Runs on the remote config thread after every flags load, whether it succeeded or failed.
-    private val internalOnFeatureFlagsLoaded: (errorsLoading: Boolean) -> Unit =
-        { errorsLoading ->
+    // Create it when the load starts, so listeners skip a load that reset() or close() superseded.
+    private fun internalOnFeatureFlagsLoaded(): (errorsLoading: Boolean) -> Unit {
+        val generation = featureFlagsGeneration
+        return { errorsLoading ->
             startSessionReplayOnFeatureFlagsLoaded()
-            notifyFeatureFlagsListeners(errorsLoading)
+            notifyFeatureFlagsListeners(errorsLoading, generation)
         }
+    }
+
+    private fun clearFeatureFlagsLoaded() {
+        synchronized(featureFlagsGenerationLock) {
+            featureFlagsGeneration++
+            lastFeatureFlagsLoaded = null
+        }
+    }
 
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private fun startSessionReplayOnFeatureFlagsLoaded() {
@@ -226,9 +241,15 @@ public class PostHog private constructor(
         }
     }
 
-    private fun notifyFeatureFlagsListeners(errorsLoading: Boolean) {
+    private fun notifyFeatureFlagsListeners(
+        errorsLoading: Boolean,
+        generation: Int,
+    ) {
         val loaded = PostHogFeatureFlagsLoaded(remoteConfig?.getFeatureFlags() ?: emptyMap(), errorsLoading)
-        lastFeatureFlagsLoaded = loaded
+        synchronized(featureFlagsGenerationLock) {
+            if (featureFlagsGeneration != generation) return
+            lastFeatureFlagsLoaded = loaded
+        }
         featureFlagsListeners.forEach { deliverFeatureFlags(it, loaded) }
     }
 
@@ -446,13 +467,14 @@ public class PostHog private constructor(
                     if (remoteConfig?.hasBootstrapFlags() == true) {
                         startSessionReplayOnFeatureFlagsLoaded()
                         // listeners run on the remote config thread, queued ahead of setup's own load
-                        remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false) }
+                        val generation = featureFlagsGeneration
+                        remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
                         notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     when {
                         config.remoteConfig ->
                             loadRemoteConfigRequest(
-                                internalOnFeatureFlagsLoaded,
+                                internalOnFeatureFlagsLoaded(),
                                 config.onFeatureFlags,
                             )
 
@@ -681,7 +703,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
-                lastFeatureFlagsLoaded = null
+                clearFeatureFlagsLoaded()
                 lastScreenName = null
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
@@ -1990,7 +2012,7 @@ public class PostHog private constructor(
             return
         }
         loadFeatureFlagsRequest(
-            internalOnFeatureFlags = internalOnFeatureFlagsLoaded,
+            internalOnFeatureFlags = internalOnFeatureFlagsLoaded(),
             onFeatureFlags = onFeatureFlags,
         )
     }
@@ -2302,7 +2324,7 @@ public class PostHog private constructor(
             getPreferences().clear(except = except.toList())
         }
         remoteConfig?.clear()
-        lastFeatureFlagsLoaded = null
+        clearFeatureFlagsLoaded()
         featureFlagsCalled.clear()
         lastScreenName = null
         synchronized(cachedPersonPropertiesLock) {
