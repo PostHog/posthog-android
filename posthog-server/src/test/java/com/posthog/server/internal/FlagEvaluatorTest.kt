@@ -84,6 +84,208 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testInvalidRegexDoesNotMatchEitherOperator() {
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for (pattern in listOf("[", "(", "*", "?*")) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                for (input in listOf("present", "é", "\r")) {
+                    assertFalse("$operator $pattern input=$input", evaluator.matchProperty(property, mapOf("value" to input)))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexCompatibilityRequiresRemoteEvaluation() {
+        val cases =
+            listOf(
+                "^\\d+$" to "١",
+                "^\\w+$" to "é",
+                "^\\s$" to "\u00a0",
+                "^\\s$" to "\ufeff",
+                "^.$" to "😀",
+                "(?i)^null$" to "NULL",
+                "(?m)^foo$" to "bar\nfoo\nbaz",
+                "^\\p{L}+$" to "null",
+                "\\Afoo\\z" to "foo",
+                "^[[:alpha:]]+$" to "foo",
+                "^[a-z&&[^aeiou]]+$" to "bcdf",
+                "^[a&&b]$" to "a",
+                "^[a-z--b]$" to "b",
+                "^[a~~b]$" to "~",
+                "a(?=b)" to "ab",
+                "(?<=a+)b" to "aab",
+                "(a)\\1" to "aa",
+                "a++" to "aa",
+                "a{,2}" to "aa",
+                "a*{2}" to "aa",
+                "{foo}" to "{foo}",
+                "[\\s-9]" to "-",
+                "[a-\\d]" to "-",
+                "^?https?://" to "https://a",
+                "$?" to "x",
+                "{2}" to "x",
+                "a|{2}" to "x",
+                "({2})" to "x",
+                "(?:{2})" to "x",
+                "(?:)*" to "x",
+                "()+" to "x",
+                "(?:){2}" to "x",
+                "a{0,4294967296}" to "x",
+                "a{4294967296,}" to "x",
+                ".*\\bbot\\b.*" to "a".repeat(140),
+                ".*\\Bbot\\B.*" to "a".repeat(140),
+                "[\\B]" to "B",
+                "[\\b]" to "\b",
+                "[\\b]" to "abc",
+                "\\<foo\\>" to "foo",
+                "^\\<$" to "<",
+                "^\\>$" to ">",
+                "\\q" to "q",
+                "\\141" to "a",
+                "^\\x{41}$" to "A",
+                "[]" to "a",
+                "[^]" to "a",
+            )
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern") {
+                    evaluator.matchProperty(property, mapOf("value" to input))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexVeryLargeBoundedRepetitionsRequireRemoteEvaluation() {
+        val cases =
+            listOf(1000000, 1000000000).flatMap { count ->
+                listOf(
+                    "^a{0,$count}.$" to "\r",
+                    "^(?:a{0,$count}){1}.$" to "\r",
+                    "^a{0,$count}$" to "",
+                    "^(?:a{0,$count}){1}$" to "",
+                )
+            } +
+                listOf(
+                    "^a{0,1001}$" to "",
+                    "^a{1001}$" to "",
+                    "^a{1001,}$" to "",
+                    "^(?:(?:a{0,1000}){1000}){1000}.$" to "\r",
+                    "^(?:(?:a{0,1000}){1000}){1000}$" to "",
+                    "^(?:a{2}){2}$" to "aaaa",
+                )
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern") {
+                    evaluator.matchProperty(property, mapOf("value" to input))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexPortableSearchStaysLocal() {
+        val cases =
+            listOf(
+                Triple("pro", "a pro plan", true),
+                Triple("^pro$", "PRO", false),
+                Triple("^pro$", "a pro plan", false),
+                Triple("^\\d+$", "123", true),
+                Triple("^[\\w.+-]+@example\\.com$", "a.b+tag@example.com", true),
+                Triple("^(?:ab|cd){2,3}$", "abcdab", true),
+                Triple("^foo$", "foo\n", false),
+                Triple("^foo$", "bar\nfoo\nbaz", false),
+                Triple("^.$", "\r", true),
+                Triple("^a{0,1000}.$", "\r", true),
+                Triple("^a{2}$", "aa", true),
+                Triple("^a{2,}$", "aaa", true),
+                Triple("^a*.$", "\r", true),
+                Triple("^(?:ab){2,3}.$", "abab\r", true),
+                Triple("^(?:(?:ab)){2,3}.$", "abab\r", true),
+                Triple("^a{2}$", "a", false),
+                Triple("^a\\{1001\\}$", "a{1001}", true),
+                Triple("^[a{1001}]+$", "a{1001}", true),
+                Triple("^\\x41+$", "AA", true),
+                Triple("^\\\\p\\{L\\}$", "\\p{L}", true),
+                Triple("^\\(\\?i\\)$", "(?i)", true),
+                Triple("[\\x08]", "\b", true),
+                Triple("[\\<\\>]", "<", true),
+                Triple("^a<b>$", "a<b>", true),
+                Triple("\\v", "\n", false),
+                Triple("\\v", "\u000b", true),
+                Triple("^\\^?$", "", true),
+                Triple("^\\\${2}$", "$$", true),
+                Triple("^\\({2}$", "((", true),
+                Triple("^\\|{2}$", "||", true),
+                Triple("^[\\^$?]+$", "$?^", true),
+                Triple("^[\\w-]+$", "a-b", true),
+                Triple("", "", true),
+                Triple("", "é\r", true),
+            ) +
+                listOf('-', '@', ':', '_', '=', ' ', '!', '"', '#', '%', '&', '\'', ',', '/', ';', '`', '~').map {
+                    Triple("^a\\${it}b$", "a${it}b", true)
+                }
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input, expected) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                assertEquals(
+                    "$operator $pattern input=$input",
+                    if (operator == PropertyOperator.REGEX) expected else !expected,
+                    evaluator.matchProperty(property, mapOf("value" to input)),
+                )
+            }
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchProperty(FlagProperty("value", "", operator, null, false, null), emptyMap())
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexErrorsCannotBecomeTrueThroughCohortLeafNegation() {
+        for (operator in listOf("regex", "not_regex")) {
+            for (pattern in listOf("[", "a(?=b)", ".*\\bbot\\b.*", "[\\b]")) {
+                for (groupType in listOf("AND", "OR")) {
+                    val patternJson = config.serializer.gson.toJson(pattern)
+                    val group =
+                        config.serializer.gson.fromJson(
+                            """
+                            {"type":"$groupType","values":[
+                              {"key":"value","value":$patternJson,"operator":"$operator","type":"person","negation":true}
+                            ]}
+                            """.trimIndent(),
+                            PropertyGroup::class.java,
+                        )
+                    kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern $groupType") {
+                        evaluator.matchPropertyGroup(group, mapOf("value" to "a".repeat(140)), emptyMap(), null, null, null)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testInvalidRegexInNestedCohortCannotBeNegatedIntoAMatch() {
+        for (operator in listOf("regex", "not_regex")) {
+            val leaf =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[{"key":"value","value":"[","operator":"$operator","type":"person"}]}""",
+                    PropertyGroup::class.java,
+                )
+            val outer =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[{"key":"id","value":1,"type":"cohort","negation":true}]}""",
+                    PropertyGroup::class.java,
+                )
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchPropertyGroup(outer, mapOf("value" to "present"), mapOf("1" to leaf), null, null, null)
+            }
+        }
+    }
+
+    @Test
     internal fun testHashConsistency() {
         // Test that hash function returns consistent values for same inputs
         val hash1 = evaluator.getMatchingVariant(createSimpleFlag(), "user-123")

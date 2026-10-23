@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.server.internal.FeatureFlagError
 import com.posthog.server.internal.PostHogFeatureFlags
@@ -9,6 +10,7 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,6 +53,90 @@ internal class PostHogTest {
         assertEquals("org_123", body.getAsJsonObject("groups")["organization"].asString)
         assertEquals("premium", body.getAsJsonObject("person_properties")["plan"].asString)
         assertEquals("large", body.getAsJsonObject("group_properties").getAsJsonObject("organization")["size"].asString)
+    }
+
+    @Test
+    fun `public evaluation defers unsupported regex syntax and preserves local controls`() {
+        data class Case(val pattern: String, val input: String?, val localMatch: Boolean? = null)
+
+        val cases =
+            listOf(1000000, 1000000000).flatMap { count ->
+                listOf(
+                    Case("^a{0,$count}.$", "\r"),
+                    Case("^(?:a{0,$count}){1}.$", "\r"),
+                    Case("^a{0,$count}$", ""),
+                    Case("^(?:a{0,$count}){1}$", ""),
+                )
+            } +
+                listOf(
+                    Case("^(?:(?:a{0,1000}){1000}){1000}.$", "\r"),
+                    Case("^(?:(?:a{0,1000}){1000}){1000}$", ""),
+                    Case("^(?:a{2}){2}$", "aaaa"),
+                    Case("[\\b]", "\b"),
+                    Case("[\\b]", "abc"),
+                    Case("^a{0,1000}.$", "\r", true),
+                    Case("^(?:ab){2,3}.$", "abab\r", true),
+                    Case("^(?:(?:ab)){2,3}.$", "abab\r", true),
+                    Case("^a*.$", "\r", true),
+                    Case("^pro$", "free", false),
+                    Case("^pro$", null),
+                )
+        for (operator in listOf("regex", "not_regex")) {
+            for (case in cases) {
+                val patternJson = createTestConfig().serializer.gson.toJson(case.pattern)
+                val definition =
+                    """
+                    {"id":1,"key":"regex-flag","active":true,"filters":{"groups":[{
+                      "properties":[{"key":"value","value":$patternJson,"operator":"$operator","type":"person"}],
+                      "rollout_percentage":100
+                    }]}}
+                    """.trimIndent()
+                val server =
+                    createMockHttp(
+                        jsonResponse(createLocalEvaluationResponseFrom(definition)),
+                        jsonResponse(createFlagsResponse("regex-flag", variant = "remote-result")),
+                    )
+                val loaded = CountDownLatch(1)
+                val config =
+                    PostHogConfig(
+                        TEST_PROJECT_TOKEN,
+                        host = server.url("/").toString(),
+                        localEvaluation = true,
+                        personalApiKey = "test-personal-key",
+                        pollIntervalSeconds = 3600,
+                        sendFeatureFlagEvent = false,
+                        preloadFeatureFlags = false,
+                        onFeatureFlags = PostHogOnFeatureFlags { loaded.countDown() },
+                    )
+                val client = PostHog.with(config)
+                try {
+                    assertTrue(loaded.await(5, TimeUnit.SECONDS), "Definitions must finish loading")
+                    val props = case.input?.let { mapOf("value" to it) } ?: emptyMap()
+                    val label = "$operator $case"
+                    val local =
+                        client.evaluateFlags("user123", personProperties = props, onlyEvaluateLocally = true)
+                    assertEquals(if (case.localMatch == null) emptyList() else listOf("regex-flag"), local.keys, label)
+                    assertEquals(1, server.requestCount, "Local-only must not call /flags: $label")
+                    val expected =
+                        case.localMatch?.let { if (operator == "regex") it else !it } ?: "remote-result"
+                    assertEquals(expected, client.evaluateFlags("user123", personProperties = props).getFlag("regex-flag"), label)
+                    assertEquals(if (case.localMatch == null) 2 else 1, server.requestCount, label)
+                    assertTrue(server.takeRequest(5, TimeUnit.SECONDS)?.path?.contains("/local_evaluation") == true)
+                    if (case.localMatch == null) {
+                        val request = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                        assertEquals("/flags/?v=2", request.path)
+                        val body = com.google.gson.JsonParser.parseString(request.body.unGzip()).asJsonObject
+                        assertEquals("user123", body["distinct_id"].asString)
+                        if (case.input != null) {
+                            assertEquals(case.input, body.getAsJsonObject("person_properties")["value"].asString)
+                        }
+                    }
+                } finally {
+                    client.close()
+                    server.shutdown()
+                }
+            }
+        }
     }
 
     @Test

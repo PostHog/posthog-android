@@ -31,6 +31,9 @@ internal class FlagEvaluator(
 ) {
     companion object {
         private const val LONG_SCALE = 0xFFFFFFFFFFFFFFF.toDouble()
+
+        // Conservative admission policy, not an estimate of the service's compiler budget.
+        private const val MAX_LOCAL_REGEX_REPEAT_BOUND = 1000
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)
         private val NUMERIC_OPERATORS = setOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)
         private val REGEX_DECIMAL = Regex("""[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?""")
@@ -131,6 +134,12 @@ internal class FlagEvaluator(
     fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
+    ): Boolean = matchProperty(property, propertyValues, inCohort = false)
+
+    private fun matchProperty(
+        property: FlagProperty,
+        propertyValues: Map<String, Any?>,
+        inCohort: Boolean,
     ): Boolean {
         val key = property.key
         val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
@@ -198,17 +207,20 @@ internal class FlagEvaluator(
                     valueToString(propertyValue),
                 )
 
-            PropertyOperator.REGEX ->
-                matchesRegex(
-                    propertyValue.toString(),
-                    overrideValue.toString(),
-                )
-
-            PropertyOperator.NOT_REGEX ->
-                !matchesRegex(
-                    propertyValue.toString(),
-                    overrideValue.toString(),
-                )
+            PropertyOperator.REGEX, PropertyOperator.NOT_REGEX -> {
+                val matches = matchesRegex(propertyValue.toString(), overrideValue.toString())
+                if (matches == null) {
+                    // A malformed cohort leaf must not become true when its result is negated.
+                    if (inCohort || property.negation == true) {
+                        throw InconclusiveMatchException("Cannot negate an invalid regex criterion locally")
+                    }
+                    false
+                } else if (propertyOperator == PropertyOperator.REGEX) {
+                    matches
+                } else {
+                    !matches
+                }
+            }
 
             PropertyOperator.IS_DATE_BEFORE, PropertyOperator.IS_DATE_AFTER ->
                 compareDates(
@@ -387,12 +399,153 @@ internal class FlagEvaluator(
     private fun matchesRegex(
         pattern: String,
         propertyValue: String,
-    ): Boolean {
-        return try {
-            Regex(pattern).find(propertyValue) != null
-        } catch (e: PatternSyntaxException) {
-            false
+    ): Boolean? {
+        if (pattern.isEmpty()) return true
+        val portablePattern = portableRegexPattern(pattern)
+        val regex =
+            try {
+                Regex(portablePattern, RegexOption.UNIX_LINES)
+            } catch (e: PatternSyntaxException) {
+                return null
+            } catch (e: RuntimeException) {
+                throw InconclusiveMatchException("Regex compilation requires server evaluation")
+            } catch (e: StackOverflowError) {
+                throw InconclusiveMatchException("Regex compilation requires server evaluation")
+            }
+        // JVM shorthand classes and Unicode versions differ from the service's Rust engine.
+        if (propertyValue.any { it.code > 0x7f }) {
+            throw InconclusiveMatchException("Regex Unicode matching requires server evaluation")
         }
+        return try {
+            regex.find(propertyValue) != null
+        } catch (e: RuntimeException) {
+            throw InconclusiveMatchException("Regex execution requires server evaluation")
+        } catch (e: StackOverflowError) {
+            throw InconclusiveMatchException("Regex execution requires server evaluation")
+        }
+    }
+
+    private fun portableRegexPattern(pattern: String): String {
+        fun unsupported(): Nothing = throw InconclusiveMatchException("Regex syntax requires server evaluation")
+
+        val result = StringBuilder()
+        var classStart = -1
+        var classHasEscape = false
+        var classHasRange = false
+        val groupsWithBoundedRepetition = mutableListOf(false)
+        var closedGroupHasBoundedRepetition = false
+        var previous = ""
+        var index = 0
+        while (index < pattern.length) {
+            val character = pattern[index]
+            if (character.code > 0x7f) unsupported()
+            if (character == '\\') {
+                val escaped = pattern.getOrNull(++index)
+                if (escaped == null) {
+                    result.append('\\')
+                    break
+                }
+                classHasEscape = classHasEscape || classStart != -1
+                when {
+                    escaped == 'x' -> {
+                        val digits = pattern.substring(index + 1, minOf(index + 3, pattern.length))
+                        if (digits.length != 2 || digits.any { it !in "0123456789abcdefABCDEF" }) unsupported()
+                        result.append("\\x").append(digits)
+                        index += 2
+                    }
+                    // The service rejects class \b; other boundaries can exhaust its 10,000-step budget.
+                    escaped in "bB" || (escaped in "<>" && classStart == -1) -> unsupported()
+                    escaped == 'v' -> result.append("\\x0B")
+                    escaped in "dDsSwWfnrt" || (escaped.code in 0x20..0x7e && !escaped.isLetterOrDigit()) ->
+                        result.append('\\').append(escaped)
+                    else -> unsupported()
+                }
+                previous = "literal"
+                index++
+                continue
+            }
+            when {
+                character == '[' -> {
+                    if (classStart != -1) unsupported()
+                    classStart = index
+                    classHasEscape = false
+                    classHasRange = false
+                }
+                character == ']' -> {
+                    if (classStart == -1) unsupported()
+                    val contentStart = classStart + if (pattern.getOrNull(classStart + 1) == '^') 2 else 1
+                    if (index == contentStart || (classHasEscape && classHasRange)) unsupported()
+                    classStart = -1
+                    previous = "literal"
+                    result.append(character)
+                    index++
+                    continue
+                }
+                classStart != -1 -> {
+                    if (pattern.substring(index, minOf(index + 2, pattern.length)) in listOf("&&", "--", "~~")) unsupported()
+                    val contentStart = classStart + if (pattern.getOrNull(classStart + 1) == '^') 2 else 1
+                    if (character == '-' && index > contentStart && pattern.getOrNull(index + 1) != ']') classHasRange = true
+                }
+                character == '(' && pattern.getOrNull(index + 1) == '?' -> {
+                    if (pattern.getOrNull(index + 2) != ':') unsupported()
+                    result.append("(?:")
+                    groupsWithBoundedRepetition.add(false)
+                    previous = "("
+                    index += 3
+                    continue
+                }
+                character == '(' -> groupsWithBoundedRepetition.add(false)
+                character == ')' -> {
+                    closedGroupHasBoundedRepetition =
+                        if (groupsWithBoundedRepetition.size > 1) {
+                            groupsWithBoundedRepetition.removeAt(groupsWithBoundedRepetition.lastIndex)
+                        } else {
+                            false
+                        }
+                    if (closedGroupHasBoundedRepetition) {
+                        groupsWithBoundedRepetition[groupsWithBoundedRepetition.lastIndex] = true
+                    }
+                }
+                character == '{' -> {
+                    if (previous in listOf("", "|", "(", "^", "$", "empty group", "quantifier", "lazy quantifier")) unsupported()
+                    // Nested bounds can exceed the service compiler's limit even when each count is small.
+                    if (previous == ")" && closedGroupHasBoundedRepetition) unsupported()
+                    val repetition = Regex("\\{([0-9]+)(?:,([0-9]*))?}").find(pattern, index)
+                    if (repetition == null || repetition.range.first != index) unsupported()
+                    if (repetition.groupValues.drop(1).any {
+                            it.isNotEmpty() && (it.toLongOrNull() ?: Long.MAX_VALUE) > MAX_LOCAL_REGEX_REPEAT_BOUND
+                        }
+                    ) {
+                        unsupported()
+                    }
+                    groupsWithBoundedRepetition[groupsWithBoundedRepetition.lastIndex] = true
+                    result.append(repetition.value)
+                    previous = "quantifier"
+                    index = repetition.range.last + 1
+                    continue
+                }
+                character == '}' -> unsupported()
+                character in "*+?" -> {
+                    if (previous in listOf("^", "$", "empty group", "lazy quantifier")) unsupported()
+                    if (previous == "quantifier") {
+                        if (character != '?') unsupported()
+                        previous = "lazy quantifier"
+                    } else {
+                        previous = if (previous == "") "invalid repetition" else "quantifier"
+                    }
+                    result.append(character)
+                    index++
+                    continue
+                }
+            }
+            if (classStart == -1) {
+                previous = if (character == ')' && previous in listOf("(", "empty group")) "empty group" else character.toString()
+            }
+            // Java's default dot excludes CR and its $ accepts a final LF; Rust uses LF-only dot and strict $.
+            result.append(if (character == '$' && classStart == -1) "\\z" else character.toString())
+            index++
+        }
+        return result.toString()
     }
 
     private fun compareValues(
@@ -922,7 +1075,7 @@ internal class FlagEvaluator(
                                         cohortProperties,
                                     )
 
-                                else -> matchProperty(property, propertyValues)
+                                else -> matchProperty(property, propertyValues, inCohort = true)
                             }
 
                         val negation = property.negation ?: false
