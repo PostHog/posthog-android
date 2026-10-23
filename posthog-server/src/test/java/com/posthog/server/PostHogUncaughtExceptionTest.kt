@@ -1,6 +1,10 @@
 package com.posthog.server
 
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
+import io.opentelemetry.api.trace.Span
+import io.opentelemetry.api.trace.SpanContext
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -128,7 +132,12 @@ internal class PostHogUncaughtExceptionTest {
 
         // The thread argument is data to the handler, so a main-named stand-in exercises the
         // process-fatal policy without crashing the suite's real main thread.
-        handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
+        val traceId = "00000000000000000000000000000003"
+        val spanId = "0000000000000004"
+        val context = SpanContext.create(traceId, spanId, TraceFlags.getDefault(), TraceState.getDefault())
+        Span.wrap(context).makeCurrent().use {
+            handler.uncaughtException(Thread("main"), IllegalStateException("kaboom"))
+        }
 
         // Already sent when the handler returned, so this should not have to wait.
         val request = mockServer.takeRequest(1, TimeUnit.SECONDS)
@@ -140,6 +149,8 @@ internal class PostHogUncaughtExceptionTest {
 
         val props = batch.eventProperties("\$exception")
         assertEquals("fatal", props["\$exception_level"], "Uncaught exceptions must be fatal")
+        assertEquals(traceId, props["\$trace_id"])
+        assertEquals(spanId, props["\$span_id"])
 
         @Suppress("UNCHECKED_CAST")
         val exceptionList = props["\$exception_list"] as? List<Map<String, Any?>>
