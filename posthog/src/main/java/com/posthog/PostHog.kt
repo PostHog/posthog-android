@@ -749,12 +749,9 @@ public class PostHog private constructor(
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
+        // Values the SDK sets itself. Registered super properties and then the caller's properties
+        // override them below, and beforeSend has the final say.
         if (appendSharedProps) {
-            val registeredPrefs = getPreferences().getAll()
-            if (registeredPrefs.isNotEmpty()) {
-                props.putAll(registeredPrefs)
-            }
-
             config?.context?.getStaticContext()?.let {
                 props.putAll(it)
             }
@@ -782,22 +779,12 @@ public class PostHog private constructor(
                 }
             }
 
-            userProperties?.let {
-                props["\$set"] = it
-            }
-
-            userPropertiesSetOnce?.let {
-                props["\$set_once"] = it
-            }
-
-            if (appendGroups) {
-                // merge groups
-                mergeGroups(groups)?.let {
-                    props["\$groups"] = it
-                }
-            }
-
             stampCachedScreenName(props)
+
+            props["\$is_identified"] = isIdentified
+            // No `$process_person_profile`: person processing is sent as the `process_person_profile`
+            // option, only when it's off (see personProcessingOptions). A registered or caller
+            // `$process_person_profile` wins over it when the send hoists the property.
         }
 
         // Session replay should have the SDK info as well
@@ -824,22 +811,37 @@ public class PostHog private constructor(
             }
         }
 
+        if (appendSharedProps) {
+            // After session resolution so the debug snapshot never precedes a rotation triggered by
+            // getActiveSessionId() above.
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
+
+            // Registered super properties win over everything the SDK set above.
+            val registeredPrefs = getPreferences().getAll()
+            if (registeredPrefs.isNotEmpty()) {
+                props.putAll(registeredPrefs)
+            }
+
+            // Per-call values win over registered ones.
+            userProperties?.let {
+                props["\$set"] = it
+            }
+
+            userPropertiesSetOnce?.let {
+                props["\$set_once"] = it
+            }
+
+            if (appendGroups) {
+                // merge groups
+                mergeGroups(groups)?.let {
+                    props["\$groups"] = it
+                }
+            }
+        }
+
+        // Caller-supplied properties win over registered super properties and SDK-set values.
         properties?.let {
             props.putAll(it)
-        }
-
-        // After the caller merge so the SDK's person-processing state can't be overridden per event
-        // (e.g. a caller `true` bypassing PersonProfiles.NEVER), matching posthog-js and posthog-ios.
-        if (appendSharedProps) {
-            props["\$is_identified"] = isIdentified
-            props["\$process_person_profile"] = hasPersonProcessing()
-        }
-
-        // After the caller merge so SDK-computed debug values win, matching posthog-js's
-        // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
-        // never precedes a rotation triggered by getActiveSessionId() above.
-        if (appendSharedProps) {
-            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
         }
 
         // only Session replay needs distinct_id also in the props
@@ -946,6 +948,40 @@ public class PostHog private constructor(
     }
 
     /**
+     * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
+     * event, unless the caller set that option or [properties] carry the legacy
+     * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
+     * PostHog processes person profiles by default. Returns a copy, so `beforeSend` edits never
+     * reach the caller's map.
+     */
+    private fun personProcessingOptions(
+        options: Map<String, Any?>?,
+        properties: Map<String, Any>,
+    ): MutableMap<String, Any?>? {
+        val eventOptions = options?.toMutableMap()
+        if (hasPersonProcessing() || properties.containsKey("\$process_person_profile")) {
+            return eventOptions
+        }
+        val result = eventOptions ?: mutableMapOf()
+        if (result["process_person_profile"] == null) {
+            result["process_person_profile"] = false
+        }
+        return result
+    }
+
+    /**
+     * Whether a `$set` sent with [options] updates the person. A personless one doesn't, so it
+     * neither stores nor matches the person-properties hash.
+     */
+    private fun isPersonProcessed(options: Map<String, Any?>?): Boolean {
+        val option = options?.get("process_person_profile")
+        if (option != null) {
+            return option != false
+        }
+        return getPreferences().getValue("\$process_person_profile") != false
+    }
+
+    /**
      * Stamps `$screen_name = lastScreenName` into [props]. Called inside
      * the `appendSharedProps` block in [buildProperties] BEFORE
      * `properties?.putAll`, so a caller-supplied `$screen_name` (incl.
@@ -967,6 +1003,7 @@ public class PostHog private constructor(
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: Date?,
+        options: Map<String, Any?>?,
     ) {
         // Tracked on this call rather than derived from the event, so it survives beforeSend renaming
         // or replacing the event.
@@ -980,7 +1017,8 @@ public class PostHog private constructor(
                 return
             }
 
-            val newDistinctId = distinctId ?: this.distinctId
+            // A blank distinct ID falls back to the current one, like null, instead of PostHog dropping the event.
+            val newDistinctId = distinctId?.takeIf { it.isNotBlank() } ?: this.distinctId
 
             // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
             // we should still enable person processing since this is intentional
@@ -1045,7 +1083,13 @@ public class PostHog private constructor(
                     },
                 )
 
-            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
+            // Snapshots don't carry the SDK's person-processing option.
+            val eventOptions =
+                if (isSnapshotEvent) options?.toMutableMap() else personProcessingOptions(options, mergedProperties)
+
+            // This capture's identity, kept through beforeSend.
+            val uuid = TimeBasedEpochGenerator.generate()
+            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp, eventOptions, uuid)
             if (postHogEvent == null) {
                 val originalMessage = "PostHog event $event was dropped"
                 val message =
@@ -1077,6 +1121,8 @@ public class PostHog private constructor(
                         userPropertiesSetOnce,
                         groups,
                         timestamp,
+                        postHogEvent.options,
+                        uuid,
                     )
                 if (queued && claimedReplayDebugBundle) {
                     commitReplayDebugPropertiesWindow()
@@ -1098,6 +1144,7 @@ public class PostHog private constructor(
     override fun captureException(
         throwable: Throwable,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         if (!isEnabled()) {
             return
@@ -1122,7 +1169,7 @@ public class PostHog private constructor(
 
             // $exception_steps are attached in capture() for all $exception events,
             // so externally-built exceptions (e.g. the Flutter/RN bridge) get them too.
-            capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties)
+            capture(PostHogEventName.EXCEPTION.event, properties = exceptionProperties, options = options)
         } catch (e: Throwable) {
             // we swallow all exceptions that the SDK has thrown by trying to convert
             // a captured exception to a PostHog exception event
@@ -1450,6 +1497,7 @@ public class PostHog private constructor(
     public override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         if (!isEnabled()) {
             return
@@ -1474,10 +1522,13 @@ public class PostHog private constructor(
         // The title wins over a caller-supplied $screen_name, matching the cached value.
         props["\$screen_name"] = trimmedTitle
 
-        capture(PostHogEventName.SCREEN.event, properties = props)
+        capture(PostHogEventName.SCREEN.event, properties = props, options = options)
     }
 
-    public override fun alias(alias: String) {
+    public override fun alias(
+        alias: String,
+        options: Map<String, Any?>?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -1502,7 +1553,7 @@ public class PostHog private constructor(
         // read the event properties can resolve both sides of the alias linkage.
         props["distinct_id"] = sourceDistinctId
 
-        capture(PostHogEventName.CREATE_ALIAS.event, distinctId = sourceDistinctId, properties = props)
+        capture(PostHogEventName.CREATE_ALIAS.event, distinctId = sourceDistinctId, properties = props, options = options)
     }
 
     public override fun captureFeatureView(
@@ -1595,6 +1646,15 @@ public class PostHog private constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
     ) {
+        identify(distinctId, userProperties, userPropertiesSetOnce, options = null)
+    }
+
+    public override fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -1647,6 +1707,7 @@ public class PostHog private constructor(
                 properties = props,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
+                options = options,
             )
 
             if (config?.reuseAnonymousId != true) {
@@ -1686,12 +1747,15 @@ public class PostHog private constructor(
                 distinctId = distinctId,
                 userProperties = userProperties ?: emptyMap(),
                 userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
+                options = options,
             )
 
             // The transition event must fire even when an identical property call was cached
             // earlier; cache only after capture so deduplication cannot suppress it.
-            synchronized(cachedPersonPropertiesLock) {
-                cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+            if (isPersonProcessed(options)) {
+                synchronized(cachedPersonPropertiesLock) {
+                    cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+                }
             }
 
             // The identified state itself is not part of the flags request; reload only when the
@@ -1700,7 +1764,8 @@ public class PostHog private constructor(
                 reloadFeatureFlags(config?.onFeatureFlags)
             }
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-            if (shouldCapturePersonPropertiesEvent(
+            if (!isPersonProcessed(options) ||
+                shouldCapturePersonPropertiesEvent(
                     distinctId,
                     userProperties,
                     userPropertiesSetOnce,
@@ -1712,6 +1777,7 @@ public class PostHog private constructor(
                     distinctId = distinctId,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
+                    options = options,
                 )
             }
             // Note we don't reload flags on property changes as these get processed async
@@ -1723,6 +1789,7 @@ public class PostHog private constructor(
     public override fun setPersonProperties(
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         if (!isEnabled()) {
             return
@@ -1738,7 +1805,8 @@ public class PostHog private constructor(
 
         val currentDistinctId = this.distinctId
 
-        if (!shouldCapturePersonPropertiesEvent(
+        if (isPersonProcessed(options) &&
+            !shouldCapturePersonPropertiesEvent(
                 currentDistinctId,
                 userPropertiesToSet,
                 userPropertiesToSetOnce,
@@ -1762,6 +1830,7 @@ public class PostHog private constructor(
             distinctId = currentDistinctId,
             userProperties = userPropertiesToSet,
             userPropertiesSetOnce = userPropertiesToSetOnce,
+            options = options,
         )
     }
 
@@ -1873,6 +1942,7 @@ public class PostHog private constructor(
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         if (!isEnabled()) {
             return
@@ -1918,7 +1988,7 @@ public class PostHog private constructor(
             preferences.setValue(GROUPS, newGroups)
         }
 
-        capture(PostHogEventName.GROUP_IDENTIFY.event, distinctId = this.distinctId, properties = props)
+        capture(PostHogEventName.GROUP_IDENTIFY.event, distinctId = this.distinctId, properties = props, options = options)
 
         // Automatically set group properties for feature flags
         setGroupPropertiesForFlagsIfNeeded(type, groupProperties)
@@ -2682,6 +2752,7 @@ public class PostHog private constructor(
             userPropertiesSetOnce: Map<String, Any>?,
             groups: Map<String, String>?,
             timestamp: Date?,
+            options: Map<String, Any?>?,
         ) {
             shared.capture(
                 event,
@@ -2691,14 +2762,16 @@ public class PostHog private constructor(
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = groups,
                 timestamp = timestamp,
+                options = options,
             )
         }
 
         public override fun captureException(
             throwable: Throwable,
             properties: Map<String, Any>?,
+            options: Map<String, Any?>?,
         ) {
-            shared.captureException(throwable, properties)
+            shared.captureException(throwable, properties, options)
         }
 
         public override fun addExceptionStep(
@@ -2712,11 +2785,13 @@ public class PostHog private constructor(
             distinctId: String,
             userProperties: Map<String, Any>?,
             userPropertiesSetOnce: Map<String, Any>?,
+            options: Map<String, Any?>?,
         ) {
             shared.identify(
                 distinctId,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
+                options = options,
             )
         }
 
@@ -2757,8 +2832,9 @@ public class PostHog private constructor(
         public override fun setPersonProperties(
             userPropertiesToSet: Map<String, Any>?,
             userPropertiesToSetOnce: Map<String, Any>?,
+            options: Map<String, Any?>?,
         ) {
-            shared.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce)
+            shared.setPersonProperties(userPropertiesToSet, userPropertiesToSetOnce, options)
         }
 
         public override fun setPersonPropertiesForFlags(
@@ -2803,19 +2879,24 @@ public class PostHog private constructor(
             type: String,
             key: String,
             groupProperties: Map<String, Any>?,
+            options: Map<String, Any?>?,
         ) {
-            shared.group(type, key, groupProperties = groupProperties)
+            shared.group(type, key, groupProperties = groupProperties, options = options)
         }
 
         public override fun screen(
             screenTitle: String,
             properties: Map<String, Any>?,
+            options: Map<String, Any?>?,
         ) {
-            shared.screen(screenTitle, properties = properties)
+            shared.screen(screenTitle, properties = properties, options = options)
         }
 
-        public override fun alias(alias: String) {
-            shared.alias(alias)
+        public override fun alias(
+            alias: String,
+            options: Map<String, Any?>?,
+        ) {
+            shared.alias(alias, options)
         }
 
         public override fun captureFeatureView(

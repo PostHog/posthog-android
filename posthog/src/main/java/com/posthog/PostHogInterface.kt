@@ -68,13 +68,29 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures events
+     *
+     * The event's properties are merged in this order, and later values win: properties the SDK
+     * sets itself (such as `$os`, `$app_version`, `$screen_name`, `$is_identified` and the session
+     * replay debug properties), registered super properties ([register]), [properties], then
+     * `beforeSend`.
+     *
+     * Example:
+     * ```
+     * PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
+     * ```
      * @param event the event name
-     * @param distinctId the distinctId, the generated [distinctId] is used if not given
+     * @param distinctId the distinctId, the generated [distinctId] is used if not given or blank
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+     * @param options settings that tell PostHog how to process this event, sent apart from its
+     *   properties. Known keys are `process_person_profile`, `cookieless_mode`,
+     *   `disable_skew_correction` and `product_tour_id`; unknown keys are sent unchanged and
+     *   ignored by PostHog. An option wins over its legacy property (`$process_person_profile`,
+     *   `$cookieless_mode`, `$ignore_sent_at`, `$product_tour_id`) when the event is sent. The map
+     *   is copied, and `beforeSend` can change it through [PostHogEvent.options]
      */
     public fun capture(
         event: String,
@@ -84,16 +100,20 @@ public interface PostHogInterface : PostHogCoreInterface {
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
         timestamp: Date? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
      * Captures exceptions
      * @param throwable the Throwable error
      * @param properties the custom properties
+     * @param options settings that tell PostHog how to process the `$exception` event, see
+     *   `options` in [capture]
      */
     public fun captureException(
         throwable: Throwable,
         properties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
@@ -190,29 +210,40 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param type the Group type
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param options settings that tell PostHog how to process the `$groupidentify` event, see
+     *   `options` in [capture]
      */
     public fun group(
         type: String,
         key: String,
         groupProperties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
      * Captures a screen view event
      * @param screenTitle the screen title. It takes precedence over a `$screen_name` key in [properties].
      * @param properties the custom properties
+     * @param options settings that tell PostHog how to process the `$screen` event, see
+     *   `options` in [capture]
      */
     public fun screen(
         screenTitle: String,
         properties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
      * Creates an alias for the user
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
+     * @param options settings that tell PostHog how to process the `$create_alias` event, see
+     *   `options` in [capture]
      */
-    public fun alias(alias: String)
+    public fun alias(
+        alias: String,
+        options: Map<String, Any?>? = null,
+    )
 
     /**
      * Register a property to always be sent with all the following events until you call
@@ -315,6 +346,22 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun getSessionId(): UUID?
 
     /**
+     * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
+     * @param distinctId the distinctId
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param options settings that tell PostHog how to process the `$identify` or `$set` event
+     *   this call sends, see `options` in [capture]
+     */
+    public fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
+    )
+
+    /**
      * Sets properties on the person profile associated with the current distinct_id.
      * Learn more about [identifying users](https://posthog.com/docs/product-analytics/identify)
      *
@@ -327,10 +374,13 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param userPropertiesToSetOnce Optional: Properties to store about the user only if not previously set.
      *   Note: For feature flag evaluations, if the same key is present in both parameters,
      *   the value from userPropertiesToSet will take precedence.
+     * @param options settings that tell PostHog how to process the `$set` event, see `options`
+     *   in [capture]
      */
     public fun setPersonProperties(
         userPropertiesToSet: Map<String, Any>? = null,
         userPropertiesToSetOnce: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**

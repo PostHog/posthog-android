@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogBootstrapTest {
@@ -246,7 +247,7 @@ internal class PostHogBootstrapTest {
         // No $identify (nothing to merge); a single person-processed $set marks the transition.
         val event = firstEvent(http, "\$set")
         assertEquals("user-123", event.distinctId)
-        assertEquals(true, event.options?.get("process_person_profile"))
+        assertNull(event.options?.get("process_person_profile"))
         assertEquals(true, prefs.getValue(IS_IDENTIFIED))
 
         sut.close()
