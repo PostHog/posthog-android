@@ -21,6 +21,9 @@ You need to change something if your app does any of these:
 - sets `$lib` or `$lib_version` and expects PostHog to store that value
 - reads `$session_id` or `$window_id` from the raw request body, for example in a proxy
 - sets `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` or `$product_tour_id` to a value PostHog can't read, such as `"maybe"`
+- registers a super property, or passes an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expects the SDK's value to win
+- calls `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` or `captureException` from Java, implements `PostHogInterface`, or calls `identify` through a `PostHogCoreInterface` reference
+- sets the event `uuid` in `beforeSend`
 - relies on 429 responses being retried, or on a `Retry-After` longer than 30 seconds
 - sets `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig`
 
@@ -85,6 +88,20 @@ The SDK removes `$lib` and `$lib_version` from the properties it sends to captur
 A value you set in properties, in a super property or in `beforeSend` doesn't reach PostHog.
 The SDK removes them when it sends the event, so `beforeSend` still sees them.
 
+## Property precedence
+
+An event's properties are merged in this order, and later values win:
+
+1. properties the SDK sets itself, such as `$os_name`, `$app_version`, `$screen_name`, `$is_identified`, `$session_id` and the session replay debug properties (`$recording_status`, `$sdk_debug_*`)
+2. registered super properties (`register`)
+3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here
+4. `beforeSend`
+
+In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$process_person_profile` and the session replay debug properties also won over the properties you pass.
+In 4.0 a value you register or pass wins, for example `register("$os_name", "custom")` sends every event with that value.
+A registered `$session_id` now overrides the SDK's session ID, which can detach events from their session replay.
+A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
+
 ## Session and window IDs
 
 Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, not as properties.
@@ -96,9 +113,26 @@ In PostHog, the events still have `$session_id` and `$window_id`, so insights, f
 
 ## Event options
 
-Capture v1 reads processing settings from an `options` object sent next to `properties`, which `beforeSend` can read and change through `PostHogEvent.options`.
+Capture v1 reads processing settings from an `options` object sent next to `properties`.
+`capture` takes a new `options` argument, and `beforeSend` can read and change `PostHogEvent.options`.
+`screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException` take the same argument, as their last parameter.
+For `identify`, the options apply to the `$identify` or `$set` event the call sends.
+
+```kotlin
+// 3.x
+PostHog.capture("signed_up", properties = mapOf("$cookieless_mode" to true))
+
+// 4.0
+PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
+```
+
+Kotlin callers that use named or positional arguments for the existing parameters keep compiling.
+Java callers pass the new trailing `options` argument, or `null`.
+Classes that implement `PostHogInterface` add the parameter.
+`identify(distinctId, userProperties, userPropertiesSetOnce)` moved from `PostHogCoreInterface` to `PostHogStatelessInterface`; call it through `PostHogInterface` or `PostHogStatelessInterface`.
+
 The legacy option properties still work.
-When the event is sent, the SDK removes each one from `properties` and uses it for its option, unless that option is already set:
+When the event is sent, the SDK removes each one from `properties` and uses it for its option:
 
 | Legacy property | Option |
 | --- | --- |
@@ -107,8 +141,14 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 | `$ignore_sent_at` | `disable_skew_correction` |
 | `$product_tour_id` | `product_tour_id` |
 
+- An option you pass to any of these methods or set in `beforeSend` wins over its legacy property. An option set to `null` counts as unset, so the legacy property fills it.
+- To change person processing in `beforeSend`, edit `event.options`. A `$process_person_profile` property the hook adds only fills an option that is still unset, so it doesn't override the `false` the SDK set for an anonymous event.
+- When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither, because PostHog processes person profiles by default. In 3.x, every event carried a `$process_person_profile` property. To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property. A registered `$process_person_profile` changes it for every event.
+- A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
+- An empty or whitespace-only `distinctId` argument to `capture` now uses the current distinct ID, like `null`. In 3.x, the event was dropped.
+- The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
 
 ## Retries

@@ -20,4 +20,11 @@
 - **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header; a value set in properties, super properties or `beforeSend` is removed before sending
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped with a warning
 - **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token
+- **Breaking:** add an `options` argument to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException` for per-event capture options such as `cookieless_mode`, sent apart from the properties and editable in `beforeSend` through `PostHogEvent.options`; Java callers pass the trailing argument or `null`, and classes that implement `PostHogInterface` add the parameter
+- **Breaking:** move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; `PostHogInterface` declares `identify` with the trailing `options` parameter
+- **Breaking:** registered super properties now override the properties the SDK sets itself, such as `$os_name`; super and event properties also override `$is_identified`, `$process_person_profile` and the session replay debug properties, which the SDK no longer re-applies after the caller's values
+- **Breaking:** the SDK sets the `process_person_profile` option to `false` only when person processing is off, and no longer adds a `$process_person_profile` property to every event
+- **Breaking:** keep the uuid of its own capture on the event `beforeSend` returns, so a uuid set in `beforeSend`, for example with `copy(uuid = …)`, is replaced
+- use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
+- stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
 - debug logs for capture requests name the event count and the response status instead of printing the request and response bodies
