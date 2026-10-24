@@ -133,7 +133,7 @@ public open class PostHogConfig(
      *
      * Defaults to 3
      */
-    public var maxRetries: Int = 3,
+    public var pushNotificationSubscriptionMaxRetries: Int = 3,
     /**
      * Maximum number of retries for feature flag requests after transient network errors.
      * Defaults to 1. Set to 0 to disable feature flag request retries.
@@ -396,7 +396,10 @@ public open class PostHogConfig(
     /**
      * Custom headers to send with every request to the PostHog API.
      *
-     * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
+     * Useful for reverse-proxy setups that require authentication. Capture requests
+     * (`/i/v1/analytics/events`) send the project token in an `Authorization: Bearer` header, which
+     * replaces an `Authorization` header set here, so authenticate your proxy with a different
+     * header, such as `X-Proxy-Token`. Other requests still send your `Authorization` header.
      *
      * Read once when the SDK is set up; changes after setup are ignored.
      *
