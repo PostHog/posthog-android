@@ -19,9 +19,6 @@
         "distinct_id": "anonymous-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "options": {
-          "process_person_profile": true
-        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -50,6 +47,12 @@
           "$groups": {
             "company": "posthog"
           },
+          "$is_identified": false,
+          "$recording_status": "disabled",
+          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_internal_buffer_length": 0,
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "amount": 42.5,
           "currency": "USD",
           "items": [
@@ -57,13 +60,7 @@
               "sku": "sku-1",
               "quantity": 2
             }
-          ],
-          "$is_identified": false,
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>"
+          ]
         }
       },
       {
@@ -72,9 +69,6 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "options": {
-          "process_person_profile": true
-        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -103,7 +97,6 @@
           "$groups": {
             "company": "posthog"
           },
-          "$anon_distinct_id": "anonymous-user",
           "$is_identified": true,
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
@@ -111,7 +104,8 @@
           "$sdk_debug_replay_capture_mode": "wireframe",
           "$sdk_debug_replay_internal_buffer_length": 0,
           "$sdk_debug_session_start": 1700000000123,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>"
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
+          "$anon_distinct_id": "anonymous-user"
         }
       },
       {
@@ -120,9 +114,6 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "options": {
-          "process_person_profile": true
-        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -142,18 +133,18 @@
           "$timezone": "UTC",
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
-          "$group_type": "company",
-          "$group_key": "posthog",
-          "$group_set": {
-            "industry": "analytics",
-            "employees": 100
-          },
           "$is_identified": true,
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>"
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
+          "$group_type": "company",
+          "$group_key": "posthog",
+          "$group_set": {
+            "industry": "analytics",
+            "employees": 100
+          }
         }
       },
       {
@@ -162,9 +153,6 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "options": {
-          "process_person_profile": true
-        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -191,18 +179,18 @@
           "$active_feature_flags": [
             "snapshot-flag"
           ],
-          "$feature_flag": "snapshot-flag",
-          "$feature_flag_response": "snapshot-variant",
-          "$feature_flag_request_id": "flag-request-123",
-          "$feature_flag_id": 123,
-          "$feature_flag_version": 7,
-          "$feature_flag_reason": "",
           "$is_identified": true,
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>"
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
+          "$feature_flag": "snapshot-flag",
+          "$feature_flag_response": "snapshot-variant",
+          "$feature_flag_request_id": "flag-request-123",
+          "$feature_flag_id": 123,
+          "$feature_flag_version": 7,
+          "$feature_flag_reason": ""
         }
       },
       {
@@ -211,9 +199,6 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
-        "options": {
-          "process_person_profile": true
-        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -240,6 +225,12 @@
           "$active_feature_flags": [
             "snapshot-flag"
           ],
+          "$is_identified": true,
+          "$recording_status": "disabled",
+          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_internal_buffer_length": 0,
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$exception_level": "error",
           "$exception_list": [
             {
@@ -297,13 +288,7 @@
             }
           ],
           "handled": true,
-          "component": "checkout",
-          "$is_identified": true,
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>"
+          "component": "checkout"
         }
       }
     ]

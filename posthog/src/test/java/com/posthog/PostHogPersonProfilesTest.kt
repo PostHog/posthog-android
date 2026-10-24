@@ -10,7 +10,9 @@ import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 internal class PostHogPersonProfilesTest {
     @get:Rule
@@ -57,6 +59,9 @@ internal class PostHogPersonProfilesTest {
         tmpDir.root.deleteRecursively()
     }
 
+    private val PostHogEvent.processPersonProfile: Any?
+        get() = options?.get("process_person_profile")
+
     @Test
     fun `captures an identify event where personProfile is identified_only`() {
         val http = mockHttp()
@@ -81,7 +86,7 @@ internal class PostHogPersonProfilesTest {
         val theEvent = batch.batch.first()
 
         assertEquals("\$identify", theEvent.event)
-        assertEquals(true, theEvent.options?.get("process_person_profile"))
+        assertNull(theEvent.processPersonProfile)
         assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
@@ -108,13 +113,13 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
+        assertEquals(false, event.processPersonProfile)
 
         sut.close()
     }
 
     @Test
-    fun `capture ignores caller person processing properties if identified only and not identified`() {
+    fun `caller person processing properties win if identified only and not identified`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -133,8 +138,10 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
-        assertEquals(false, event.properties!!["\$is_identified"] as Boolean)
+        // the caller's legacy property is hoisted into the option when the event is sent
+        assertEquals(true, event.processPersonProfile)
+        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+        assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
         http.shutdown()
@@ -160,7 +167,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.close()
     }
@@ -185,7 +192,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.close()
     }
@@ -210,7 +217,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.close()
     }
@@ -234,13 +241,13 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.close()
     }
 
     @Test
-    fun `capture ignores caller person processing properties if identified only and identified`() {
+    fun `caller person processing properties win if identified only and identified`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -261,8 +268,9 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
-        assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
+        assertEquals(false, event.processPersonProfile)
+        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+        assertEquals(false, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
         http.shutdown()
@@ -287,7 +295,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.close()
     }
@@ -311,7 +319,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.reset()
         sut.close()
@@ -334,7 +342,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
+        assertNull(event.processPersonProfile)
 
         sut.reset()
         sut.close()
@@ -359,7 +367,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
+        assertEquals(false, event.processPersonProfile)
 
         sut.reset()
         sut.close()
@@ -384,7 +392,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
+        assertEquals(false, event.processPersonProfile)
 
         sut.reset()
         sut.close()
@@ -409,14 +417,14 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
+        assertEquals(false, event.processPersonProfile)
 
         sut.reset()
         sut.close()
     }
 
     @Test
-    fun `capture ignores caller process person override if never`() {
+    fun `caller process person override wins if never`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -432,7 +440,8 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
+        assertEquals(true, event.processPersonProfile)
+        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
 
         sut.close()
         http.shutdown()
