@@ -37,6 +37,8 @@ internal abstract class PostHogAndroidGradlePlugin
             val extension = project.extensions.create("posthog", PostHogPluginExtension::class.java)
             extension.uploadNativeSymbols.convention(false)
             extension.includeNativeSymbolSources.convention(false)
+            extension.skipOnConflict.convention(false)
+            extension.force.convention(false)
 
             warnIfDeprecatedReleaseModeSet(project)
 
@@ -66,7 +68,7 @@ internal abstract class PostHogAndroidGradlePlugin
                     // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                     val paths = OutputPaths(project, variant.name)
-                    val generateMapIdTask = generateMapIdTask(project, variant, paths, failureTracker)
+                    val generateMapIdTask = generateMapIdTask(project, extension, variant, paths, failureTracker)
                     tasksGeneratingProperties.add(generateMapIdTask)
 
                     variant.apply {
@@ -113,6 +115,10 @@ internal abstract class PostHogAndroidGradlePlugin
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },
                     build = primaryOutput?.versionCode?.map { it ?: 0 },
                 )
+            uploadTask.configure {
+                skipOnConflict.convention(extension.skipOnConflict)
+                force.convention(extension.force)
+            }
 
             project.afterEvaluate {
                 PostHogTasksProvider.getMergeNativeLibsTask(project, variant.name)?.let { merge ->
@@ -155,6 +161,7 @@ internal abstract class PostHogAndroidGradlePlugin
 
         private fun generateMapIdTask(
             project: Project,
+            extension: PostHogPluginExtension,
             variant: ApplicationVariant,
             paths: OutputPaths,
             failureTracker: Provider<PostHogTaskFailureTracker>,
@@ -174,6 +181,10 @@ internal abstract class PostHogAndroidGradlePlugin
                     variant = variant,
                     mappingFiles = variant.mappingFileProvider(project),
                 )
+            uploadMapIdTask.configure {
+                skipOnConflict.convention(extension.skipOnConflict)
+                force.convention(extension.force)
+            }
 
             generateMapIdTask.hookWithMinifyTasks(project, variant.name, generateMapIdTask)
 

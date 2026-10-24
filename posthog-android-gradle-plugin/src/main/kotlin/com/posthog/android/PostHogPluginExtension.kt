@@ -33,4 +33,25 @@ public abstract class PostHogPluginExtension {
      * or an explicit task invocation.
      */
     public abstract val includeNativeSymbolSources: Property<Boolean>
+
+    /**
+     * Pass `--skip-on-conflict` to the native symbol and ProGuard mapping
+     * uploads. A symbol set that already exists with different content is
+     * left unchanged and the upload succeeds, instead of failing the build.
+     * With [includeNativeSymbolSources], an existing native symbol set is
+     * kept as is rather than replaced with one that bundles sources.
+     *
+     * Off by default. Mutually exclusive with [force]. A task's own
+     * `skipOnConflict` property, when set, takes precedence.
+     */
+    public abstract val skipOnConflict: Property<Boolean>
+
+    /**
+     * Pass `--force` to the native symbol and ProGuard mapping uploads, so a
+     * symbol set that already exists with different content is overwritten.
+     *
+     * Off by default. Mutually exclusive with [skipOnConflict]. A task's own
+     * `force` property, when set, takes precedence.
+     */
+    public abstract val force: Property<Boolean>
 }

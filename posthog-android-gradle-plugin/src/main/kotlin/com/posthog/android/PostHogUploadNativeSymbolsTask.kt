@@ -33,6 +33,11 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
 
         // Uploads have no outputs; without this the task would always rerun.
         outputs.upToDateWhen { true }
+
+        // Off unless a build opts in. posthog-cli then fails a content mismatch,
+        // which is the CLI default.
+        skipOnConflict.convention(false)
+        force.convention(false)
     }
 
     /**
@@ -61,6 +66,29 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
     @get:Optional
     public abstract val build: Property<Int>
 
+    /**
+     * Passes `--skip-on-conflict` to `posthog-cli symbol-sets upload` when
+     * set. A library whose symbol set already exists with different content
+     * is left unchanged and the upload succeeds. Off by default, which fails
+     * that upload. With [includeSource], an existing symbol set is kept as is
+     * rather than replaced with one that bundles sources.
+     *
+     * Mutually exclusive with [force].
+     */
+    @get:Input
+    public abstract val skipOnConflict: Property<Boolean>
+
+    /**
+     * Passes `--force` to `posthog-cli symbol-sets upload` when set, so an
+     * existing symbol set whose content has changed is overwritten. Off by
+     * default, which fails that upload unless [includeSource] is set: the
+     * CLI overwrites when it bundles sources.
+     *
+     * Mutually exclusive with [skipOnConflict].
+     */
+    @get:Input
+    public abstract val force: Property<Boolean>
+
     override fun getArguments(args: MutableList<String>) {
         args.add("symbol-sets")
         args.add("upload")
@@ -80,6 +108,21 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
         build.orNull?.takeIf { it > 0 }?.let {
             args.add("--build")
             args.add(it.toString())
+        }
+        // The CLI rejects both flags together (clap conflicts_with). Fail here so the
+        // build error names the properties instead of a parse error from the CLI.
+        if (skipOnConflict.get() && force.get()) {
+            error(
+                "[PostHog] skipOnConflict and force cannot both be set on $name. " +
+                    "Either may come from the posthog { } extension; set the other to false " +
+                    "on the task to override it.",
+            )
+        }
+        if (skipOnConflict.get()) {
+            args.add("--skip-on-conflict")
+        }
+        if (force.get()) {
+            args.add("--force")
         }
     }
 

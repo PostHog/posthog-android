@@ -157,11 +157,12 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             args.add(it.toString())
         }
         // The CLI rejects both flags together (clap conflicts_with). Fail here so the
-        // build error names the task properties instead of a parse error from the CLI.
+        // build error names the properties instead of a parse error from the CLI.
         if (skipOnConflict.get() && force.get()) {
             error(
-                "[PostHog] skipOnConflict and force cannot both be set. " +
-                    "posthog-cli accepts only one of --skip-on-conflict and --force.",
+                "[PostHog] skipOnConflict and force cannot both be set on $name. " +
+                    "Either may come from the posthog { } extension; set the other to false " +
+                    "on the task to override it.",
             )
         }
         if (skipOnConflict.get()) {

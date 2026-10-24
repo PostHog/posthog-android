@@ -61,6 +61,7 @@ internal class NativeSymbolsUploadFunctionalTest(
         uploadNativeSymbols: Boolean,
         includeNativeSymbolSources: Boolean = false,
         minifyEnabled: Boolean = false,
+        skipOnConflict: Boolean = false,
     ): File {
         val fakeCliLog = File(projectDir.root, "fake-cli-args.txt")
         val fakeCli = File(projectDir.root, "fake-posthog-cli")
@@ -152,6 +153,7 @@ internal class NativeSymbolsUploadFunctionalTest(
             posthog {
                 uploadNativeSymbols = $uploadNativeSymbols
                 includeNativeSymbolSources = $includeNativeSymbolSources
+                skipOnConflict = $skipOnConflict
             }
 
             tasks.withType(com.posthog.android.PostHogCliExecTask).configureEach {
@@ -183,6 +185,25 @@ internal class NativeSymbolsUploadFunctionalTest(
         val directory = cliArgs.substringAfter("--directory ").trim().split(" ").first()
         val mergedLibs = File(directory).walkTopDown().filter { it.extension == "so" }.toList()
         assertTrue(mergedLibs.any { it.name == "libfake.so" }, "merged dir $directory had: $mergedLibs")
+        assertFalse(cliArgs.contains("--skip-on-conflict"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--force"), "got: $cliArgs")
+    }
+
+    @Test
+    fun `skipOnConflict on the extension reaches the native and mapping uploads`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = false, minifyEnabled = true, skipOnConflict = true)
+
+        runner(
+            ":app:uploadPostHogNativeSymbolsRelease",
+            ":app:uploadPostHogProguardMappingsRelease",
+            "--stacktrace",
+        ).build()
+
+        val invocations = fakeCliLog.readLines()
+        val native = invocations.single { it.contains("symbol-sets upload") }
+        val mapping = invocations.single { it.contains("proguard upload") }
+        assertTrue(native.contains("--skip-on-conflict"), "got: $native")
+        assertTrue(mapping.contains("--skip-on-conflict"), "got: $mapping")
     }
 
     @Test
