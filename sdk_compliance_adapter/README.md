@@ -29,7 +29,7 @@ This allows the test adapter to inject a custom OkHttpClient with tracking inter
 ### HTTP Request Tracking
 
 The adapter injects a custom OkHttpClient that:
-- Intercepts all `/batch/` requests
+- Intercepts all `/i/v1/analytics/events` requests
 - Extracts event UUIDs from request bodies
 - Tracks status codes, retry attempts, and event counts
 
@@ -41,11 +41,11 @@ Events are tracked via:
 
 ### SDK Type
 
-The Android SDK uses **server SDK format**:
-- Endpoint: `/batch/`
-- Format: `{api_key, batch, sent_at}`
+The Android SDK advertises `capture_v1` and `encoding_gzip`:
+- Endpoint: `POST /i/v1/analytics/events`
+- Format: `{created_at, batch}` with the project token in an `Authorization: Bearer` header
 
-Tests run with `--sdk-type server`.
+Tests run with `--sdk-type server`; the harness selects the `capture_v1` suite from the capabilities.
 
 ## Files Created
 
