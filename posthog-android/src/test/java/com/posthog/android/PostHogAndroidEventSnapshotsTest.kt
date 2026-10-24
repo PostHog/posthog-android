@@ -30,6 +30,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -94,7 +95,7 @@ internal class PostHogAndroidEventSnapshotsTest {
         sut.captureException(fixedThrowable(), mapOf("handled" to true, "component" to "checkout"))
         sut.flush()
 
-        val request = fixture.server.takeRequests("/flags/?v=2", "/batch").single { it.path == "/batch" }
+        val request = fixture.server.takeRequests("/flags/?v=2", "/i/v1/analytics/events").single { it.path == "/i/v1/analytics/events" }
         val snapshot = requestSnapshot(request, fixture.config)
         normalizeBatchVolatileFields(snapshot)
 
@@ -215,9 +216,11 @@ internal class PostHogAndroidEventSnapshotsTest {
     ): MutableMap<String, Any?> {
         assertEquals("POST", request.method)
         assertEquals("gzip", request.getHeader("Content-Encoding"))
-        assertEquals("application/json; charset=utf-8", request.getHeader("Content-Type"))
+        assertTrue(assertNotNull(request.getHeader("Content-Type")).startsWith("application/json"))
         val userAgent = assertNotNull(request.getHeader("User-Agent"))
         assertEquals("posthog-android/${config.sdkVersion}", userAgent)
+        // capture v1 names the SDK in its own header too; other requests don't send it
+        request.getHeader("PostHog-Sdk-Info")?.let { assertEquals(userAgent, it) }
         assertTrue(config.sdkVersion.isNotEmpty())
         assertEquals("android-events-v1", request.getHeader("X-PostHog-Snapshot"))
 
@@ -230,18 +233,21 @@ internal class PostHogAndroidEventSnapshotsTest {
             "path" to request.path,
             "headers" to
                 linkedMapOf(
+                    "Authorization" to request.getHeader("Authorization"),
                     "Content-Encoding" to request.getHeader("Content-Encoding"),
                     "Content-Type" to request.getHeader("Content-Type"),
+                    "PostHog-Attempt" to request.getHeader("PostHog-Attempt"),
+                    "PostHog-Sdk-Info" to request.getHeader("PostHog-Sdk-Info")?.let { "posthog-android/<sdk-version>" },
                     "User-Agent" to "posthog-android/<sdk-version>",
                     "X-PostHog-Snapshot" to request.getHeader("X-PostHog-Snapshot"),
-                ),
+                ).filterValues { it != null },
             "body" to decodedBody,
         )
     }
 
     private fun normalizeBatchVolatileFields(snapshot: MutableMap<String, Any?>) {
         val body = snapshot.map("body")
-        assertEquals(FIXED_TIMESTAMP, body["sent_at"])
+        assertEquals(FIXED_TIMESTAMP, body["created_at"])
 
         val batch = body["batch"]
         assertIs<List<*>>(batch)
@@ -257,7 +263,9 @@ internal class PostHogAndroidEventSnapshotsTest {
             UUID.fromString(uuid)
             event["uuid"] = "<uuid>"
             val properties = event.map("properties")
-            normalizeSdkVersion(properties)
+            // capture v1 reads the SDK name and version from the PostHog-Sdk-Info header
+            assertFalse(properties.containsKey("\$lib"))
+            assertFalse(properties.containsKey("\$lib_version"))
             // Depends on how many earlier captures the async queueExecutor has drained by the time
             // this event's properties are built on the calling thread -- not deterministic run to run.
             if (properties.containsKey("\$sdk_debug_pending_queue_size")) {

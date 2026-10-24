@@ -271,7 +271,7 @@ internal class PostHogReplayQueueTest {
 
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
-        assertEquals("/batch", request.path)
+        assertEquals("/i/v1/analytics/events", request.path)
         val payload = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals(2, (payload["batch"] as List<*>).size)
         assertEquals(0, sut.size)

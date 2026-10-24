@@ -6,6 +6,7 @@ import com.posthog.TestHttpServers
 import com.posthog.shutdownAndAwaitTermination
 import com.posthog.unGzip
 import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.RecordedRequest
 import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
@@ -104,12 +105,59 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
         assertEquals(emptyList(), retained(prefix))
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        assertEquals("/i/v1/analytics/events", request.path)
+        val sent = sentEvents(request).single()
+        assertEquals("testEvent", sent["event"])
+        assertEquals("9740f814-0b10-42e2-b3d4-8f35af1b11f6", sent["distinct_id"])
+        assertEquals(mapOf("testProperty" to "testValue"), sent["properties"])
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun sentEvents(request: RecordedRequest): List<Map<String, Any?>> {
         val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
-        val batch = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
-        val sent = batch.batch.single()
-        assertEquals("testEvent", sent.event)
-        assertEquals("9740f814-0b10-42e2-b3d4-8f35af1b11f6", sent.distinctId)
-        assertEquals(mapOf("testProperty" to "testValue"), sent.properties?.toMap())
+        val body = serializer.deserialize<Map<String, Any?>>(request.body.unGzip().reader())
+        return body["batch"] as List<Map<String, Any?>>
+    }
+
+    @Test
+    fun `sends a 2x cached event with its message_id as the uuid and the root set as a property`() {
+        val legacyEvent =
+            """
+            {
+              "message_id": "8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5",
+              "event": "testEvent",
+              "distinct_id": "9740f814-0b10-42e2-b3d4-8f35af1b11f6",
+              "properties": {"testProperty": "testValue"},
+              "${'$'}set": {"name": "Max"},
+              "timestamp": "2023-09-19T07:23:00.165Z"
+            }
+            """.trimIndent()
+        val prefix = writeLegacyFile(listOf(legacyEvent))
+        val http = servers.mockHttp()
+        getSut(prefix, http.url("/").toString()).install(mock())
+        executor.shutdownAndAwaitTermination()
+        assertEquals(emptyList(), retained(prefix))
+        val sent = sentEvents(assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))).single()
+        assertEquals("8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5", sent["uuid"])
+        assertEquals(mapOf("testProperty" to "testValue", "${'$'}set" to mapOf("name" to "Max")), sent["properties"])
+    }
+
+    @Test
+    fun `re-queues the events capture asked to retry for the next launch`() {
+        val retried = event.replace("8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5", "11111111-0b10-42e2-b3d4-8f35af1b11f6")
+        val prefix = writeLegacyFile(listOf(retried, event, event))
+        val http =
+            servers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{\"11111111-0b10-42e2-b3d4-8f35af1b11f6\":{\"result\":\"retry\"}," +
+                            "\"8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5\":{\"result\":\"ok\"}}}",
+                    ),
+            )
+        getSut(prefix, http.url("/").toString()).install(mock())
+        executor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+        assertEquals(listOf(retried), retained(prefix))
     }
 
     @Test
@@ -143,12 +191,22 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     }
 
     @Test
-    fun `keeps the events if returns 3xx`() {
+    fun `keeps the events if returns 503`() {
+        val prefix = writeLegacyFile(listOf(event, event))
+        val http = servers.mockHttp(response = MockResponse().setResponseCode(503))
+        getSut(prefix, http.url("/").toString()).install(mock())
+        executor.shutdownAndAwaitTermination()
+        assertEquals(listOf(event, event), retained(prefix))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `discards the events if returns 3xx`() {
         val prefix = writeLegacyFile(listOf(event, event))
         val http = servers.mockHttp(response = MockResponse().setResponseCode(300))
         getSut(prefix, http.url("/").toString()).install(mock())
         executor.shutdownAndAwaitTermination()
-        assertEquals(listOf(event, event), retained(prefix))
+        assertEquals(emptyList(), retained(prefix))
         assertEquals(1, http.requestCount)
     }
 
