@@ -76,11 +76,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test comma
 
 ## SDK Type
 
-The Android SDK advertises `capture_v1` and `encoding_gzip`:
-- Endpoint: `POST /i/v1/analytics/events`
+The Android SDK advertises `capture_v1`, `capture_ai_v1`, `encoding_gzip` and `event_options`:
+- Endpoints: `POST /i/v1/analytics/events` (`/capture`) and `POST /i/v1/ai/events` (`/capture_ai`)
 - Format: `{created_at: "...", batch: [{event}, {event}]}` with the project token in an `Authorization: Bearer` header
 
-Tests run with `--sdk-type server` flag; the harness selects the `capture_v1` suite from the capabilities.
+Tests run with `--sdk-type server` flag; the harness selects the `capture_v1` and `capture_ai_v1` suites from the capabilities.
 
 ## API Endpoints
 
@@ -89,6 +89,7 @@ The adapter implements the standard compliance adapter API:
 - `GET /health` - Health check with SDK version info
 - `POST /init` - Initialize SDK with config
 - `POST /capture` - Capture a single event
+- `POST /capture_ai` - Capture a single AI event through `captureAi`
 - `POST /flush` - Force flush all pending events
 - `GET /state` - Get adapter state for assertions
 - `POST /reset` - Reset SDK and adapter state
