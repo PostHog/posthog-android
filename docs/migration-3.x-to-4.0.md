@@ -151,6 +151,24 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
 
+## AI events
+
+4.0 adds `captureAi`, which sends AI events, such as `$ai_generation`, to PostHog's AI endpoint (`/i/v1/ai/events`) instead of the analytics endpoint.
+It takes the same arguments as `capture`, and the events go through the same `beforeSend` hooks.
+
+```kotlin
+PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "$ai_trace_id" to traceId))
+```
+
+- `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, or `beforeSend` dropped it.
+- An AI event can be up to 8 MiB. The SDK drops a larger event when it writes it to the queue and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower the limit.
+- PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
+- AI requests time out after 60 seconds, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
+- AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
+- AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
+- AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
+- The SDK sends AI events unchanged. It doesn't redact or truncate prompts, outputs or media, so use `beforeSend` to remove anything you don't want to send.
+
 ## Retries
 
 - The SDK retries network errors and 408, 500, 502, 503 and 504 responses. Other statuses drop the events, including 429. 3.x also retried 429 and 3xx responses. Capture itself doesn't return 429, but a proxy in front of it can.
@@ -160,4 +178,5 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter, rounded to whole seconds. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
 - Event, session replay and log retries have no limit, as in 3.x: queued records stay until they're delivered or a full queue evicts them (`maxQueueSize`, or `logs.maxBufferSize` for logs).
 - `maxRetries` is renamed to `pushNotificationSubscriptionMaxRetries`, with no deprecated alias. It only limits push-notification subscription retries.
+- A request carries at most `maxBatchSize` events and about 5 MiB, and the SDK sends as soon as about 5 MiB of events is queued, even before `flushAt` is reached. In 3.x, batches were limited by event count only.
 - A 413 still splits the batch into smaller requests.
