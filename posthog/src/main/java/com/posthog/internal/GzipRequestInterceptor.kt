@@ -37,74 +37,81 @@ import java.io.IOException
 /**
  * This interceptor compresses the HTTP request body. Many webservers can't handle this!
  * @property config The Config
+ * @property compression The setting that decides whether to compress, [PostHogConfig.compression]
+ * by default; the AI capture client reads [PostHogConfig.captureAiCompression] instead
  */
 @PostHogInternal
-public class GzipRequestInterceptor(private val config: PostHogConfig) : Interceptor {
-    @Throws(IOException::class)
-    override fun intercept(chain: Interceptor.Chain): Response {
-        val originalRequest = chain.request()
-        val body = originalRequest.body
+public class GzipRequestInterceptor
+    @JvmOverloads
+    constructor(
+        private val config: PostHogConfig,
+        private val compression: () -> PostHogCompression = { config.compression },
+    ) : Interceptor {
+        @Throws(IOException::class)
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val originalRequest = chain.request()
+            val body = originalRequest.body
 
-        return if (config.compression != PostHogCompression.GZIP ||
-            body == null ||
-            originalRequest.header("Content-Encoding") != null ||
-            body is MultipartBody
-        ) {
-            chain.proceed(originalRequest)
-        } else {
-            val compressedRequest =
-                try {
-                    originalRequest.newBuilder()
-                        .header("Content-Encoding", "gzip")
-                        .method(originalRequest.method, forceContentLength(gzip(body)))
-                        .build()
-                } catch (e: Throwable) {
-                    config.logger.log("Failed to gzip the request body: $e.")
+            return if (compression() != PostHogCompression.GZIP ||
+                body == null ||
+                originalRequest.header("Content-Encoding") != null ||
+                body is MultipartBody
+            ) {
+                chain.proceed(originalRequest)
+            } else {
+                val compressedRequest =
+                    try {
+                        originalRequest.newBuilder()
+                            .header("Content-Encoding", "gzip")
+                            .method(originalRequest.method, forceContentLength(gzip(body)))
+                            .build()
+                    } catch (e: Throwable) {
+                        config.logger.log("Failed to gzip the request body: $e.")
 
-                    originalRequest
+                        originalRequest
+                    }
+                chain.proceed(compressedRequest)
+            }
+        }
+
+        private fun gzip(body: RequestBody): RequestBody {
+            return object : RequestBody() {
+                override fun contentType(): MediaType? {
+                    return body.contentType()
                 }
-            chain.proceed(compressedRequest)
-        }
-    }
 
-    private fun gzip(body: RequestBody): RequestBody {
-        return object : RequestBody() {
-            override fun contentType(): MediaType? {
-                return body.contentType()
-            }
+                override fun contentLength(): Long {
+                    return -1 // We don't know the compressed length in advance!
+                }
 
-            override fun contentLength(): Long {
-                return -1 // We don't know the compressed length in advance!
-            }
-
-            @Throws(IOException::class)
-            override fun writeTo(sink: BufferedSink) {
-                val gzipSink = GzipSink(sink).buffer()
-                body.writeTo(gzipSink)
-                gzipSink.close()
+                @Throws(IOException::class)
+                override fun writeTo(sink: BufferedSink) {
+                    val gzipSink = GzipSink(sink).buffer()
+                    body.writeTo(gzipSink)
+                    gzipSink.close()
+                }
             }
         }
-    }
 
-    // https://github.com/square/okhttp/issues/350
-    @Throws(IOException::class)
-    private fun forceContentLength(body: RequestBody): RequestBody {
-        val buffer = Buffer()
-        body.writeTo(buffer)
+        // https://github.com/square/okhttp/issues/350
+        @Throws(IOException::class)
+        private fun forceContentLength(body: RequestBody): RequestBody {
+            val buffer = Buffer()
+            body.writeTo(buffer)
 
-        return object : RequestBody() {
-            override fun contentType(): MediaType? {
-                return body.contentType()
-            }
+            return object : RequestBody() {
+                override fun contentType(): MediaType? {
+                    return body.contentType()
+                }
 
-            override fun contentLength(): Long {
-                return buffer.size
-            }
+                override fun contentLength(): Long {
+                    return buffer.size
+                }
 
-            @Throws(IOException::class)
-            override fun writeTo(sink: BufferedSink) {
-                sink.write(buffer.snapshot())
+                @Throws(IOException::class)
+                override fun writeTo(sink: BufferedSink) {
+                    sink.write(buffer.snapshot())
+                }
             }
         }
     }
-}

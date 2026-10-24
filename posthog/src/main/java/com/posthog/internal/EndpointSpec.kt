@@ -18,6 +18,14 @@ import java.io.OutputStream
  * Endpoints without per-record results return an empty result and leave
  * [recordId] null.
  *
+ * The byte limits are measured on the stored record files. [maxBatchBytes] is
+ * a soft limit on one request: a record that doesn't fit starts the next
+ * request, a record larger than the limit goes alone, and the queue flushes as
+ * soon as that many bytes are queued. [maxQueueBytes] is a FIFO limit on the
+ * queued files on top of [maxQueueSize]; the newest record is always kept.
+ * [maxRecordBytes] drops a larger record when it is queued. Null means no
+ * limit.
+ *
  * The queue itself stays record-type-agnostic; everything that varies
  * between endpoints lives here.
  */
@@ -37,6 +45,9 @@ public class EndpointSpec<Record> internal constructor(
     internal val isFatalRecord: (Record) -> Boolean = { false },
     internal val canBatchTogether: ((Record, Record) -> Boolean)? = null,
     internal val recordId: ((Record) -> String?)? = null,
+    internal val maxBatchBytes: Long? = null,
+    internal val maxQueueBytes: Long? = null,
+    internal val maxRecordBytes: Long? = null,
 ) {
     public companion object {
         @JvmStatic
@@ -63,6 +74,42 @@ public class EndpointSpec<Record> internal constructor(
                 isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
                 recordId = { event -> event.uuid?.toString() },
+                maxBatchBytes = CAPTURE_V1_MAX_BATCH_BYTES,
+            )
+
+        /**
+         * Returns the [EndpointSpec] for the capture v1 AI endpoint (`/i/v1/ai/events`), used by
+         * `captureAi`. Same codec, results and retry policy as [batch], on its own queue: AI events
+         * can be megabytes, so the queue is capped by bytes as well as count, and an event over
+         * [PostHogConfig.captureAiMaxEventBytes] (plus the stored envelope) is dropped when queued.
+         */
+        @JvmStatic
+        public fun ai(
+            config: PostHogConfig,
+            api: PostHogApi,
+            storagePrefix: String?,
+        ): EndpointSpec<PostHogEvent> =
+            EndpointSpec(
+                recordsLabel = "AI events",
+                storagePrefix = storagePrefix,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.effectiveCaptureAiMaxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
+                encode = { event, stream ->
+                    config.serializer.serialize(event, stream.writer().buffered())
+                },
+                decode = { stream ->
+                    config.serializer.deserialize<PostHogEvent?>(stream.reader().buffered())
+                },
+                // Name only: AI properties can hold prompts and media.
+                describe = { event -> "AI event ${event.event}" },
+                send = { events -> api.captureAi(events) },
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
+                recordId = { event -> event.uuid?.toString() },
+                maxBatchBytes = CAPTURE_V1_MAX_BATCH_BYTES,
+                maxQueueBytes = AI_MAX_QUEUE_BYTES,
+                maxRecordBytes = config.captureAiMaxStoredEventBytes,
             )
 
         @JvmStatic
@@ -154,6 +201,37 @@ internal class SendResult(
  * terminal; 413 is handled by the queue's batch halving.
  */
 internal fun isCaptureV1RetriableStatusCode(code: Int): Boolean = code == 408 || code in setOf(500, 502, 503, 504)
+
+/** Soft request size for the capture v1 analytics and AI endpoints, well under their body limits. */
+internal const val CAPTURE_V1_MAX_BATCH_BYTES: Long = 5L * 1024 * 1024
+
+/** Disk budget for queued AI events; the oldest are dropped first. */
+internal const val AI_MAX_QUEUE_BYTES: Long = 50L * 1024 * 1024
+
+/**
+ * The stored AI event also holds its envelope (name, ids, timestamp), so this much is allowed on
+ * top of the properties limit, which PostHog measures on the properties alone.
+ */
+internal const val AI_EVENT_ENVELOPE_BYTES: Long = 64L * 1024
+
+/** [PostHogConfig.captureAiMaxQueueSize], or its default when it isn't positive. */
+internal val PostHogConfig.effectiveCaptureAiMaxQueueSize: Int
+    get() = if (captureAiMaxQueueSize > 0) captureAiMaxQueueSize else PostHogConfig.DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
+
+/** [PostHogConfig.captureAiTimeout], or its default when it isn't positive. */
+internal val PostHogConfig.effectiveCaptureAiTimeoutSeconds: Int
+    get() = if (captureAiTimeout > 0) captureAiTimeout else PostHogConfig.DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
+
+/**
+ * Stored-size limit for an AI event: [PostHogConfig.captureAiMaxEventBytes], capped at PostHog's
+ * 8 MiB limit, plus the envelope allowance.
+ */
+internal val PostHogConfig.captureAiMaxStoredEventBytes: Long
+    get() {
+        val limit = PostHogConfig.DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
+        val bytes = if (captureAiMaxEventBytes > 0) minOf(captureAiMaxEventBytes, limit) else limit
+        return bytes + AI_EVENT_ENVELOPE_BYTES
+    }
 
 /** `/snapshot` (replay) retry policy: 408, 429, the listed 5xx, plus 3xx redirects. */
 internal fun isSnapshotRetriableStatusCode(code: Int): Boolean = code in setOf(408, 429, 500, 502, 503, 504) || code in 300..399

@@ -35,6 +35,10 @@ public class PostHogQueue<Record>(
     // The files of the last request that failed or came back with records to retry. The next flush
     // resends exactly these, so the request keeps its id and counts the attempt. Guarded by dequeLock.
     private var retryFiles: List<File> = emptyList()
+
+    // Total size of the files in the deque, kept only for byte-limited endpoints. Guarded by dequeLock.
+    private val trackBytes = spec.maxBatchBytes != null || spec.maxQueueBytes != null
+    private var queuedBytes = 0L
     private val timerLock = Any()
 
     @PostHogVisibleForTesting
@@ -99,6 +103,23 @@ public class PostHogQueue<Record>(
                 os.use { theOutputStream ->
                     spec.encode(record, theOutputStream)
                 }
+                val size = file.length()
+                val maxRecordBytes = spec.maxRecordBytes
+                if (maxRecordBytes != null && size > maxRecordBytes) {
+                    // Name and size only: the record can hold prompts and media.
+                    config.logger.log("Dropping ${spec.describe(record)} of $size bytes, over the $maxRecordBytes byte limit.")
+                    // Not counted in queuedBytes yet, so only the deque entry goes.
+                    synchronized(dequeLock) {
+                        deque.remove(file)
+                    }
+                    file.deleteSafely(config)
+                    return false
+                }
+                if (trackBytes) {
+                    synchronized(dequeLock) {
+                        queuedBytes += size
+                    }
+                }
                 config.logger.log("Queued ${spec.describe(record)}: ${file.name}.")
 
                 return true
@@ -119,17 +140,44 @@ public class PostHogQueue<Record>(
         return true
     }
 
+    /** Removes [files] from the deque, subtracting their size while they still exist on disk. */
+    private fun removeFromDeque(files: Collection<File>) {
+        synchronized(dequeLock) {
+            deque.removeAll(files)
+            if (trackBytes) {
+                queuedBytes -= files.sumOf { it.length() }
+            }
+        }
+    }
+
     private fun removeRecordSync() {
         if (deque.size > spec.maxQueueSize(config).coerceAtLeast(1)) {
             try {
                 val first: File
                 synchronized(dequeLock) {
                     first = deque.removeFirst()
+                    if (trackBytes) {
+                        queuedBytes -= first.length()
+                    }
                 }
                 first.deleteSafely(config)
                 config.logger.log("Queue is full, the oldest ${spec.recordsLabel} ${first.name} is dropped.")
             } catch (ignored: NoSuchElementException) {
             }
+        }
+        val maxQueueBytes = spec.maxQueueBytes ?: return
+        val evicted = mutableListOf<File>()
+        synchronized(dequeLock) {
+            // The newest record is always kept, even when it's over the limit on its own.
+            while (queuedBytes > maxQueueBytes && deque.size > 1) {
+                val first = deque.removeFirst()
+                queuedBytes -= first.length()
+                evicted.add(first)
+            }
+        }
+        if (evicted.isNotEmpty()) {
+            evicted.forEach { it.deleteSafely(config) }
+            config.logger.log("Queue is over $maxQueueBytes bytes, the oldest ${evicted.size} ${spec.recordsLabel} are dropped.")
         }
     }
 
@@ -181,7 +229,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun isAboveThreshold(flushAt: Int): Boolean {
-        if (deque.size >= flushAt) {
+        if (deque.size >= flushAt || isAboveByteThreshold()) {
             return true
         } else if (deque.size > 0) {
             // only log if there are records in the queue
@@ -199,6 +247,18 @@ public class PostHogQueue<Record>(
         return true
     }
 
+    /** A full request's worth of queued bytes flushes like [BatchLimits.flushAt] does. */
+    private fun isAboveByteThreshold(): Boolean {
+        val maxBatchBytes = spec.maxBatchBytes ?: return false
+        return synchronized(dequeLock) { queuedBytes } >= maxBatchBytes
+    }
+
+    /**
+     * The next FIFO window: at most [BatchLimits.cap] files and, for a byte-limited endpoint, about
+     * [EndpointSpec.maxBatchBytes]. The check runs before each file is added, so a file that doesn't
+     * fit starts the next window and a file over the limit goes alone. The files of a request to
+     * retry go again on their own first.
+     */
     private fun takeFiles(): List<File> {
         synchronized(dequeLock) {
             val retry = retryFiles
@@ -207,7 +267,17 @@ public class PostHogQueue<Record>(
             if (retry.isNotEmpty() && deque.containsAll(retry)) {
                 return retry
             }
-            return deque.take(batchLimits.cap)
+            val maxBatchBytes = spec.maxBatchBytes ?: return deque.take(batchLimits.cap)
+            val files = mutableListOf<File>()
+            var bytes = 0L
+            for (file in deque) {
+                if (files.size >= batchLimits.cap) break
+                val size = file.length()
+                if (files.isNotEmpty() && bytes + size > maxBatchBytes) break
+                files.add(file)
+                bytes += size
+            }
+            return files
         }
     }
 
@@ -274,9 +344,7 @@ public class PostHogQueue<Record>(
         file: File,
         throwable: Throwable? = null,
     ) {
-        synchronized(dequeLock) {
-            deque.remove(file)
-        }
+        removeFromDeque(listOf(file))
         file.deleteSafely(config)
         config.logger.log("File: ${file.name} failed to parse: $throwable.")
     }
@@ -378,9 +446,7 @@ public class PostHogQueue<Record>(
         } finally {
             if (deleteFiles) {
                 val delivered = files - retained.toSet()
-                synchronized(dequeLock) {
-                    deque.removeAll(delivered)
-                }
+                removeFromDeque(delivered)
 
                 delivered.forEach {
                     it.deleteSafely(config)
@@ -446,6 +512,7 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             tempFiles = deque.toList()
             deque.clear()
+            queuedBytes = 0
         }
         tempFiles.forEach {
             it.deleteSafely(config)
@@ -517,6 +584,9 @@ public class PostHogQueue<Record>(
             deque.clear()
             deque.addAll(files)
             deque.addAll(existingFiles)
+            if (trackBytes) {
+                queuedBytes += files.sumOf { it.length() }
+            }
         }
         config.logger.log("Loaded ${files.size} cached ${spec.recordsLabel} from disk.")
     }
@@ -537,7 +607,16 @@ public class PostHogQueue<Record>(
         files.sortBy { file -> file.lastModified() }
 
         val maxQueueSize = spec.maxQueueSize(config).coerceAtLeast(1)
-        val overflow = (files.size - maxQueueSize).coerceAtLeast(0)
+        var overflow = (files.size - maxQueueSize).coerceAtLeast(0)
+        val maxQueueBytes = spec.maxQueueBytes
+        if (maxQueueBytes != null) {
+            // Oldest first, keeping at least the newest file, as when a record is added.
+            var bytes = files.drop(overflow).sumOf { it.length() }
+            while (bytes > maxQueueBytes && overflow < files.size - 1) {
+                bytes -= files[overflow].length()
+                overflow++
+            }
+        }
         if (overflow > 0) {
             files.take(overflow).forEach { it.deleteSafely(config) }
             config.logger.log("Dropped $overflow oldest cached ${spec.recordsLabel} to enforce queue capacity.")
@@ -550,6 +629,9 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             deque.clear()
             deque.addAll(files)
+            if (trackBytes) {
+                queuedBytes = files.sumOf { it.length() }
+            }
         }
         cachedRecordsLoaded = true
     }
@@ -604,6 +686,10 @@ public class PostHogQueue<Record>(
     internal val currentRetryCountForTesting: Int
         @PostHogVisibleForTesting
         get() = retryCount
+
+    internal val queuedBytesForTesting: Long
+        @PostHogVisibleForTesting
+        get() = synchronized(dequeLock) { queuedBytes }
 }
 
 internal class BatchLimits(

@@ -94,6 +94,10 @@ public class PostHog private constructor(
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogLogsQueueThread"),
         ),
+    private val aiExecutor: ExecutorService =
+        Executors.newSingleThreadScheduledExecutor(
+            PostHogThreadFactory("PostHogAiQueueThread"),
+        ),
     private val remoteConfigExecutor: ExecutorService =
         Executors.newSingleThreadScheduledExecutor(
             PostHogThreadFactory("PostHogRemoteConfigThread"),
@@ -125,6 +129,10 @@ public class PostHog private constructor(
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
+
+    // The AI lane never shares a queue, executor or retry state with analytics events.
+    @Volatile
+    private var aiQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var pushSubscriptionManager: PostHogPushSubscriptionManager? = null
 
@@ -260,6 +268,12 @@ public class PostHog private constructor(
                         EndpointSpec.logs(config, api, config.logsStoragePrefix),
                         logsExecutor,
                     )
+                val aiQueue =
+                    PostHogQueue(
+                        config,
+                        EndpointSpec.ai(config, api, config.aiStoragePrefix),
+                        aiExecutor,
+                    )
                 val onRemoteConfigLoaded =
                     PostHogOnRemoteConfigLoaded {
                         // The callback fires whether the attempt succeeded or terminally failed;
@@ -329,6 +343,7 @@ public class PostHog private constructor(
                 this.queue = queue
                 this.replayQueue = replayQueue
                 this.logsQueue = logsQueue
+                this.aiQueue = aiQueue
                 this.pushSubscriptionManager =
                     PostHogPushSubscriptionManager(
                         config,
@@ -372,6 +387,7 @@ public class PostHog private constructor(
 
                 queue.start()
                 logsQueue.start()
+                aiQueue.start()
 
                 // Force the persisted OPT_OUT to hydrate before this passive push trigger: the
                 // manager reads config.optOut directly, and it is otherwise resolved lazily on
@@ -631,6 +647,7 @@ public class PostHog private constructor(
                 queue?.stop()
                 replayQueue?.stop()
                 logsQueue?.stop()
+                aiQueue?.stop()
                 pushSubscriptionManager?.close()
                 pushSubscriptionManager = null
 
@@ -999,16 +1016,70 @@ public class PostHog private constructor(
         timestamp: Date?,
         options: Map<String, Any?>?,
     ) {
+        captureInternal(
+            event,
+            distinctId,
+            properties,
+            userProperties,
+            userPropertiesSetOnce,
+            groups,
+            timestamp,
+            options,
+            aiLane = false,
+        )
+    }
+
+    public override fun captureAi(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        options: Map<String, Any?>?,
+    ): UUID? {
+        if (!event.startsWith("\$ai_")) {
+            config?.logger?.log("captureAi event $event doesn't start with \$ai_, so PostHog will drop it. Use capture for non-AI events.")
+        }
+        return captureInternal(
+            event,
+            distinctId,
+            properties,
+            userProperties,
+            userPropertiesSetOnce,
+            groups,
+            timestamp,
+            options,
+            aiLane = true,
+        )
+    }
+
+    /**
+     * Enriches and queues one event. Returns its uuid once it's handed to the queue, or null when
+     * it isn't. [aiLane] sends it through the AI queue instead of the analytics (or replay) queue.
+     */
+    private fun captureInternal(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        options: Map<String, Any?>?,
+        aiLane: Boolean,
+    ): UUID? {
         // Tracked on this call rather than derived from the event, so it survives beforeSend renaming
         // or replacing the event.
         var claimedReplayDebugBundle = false
         try {
             if (!isEnabled()) {
-                return
+                return null
             }
             if (isOptedOut()) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return
+                return null
             }
 
             // A blank distinct ID falls back to the current one, like null, instead of PostHog dropping the event.
@@ -1025,10 +1096,11 @@ public class PostHog private constructor(
 
             if (newDistinctId.isBlank()) {
                 config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
-                return
+                return null
             }
 
-            var isSnapshotEvent = event == PostHogEventName.SNAPSHOT.event
+            // The AI lane always uses its own queue.
+            var isSnapshotEvent = !aiLane && event == PostHogEventName.SNAPSHOT.event
             var groupIdentify = false
             if (event == PostHogEventName.GROUP_IDENTIFY.event) {
                 groupIdentify = true
@@ -1044,7 +1116,7 @@ public class PostHog private constructor(
                 config?.logger?.log(
                     "Skipping \$exception: an entry in \$exception_list matches ignoredExceptionTypes",
                 )
-                return
+                return null
             }
 
             // Attach the buffered exception steps to any $exception event (unless the caller
@@ -1095,36 +1167,40 @@ public class PostHog private constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return
+                return null
             }
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
-            isSnapshotEvent = postHogEvent.event == PostHogEventName.SNAPSHOT.event
+            isSnapshotEvent = !aiLane && postHogEvent.event == PostHogEventName.SNAPSHOT.event
             // if this is a $snapshot event and $session_id is missing, don't process then event
             if (isSnapshotEvent && postHogEvent.properties?.get("\$session_id") == null) {
                 config?.logger?.log("${postHogEvent.event} event dropped, because the \$session_id property is missing")
-                return
+                return null
             }
             // Replay has its own queue
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
-            } else {
-                val queue = queue
-                // beforeSend may have opted out
-                if (isOptedOut()) {
-                    config?.logger?.log("PostHog is in OptOut state.")
-                } else if (queue != null) {
-                    queue.add(postHogEvent)
-                    if (claimedReplayDebugBundle) {
-                        commitReplayDebugPropertiesWindow()
-                    }
-                }
-                // Notify surveys integration about the event
-                surveysHandler?.onEvent(event, mergedProperties)
-                // Notify session replay handler about the event for event triggers
-                sessionReplayHandler?.onEvent(event, mergedProperties)
+                return uuid
             }
+            val targetQueue = if (aiLane) aiQueue ?: return null else queue
+            var queued = false
+            // beforeSend may have opted out
+            if (isOptedOut()) {
+                config?.logger?.log("PostHog is in OptOut state.")
+            } else if (targetQueue != null) {
+                targetQueue.add(postHogEvent)
+                queued = true
+                if (claimedReplayDebugBundle) {
+                    commitReplayDebugPropertiesWindow()
+                }
+            }
+            // Notify surveys integration about the event
+            surveysHandler?.onEvent(event, mergedProperties)
+            // Notify session replay handler about the event for event triggers
+            sessionReplayHandler?.onEvent(event, mergedProperties)
+            return if (queued) uuid else null
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
+            return null
         } finally {
             if (claimedReplayDebugBundle) {
                 releaseReplayDebugPropertiesClaim()
@@ -2191,6 +2267,7 @@ public class PostHog private constructor(
         super.flush()
         replayQueue?.flush()
         logsQueue?.flush()
+        aiQueue?.flush()
         // See the setup() call site: hydrate opt-out before the manager reads the raw config field.
         isOptedOut()
         pushSubscriptionManager?.retryPending()
@@ -2713,12 +2790,17 @@ public class PostHog private constructor(
                 Executors.newSingleThreadScheduledExecutor(
                     PostHogThreadFactory("PostHogLogsQueueThread"),
                 ),
+            aiExecutor: ExecutorService =
+                Executors.newSingleThreadScheduledExecutor(
+                    PostHogThreadFactory("PostHogAiQueueThread"),
+                ),
         ): PostHogInterface {
             val instance =
                 PostHog(
                     queueExecutor = queueExecutor,
                     replayExecutor = replayExecutor,
                     logsExecutor = logsExecutor,
+                    aiExecutor = aiExecutor,
                     remoteConfigExecutor = featureFlagsExecutor,
                     cachedEventsExecutor = cachedEventsExecutor,
                     reloadFeatureFlags = reloadFeatureFlags,
@@ -2756,6 +2838,27 @@ public class PostHog private constructor(
                 options = options,
             )
         }
+
+        public override fun captureAi(
+            event: String,
+            distinctId: String?,
+            properties: Map<String, Any>?,
+            userProperties: Map<String, Any>?,
+            userPropertiesSetOnce: Map<String, Any>?,
+            groups: Map<String, String>?,
+            timestamp: Date?,
+            options: Map<String, Any?>?,
+        ): UUID? =
+            shared.captureAi(
+                event,
+                distinctId = distinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
+                timestamp = timestamp,
+                options = options,
+            )
 
         public override fun captureException(
             throwable: Throwable,
