@@ -195,6 +195,7 @@ public class PostHogAndroid private constructor() {
             config.storagePrefix = config.storagePrefix ?: File(cacheDir, "posthog-disk-queue").absolutePath
             config.replayStoragePrefix = config.replayStoragePrefix ?: File(cacheDir, "posthog-disk-replay-queue").absolutePath
             config.logsStoragePrefix = config.logsStoragePrefix ?: File(cacheDir, "posthog-disk-logs-queue").absolutePath
+            config.aiStoragePrefix = config.aiStoragePrefix ?: File(cacheDir, "posthog-disk-ai-queue").absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33

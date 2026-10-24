@@ -104,6 +104,52 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Captures an AI observability event, such as `$ai_generation`, `$ai_span`, `$ai_trace` or
+     * `$ai_embedding`, and sends it to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts much
+     * larger events than [capture].
+     *
+     * Takes the same arguments as [capture], merges properties in the same order and goes through
+     * the same `beforeSend` hooks. The event is queued on disk separately from other events and sent
+     * unchanged: the SDK doesn't redact or truncate prompts, outputs or media. PostHog drops an event
+     * sent here whose name doesn't start with `$ai_`, and the SDK logs a debug message when it's
+     * given one. [capture] never sends events here, even ones named `$ai_*`.
+     *
+     * AI events use [PostHogConfig.flushAt], [PostHogConfig.maxBatchSize] and
+     * [PostHogConfig.flushIntervalSeconds], like other events, and
+     * [PostHogConfig.captureAiCompression], [PostHogConfig.captureAiMaxQueueSize] and
+     * [PostHogConfig.captureAiTimeout] instead of `compression`, `maxQueueSize` and the default
+     * timeouts. An event over [PostHogConfig.captureAiMaxEventBytes] (8 MiB by default) is dropped
+     * when it's queued, with a log line naming the event and its size. Requests carry up to about
+     * 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events
+     * are kept on disk; beyond that, the oldest are dropped.
+     *
+     * Example:
+     * ```
+     * PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "$ai_trace_id" to traceId))
+     * ```
+     * @param event the AI event name, such as `$ai_generation`
+     * @param distinctId the distinctId, the generated [distinctId] is used if not given or blank
+     * @param properties the custom properties
+     * @param userProperties the user properties, set as a "$set" property
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
+     * @param groups the groups, set as a "$groups" property
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+     * @param options settings that tell PostHog how to process this event, see `options` in [capture]
+     * @return the event's uuid once it's handed to the queue, or null when it isn't: the SDK is
+     *   disabled or opted out, or `beforeSend` dropped it
+     */
+    public fun captureAi(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        timestamp: Date? = null,
+        options: Map<String, Any?>? = null,
+    ): UUID?
+
+    /**
      * Captures exceptions
      * @param throwable the Throwable error
      * @param properties the custom properties

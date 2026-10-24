@@ -263,6 +263,7 @@ public open class PostHogStateless protected constructor(
         timestamp: Date?,
         options: Map<String, Any?>? = null,
         uuid: UUID? = null,
+        targetQueue: PostHogQueueInterface<PostHogEvent>? = null,
     ): Boolean {
         try {
             if (!isEnabled()) {
@@ -316,7 +317,7 @@ public open class PostHogStateless protected constructor(
                 return false
             }
 
-            val queue = queue ?: return false
+            val queue = targetQueue ?: queue ?: return false
             queue.add(postHogEvent)
             return true
         } catch (e: Throwable) {

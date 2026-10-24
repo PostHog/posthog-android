@@ -25,6 +25,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun addExceptionStep (Ljava/lang/String;Ljava/util/Map;)V
 	public fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)V
+	public fun captureAi (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)Ljava/util/UUID;
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;Ljava/util/Map;)V
 	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
 	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
@@ -73,6 +74,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public fun addExceptionStep (Ljava/lang/String;Ljava/util/Map;)V
 	public fun alias (Ljava/lang/String;Ljava/util/Map;)V
 	public fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)V
+	public fun captureAi (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)Ljava/util/UUID;
 	public fun captureException (Ljava/lang/Throwable;Ljava/util/Map;Ljava/util/Map;)V
 	public fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
 	public fun captureFeatureView (Ljava/lang/String;Ljava/lang/String;)V
@@ -147,6 +149,9 @@ public final class com/posthog/PostHogCompression : java/lang/Enum {
 
 public class com/posthog/PostHogConfig {
 	public static final field Companion Lcom/posthog/PostHogConfig$Companion;
+	public static final field DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES I
+	public static final field DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE I
+	public static final field DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS I
 	public static final field DEFAULT_EU_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_EU_HOST Ljava/lang/String;
 	public static final field DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE I
@@ -161,9 +166,14 @@ public class com/posthog/PostHogConfig {
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZZIIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogOnFeatureFlags;ZLkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
+	public final fun getAiStoragePrefix ()Ljava/lang/String;
 	public final fun getBeforeSendList ()Ljava/util/List;
 	public final fun getBootstrap ()Lcom/posthog/PostHogBootstrapConfig;
 	public final fun getCachePreferences ()Lcom/posthog/internal/PostHogPreferences;
+	public final fun getCaptureAiCompression ()Lcom/posthog/PostHogCompression;
+	public final fun getCaptureAiMaxEventBytes ()I
+	public final fun getCaptureAiMaxQueueSize ()I
+	public final fun getCaptureAiTimeout ()I
 	public final fun getCompression ()Lcom/posthog/PostHogCompression;
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
@@ -217,8 +227,13 @@ public class com/posthog/PostHogConfig {
 	public final synthetic fun getTracingHeaders ()Ljava/util/List;
 	public final fun removeBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun removeIntegration (Lcom/posthog/PostHogIntegration;)V
+	public final fun setAiStoragePrefix (Ljava/lang/String;)V
 	public final fun setBootstrap (Lcom/posthog/PostHogBootstrapConfig;)V
 	public final fun setCachePreferences (Lcom/posthog/internal/PostHogPreferences;)V
+	public final fun setCaptureAiCompression (Lcom/posthog/PostHogCompression;)V
+	public final fun setCaptureAiMaxEventBytes (I)V
+	public final fun setCaptureAiMaxQueueSize (I)V
+	public final fun setCaptureAiTimeout (I)V
 	public final fun setCompression (Lcom/posthog/PostHogCompression;)V
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
@@ -370,6 +385,8 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public static synthetic fun alias$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public abstract fun capture (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;ILjava/lang/Object;)V
+	public abstract fun captureAi (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;)Ljava/util/UUID;
+	public static synthetic fun captureAi$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/UUID;
 	public abstract fun captureException (Ljava/lang/Throwable;Ljava/util/Map;Ljava/util/Map;)V
 	public static synthetic fun captureException$default (Lcom/posthog/PostHogInterface;Ljava/lang/Throwable;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public abstract fun captureFeatureInteraction (Ljava/lang/String;Ljava/lang/String;)V
@@ -429,6 +446,7 @@ public final class com/posthog/PostHogInterface$DefaultImpls {
 	public static synthetic fun addExceptionStep$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun alias$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun capture$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun captureAi$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/Date;Ljava/util/Map;ILjava/lang/Object;)Ljava/util/UUID;
 	public static synthetic fun captureException$default (Lcom/posthog/PostHogInterface;Ljava/lang/Throwable;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public static synthetic fun captureFeatureInteraction$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public static synthetic fun captureFeatureView$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
@@ -622,12 +640,14 @@ public final class com/posthog/internal/CustomHeadersInterceptor : okhttp3/Inter
 
 public final class com/posthog/internal/EndpointSpec {
 	public static final field Companion Lcom/posthog/internal/EndpointSpec$Companion;
+	public static final fun ai (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public static final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public static final fun logs (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public static final fun snapshot (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 }
 
 public final class com/posthog/internal/EndpointSpec$Companion {
+	public final fun ai (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public final fun logs (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
 	public final fun snapshot (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
@@ -742,6 +762,8 @@ public final class com/posthog/internal/FlagProperty {
 
 public final class com/posthog/internal/GzipRequestInterceptor : okhttp3/Interceptor {
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
+	public fun <init> (Lcom/posthog/PostHogConfig;Lkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Lcom/posthog/PostHogConfig;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun intercept (Lokhttp3/Interceptor$Chain;)Lokhttp3/Response;
 }
 
