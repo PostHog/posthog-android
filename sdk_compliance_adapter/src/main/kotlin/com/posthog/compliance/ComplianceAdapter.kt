@@ -22,6 +22,9 @@ import io.ktor.server.routing.routing
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.File
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
+import java.util.Date
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.Condition
@@ -34,8 +37,11 @@ private const val QUEUE_STORAGE_PREFIX = "/tmp/posthog-queue"
 // Upper bound on the wait for a flush()'d batch to reach the mock (generous for Docker).
 private const val FLUSH_SETTLE_MS = 2000L
 
-// The capture endpoint the SDK posts analytics events to.
+// The capture v1 endpoints the SDK posts analytics and AI events to.
 private const val CAPTURE_PATH = "/i/v1/analytics/events"
+private const val CAPTURE_AI_PATH = "/i/v1/ai/events"
+
+private fun isCaptureUrl(url: String): Boolean = url.contains(CAPTURE_PATH) || url.contains(CAPTURE_AI_PATH)
 
 /**
  * PostHog Android SDK Compliance Adapter
@@ -162,7 +168,7 @@ class TrackingInterceptor : Interceptor {
         val uuidList = mutableListOf<String>()
 
         // Parse request body before sending
-        if (url.contains(CAPTURE_PATH) && requestBody != null) {
+        if (isCaptureUrl(url) && requestBody != null) {
             try {
                 val buffer = okio.Buffer()
                 requestBody.writeTo(buffer)
@@ -183,7 +189,7 @@ class TrackingInterceptor : Interceptor {
         val response = chain.proceed(request)
 
         // Track the response
-        if (url.contains(CAPTURE_PATH)) {
+        if (isCaptureUrl(url)) {
             try {
                 // PostHog-Attempt starts at 1; the harness counts retries from 0.
                 val retryCount = (request.header("PostHog-Attempt")?.toIntOrNull() ?: 1) - 1
@@ -219,6 +225,16 @@ class TrackingInterceptor : Interceptor {
     }
 }
 
+// The harness sends RFC 3339 timestamps, with any offset; the SDK serializes the instant in UTC.
+private fun parseHarnessTimestamp(timestamp: String?): Date? =
+    timestamp?.let {
+        try {
+            Date.from(OffsetDateTime.parse(it).toInstant())
+        } catch (_: DateTimeParseException) {
+            null
+        }
+    }
+
 // Block until [predicate] holds (signalled as each capture response lands) or [timeoutMs] elapses.
 private fun awaitBatch(
     timeoutMs: Long,
@@ -247,8 +263,9 @@ fun main() {
                         sdk_name = "posthog-android",
                         sdk_version = PostHogConfig(projectToken = "").sdkVersion,
                         adapter_version = "1.0.0",
-                        // Opt into the capture suites (android posts /i/v1/analytics/events with gzip).
-                        capabilities = listOf("capture_v1", "encoding_gzip", "event_options"),
+                        // Opt into the capture suites (android posts /i/v1/analytics/events and
+                        // /i/v1/ai/events with gzip).
+                        capabilities = listOf("capture_v1", "capture_ai_v1", "encoding_gzip", "event_options"),
                     ),
                 )
             }
@@ -272,6 +289,7 @@ fun main() {
 
                     // close() leaves queue files on disk; wipe so they don't replay into this test.
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
+                    File("$QUEUE_STORAGE_PREFIX-ai").deleteRecursively()
 
                     // Create new config
                     val flushIntervalMs = req.flush_interval_ms ?: 100
@@ -301,11 +319,14 @@ fun main() {
 
                     req.max_retries?.let { config.pushNotificationSubscriptionMaxRetries = it }
                     req.enable_compression?.let {
-                        config.compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
+                        val compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
+                        config.compression = compression
+                        config.captureAiCompression = compression
                     }
 
-                    // Set storage prefix for file-backed queue
+                    // Set storage prefixes for the file-backed queues (both wiped on /init and /reset)
                     config.storagePrefix = QUEUE_STORAGE_PREFIX
+                    config.aiStoragePrefix = "$QUEUE_STORAGE_PREFIX-ai"
 
                     // Set minimal context to provide $lib and $lib_version
                     config.context = TestPostHogContext("posthog-android", config.sdkVersion)
@@ -350,6 +371,7 @@ fun main() {
                     event = req.event,
                     distinctId = req.distinct_id,
                     properties = properties,
+                    timestamp = parseHarnessTimestamp(req.timestamp),
                     options = req.options,
                 )
 
@@ -369,6 +391,38 @@ fun main() {
                     }
 
                 call.respond(CaptureResponse(success = true, uuid = uuid))
+            }
+
+            // Same request as /capture, sent with captureAi to /i/v1/ai/events. Ktor's Netty engine
+            // streams request bodies without a size limit, so an 8 MiB AI event is received whole.
+            post("/capture_ai") {
+                val req = call.receive<CaptureRequest>()
+
+                val ph =
+                    AdapterContext.lock.withLock {
+                        AdapterContext.postHog
+                    }
+
+                if (ph == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
+                    return@post
+                }
+
+                val uuid =
+                    ph.captureAi(
+                        event = req.event,
+                        distinctId = req.distinct_id,
+                        properties = req.properties,
+                        timestamp = parseHarnessTimestamp(req.timestamp),
+                        options = req.options,
+                    )
+
+                AdapterContext.lock.withLock {
+                    AdapterContext.state.totalEventsCaptured++
+                    AdapterContext.state.pendingEvents++
+                }
+
+                call.respond(CaptureResponse(success = true, uuid = (uuid ?: UUID.randomUUID()).toString()))
             }
 
             post("/get_feature_flag") {
@@ -474,6 +528,7 @@ fun main() {
 
                     // close() leaves queue files on disk; wipe so they don't replay next test (matches iOS).
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
+                    File("$QUEUE_STORAGE_PREFIX-ai").deleteRecursively()
 
                     AdapterContext.state.pendingEvents = 0
                     AdapterContext.state.totalEventsCaptured = 0

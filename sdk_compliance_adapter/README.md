@@ -41,11 +41,11 @@ Events are tracked via:
 
 ### SDK Type
 
-The Android SDK advertises `capture_v1` and `encoding_gzip`:
-- Endpoint: `POST /i/v1/analytics/events`
+The Android SDK advertises `capture_v1`, `capture_ai_v1`, `encoding_gzip` and `event_options`:
+- Endpoints: `POST /i/v1/analytics/events` (`/capture`) and `POST /i/v1/ai/events` (`/capture_ai`)
 - Format: `{created_at, batch}` with the project token in an `Authorization: Bearer` header
 
-Tests run with `--sdk-type server`; the harness selects the `capture_v1` suite from the capabilities.
+Tests run with `--sdk-type server`; the harness selects the `capture_v1` and `capture_ai_v1` suites from the capabilities.
 
 ## Files Created
 
