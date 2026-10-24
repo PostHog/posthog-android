@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
 import com.posthog.PostHogConfig
+import com.posthog.PostHogPushTokenType
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import java.io.File
 import java.util.Timer
@@ -26,7 +27,7 @@ private const val MAX_REJECTED_KEYS = 8
 /**
  * Persists the latest push subscription registration and retries it on transient failures.
  *
- * A single latest-wins record `{deviceToken, appId}` is stored before the first
+ * A single latest-wins record `{deviceToken, appId, tokenType}` is stored before the first
  * attempt; every new [register] overwrites it and resets the retry counter. The distinct id
  * is read at send time, never persisted with the record — only the id a successful send was
  * delivered for is remembered ([PendingRecord.deliveredForDistinctId]) so [resendIfDistinctIdChanged]
@@ -125,9 +126,10 @@ internal class PostHogPushSubscriptionManager(
     fun register(
         deviceToken: String,
         appId: String,
+        tokenType: PostHogPushTokenType = PostHogPushTokenType.FCM_TOKEN,
     ) {
         executor.executeSafely {
-            performRegister(deviceToken, appId)
+            performRegister(deviceToken, appId, tokenType)
         }
     }
 
@@ -135,11 +137,13 @@ internal class PostHogPushSubscriptionManager(
     private fun performRegister(
         deviceToken: String,
         appId: String,
+        tokenType: PostHogPushTokenType,
     ) {
         val existing = currentRecord()
         if (existing != null &&
             existing.deviceToken == deviceToken &&
             existing.appId == appId &&
+            existing.resolvedTokenType == tokenType &&
             existing.deliveredForDistinctId != null &&
             existing.deliveredForDistinctId == distinctIdProvider()
         ) {
@@ -152,8 +156,9 @@ internal class PostHogPushSubscriptionManager(
         val isIdenticalUndelivered =
             existing != null &&
                 existing.deviceToken == deviceToken &&
-                existing.appId == appId
-        val record = PendingRecord(deviceToken, appId)
+                existing.appId == appId &&
+                existing.resolvedTokenType == tokenType
+        val record = PendingRecord(deviceToken, appId, tokenType = tokenType)
         pendingRecord = record
         hydratedFromDisk = true
         pendingFile?.let { writePending(it, record, "Failed to persist push subscription") }
@@ -390,7 +395,7 @@ internal class PostHogPushSubscriptionManager(
                 writePendingUnregister(pending)
                 performUnregister(pending)
             }
-            performRegister(record.deviceToken, record.appId)
+            performRegister(record.deviceToken, record.appId, record.resolvedTokenType)
         }
     }
 
@@ -514,7 +519,11 @@ internal class PostHogPushSubscriptionManager(
             // newer register). Re-read it and bail if it no longer matches, so a late mint can't
             // resurrect a just-DELETEd subscription or POST a token the newer record superseded.
             val current = currentRecord()
-            if (current == null || current.deviceToken != record.deviceToken || current.appId != record.appId) {
+            if (current == null ||
+                current.deviceToken != record.deviceToken ||
+                current.appId != record.appId ||
+                current.resolvedTokenType != record.resolvedTokenType
+            ) {
                 config.logger.log("Push subscription send skipped: record changed during identity token mint.")
                 return
             }
@@ -538,6 +547,7 @@ internal class PostHogPushSubscriptionManager(
                 deviceToken = record.deviceToken,
                 appId = record.appId,
                 identityToken = identityToken,
+                tokenType = record.resolvedTokenType,
             )
             config.logger.log("Push notification token registered successfully.")
             retryCount = 0
@@ -872,7 +882,13 @@ internal class PostHogPushSubscriptionManager(
         val appId: String,
         @SerializedName("delivered_for_distinct_id")
         val deliveredForDistinctId: String? = null,
-    )
+        // Null in records persisted before FID support, which were all FCM registration tokens.
+        @SerializedName("token_type")
+        val tokenType: PostHogPushTokenType? = null,
+    ) {
+        val resolvedTokenType: PostHogPushTokenType
+            get() = tokenType ?: PostHogPushTokenType.FCM_TOKEN
+    }
 
     /**
      * A durable "delete this subscription" intent for the identity it names, persisted so an

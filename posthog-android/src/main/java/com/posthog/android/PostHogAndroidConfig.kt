@@ -32,8 +32,11 @@ import com.posthog.internal.PostHogQueue
  * @property capturePushNotificationSubscriptions Whether to auto-register this device's push
  *   token at startup. When enabled and Firebase Messaging is on the classpath, the SDK fetches the
  *   FCM token + Firebase `project_id` and registers them so PostHog Workflows can deliver push
- *   notifications. No effect when Firebase is absent (a single debug log). Instant token refresh
- *   still needs the app to forward `onNewToken` to `registerPushNotificationToken(...)`. Default: `true`.
+ *   notifications. When the manifest enables `firebase_messaging_installation_id_enabled`, the
+ *   Firebase Installation ID is registered instead. No effect when Firebase is absent (a single
+ *   debug log). Instant token refresh still needs the app to forward `onNewToken` (or, in
+ *   installation ID mode, `onRegistered` with [com.posthog.PostHogPushTokenType.FID]) to
+ *   `registerPushNotificationToken(...)`. Default: `true`.
  * @property capturePushNotificationOpened Whether to auto-capture `$push_notification_opened` for
  *   cold-start taps on a tray notification (detected via the launch intent's `google.message_id`
  *   extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here —

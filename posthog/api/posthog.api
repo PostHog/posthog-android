@@ -53,6 +53,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
+	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenType;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -103,6 +104,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public final fun overrideSharedInstance (Lcom/posthog/PostHogInterface;)V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
+	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenType;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -409,6 +411,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public abstract fun isSessionReplayActive ()Z
 	public abstract fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public abstract fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenType;)V
 	public abstract fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public static synthetic fun reloadFeatureFlags$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogOnFeatureFlags;ILjava/lang/Object;)V
 	public abstract fun reset ()V
@@ -477,6 +480,14 @@ public abstract interface class com/posthog/PostHogOptInReceiver {
 
 public abstract interface class com/posthog/PostHogPropertiesSanitizer {
 	public abstract fun sanitize (Ljava/util/Map;)Ljava/util/Map;
+}
+
+public final class com/posthog/PostHogPushTokenType : java/lang/Enum {
+	public static final field FCM_TOKEN Lcom/posthog/PostHogPushTokenType;
+	public static final field FID Lcom/posthog/PostHogPushTokenType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lcom/posthog/PostHogPushTokenType;
+	public static fun values ()[Lcom/posthog/PostHogPushTokenType;
 }
 
 public class com/posthog/PostHogStateless : com/posthog/PostHogStatelessInterface {
@@ -810,8 +821,8 @@ public final class com/posthog/internal/PostHogApi {
 	public static synthetic fun flags$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;Ljava/util/List;ZILjava/lang/Object;)Lcom/posthog/internal/PostHogFlagsResponse;
 	public final fun localEvaluation (Ljava/lang/String;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
 	public static synthetic fun localEvaluation$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lcom/posthog/internal/LocalEvaluationApiResponse;
-	public final fun pushSubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public static synthetic fun pushSubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+	public final fun pushSubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenType;)V
+	public static synthetic fun pushSubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/posthog/PostHogPushTokenType;ILjava/lang/Object;)V
 	public final fun pushUnsubscription (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun pushUnsubscription$default (Lcom/posthog/internal/PostHogApi;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun remoteConfig ()Lcom/posthog/internal/PostHogRemoteConfigResponse;
