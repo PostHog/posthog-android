@@ -66,6 +66,7 @@ internal class PostHogCaptureV1Test {
         http: MockWebServer,
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
+        ai: Boolean = false,
     ): PostHogQueue<PostHogEvent> {
         val config =
             config(http.url("/").toString()).apply {
@@ -74,7 +75,8 @@ internal class PostHogCaptureV1Test {
             }
         // pause time pinned to the past so a backoff never blocks the next flush
         clock.setAddSecondsToCurrentDate(parseISO8601Date("1970-01-01T00:00:00.000Z")!!)
-        val spec = EndpointSpec.batch(config, PostHogApi(config), config.storagePrefix)
+        val api = PostHogApi(config)
+        val spec = if (ai) EndpointSpec.ai(config, api, config.storagePrefix) else EndpointSpec.batch(config, api, config.storagePrefix)
         return PostHogQueue(config, spec, executor).also { queues.add(it) }
     }
 
@@ -130,6 +132,57 @@ internal class PostHogCaptureV1Test {
         assertEquals("2024-05-01T10:20:30.456Z", request.headers["PostHog-Request-Timestamp"])
         assertEquals("application/json", request.headers["Content-Type"])
         assertEquals("gzip", request.headers["Content-Encoding"])
+    }
+
+    @Test
+    fun `captureAi posts to the AI endpoint with the same headers and body shape`() {
+        val http = httpServers.mockHttp()
+        clock.setCurrentDate(parseISO8601Date("2024-05-01T10:20:30.456Z")!!)
+        val event = event("\$ai_generation")
+
+        api(http.url("/").toString()).captureAi(listOf(event))
+
+        val request = http.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/i/v1/ai/events", request.path)
+        assertEquals("Bearer $PROJECT_TOKEN", request.headers["Authorization"])
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["PostHog-Sdk-Info"])
+        assertEquals("1", request.headers["PostHog-Attempt"])
+        UUID.fromString(assertNotNull(request.headers["PostHog-Request-Id"]))
+        assertEquals("2024-05-01T10:20:30.456Z", request.headers["PostHog-Request-Timestamp"])
+        assertEquals("application/json", request.headers["Content-Type"])
+        assertEquals("gzip", request.headers["Content-Encoding"])
+        val body = body(request)
+        assertEquals(setOf("created_at", "batch"), body.keys)
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(listOf(event.uuid.toString()), (body["batch"] as List<Map<String, Any?>>).map { it["uuid"] })
+    }
+
+    @Test
+    fun `analytics and AI retries keep separate request identities`() {
+        val analytics = event()
+        val ai = event("\$ai_generation")
+        val http = httpServers.mockHttp(response = resultsResponse(analytics.uuid!! to "retry"))
+        http.enqueue(resultsResponse(ai.uuid!! to "retry"))
+        http.enqueue(resultsResponse(analytics.uuid!! to "ok"))
+        http.enqueue(resultsResponse(ai.uuid!! to "ok"))
+        val sut = api(http.url("/").toString())
+
+        sut.captureV1(listOf(analytics))
+        sut.captureAi(listOf(ai))
+        sut.captureV1(listOf(analytics))
+        sut.captureAi(listOf(ai))
+
+        val requests = List(4) { http.takeRequest() }
+        assertEquals(
+            listOf("/i/v1/analytics/events", "/i/v1/ai/events", "/i/v1/analytics/events", "/i/v1/ai/events"),
+            requests.map { it.path },
+        )
+        assertEquals(listOf("1", "1", "2", "2"), requests.map { it.headers["PostHog-Attempt"] })
+        val ids = requests.map { it.headers["PostHog-Request-Id"] }
+        assertNotEquals(ids[0], ids[1])
+        assertEquals(ids[0], ids[2])
+        assertEquals(ids[1], ids[3])
     }
 
     @Test
@@ -608,6 +661,25 @@ internal class PostHogCaptureV1Test {
         assertEquals("2", second.headers["PostHog-Attempt"])
         assertEquals(first.headers["PostHog-Request-Id"], second.headers["PostHog-Request-Id"])
         assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
+    fun `AI queue keeps only the events the AI endpoint asked to retry`() {
+        val ok = event("\$ai_generation")
+        val retry = event("\$ai_span")
+        val http = httpServers.mockHttp(response = resultsResponse(ok.uuid!! to "ok", retry.uuid!! to "retry"))
+        val sut = queue(http, flushAt = 2, ai = true)
+
+        sut.add(ok)
+        sut.add(retry)
+        executor.awaitExecution()
+
+        assertEquals("/i/v1/ai/events", http.takeRequest().path)
+        assertEquals(1, sut.currentRetryCountForTesting)
+        assertEquals(
+            listOf(retry.uuid.toString()),
+            sut.dequeList.map { file -> file.reader().use { serializer.deserialize<PostHogEvent>(it).uuid.toString() } },
+        )
     }
 
     @Test
