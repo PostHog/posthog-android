@@ -82,6 +82,7 @@ data class CaptureRequest(
     val event: String,
     val properties: Map<String, Any>? = null,
     val timestamp: String? = null,
+    val options: Map<String, Any?>? = null,
 )
 
 data class CaptureResponse(
@@ -247,7 +248,7 @@ fun main() {
                         sdk_version = PostHogConfig(projectToken = "").sdkVersion,
                         adapter_version = "1.0.0",
                         // Opt into the capture suites (android posts /i/v1/analytics/events with gzip).
-                        capabilities = listOf("capture_v1", "encoding_gzip"),
+                        capabilities = listOf("capture_v1", "encoding_gzip", "event_options"),
                     ),
                 )
             }
@@ -349,6 +350,7 @@ fun main() {
                     event = req.event,
                     distinctId = req.distinct_id,
                     properties = properties,
+                    options = req.options,
                 )
 
                 // Get the UUID that was just captured (via beforeSend hook)

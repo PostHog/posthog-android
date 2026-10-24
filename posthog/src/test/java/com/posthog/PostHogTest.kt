@@ -705,6 +705,7 @@ internal class PostHogTest {
             )
         assertEquals(expectedKeys, theEvent.properties!!.keys)
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
+        assertEquals(false, theEvent.options?.get("process_person_profile"))
 
         assertEquals("IAmInactive", theEvent.properties!!["\$feature_flag"])
         assertEquals(false, theEvent.properties!!["\$feature_flag_response"])
@@ -713,6 +714,44 @@ internal class PostHogTest {
         assertEquals(2, theEvent.properties!!["\$feature_flag_version"])
         assertEquals("No matching condition set", theEvent.properties!!["\$feature_flag_reason"])
         assertEquals("171d83c3-4ac2-4bff-961d-efe3a0c3539c", theEvent.properties!!["\$feature_flag_request_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `minimal feature flag called event keeps the registered legacy option properties`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val responseFlagsApi = file.readText()
+
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setBody(""))
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, context = TestPostHogContext())
+
+        // registered as super properties, so the send can still hoist them into options
+        sut.register("\$cookieless_mode", true)
+        sut.register("\$ignore_sent_at", true)
+        sut.register("\$product_tour_id", "tour")
+        sut.register("myCustomProp", "value")
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest()
+
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val event = batch.batch.first()
+        // the send hoists the kept legacy properties into their options
+        val options = event.options!!
+        assertEquals(true, options["cookieless_mode"])
+        assertEquals(true, options["disable_skew_correction"])
+        assertEquals("tour", options["product_tour_id"])
+        val props = event.properties!!
+        assertFalse(props.containsKey("\$cookieless_mode"))
+        assertFalse(props.containsKey("myCustomProp"))
 
         sut.close()
     }
@@ -3464,7 +3503,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `debug properties win over caller and registered properties of the same name`() {
+    fun `caller and registered properties win over debug properties of the same name`() {
         val http = mockHttp()
         val url = http.url("/")
         val integration =
@@ -3473,6 +3512,7 @@ internal class PostHogTest {
             }
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
         sut.register("\$recording_status", "registered")
+        sut.register("\$sdk_debug_replay_event_trigger_status", "registered")
 
         sut.capture(EVENT, properties = mapOf("\$recording_status" to "caller", "\$sdk_debug_pending_queue_size" to -1))
 
@@ -3483,8 +3523,9 @@ internal class PostHogTest {
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         val theEvent = batch.batch.first()
-        assertEquals("active", theEvent.properties!!["\$recording_status"])
-        assertNotEquals(-1, (theEvent.properties!!["\$sdk_debug_pending_queue_size"] as Number).toInt())
+        assertEquals("caller", theEvent.properties!!["\$recording_status"])
+        assertEquals("registered", theEvent.properties!!["\$sdk_debug_replay_event_trigger_status"])
+        assertEquals(-1, (theEvent.properties!!["\$sdk_debug_pending_queue_size"] as Number).toInt())
 
         sut.close()
     }
@@ -5353,11 +5394,12 @@ internal class PostHogTest {
 
         queueExecutor.shutdownAndAwaitTermination()
 
-        http.takeRequest()
+        val lockedBatch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals(false, lockedBatch.batch[0].options?.get("process_person_profile"))
         val request = http.takeRequest()
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        assertEquals(true, batch.batch[0].options?.get("process_person_profile"))
+        assertNull(batch.batch[0].options?.get("process_person_profile"))
 
         sut.close()
     }

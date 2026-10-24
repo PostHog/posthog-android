@@ -44,6 +44,7 @@ public class PostHogFake : PostHogInterface {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: Date?,
+        options: Map<String, Any?>?,
     ) {
         this.event = event
         this.properties = properties
@@ -63,6 +64,7 @@ public class PostHogFake : PostHogInterface {
     override fun captureException(
         throwable: Throwable,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -76,6 +78,7 @@ public class PostHogFake : PostHogInterface {
         distinctId: String,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -116,6 +119,7 @@ public class PostHogFake : PostHogInterface {
     override fun setPersonProperties(
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -170,17 +174,22 @@ public class PostHogFake : PostHogInterface {
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
     override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         this.screenTitle = screenTitle
     }
 
-    override fun alias(alias: String) {
+    override fun alias(
+        alias: String,
+        options: Map<String, Any?>?,
+    ) {
     }
 
     override fun isOptOut(): Boolean {
