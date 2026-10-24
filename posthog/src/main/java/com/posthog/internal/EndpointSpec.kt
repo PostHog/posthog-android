@@ -9,9 +9,14 @@ import java.io.OutputStream
 
 /**
  * Per-endpoint specification consumed by [PostHogQueue]. Carries
- * everything that differs between PostHog endpoints (`/batch`, `/snapshot`,
- * and any future endpoint): the codec, the send call, the retry policy,
- * and the per-endpoint runtime knobs.
+ * everything that differs between PostHog endpoints (`/i/v1/analytics/events`,
+ * `/snapshot`, and any future endpoint): the codec, the send call, the retry
+ * policy, and the per-endpoint runtime knobs.
+ *
+ * `send` returns a [SendResult] naming the [recordId]s the server asked to
+ * retry; an empty set means every record is done (delivered or dropped).
+ * Endpoints without per-record results return an empty result and leave
+ * [recordId] null.
  *
  * The queue itself stays record-type-agnostic; everything that varies
  * between endpoints lives here.
@@ -27,10 +32,11 @@ public class EndpointSpec<Record> internal constructor(
     internal val encode: (Record, OutputStream) -> Unit,
     internal val decode: (InputStream) -> Record?,
     internal val describe: (Record) -> String,
-    internal val send: (List<Record>) -> Unit,
+    internal val send: (List<Record>) -> SendResult,
     internal val isRetriableStatusCode: (Int) -> Boolean,
     internal val isFatalRecord: (Record) -> Boolean = { false },
     internal val canBatchTogether: ((Record, Record) -> Boolean)? = null,
+    internal val recordId: ((Record) -> String?)? = null,
 ) {
     public companion object {
         @JvmStatic
@@ -53,9 +59,10 @@ public class EndpointSpec<Record> internal constructor(
                     config.serializer.deserialize<PostHogEvent?>(stream.reader().buffered())
                 },
                 describe = { event -> "Event ${event.event}" },
-                send = { events -> api.batch(events) },
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                send = { events -> api.captureV1(events) },
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
+                recordId = { event -> event.uuid?.toString() },
             )
 
         @JvmStatic
@@ -83,8 +90,11 @@ public class EndpointSpec<Record> internal constructor(
                     first.distinctId == next.distinctId &&
                         (first.properties?.get("\$session_id") as? String) == (next.properties?.get("\$session_id") as? String)
                 },
-                send = { events -> api.snapshot(events) },
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                send = { events ->
+                    api.snapshot(events)
+                    SendResult()
+                },
+                isRetriableStatusCode = ::isSnapshotRetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
             )
 
@@ -119,18 +129,37 @@ public class EndpointSpec<Record> internal constructor(
                     map?.let { PostHogLogRecord.fromStorageMap(it) }
                 },
                 describe = { _ -> "log" },
-                send = { records -> api.sendLogs(records, resourceAttrs) },
+                send = { records ->
+                    api.sendLogs(records, resourceAttrs)
+                    SendResult()
+                },
                 isRetriableStatusCode = ::isLogsRetriableStatusCode,
             )
         }
     }
 }
 
-internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(408, 429, 500, 502, 503, 504)
+/**
+ * What an endpoint's `send` reports back to the queue: the record ids the
+ * server asked to retry, empty when every record is done, and the
+ * `Retry-After` the server sent with that answer.
+ */
+internal class SendResult(
+    val retryIds: Set<String> = emptySet(),
+    val retryAfterSeconds: Int? = null,
+)
 
-internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_EVENTS_RETRYABLE_STATUS_CODES
+/**
+ * Capture v1 retry policy: 408 and the listed 5xx. Everything else, including 429 and 3xx, is
+ * terminal; 413 is handled by the queue's batch halving.
+ */
+internal fun isCaptureV1RetriableStatusCode(code: Int): Boolean = code == 408 || code in setOf(500, 502, 503, 504)
 
-internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+/** `/snapshot` (replay) retry policy: 408, 429, the listed 5xx, plus 3xx redirects. */
+internal fun isSnapshotRetriableStatusCode(code: Int): Boolean = code in setOf(408, 429, 500, 502, 503, 504) || code in 300..399
+
+/** `/i/v1/logs` retry policy: 408, 429, every 5xx, plus 3xx redirects. */
+internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 300..399 || code in 500..599
 
 /**
  * Captures the resource attributes for the logs endpoint at SDK setup.

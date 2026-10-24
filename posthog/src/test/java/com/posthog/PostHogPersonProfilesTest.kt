@@ -81,7 +81,7 @@ internal class PostHogPersonProfilesTest {
         val theEvent = batch.batch.first()
 
         assertEquals("\$identify", theEvent.event)
-        assertEquals(true, theEvent.properties?.get("\$process_person_profile"))
+        assertEquals(true, theEvent.options?.get("process_person_profile"))
         assertEquals(DISTINCT_ID, theEvent.distinctId)
         assertNotNull(theEvent.properties!!["\$anon_distinct_id"])
         assertEquals(userProps, theEvent.properties!!["\$set"])
@@ -108,7 +108,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -133,7 +133,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
         assertEquals(false, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
@@ -160,7 +160,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -185,7 +185,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -210,7 +210,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -234,7 +234,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -261,7 +261,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
         assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
 
         sut.close()
@@ -287,7 +287,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
     }
@@ -311,7 +311,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.last()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.reset()
         sut.close()
@@ -334,7 +334,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(true, event.options!!["process_person_profile"] as Boolean)
 
         sut.reset()
         sut.close()
@@ -359,7 +359,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
 
         sut.reset()
         sut.close()
@@ -384,7 +384,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
 
         sut.reset()
         sut.close()
@@ -409,7 +409,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
 
         sut.reset()
         sut.close()
@@ -432,7 +432,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(false, event.properties!!["\$process_person_profile"] as Boolean)
+        assertEquals(false, event.options!!["process_person_profile"] as Boolean)
 
         sut.close()
         http.shutdown()

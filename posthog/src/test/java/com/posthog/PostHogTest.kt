@@ -283,6 +283,27 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `setup no-ops for a personal API key`() {
+        val config = PostHogConfig("phx_personal", "https://api.posthog.com")
+        val logger = TestLogger()
+        config.logger = logger
+        val sut =
+            PostHog.withInternal(
+                config,
+                queueExecutor,
+                replayQueueExecutor,
+                remoteConfigExecutor,
+                cachedEventsExecutor,
+                reloadFeatureFlags = true,
+            )
+
+        assertTrue(sut.isOptOut())
+        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
+
+        sut.close()
+    }
+
+    @Test
     fun `setup adds integration by default`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -698,10 +719,6 @@ internal class PostHogTest {
                 "\$feature_flag_reason",
                 "\$feature_flag_request_id",
                 "\$groups",
-                "\$process_person_profile",
-                "\$session_id",
-                "\$lib",
-                "\$lib_version",
             )
         assertEquals(expectedKeys, theEvent.properties!!.keys)
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
@@ -1783,8 +1800,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(PROJECT_TOKEN, batch.projectToken)
-        assertNotNull(batch.sentAt)
+        assertEquals("Bearer $PROJECT_TOKEN", request.headers["Authorization"])
 
         val theEvent = batch.batch.first()
         assertEquals(EVENT, theEvent.event)
@@ -1822,10 +1838,9 @@ internal class PostHogTest {
 
         val request = http.takeRequest()
         val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        val theEvent = batch.batch.first()
+        val theEvent = captureV1Events(content).first()
 
-        assertEquals(callerSessionId, theEvent.properties!!["\$session_id"])
+        assertEquals(callerSessionId, theEvent["session_id"])
 
         sut.close()
     }
@@ -2115,8 +2130,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(PROJECT_TOKEN, batch.projectToken)
-        assertNotNull(batch.sentAt)
+        assertEquals("Bearer $PROJECT_TOKEN", request.headers["Authorization"])
 
         val theEvent = batch.batch.first()
         assertNotNull(theEvent.timestamp)
@@ -2558,7 +2572,7 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         assertEquals("\$groupidentify", theEvent.event)
-        assertNotNull(theEvent.properties!!["\$session_id"])
+        assertNotNull(captureV1Events(content).first()["session_id"])
         assertFalse(theEvent.properties!!["\$is_identified"] as Boolean)
         assertFalse(theEvent.properties!!.containsKey("\$groups"))
 
@@ -2719,8 +2733,7 @@ internal class PostHogTest {
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
-        assertEquals(PROJECT_TOKEN, batch.projectToken)
-        assertNotNull(batch.sentAt)
+        assertEquals("Bearer $PROJECT_TOKEN", request.headers["Authorization"])
 
         val theEvent = batch.batch.first()
         assertEquals(EVENT, theEvent.event)
@@ -3032,7 +3045,7 @@ internal class PostHogTest {
         var batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         var theEvent = batch.batch.first()
-        val currentSessionId = theEvent.properties!!["\$session_id"]
+        val currentSessionId = captureV1Events(content).first()["session_id"]
         assertNotNull(currentSessionId)
 
         sut.reset()
@@ -3055,7 +3068,7 @@ internal class PostHogTest {
         batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
 
         theEvent = batch.batch.first()
-        val newSessionId = theEvent.properties!!["\$session_id"]
+        val newSessionId = captureV1Events(content).first()["session_id"]
         assertNotNull(newSessionId)
 
         assertTrue(currentSessionId != newSessionId)
@@ -5260,7 +5273,7 @@ internal class PostHogTest {
         val request = http.takeRequest()
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        assertEquals(true, batch.batch[0].properties?.get("\$process_person_profile"))
+        assertEquals(true, batch.batch[0].options?.get("process_person_profile"))
 
         sut.close()
     }
@@ -6239,8 +6252,9 @@ internal class PostHogTest {
         sut.capture(SDK_EVENT, DISTINCT_ID, properties = mapOf("\$session_id" to callerSessionId.toString()))
         queueExecutor.shutdownAndAwaitTermination()
 
-        val props = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
-        assertEquals(callerSessionId.toString(), props["\$session_id"])
+        val theEvent = captureV1Events(http.takeRequest().body.unGzip()).first()
+        val props = theEvent["properties"] as Map<*, *>
+        assertEquals(callerSessionId.toString(), theEvent["session_id"])
         assertEquals(managerStart - oneHourMs, (props["\$sdk_debug_session_start"] as Number).toLong())
 
         sut.close()

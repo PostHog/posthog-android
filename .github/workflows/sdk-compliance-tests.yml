@@ -8,7 +8,7 @@ on:
       - 'sdk_compliance_adapter/**'
       - '.github/workflows/sdk-compliance-tests.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, 'chore/v4-*', 'feat/v4-*' ]
     paths:
       - 'posthog/**'
       - 'sdk_compliance_adapter/**'
@@ -26,5 +26,5 @@ jobs:
     with:
       adapter-dockerfile: sdk_compliance_adapter/Dockerfile
       adapter-context: .
-      test-harness-version: "0.10.0"
+      test-harness-version: "1.20.0"
       report-name: android-sdk-compliance-report

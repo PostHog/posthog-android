@@ -65,6 +65,14 @@ public open class PostHogStateless protected constructor(
                     return
                 }
 
+                if (config.projectToken.startsWith("phx_")) {
+                    config.logger.log(
+                        "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
+                            "use your project token (phc_...).",
+                    )
+                    return
+                }
+
                 if (!projectTokens.add(config.projectToken)) {
                     config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }

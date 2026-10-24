@@ -281,6 +281,18 @@ internal class PostHogStatelessTest {
     }
 
     @Test
+    fun `setup no-ops for a personal API key`() {
+        sut = createStatelessInstance()
+        val mockLogger = TestLogger()
+        config = PostHogConfig("phx_personal", "https://api.posthog.com").apply { logger = mockLogger }
+
+        sut.setup(config)
+
+        assertFalse(sut.isEnabledPublic())
+        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
+    }
+
+    @Test
     fun `setup logs warning when called multiple times`() {
         sut = createStatelessInstance()
         config = createConfig()

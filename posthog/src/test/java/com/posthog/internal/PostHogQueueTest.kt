@@ -69,7 +69,7 @@ internal class PostHogQueueTest {
         dateProvider: PostHogDateProvider = PostHogDeviceDateProvider(),
         maxBatchSize: Int = 50,
         networkStatus: PostHogNetworkStatus? = null,
-        maxRetries: Int = 3,
+        pushNotificationSubscriptionMaxRetries: Int = 3,
         httpClient: OkHttpClient? = null,
     ): PostHogQueue<PostHogEvent> {
         val config =
@@ -80,7 +80,7 @@ internal class PostHogQueueTest {
                 this.networkStatus = networkStatus
                 this.maxBatchSize = maxBatchSize
                 this.dateProvider = dateProvider
-                this.maxRetries = maxRetries
+                this.pushNotificationSubscriptionMaxRetries = pushNotificationSubscriptionMaxRetries
                 this.httpClient = httpClient
             }
         val api = PostHogApi(config)
@@ -302,7 +302,7 @@ internal class PostHogQueueTest {
                 host = http.url("/").toString(),
                 storagePrefix = path,
                 flushAt = 1,
-                maxRetries = 0,
+                pushNotificationSubscriptionMaxRetries = 0,
                 networkStatus =
                     object : PostHogNetworkStatus {
                         override fun isConnected() = connected
@@ -358,7 +358,7 @@ internal class PostHogQueueTest {
                 storagePrefix = path,
                 flushAt = 100,
                 maxQueueSize = 2,
-                maxRetries = 0,
+                pushNotificationSubscriptionMaxRetries = 0,
                 dateProvider = fakeCurrentTime,
             )
 
@@ -398,8 +398,8 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `retry after remains authoritative beyond the exponential backoff cap`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(429).setHeader("Retry-After", "120").setBody("error"))
+    fun `retry after is a floor capped at the exponential backoff cap`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "120").setBody("error"))
         var scheduledDelay = 0
         val dateProvider =
             object : PostHogDateProvider {
@@ -427,7 +427,52 @@ internal class PostHogQueueTest {
             sut.add(generateEvent())
             executor.awaitExecution()
 
-            assertEquals(120, scheduledDelay)
+            assertEquals(30, scheduledDelay)
+            assertEquals(1, sut.dequeList.size)
+        } finally {
+            sut.clear()
+            awaitQueue()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `a partial retry honors the Retry-After of the 2xx`() {
+        val event = generateEvent(givenUuuid = UUID.randomUUID())
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setHeader("Retry-After", "10")
+                        .setBody("{\"results\":{\"${event.uuid}\":{\"result\":\"retry\"}}}"),
+            )
+        var scheduledDelay = 0
+        val dateProvider =
+            object : PostHogDateProvider {
+                override fun currentDate() = Date()
+
+                override fun addSecondsToCurrentDate(seconds: Int): Date {
+                    scheduledDelay = seconds
+                    return Date(System.currentTimeMillis() + seconds * 1000L)
+                }
+
+                override fun currentTimeMillis() = System.currentTimeMillis()
+
+                override fun nanoTime() = System.nanoTime()
+            }
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                storagePrefix = tmpDir.newFolder().absolutePath,
+                flushAt = 1,
+                dateProvider = dateProvider,
+            )
+
+        try {
+            sut.add(event)
+            executor.awaitExecution()
+
+            assertEquals(10, scheduledDelay)
             assertEquals(1, sut.dequeList.size)
         } finally {
             sut.clear()
@@ -458,7 +503,7 @@ internal class PostHogQueueTest {
                 host = http.url("/").toString(),
                 storagePrefix = path,
                 flushAt = 100,
-                maxRetries = 0,
+                pushNotificationSubscriptionMaxRetries = 0,
                 dateProvider = fakeCurrentTime,
                 httpClient = httpClient,
             )
@@ -569,8 +614,9 @@ internal class PostHogQueueTest {
                     } else {
                         throw IOException("retain replacements after their later send attempt")
                     }
+                    SendResult()
                 },
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
             )
         val sut = PostHogQueue(config, spec, queueExecutor)
 
@@ -612,7 +658,7 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `does not delete file if API is 3xx`() {
+    fun `deletes file if API is 3xx`() {
         val http = mockHttp(response = MockResponse().setResponseCode(300).setBody("error"))
         val url = http.url("/")
 
@@ -623,8 +669,48 @@ internal class PostHogQueueTest {
 
         awaitQueue()
 
-        assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
+        assertEquals(0, sut.dequeList.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
+    }
+
+    @Test
+    fun `backoff doubles from one to thirty seconds with 25 percent jitter rounded to whole seconds`() {
+        val http = mockHttp(total = 20, response = MockResponse().setResponseCode(503).setBody("error"))
+        val delays = mutableListOf<Int>()
+        val dateProvider =
+            object : PostHogDateProvider {
+                override fun currentDate() = Date()
+
+                override fun addSecondsToCurrentDate(seconds: Int): Date {
+                    delays.add(seconds)
+                    // keep the pause in the past so every flush sends
+                    return Date(0)
+                }
+
+                override fun currentTimeMillis() = System.currentTimeMillis()
+
+                override fun nanoTime() = System.nanoTime()
+            }
+        val sut = getSut(host = http.url("/").toString(), flushAt = 1, dateProvider = dateProvider)
+        sut.add(generateEvent())
+        executor.awaitExecution()
+
+        var jitter = 0.0
+        sut.jitterUnit = { jitter }
+        repeat(6) {
+            sut.flush()
+            executor.awaitExecution()
+        }
+        jitter = 0.999
+        repeat(6) {
+            sut.flush()
+            executor.awaitExecution()
+        }
+        // -25%: 2→1.5 rounds to 2, 4→3, 8→6, 16→12, then 30→22.5 rounds to 23; +25% is capped at 30
+        assertEquals(listOf(1, 2, 3, 6, 12, 23, 23, 30, 30, 30, 30, 30, 30), delays)
+
+        sut.clear()
+        awaitQueue()
     }
 
     @Test
@@ -662,7 +748,7 @@ internal class PostHogQueueTest {
 
     @Test
     fun `clear deletes all files and clean the queue`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(300).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
         val url = http.url("/")
 
         val path = tmpDir.newFolder().absolutePath
@@ -685,7 +771,7 @@ internal class PostHogQueueTest {
 
     @Test
     fun `flush flushes the queue`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(300).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
@@ -715,7 +801,7 @@ internal class PostHogQueueTest {
 
     @Test
     fun `flush flushes the queue but respect maxBatchSize`() {
-        val http = mockHttp(response = MockResponse().setResponseCode(300).setBody("error"))
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
         val url = http.url("/")
 
         val fakeCurrentTime = FakePostHogDateProvider()
@@ -733,7 +819,7 @@ internal class PostHogQueueTest {
         assertEquals(1, sut.dequeList.size)
         assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
-        http.enqueue(MockResponse().setResponseCode(300).setBody("error"))
+        http.enqueue(MockResponse().setResponseCode(503).setBody("error"))
 
         sut.add(generateEvent(givenUuuid = UUID.randomUUID()))
 
@@ -904,12 +990,21 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `retries on 429`() {
+    fun `does not retry on 429`() {
         val e = PostHogApiError(429, "", null)
         val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
-        assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+    }
+
+    @Test
+    fun `does not retry on 3xx`() {
+        val e = PostHogApiError(307, "", null)
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val limits = initialBatchLimits(config)
+
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
     }
 
     @Test

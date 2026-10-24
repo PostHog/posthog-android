@@ -1,5 +1,6 @@
 package com.posthog.compliance
 
+import com.posthog.PersonProfiles
 import com.posthog.PostHog
 import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
@@ -32,6 +33,9 @@ private const val QUEUE_STORAGE_PREFIX = "/tmp/posthog-queue"
 
 // Upper bound on the wait for a flush()'d batch to reach the mock (generous for Docker).
 private const val FLUSH_SETTLE_MS = 2000L
+
+// The capture endpoint the SDK posts analytics events to.
+private const val CAPTURE_PATH = "/i/v1/analytics/events"
 
 /**
  * PostHog Android SDK Compliance Adapter
@@ -138,7 +142,7 @@ object AdapterContext {
     val state = AdapterState()
     val lock = ReentrantLock()
 
-    // Signalled by the tracking interceptor when a /batch response lands (see awaitBatch).
+    // Signalled by the tracking interceptor when a capture response lands (see awaitBatch).
     val batchObserved: Condition = lock.newCondition()
     var postHog: com.posthog.PostHogInterface? = null
     var api: PostHogApi? = null
@@ -157,14 +161,14 @@ class TrackingInterceptor : Interceptor {
         val uuidList = mutableListOf<String>()
 
         // Parse request body before sending
-        if (url.contains("/batch") && !url.contains("/flags") && requestBody != null) {
+        if (url.contains(CAPTURE_PATH) && requestBody != null) {
             try {
                 val buffer = okio.Buffer()
                 requestBody.writeTo(buffer)
                 val bodyString = buffer.readUtf8()
 
                 // Parse JSON to extract UUIDs
-                // The body format is: {"api_key": "...", "batch": [{event}, {event}], "sent_at": "..."}
+                // The body format is: {"created_at": "...", "batch": [{event}, {event}]}
                 val uuidRegex = """"uuid"\s*:\s*"([^"]+)"""".toRegex()
                 uuidRegex.findAll(bodyString).forEach { match ->
                     uuidList.add(match.groupValues[1])
@@ -178,10 +182,10 @@ class TrackingInterceptor : Interceptor {
         val response = chain.proceed(request)
 
         // Track the response
-        if (url.contains("/batch") && !url.contains("/flags")) {
+        if (url.contains(CAPTURE_PATH)) {
             try {
-                // Extract retry count from URL if present
-                val retryCount = request.url.queryParameter("retry_count")?.toIntOrNull() ?: 0
+                // PostHog-Attempt starts at 1; the harness counts retries from 0.
+                val retryCount = (request.header("PostHog-Attempt")?.toIntOrNull() ?: 1) - 1
 
                 AdapterContext.lock.withLock {
                     val record =
@@ -214,7 +218,7 @@ class TrackingInterceptor : Interceptor {
     }
 }
 
-// Block until [predicate] holds (signalled as each /batch response lands) or [timeoutMs] elapses.
+// Block until [predicate] holds (signalled as each capture response lands) or [timeoutMs] elapses.
 private fun awaitBatch(
     timeoutMs: Long,
     predicate: () -> Boolean,
@@ -242,8 +246,8 @@ fun main() {
                         sdk_name = "posthog-android",
                         sdk_version = PostHogConfig(projectToken = "").sdkVersion,
                         adapter_version = "1.0.0",
-                        // Opt into the capture suites (android posts /batch with gzip).
-                        capabilities = listOf("capture_v0", "encoding_gzip"),
+                        // Opt into the capture suites (android posts /i/v1/analytics/events with gzip).
+                        capabilities = listOf("capture_v1", "encoding_gzip"),
                     ),
                 )
             }
@@ -281,6 +285,9 @@ fun main() {
                             debug = true,
                             preloadFeatureFlags = false,
                         )
+                    // The harness models a server SDK: it never identifies, and expects person
+                    // processing on unless an event opts out.
+                    config.personProfiles = PersonProfiles.ALWAYS
 
                     // Create OkHttpClient with tracking and gzip interceptors
                     val httpClient =
@@ -291,7 +298,7 @@ fun main() {
 
                     config.httpClient = httpClient
 
-                    req.max_retries?.let { config.maxRetries = it }
+                    req.max_retries?.let { config.pushNotificationSubscriptionMaxRetries = it }
                     req.enable_compression?.let {
                         config.compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
                     }

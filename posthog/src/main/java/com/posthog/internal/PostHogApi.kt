@@ -11,6 +11,9 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
 import com.posthog.internal.logs.PostHogLogsOTLP
 import com.posthog.logs.PostHogLogRecord
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +28,7 @@ import java.io.OutputStream
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.UUID
 import javax.net.ssl.SSLException
 
 /**
@@ -37,15 +41,26 @@ public class PostHogApi(
 ) {
     private companion object {
         private const val APP_JSON_UTF_8 = "application/json; charset=utf-8"
+        private const val APP_JSON = "application/json"
         private const val FLAGS_INITIAL_RETRY_DELAY_MS = 300L
         private const val FLAGS_MAX_RETRY_DELAY_MS = 30_000L
         private const val ERROR_BODY_PEEK_BYTES = 2048L
+        private const val CAPTURE_V1_ANALYTICS_PATH = "/i/v1/analytics/events"
+        private const val CAPTURE_V1_MAX_REDIRECTS = 5
     }
 
     private val mediaType by lazy {
         try {
             // can throw IllegalArgumentException
             APP_JSON_UTF_8.toMediaType()
+        } catch (ignored: Throwable) {
+            null
+        }
+    }
+
+    private val captureMediaType by lazy {
+        try {
+            APP_JSON.toMediaType()
         } catch (ignored: Throwable) {
             null
         }
@@ -64,6 +79,21 @@ public class PostHogApi(
             .retryOnConnectionFailure(false)
             .build()
     }
+
+    // Capture v1 decides its own redirects (see captureV1): OkHttp would follow any 3xx, drop the
+    // Authorization header on a cross-host hop and turn a 302 into a body-less GET.
+    private val captureClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
+
+    private val captureV1Lock = Any()
+
+    // The identity of the last capture v1 request per endpoint path whose events are still to be
+    // retried. In memory only: a new request id after an app restart is fine, the server only logs it.
+    private val captureV1PendingRetry = mutableMapOf<String, CaptureV1RequestIdentity>()
 
     private val theHost: String
         get() {
@@ -85,6 +115,168 @@ public class PostHogApi(
             }
 
         executeNoBody(request)
+    }
+
+    /**
+     * Sends analytics events to capture v1 (`POST /i/v1/analytics/events`).
+     *
+     * Returns the uuids of the events the 2xx response asked to retry, with the `Retry-After` it
+     * sent; every other event in [events] was delivered or dropped and must not be sent again. A 2xx
+     * whose per-event results can't be read, including a transfer that failed after the status
+     * arrived, counts as delivered: the server already stored its events and a resend would store
+     * them again.
+     *
+     * Only a 307 or 308 to the origin of [PostHogConfig.host] is followed, at most 5 times, with
+     * the same body and headers; any other redirect is a terminal [PostHogApiError].
+     *
+     * Throws [PostHogApiError] for a non-2xx status and [IOException] for a transport failure.
+     */
+    @Throws(PostHogApiError::class, IOException::class)
+    internal fun captureV1(events: List<PostHogEvent>): SendResult {
+        val path = CAPTURE_V1_ANALYTICS_PATH
+        val uuids = events.mapNotNull { it.uuid?.toString() }
+        val identity = nextCaptureV1Identity(path, uuids.toSet())
+        val body =
+            mapOf(
+                "created_at" to identity.createdAt,
+                "batch" to events.map { captureV1Json(it, config.logger) },
+            )
+
+        val url = "$theHost$path"
+        var request =
+            makeRequest(url, contentType = captureMediaType) {
+                logRequest(body, url)
+
+                config.serializer.serialize(body, it.bufferedWriter())
+            }.newBuilder()
+                .header("Authorization", "Bearer ${config.projectToken}")
+                .header("PostHog-Sdk-Info", config.userAgent)
+                .header("PostHog-Attempt", identity.attempt.toString())
+                .header("PostHog-Request-Id", identity.requestId)
+                .header("PostHog-Request-Timestamp", formatISO8601Date(config.dateProvider.currentDate()))
+                .build()
+
+        var redirects = 0
+        while (true) {
+            logRequestHeaders(request)
+
+            captureClient.newCall(request).execute().use {
+                val response = logResponse(it)
+
+                if (response.code != 307 && response.code != 308) {
+                    return captureV1Result(response, path, uuids, identity)
+                }
+
+                val target = response.header("Location")?.let { location -> request.url.resolve(location) }
+                if (redirects >= CAPTURE_V1_MAX_REDIRECTS || target == null || !isConfiguredOrigin(target)) {
+                    config.logger.log("Capture did not follow a ${response.code} redirect.")
+                    clearCaptureV1Retry(path)
+                    throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+                }
+                // Same origin, so the body and every header are safe to resend.
+                request = request.newBuilder().url(target).build()
+                redirects++
+            }
+        }
+    }
+
+    /**
+     * Reuses the request id and `created_at` with the next attempt number when [uuids] is the set
+     * of events the previous request to [path] left to retry; otherwise starts a new request at
+     * attempt 1. The identity is kept until the outcome is known, so a transport failure or a
+     * retriable status resends the whole batch under it.
+     */
+    private fun nextCaptureV1Identity(
+        path: String,
+        uuids: Set<String>,
+    ): CaptureV1RequestIdentity {
+        synchronized(captureV1Lock) {
+            val pending = captureV1PendingRetry[path]
+            val identity =
+                if (pending != null && pending.uuids == uuids) {
+                    pending.copy(attempt = pending.attempt + 1)
+                } else {
+                    CaptureV1RequestIdentity(
+                        uuids = uuids,
+                        requestId = UUID.randomUUID().toString(),
+                        attempt = 1,
+                        createdAt = formatISO8601Date(config.dateProvider.currentDate()),
+                    )
+                }
+            captureV1PendingRetry[path] = identity
+            return identity
+        }
+    }
+
+    private fun clearCaptureV1Retry(path: String) {
+        synchronized(captureV1Lock) {
+            captureV1PendingRetry.remove(path)
+        }
+    }
+
+    /**
+     * Reads the per-event results of a 2xx and records which events, if any, the next request
+     * retries under the same identity. A non-2xx is thrown; a terminal one also drops the identity.
+     */
+    @Throws(PostHogApiError::class)
+    private fun captureV1Result(
+        response: Response,
+        path: String,
+        uuids: List<String>,
+        identity: CaptureV1RequestIdentity,
+    ): SendResult {
+        if (!response.isSuccessful) {
+            if (!isCaptureV1RetriableStatusCode(response.code)) {
+                clearCaptureV1Retry(path)
+            }
+            throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
+        }
+
+        val results = readCaptureV1Results(response)
+        if (results == null) {
+            config.logger.log(
+                "Capture returned ${response.code} without readable per-event results, treating ${uuids.size} events as delivered.",
+            )
+        }
+
+        val retryUuids = mutableSetOf<String>()
+        var dropped = 0
+        // Events missing from the results count as delivered.
+        for (uuid in uuids) {
+            val entry = results?.get(uuid) as? Map<*, *> ?: continue
+            when (entry["result"]) {
+                "retry" -> retryUuids.add(uuid)
+                "drop" -> dropped++
+            }
+        }
+
+        // Counts only: event uuids and server details can identify users.
+        if (dropped > 0 || retryUuids.isNotEmpty()) {
+            config.logger.log("Capture: $dropped dropped, ${retryUuids.size} to retry.")
+        }
+
+        synchronized(captureV1Lock) {
+            if (retryUuids.isEmpty()) {
+                captureV1PendingRetry.remove(path)
+            } else {
+                captureV1PendingRetry[path] = identity.copy(uuids = retryUuids)
+            }
+        }
+        return SendResult(retryUuids, parseRetryAfter(response))
+    }
+
+    private fun readCaptureV1Results(response: Response): Map<*, *>? {
+        return try {
+            val body = response.body?.string() ?: return null
+            (config.serializer.deserializeString(body) as? Map<*, *>)?.get("results") as? Map<*, *>
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    private fun isConfiguredOrigin(url: HttpUrl): Boolean {
+        val host = config.host.toHttpUrlOrNull() ?: return false
+        return url.scheme == host.scheme && url.host.equals(host.host, ignoreCase = true) && url.port == host.port
     }
 
     @Throws(PostHogApiError::class, IOException::class)
@@ -224,11 +416,12 @@ public class PostHogApi(
     private fun makeRequest(
         url: String,
         method: String = "POST",
+        contentType: MediaType? = mediaType,
         serializer: (outputStream: OutputStream) -> Unit,
     ): Request {
         val requestBody =
             object : RequestBody() {
-                override fun contentType() = mediaType
+                override fun contentType() = contentType
 
                 override fun writeTo(sink: BufferedSink) {
                     sink.outputStream().use {
@@ -519,5 +712,98 @@ public class PostHogApi(
                 // ignore
             }
         }
+    }
+}
+
+/**
+ * Identity of a capture v1 request, kept so a retry of the same events reuses
+ * `PostHog-Request-Id` and `created_at` with an incremented `PostHog-Attempt`.
+ */
+internal class CaptureV1RequestIdentity(
+    val uuids: Set<String>,
+    val requestId: String,
+    val attempt: Int,
+    val createdAt: String,
+) {
+    fun copy(
+        uuids: Set<String> = this.uuids,
+        attempt: Int = this.attempt,
+    ): CaptureV1RequestIdentity = CaptureV1RequestIdentity(uuids, requestId, attempt, createdAt)
+}
+
+/** Legacy properties and the capture v1 option each one fills. */
+internal val LEGACY_OPTION_PROPERTIES: List<Pair<String, String>> =
+    listOf(
+        "\$cookieless_mode" to "cookieless_mode",
+        "\$ignore_sent_at" to "disable_skew_correction",
+        "\$product_tour_id" to "product_tour_id",
+        "\$process_person_profile" to "process_person_profile",
+    )
+
+/**
+ * Shapes a stored event for capture v1. `$session_id` and `$window_id` move to the event root, and
+ * `$lib`/`$lib_version` are dropped because the server reads them from `PostHog-Sdk-Info`.
+ *
+ * Legacy option properties are hoisted here, after `beforeSend`, so events queued by older versions
+ * are hoisted too. Each is always removed from properties and fills its option only when the option
+ * is missing or null. Values aren't coerced: the server validates them.
+ */
+internal fun captureV1Json(
+    event: PostHogEvent,
+    logger: PostHogLogger,
+): Map<String, Any?> {
+    val properties = LinkedHashMap<String, Any?>(event.properties ?: emptyMap())
+    properties.remove("\$lib")
+    properties.remove("\$lib_version")
+
+    val options = LinkedHashMap<String, Any?>(event.options ?: emptyMap())
+    for ((property, option) in LEGACY_OPTION_PROPERTIES) {
+        if (!properties.containsKey(property)) continue
+        val legacy = properties.remove(property)
+        if (options[option] == null) {
+            options[option] = legacy
+        }
+    }
+
+    val json = LinkedHashMap<String, Any?>()
+    json["event"] = event.event
+    json["uuid"] = event.uuid?.toString()
+    json["distinct_id"] = event.distinctId
+    json["timestamp"] = formatISO8601Date(event.timestamp)
+    liftStringProperty("\$session_id", properties, logger)?.let { json["session_id"] = it }
+    liftStringProperty("\$window_id", properties, logger)?.let { json["window_id"] = it }
+    if (options.isNotEmpty()) {
+        json["options"] = options
+    }
+    json["properties"] = properties
+    return json
+}
+
+/**
+ * Removes [key] from [properties] and returns its value when it's a string, including an empty one,
+ * which is sent unchanged. Capture rejects the whole request when a root `session_id` or `window_id`
+ * isn't a string, so any other value is dropped with a warning that names its JSON type, never the
+ * value. A null value counts as unset and is dropped without a warning.
+ */
+internal fun liftStringProperty(
+    key: String,
+    properties: MutableMap<String, Any?>,
+    logger: PostHogLogger,
+): String? {
+    if (!properties.containsKey(key)) return null
+    val value = properties.remove(key) ?: return null
+    if (value is String) return value
+    logger.log("dropping $key: a ${jsonTypeName(value)} value is not a string")
+    return null
+}
+
+private fun jsonTypeName(value: Any): String {
+    return when (value) {
+        is Boolean -> "bool"
+        is Number -> "number"
+        is String -> "string"
+        is Map<*, *> -> "object"
+        is Iterable<*>, is Array<*> -> "array"
+        else -> value.javaClass.simpleName
     }
 }
