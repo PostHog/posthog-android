@@ -17,6 +17,7 @@ public class PostHogFake : PostHogInterface {
     public var stopSessionReplayCalls: Int = 0
     public var pushDeviceToken: String? = null
     public var pushAppId: String? = null
+    public var pushTokenType: PostHogPushTokenType? = null
     public var pushRegistrations: Int = 0
     public var pushUnregistrations: Int = 0
     public var pushOpenedTitle: String? = null
@@ -253,8 +254,17 @@ public class PostHogFake : PostHogInterface {
         deviceToken: String,
         appId: String,
     ) {
+        registerPushNotificationToken(deviceToken, appId, PostHogPushTokenType.FCM_TOKEN)
+    }
+
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        tokenType: PostHogPushTokenType,
+    ) {
         pushDeviceToken = deviceToken
         pushAppId = appId
+        pushTokenType = tokenType
         pushRegistrations++
     }
 

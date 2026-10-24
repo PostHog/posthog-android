@@ -5750,7 +5750,31 @@ internal class PostHogTest {
         assertEquals("fcm-token", parsed["device_token"])
         assertEquals("firebase-project", parsed["app_id"])
         assertFalse(parsed.containsKey("platform"))
+        assertFalse(parsed.containsKey("token_type"))
         assertEquals(sut.distinctId(), parsed["distinct_id"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `registerPushNotificationToken sends the token type for a Firebase Installation ID`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken(
+            deviceToken = "firebase-fid",
+            appId = "firebase-project",
+            tokenType = PostHogPushTokenType.FID,
+        )
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("firebase-fid", parsed["device_token"])
+        assertEquals("fid", parsed["token_type"])
 
         sut.close()
     }

@@ -2357,6 +2357,14 @@ public class PostHog private constructor(
         deviceToken: String,
         appId: String,
     ) {
+        registerPushNotificationToken(deviceToken, appId, PostHogPushTokenType.FCM_TOKEN)
+    }
+
+    override fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        tokenType: PostHogPushTokenType,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -2376,6 +2384,7 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
+            tokenType = tokenType,
         )
     }
 
@@ -2906,6 +2915,14 @@ public class PostHog private constructor(
             appId: String,
         ) {
             shared.registerPushNotificationToken(deviceToken, appId)
+        }
+
+        override fun registerPushNotificationToken(
+            deviceToken: String,
+            appId: String,
+            tokenType: PostHogPushTokenType,
+        ) {
+            shared.registerPushNotificationToken(deviceToken, appId, tokenType)
         }
 
         override fun unregisterPushNotificationToken() {

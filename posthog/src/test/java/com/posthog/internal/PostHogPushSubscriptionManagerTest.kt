@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
+import com.posthog.PostHogPushTokenType
 import com.posthog.TestHttpServers
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.shutdownAndAwaitTermination
@@ -151,6 +152,8 @@ internal class PostHogPushSubscriptionManagerTest {
         val request = http.takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/api/push_subscriptions/", request.path)
+        // An FCM registration token keeps the body every existing backend already accepts.
+        assertFalse(request.body.unGzip().contains("token_type"))
 
         val file = pendingFile(storagePrefix!!)
         assertTrue(file.exists())
@@ -818,6 +821,56 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `register sends the token type for a Firebase Installation ID and persists it`() {
+        val http = mockHttp()
+        val (sut, config, storagePrefix) = getSut(http)
+
+        sut.register("firebase-fid", "firebase-project", PostHogPushTokenType.FID)
+        flush()
+
+        val body = http.takeRequest().body.unGzip()
+        assertTrue(body.contains("\"device_token\":\"firebase-fid\""))
+        assertTrue(body.contains("\"token_type\":\"fid\""))
+        assertEquals(PostHogPushTokenType.FID, readRecord(config, pendingFile(storagePrefix!!))?.tokenType)
+    }
+
+    @Test
+    fun `a persisted Firebase Installation ID is retried with its token type on the next launch`() {
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        val file = pendingFile(storagePrefix!!)
+        file.parentFile.mkdirs()
+        file.writeText("""{"device_token":"firebase-fid","app_id":"firebase-project","token_type":"fid"}""")
+
+        sut.retryPending()
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertTrue(request.body.unGzip().contains("\"token_type\":\"fid\""))
+    }
+
+    @Test
+    fun `handleReset re-registers a Firebase Installation ID with its token type`() {
+        val http = mockHttp(total = 3, response = MockResponse().setBody(""))
+        val (sut, _, _) = getSut(http)
+
+        distinctId = "user-A"
+        sut.register("firebase-fid", "firebase-project", PostHogPushTokenType.FID)
+        flush()
+        http.takeRequest()
+
+        distinctId = "anon-2"
+        sut.handleReset("user-A")
+        flush()
+
+        assertEquals("DELETE", http.takeRequest().method)
+        val post = http.takeRequest()
+        assertEquals("POST", post.method)
+        assertTrue(post.body.unGzip().contains("\"token_type\":\"fid\""))
+    }
+
+    @Test
     fun `handleReset does not unregister when the identity is unchanged`() {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
         val (sut, _, storagePrefix) = getSut(http)
@@ -984,6 +1037,8 @@ internal class PostHogPushSubscriptionManagerTest {
         val body = request.body.unGzip()
         assertTrue(body.contains("\"device_token\":\"fcm-token\""))
         assertFalse(body.contains("\"platform\""))
+        // Records from before token types existed were all FCM registration tokens.
+        assertFalse(body.contains("token_type"))
         http.shutdown()
     }
 

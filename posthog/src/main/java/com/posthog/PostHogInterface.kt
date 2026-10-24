@@ -430,6 +430,23 @@ public interface PostHogInterface : PostHogCoreInterface {
     )
 
     /**
+     * Registers a push notification identifier with PostHog, saying which kind it is.
+     *
+     * Use [PostHogPushTokenType.FID] when the app uses Firebase Installation ID registration
+     * (`firebase_messaging_installation_id_enabled`), and forward the installation id from
+     * `FirebaseMessagingService.onRegistered`. Otherwise behaves like the two-argument overload.
+     *
+     * @param deviceToken the FCM registration token or the Firebase Installation ID
+     * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
+     * @param tokenType which kind of identifier [deviceToken] is
+     */
+    public fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        tokenType: PostHogPushTokenType,
+    )
+
+    /**
      * Unregisters this device's push token from PostHog so Workflows stop targeting it — for example
      * from your logout flow.
      *
