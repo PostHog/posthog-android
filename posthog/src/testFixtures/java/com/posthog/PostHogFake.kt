@@ -51,6 +51,22 @@ public class PostHogFake : PostHogInterface {
         captures++
     }
 
+    override fun captureAi(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        options: Map<String, Any?>?,
+    ): UUID? {
+        this.event = event
+        this.properties = properties
+        captures++
+        return UUID.randomUUID()
+    }
+
     override fun captureLog(
         message: String,
         severity: PostHogLogSeverity,

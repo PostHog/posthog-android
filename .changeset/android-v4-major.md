@@ -24,3 +24,6 @@
 - **Breaking:** keep the uuid of its own capture on the event `beforeSend` returns, so a uuid set in `beforeSend`, for example with `copy(uuid = …)`, is replaced
 - use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
+- **Breaking:** add `captureAi` to send AI events such as `$ai_generation` to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts events up to 8 MiB, on its own disk queue; it returns the event uuid, and classes that implement `PostHogInterface` add the method
+- add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB
+- cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own

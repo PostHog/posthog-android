@@ -29,6 +29,7 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
 /**
@@ -46,6 +47,7 @@ public class PostHogApi(
         private const val FLAGS_MAX_RETRY_DELAY_MS = 30_000L
         private const val ERROR_BODY_PEEK_BYTES = 2048L
         private const val CAPTURE_V1_ANALYTICS_PATH = "/i/v1/analytics/events"
+        private const val CAPTURE_V1_AI_PATH = "/i/v1/ai/events"
         private const val CAPTURE_V1_MAX_REDIRECTS = 5
     }
 
@@ -87,6 +89,24 @@ public class PostHogApi(
             .followRedirects(false)
             .followSslRedirects(false)
             .build()
+    }
+
+    // AI batches can be several MB, so they get their own timeout and compression setting.
+    private val aiCaptureClient: OkHttpClient by lazy {
+        val timeoutSeconds = config.effectiveCaptureAiTimeoutSeconds.toLong()
+        val builder =
+            // Idle timeouts only: a multi-MB upload that is still making progress on a slow link
+            // must not be cut off by a whole-call deadline.
+            captureClient.newBuilder()
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
+        val interceptors = builder.interceptors()
+        for (index in interceptors.indices) {
+            if (interceptors[index] is GzipRequestInterceptor) {
+                interceptors[index] = GzipRequestInterceptor(config) { config.captureAiCompression }
+            }
+        }
+        builder.build()
     }
 
     private val captureV1Lock = Any()
@@ -132,8 +152,22 @@ public class PostHogApi(
      * Throws [PostHogApiError] for a non-2xx status and [IOException] for a transport failure.
      */
     @Throws(PostHogApiError::class, IOException::class)
-    internal fun captureV1(events: List<PostHogEvent>): SendResult {
-        val path = CAPTURE_V1_ANALYTICS_PATH
+    internal fun captureV1(events: List<PostHogEvent>): SendResult = postCaptureV1(CAPTURE_V1_ANALYTICS_PATH, events, captureClient)
+
+    /**
+     * Sends AI events to the capture v1 AI endpoint (`POST /i/v1/ai/events`). Same wire format,
+     * per-event results, redirect rule and retry identity (kept per path) as [captureV1], with
+     * [PostHogConfig.captureAiTimeout] and [PostHogConfig.captureAiCompression].
+     */
+    @Throws(PostHogApiError::class, IOException::class)
+    internal fun captureAi(events: List<PostHogEvent>): SendResult = postCaptureV1(CAPTURE_V1_AI_PATH, events, aiCaptureClient)
+
+    @Throws(PostHogApiError::class, IOException::class)
+    private fun postCaptureV1(
+        path: String,
+        events: List<PostHogEvent>,
+        client: OkHttpClient,
+    ): SendResult {
         val uuids = events.mapNotNull { it.uuid?.toString() }
         val identity = nextCaptureV1Identity(path, uuids.toSet())
         val body =
@@ -145,7 +179,12 @@ public class PostHogApi(
         val url = "$theHost$path"
         var request =
             makeRequest(url, contentType = captureMediaType) {
-                logRequest(body, url)
+                if (path == CAPTURE_V1_AI_PATH) {
+                    // AI properties hold prompts and media, so the debug log names only the count.
+                    config.logger.log("Request $url: ${events.size} events")
+                } else {
+                    logRequest(body, url)
+                }
 
                 config.serializer.serialize(body, it.bufferedWriter())
             }.newBuilder()
@@ -160,7 +199,7 @@ public class PostHogApi(
         while (true) {
             logRequestHeaders(request)
 
-            captureClient.newCall(request).execute().use {
+            client.newCall(request).execute().use {
                 val response = logResponse(it)
 
                 if (response.code != 307 && response.code != 308) {
