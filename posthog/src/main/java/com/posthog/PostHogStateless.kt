@@ -241,26 +241,14 @@ public open class PostHogStateless protected constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
-        captureStatelessInternal(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
-    }
-
-    internal fun captureStatelessInternal(
-        event: String,
-        distinctId: String,
-        properties: Map<String, Any>?,
-        userProperties: Map<String, Any>?,
-        userPropertiesSetOnce: Map<String, Any>?,
-        groups: Map<String, String>?,
-        timestamp: Date?,
-    ): Boolean {
         try {
             if (!isEnabled()) {
-                return false
+                return
             }
 
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return false
+                return
             }
 
             var groupIdentify = false
@@ -300,15 +288,12 @@ public open class PostHogStateless protected constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return false
+                return
             }
 
-            val queue = queue ?: return false
-            queue.add(postHogEvent)
-            return true
+            queue?.add(postHogEvent)
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
-            return false
         }
     }
 
@@ -553,7 +538,7 @@ public open class PostHogStateless protected constructor(
      * unknown) keeps the full legacy shape, and experiment-linked flags always send the full
      * envelope because experiment exposure analysis reads it.
      */
-    private fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
+    internal fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
         if (!isMinimalFlagCalledEventsEnabled()) {
             return properties
         }

@@ -1037,7 +1037,14 @@ public class PostHog private constructor(
                     },
                 )
 
-            val postHogEvent = buildEvent(event, newDistinctId, mergedProperties, timestamp)
+            val eventProperties =
+                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
+                    minimizeFeatureFlagCalledProperties(mergedProperties).toMutableMap()
+                } else {
+                    mergedProperties
+                }
+
+            val postHogEvent = buildEvent(event, newDistinctId, eventProperties, timestamp)
             if (postHogEvent == null) {
                 val originalMessage = "PostHog event $event was dropped"
                 val message =
@@ -1060,18 +1067,12 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
             } else {
-                val queued =
-                    captureStatelessInternal(
-                        postHogEvent.event,
-                        newDistinctId,
-                        postHogEvent.properties ?: emptyMap(),
-                        userProperties,
-                        userPropertiesSetOnce,
-                        groups,
-                        timestamp,
-                    )
-                if (queued && claimedReplayDebugBundle) {
-                    commitReplayDebugPropertiesWindow()
+                val queue = queue
+                if (queue != null) {
+                    queue.add(postHogEvent)
+                    if (claimedReplayDebugBundle) {
+                        commitReplayDebugPropertiesWindow()
+                    }
                 }
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event, mergedProperties)
