@@ -2540,6 +2540,28 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `an event is dropped when beforeSend opts out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        lateinit var sut: PostHogInterface
+
+        sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                sut.optOut()
+                it
+            })
+
+        sut.capture("event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `beforeSend sees the minimal feature flag called event`() {
         val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
         val http = mockHttp(response = MockResponse().setBody(file.readText()))

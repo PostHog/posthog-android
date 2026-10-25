@@ -1068,7 +1068,10 @@ public class PostHog private constructor(
                 replayQueue?.add(postHogEvent)
             } else {
                 val queue = queue
-                if (queue != null) {
+                // beforeSend may have opted out
+                if (isOptedOut()) {
+                    config?.logger?.log("PostHog is in OptOut state.")
+                } else if (queue != null) {
                     queue.add(postHogEvent)
                     if (claimedReplayDebugBundle) {
                         commitReplayDebugPropertiesWindow()
