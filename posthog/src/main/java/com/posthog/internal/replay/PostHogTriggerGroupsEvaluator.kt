@@ -1,6 +1,6 @@
 package com.posthog.internal.replay
 
-import kotlin.math.abs
+import com.posthog.internal.sampleOnProperty
 
 internal data class PostHogTriggerGroupMatch(
     val id: String,
@@ -86,16 +86,14 @@ internal class PostHogTriggerGroupsEvaluator {
         }
     }
 
-    // eventLegsReliable is false for React Native: its events are captured in JS and never
-    // reach this evaluator, so event and screen legs would otherwise stay pending forever.
+    // Read-only for activation: a caller holding a stale session id must not wipe the current
+    // session's activated groups. Only onEvent moves activation to a new session.
     fun evaluate(
         sessionId: String,
         flags: Map<String, Any?>?,
-        personProperties: Map<String, Any?>?,
-        eventLegsReliable: Boolean = true,
     ): PostHogTriggerGroupsDecision {
         synchronized(lock) {
-            resetActivationForNewSessionLocked(sessionId)
+            val activatedSession = activationSessionId == sessionId
 
             var shouldRecord = false
             var hasPendingGroups = false
@@ -103,7 +101,7 @@ internal class PostHogTriggerGroupsEvaluator {
             val matchedGroups = mutableListOf<PostHogTriggerGroupMatch>()
 
             for (group in groups) {
-                when (groupStatusLocked(group, flags, eventLegsReliable)) {
+                when (groupStatusLocked(group, flags, activatedSession)) {
                     PostHogTriggerStatus.ACTIVATED -> {
                         val sampled = samplingDecisionLocked(group, sessionId)
                         matchedGroups.add(PostHogTriggerGroupMatch(group.id, group.name, sampled))
@@ -139,28 +137,28 @@ internal class PostHogTriggerGroupsEvaluator {
     private fun groupStatusLocked(
         group: PostHogTriggerGroup,
         flags: Map<String, Any?>?,
-        eventLegsReliable: Boolean,
+        activatedSession: Boolean,
     ): PostHogTriggerStatus {
         val conditions = group.conditions
-        val hasEvents = conditions.events.isNotEmpty()
-        val hasUrls = conditions.urls.isNotEmpty()
-        val hasFlag = conditions.flag != null
+        val hasEvents = conditions.hasEventsLeg
+        val hasUrls = conditions.hasUrlsLeg
+        val hasFlag = conditions.hasFlagLeg
 
         if (!hasEvents && !hasUrls && !hasFlag) return PostHogTriggerStatus.ACTIVATED
 
         val eventLeg =
             when {
-                !hasEvents || !eventLegsReliable -> PostHogTriggerStatus.DISABLED
-                group.id in eventActivatedGroupIds -> PostHogTriggerStatus.ACTIVATED
+                !hasEvents -> PostHogTriggerStatus.DISABLED
+                activatedSession && group.id in eventActivatedGroupIds -> PostHogTriggerStatus.ACTIVATED
                 else -> PostHogTriggerStatus.PENDING
             }
         val screenLeg =
             when {
-                !hasUrls || !eventLegsReliable -> PostHogTriggerStatus.DISABLED
-                group.id in screenActivatedGroupIds -> PostHogTriggerStatus.ACTIVATED
+                !hasUrls -> PostHogTriggerStatus.DISABLED
+                activatedSession && group.id in screenActivatedGroupIds -> PostHogTriggerStatus.ACTIVATED
                 else -> PostHogTriggerStatus.PENDING
             }
-        val flagLeg = flagLegStatus(conditions.flag, flags)
+        val flagLeg = if (hasFlag) flagLegStatus(conditions.flag, flags) else PostHogTriggerStatus.DISABLED
 
         return if (conditions.matchType == PostHogTriggerMatchType.ANY) {
             orTriggerStatus(eventLeg, screenLeg, flagLeg)
@@ -169,12 +167,12 @@ internal class PostHogTriggerGroupsEvaluator {
         }
     }
 
+    // A configured flag leg that didn't parse never matches.
     private fun flagLegStatus(
         flag: PostHogTriggerFlag?,
         flags: Map<String, Any?>?,
     ): PostHogTriggerStatus {
-        if (flag == null) return PostHogTriggerStatus.DISABLED
-        if (flags == null) return PostHogTriggerStatus.PENDING
+        if (flag == null || flags == null) return PostHogTriggerStatus.PENDING
 
         val value = flags[flag.flag]
         val matches =
@@ -237,7 +235,7 @@ internal class PostHogTriggerGroupsEvaluator {
 
         // A missing rate samples in, like the web clampToRange fallback.
         val sampled =
-            group.sampleRate?.let { rate -> sampleOnTriggerProperty(sessionId + group.id, rate) } ?: true
+            group.sampleRate?.let { rate -> sampleOnProperty(sessionId + group.id, rate) } ?: true
 
         samplingDecisions[group.id] = StoredSamplingDecision(sessionId, group.sampleRate, sampled)
         return sampled
@@ -255,19 +253,4 @@ internal class PostHogTriggerGroupsEvaluator {
         const val SCREEN_EVENT_NAME: String = "\$screen"
         const val SCREEN_NAME_PROPERTY: String = "\$screen_name"
     }
-}
-
-// Same hash and threshold as posthog-js sampleOnProperty.
-internal fun sampleOnTriggerProperty(
-    input: String,
-    percent: Double,
-): Boolean = simpleTriggerHash(input) % 100 < (percent * 100).coerceIn(0.0, 100.0)
-
-internal fun simpleTriggerHash(str: String): Long {
-    var hash = 0
-    for (char in str) {
-        hash = hash * 31 + char.code
-    }
-    // JS Math.abs returns a double, so Int.MIN_VALUE maps to 2147483648 rather than to itself.
-    return if (hash == Int.MIN_VALUE) 2147483648L else abs(hash.toLong())
 }

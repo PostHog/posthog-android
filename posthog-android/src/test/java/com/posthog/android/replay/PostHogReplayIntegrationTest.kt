@@ -1364,6 +1364,61 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun triggerGroupsConfig(
+        pending: AtomicBoolean,
+        permitted: AtomicBoolean,
+    ): PostHogAndroidConfig {
+        // The v1 sampling decision passes, so only the trigger group decision can refuse the start.
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        whenever(remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        whenever(remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenAnswer { permitted.get() }
+        return config
+    }
+
+    @Test
+    fun `explicit start respects a trigger group that sampled the session out`() {
+        val sut = getSut(triggerGroupsConfig(pending = AtomicBoolean(false), permitted = AtomicBoolean(false)))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig stops active recording when trigger groups become pending`() {
+        val pending = AtomicBoolean(false)
+        val permitted = AtomicBoolean(true)
+        val sut = getSut(triggerGroupsConfig(pending, permitted))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            // e.g. a flag-only group's flag reloads as false, or a config update adds an unmatched event
+            pending.set(true)
+            permitted.set(false)
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
     @Test
     fun `onRemoteConfig keeps manually started replay active when automatic replay is disabled`() {
         val fx =

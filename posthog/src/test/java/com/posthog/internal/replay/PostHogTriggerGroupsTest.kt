@@ -147,27 +147,28 @@ internal class PostHogTriggerGroupsTest {
     }
 
     @Test
-    fun `a missing or non-number sample rate parses to null`() {
-        val config = config(group(sampleRate = null), group(id = "g2", sampleRate = "0.5"))
+    fun `a missing sample rate parses to null, a string rate parses and garbage samples out`() {
+        val config = config(group(sampleRate = null), group(id = "g2", sampleRate = "0.5"), group(id = "g3", sampleRate = "abc"))
         assertEquals(null, config.groups[0].sampleRate)
-        assertEquals(null, config.groups[1].sampleRate)
+        assertEquals(0.5, config.groups[1].sampleRate)
+        assertEquals(0.0, config.groups[2].sampleRate)
     }
 
     @Test
-    fun `simple hash matches the web helper`() {
-        // java "abc".hashCode() == 96354
-        assertEquals(96354L, simpleTriggerHash("abc"))
-        // java "posthog".hashCode() == -391202912; js Math.abs of the int32 yields 391202912
-        assertEquals(391202912L, simpleTriggerHash("posthog"))
-    }
-
-    @Test
-    fun `sampling uses the hash bucket like the web helper`() {
-        // java "session-1group-1".hashCode() == 365459561; 365459561 % 100 == 61
-        assertFalse(sampleOnTriggerProperty("session-1group-1", 0.61))
-        assertTrue(sampleOnTriggerProperty("session-1group-1", 0.62))
-        assertTrue(sampleOnTriggerProperty("session-1group-1", 1.0))
-        assertFalse(sampleOnTriggerProperty("session-1group-1", 0.0))
+    fun `a configured leg stays configured even when none of its entries parse`() {
+        val conditions =
+            config(
+                group(
+                    conditions =
+                        mapOf(
+                            "urls" to listOf(mapOf("url" to "([invalid", "matching" to "regex")),
+                            "events" to listOf(mapOf("properties" to emptyList<Any>())),
+                            "flag" to mapOf("variant" to "beta"),
+                        ),
+                ),
+            ).groups.single().conditions
+        assertTrue(conditions.urls.isEmpty() && conditions.events.isEmpty() && conditions.flag == null)
+        assertTrue(conditions.hasUrlsLeg && conditions.hasEventsLeg && conditions.hasFlagLeg)
     }
 
     private fun config(vararg groups: Map<String, Any?>): PostHogTriggerGroupsConfig {

@@ -519,10 +519,12 @@ public class PostHogRemoteConfig(
             parseTriggerGroupsConfig(sessionRecording) { message ->
                 config.logger.log(message)
             }
-        sessionRecordingTriggerGroups = parsed
+        // Push the groups before publishing them: a reader that sees v2 in effect must not evaluate
+        // an evaluator that still holds no or stale groups.
         if (parsed != null) {
             triggerGroupsEvaluator.onConfig(parsed.groups)
         }
+        sessionRecordingTriggerGroups = parsed
         return parsed
     }
 
@@ -1408,6 +1410,7 @@ public class PostHogRemoteConfig(
      * from remote config and the given session ID.
      *
      * If there is no sample rate configured (null), recording is always allowed.
+     * While v2 trigger groups are in effect, their decision replaces the v1 sample rate.
      * The decision is deterministic based on the session ID hash, matching
      * the JS SDK's sampleOnProperty logic.
      *
@@ -1415,11 +1418,16 @@ public class PostHogRemoteConfig(
      * @return true if this session should be recorded, false otherwise
      */
     public fun makeSamplingDecision(sessionId: String): Boolean {
-        if (sessionRecordingTriggerGroups != null) return true
+        // A pending group defers the start in the integration instead.
+        if (hasSessionRecordingTriggerGroups()) {
+            return decideTriggerGroups(sessionId).let { it.shouldRecord || it.hasPendingGroups }
+        }
 
-        // Local config takes precedence over remote config
+        // Local config takes precedence over remote config. Under v2 the per-group sampling replaces the
+        // remote rate; React Native samples the groups in JS, so only its local rate still applies here.
         val localSampleRate = parseSampleRate(config.sampleRateProvider?.invoke())
-        val sampleRate = localSampleRate ?: sessionRecordingSampleRate ?: return true
+        val remoteSampleRate = if (sessionRecordingTriggerGroups != null) null else sessionRecordingSampleRate
+        val sampleRate = localSampleRate ?: remoteSampleRate ?: return true
 
         val shouldSample = sampleOnProperty(sessionId, sampleRate)
 
@@ -1460,8 +1468,11 @@ public class PostHogRemoteConfig(
      */
     public fun getRecordingMinimumDurationMs(): Long? = sessionRecordingMinimumDurationMs
 
-    /** While true, the v2 trigger groups replace the v1 recording gates. */
-    public fun hasSessionRecordingTriggerGroups(): Boolean = sessionRecordingTriggerGroups != null
+    /**
+     * While true, the v2 trigger groups replace the v1 recording gates.
+     * Always false for React Native: the JS layer evaluates the groups and starts replay itself.
+     */
+    public fun hasSessionRecordingTriggerGroups(): Boolean = !PostHogSessionManager.isReactNative && sessionRecordingTriggerGroups != null
 
     /** Returns true when the event newly activated at least one trigger group. */
     public fun onSessionRecordingTriggerEvent(
@@ -1509,9 +1520,6 @@ public class PostHogRemoteConfig(
             // Snapshotted before the evaluator lock: processSessionRecordingConfig pushes config
             // to the evaluator while holding featureFlagsLock, so the reverse order deadlocks.
             currentFeatureFlags(),
-            getPersonPropertiesForFlags(),
-            // RN events are captured in JS and never reach this evaluator.
-            eventLegsReliable = !PostHogSessionManager.isReactNative,
         )
 
     private fun currentFeatureFlags(): Map<String, Any?>? =

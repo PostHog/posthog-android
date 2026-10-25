@@ -18,12 +18,18 @@ internal enum class PostHogTriggerMatchType {
     ALL,
 }
 
+// A leg counts as configured when the raw config has it, even if none of its entries parse: like
+// posthog-js, an unparseable condition then never matches instead of dropping out and letting the
+// group record every session.
 internal data class PostHogTriggerConditions(
     val matchType: PostHogTriggerMatchType,
     val events: List<PostHogTriggerEvent>,
     val urls: List<Regex>,
     val flag: PostHogTriggerFlag?,
     val properties: List<PostHogTriggerPropertyFilter>,
+    val hasEventsLeg: Boolean = events.isNotEmpty(),
+    val hasUrlsLeg: Boolean = urls.isNotEmpty(),
+    val hasFlagLeg: Boolean = flag != null,
 )
 
 internal data class PostHogTriggerEvent(
@@ -64,7 +70,7 @@ internal fun parseTriggerGroupsConfig(
             PostHogTriggerGroup(
                 id = id,
                 name = map["name"] as? String ?: "",
-                sampleRate = (map["sampleRate"] as? Number)?.toDouble(),
+                sampleRate = parseTriggerGroupSampleRate(map["sampleRate"]),
                 minDurationMs = (map["minDurationMs"] as? Number)?.toLong(),
                 conditions = parseTriggerConditions(map["conditions"]),
             )
@@ -75,19 +81,29 @@ internal fun parseTriggerGroupsConfig(
     return PostHogTriggerGroupsConfig(groups)
 }
 
-private fun parseTriggerConditions(conditions: Any?): PostHogTriggerConditions =
-    PostHogTriggerConditions(
-        matchType =
-            if ((conditions as? Map<*, *>)?.get("matchType") == "any") {
-                PostHogTriggerMatchType.ANY
-            } else {
-                PostHogTriggerMatchType.ALL
-            },
-        events = parseTriggerEvents((conditions as? Map<*, *>)?.get("events")),
-        urls = parseTriggerUrls((conditions as? Map<*, *>)?.get("urls")),
-        flag = parseTriggerFlag((conditions as? Map<*, *>)?.get("flag")),
-        properties = parseTriggerPropertyFilters((conditions as? Map<*, *>)?.get("properties")),
+// The API can send the rate as a string. One that doesn't parse samples out, as it does on web
+// (NaN never passes the threshold); only a missing rate samples in.
+private fun parseTriggerGroupSampleRate(raw: Any?): Double? =
+    when (raw) {
+        is Number -> raw.toDouble()
+        is String -> raw.toDoubleOrNull() ?: 0.0
+        else -> null
+    }
+
+private fun parseTriggerConditions(conditions: Any?): PostHogTriggerConditions {
+    val map = conditions as? Map<*, *>
+    val rawFlag = map?.get("flag")
+    return PostHogTriggerConditions(
+        matchType = if (map?.get("matchType") == "any") PostHogTriggerMatchType.ANY else PostHogTriggerMatchType.ALL,
+        events = parseTriggerEvents(map?.get("events")),
+        urls = parseTriggerUrls(map?.get("urls")),
+        flag = parseTriggerFlag(rawFlag),
+        properties = parseTriggerPropertyFilters(map?.get("properties")),
+        hasEventsLeg = (map?.get("events") as? List<*>).orEmpty().isNotEmpty(),
+        hasUrlsLeg = (map?.get("urls") as? List<*>).orEmpty().isNotEmpty(),
+        hasFlagLeg = (rawFlag is String && rawFlag.isNotEmpty()) || rawFlag is Map<*, *>,
     )
+}
 
 private fun parseTriggerEvents(events: Any?): List<PostHogTriggerEvent> =
     (events as? List<*>).orEmpty().mapNotNull { raw ->

@@ -2502,6 +2502,12 @@ public class PostHogReplayIntegration(
             return
         }
 
+        // Explicit starts land here too, so the group sampling decision must hold for them as well.
+        if (!isPermittedByTriggerGroups()) {
+            config.logger.log("[Session Replay] Trigger groups decided against the current session. Skipping start.")
+            return
+        }
+
         val currentSessionId = postHog?.getSessionId()?.toString()
 
         // Keep producer commits and the bitmap buffer lifecycle on the same recording run.
@@ -2807,6 +2813,13 @@ public class PostHogReplayIntegration(
         return remoteConfig.hasPendingSessionRecordingTriggerGroups(currentSessionId)
     }
 
+    private fun isPermittedByTriggerGroups(): Boolean {
+        val remoteConfig = config.remoteConfigHolder ?: return true
+        if (!remoteConfig.hasSessionRecordingTriggerGroups()) return true
+        val currentSessionId = postHog?.getSessionId()?.toString() ?: return true
+        return remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)
+    }
+
     private data class EventTriggerState(val configured: Boolean, val activated: Boolean)
 
     private fun eventTriggerState(sessionId: String?): EventTriggerState {
@@ -3051,6 +3064,8 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog.getSessionId()?.toString() ?: return
         if (remoteConfig.hasSessionRecordingTriggerGroups()) {
             if (remoteConfig.hasPendingSessionRecordingTriggerGroups(currentSessionId)) {
+                // A flag turning off or a config update can move an already-recording session back to pending.
+                stopIfActive("Trigger groups pending. Stopping until one activates.")
                 return
             }
             if (!remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)) {

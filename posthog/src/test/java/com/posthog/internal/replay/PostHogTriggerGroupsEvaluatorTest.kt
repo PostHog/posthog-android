@@ -59,7 +59,7 @@ internal class PostHogTriggerGroupsEvaluatorTest {
     private fun decide(
         sessionId: String = "session-1",
         flags: Map<String, Any?>? = emptyMap(),
-    ) = evaluator.evaluate(sessionId, flags, null)
+    ) = evaluator.evaluate(sessionId, flags)
 
     @Test
     fun `any combines activated legs and ignores disabled legs`() {
@@ -406,18 +406,34 @@ internal class PostHogTriggerGroupsEvaluatorTest {
     }
 
     @Test
-    fun `unreliable event legs are disabled so they neither record nor wait`() {
-        // React Native captures events in JS, so the event/screen legs can never fire natively:
-        // this group has no other leg, so it resolves to disabled instead of pending forever.
-        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
-
-        var decision = evaluator.evaluate("session-1", mapOf("replay-flag" to false), null, eventLegsReliable = false)
+    fun `an unparseable condition keeps the group pending instead of recording every session`() {
+        configure(group(id = "g1", conditions = mapOf("urls" to listOf(mapOf("url" to "([invalid", "matching" to "regex")))))
+        var decision = decide()
         assertFalse(decision.shouldRecord)
-        assertFalse(decision.hasPendingGroups)
+        assertTrue(decision.hasPendingGroups)
 
-        // flag legs still decide under unreliable event legs
-        configure(group(id = "g2", conditions = mapOf("matchType" to "any") + flagLeg("replay-flag")))
-        decision = evaluator.evaluate("session-1", mapOf("replay-flag" to true), null, eventLegsReliable = false)
-        assertTrue(decision.shouldRecord)
+        // under all, the broken leg still has to match, so the event alone does not record
+        configure(
+            group(
+                id = "g2",
+                conditions =
+                    eventLeg(
+                        mapOf("name" to "purchase"),
+                    ) + mapOf("urls" to listOf(mapOf("url" to "/checkout", "matching" to "exact"))),
+            ),
+        )
+        assertTrue(onEvent(event = "purchase"))
+        decision = decide()
+        assertFalse(decision.shouldRecord)
+        assertTrue(decision.hasPendingGroups)
+    }
+
+    @Test
+    fun `evaluating a stale session does not wipe the current session's activation`() {
+        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
+        assertTrue(onEvent(sessionId = "session-2", event = "purchase"))
+
+        assertFalse(decide(sessionId = "session-1").shouldRecord)
+        assertTrue(decide(sessionId = "session-2").shouldRecord)
     }
 }
