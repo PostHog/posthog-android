@@ -31,6 +31,10 @@ public class PostHogQueue<Record>(
 ) : PostHogQueueInterface<Record> {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
+
+    // The files of the last request that failed or came back with records to retry. The next flush
+    // resends exactly these, so the request keeps its id and counts the attempt. Guarded by dequeLock.
+    private var retryFiles: List<File> = emptyList()
     private val timerLock = Any()
     private var pausedUntil: Date? = null
     private var retryCount = 0
@@ -193,11 +197,15 @@ public class PostHogQueue<Record>(
     }
 
     private fun takeFiles(): List<File> {
-        val events: List<File>
         synchronized(dequeLock) {
-            events = deque.take(batchLimits.cap)
+            val retry = retryFiles
+            retryFiles = emptyList()
+            // A file dropped since (queue full, clear) changes the request, so it starts over.
+            if (retry.isNotEmpty() && deque.containsAll(retry)) {
+                return retry
+            }
+            return deque.take(batchLimits.cap)
         }
-        return events
     }
 
     private fun flushBatch(isFatal: Boolean) {
@@ -335,6 +343,7 @@ public class PostHogQueue<Record>(
                         }
                     if (retained.isNotEmpty()) {
                         partialRetryAfterSeconds = result.retryAfterSeconds
+                        keepForRetry(retained)
                     }
                 }
                 if (retained.isEmpty()) {
@@ -352,10 +361,15 @@ public class PostHogQueue<Record>(
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
             if (!deleteFiles) {
+                // A 413 halves the batch instead, so the next request carries fewer records.
+                if (spec.isRetriableStatusCode(e.statusCode)) {
+                    keepForRetry(files)
+                }
                 throw e
             }
         } catch (e: IOException) {
             deleteFiles = false
+            keepForRetry(files)
             config.logger.log("Flushing failed because of a network error, let's try again soon.")
             throw e
         } finally {
@@ -371,6 +385,12 @@ public class PostHogQueue<Record>(
             }
         }
         return retained.isNotEmpty()
+    }
+
+    private fun keepForRetry(files: List<File>) {
+        synchronized(dequeLock) {
+            retryFiles = files
+        }
     }
 
     override fun flush() {

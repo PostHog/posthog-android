@@ -81,11 +81,13 @@ public class PostHogApi(
     }
 
     // Capture v1 decides its own redirects (see captureV1): OkHttp would follow any 3xx, drop the
-    // Authorization header on a cross-host hop and turn a 302 into a body-less GET.
+    // Authorization header on a cross-host hop and turn a 302 into a body-less GET. The queue owns
+    // retries too: an OkHttp resend would repeat PostHog-Attempt and PostHog-Request-Timestamp.
     private val captureClient: OkHttpClient by lazy {
         client.newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
+            .retryOnConnectionFailure(false)
             .build()
     }
 
@@ -145,7 +147,8 @@ public class PostHogApi(
         val url = "$theHost$path"
         var request =
             makeRequest(url, contentType = captureMediaType) {
-                logRequest(body, url)
+                // Events hold user data, so the debug log names only the count.
+                config.logger.log("Request $url: ${events.size} events")
 
                 config.serializer.serialize(body, it.bufferedWriter())
             }.newBuilder()
@@ -160,8 +163,9 @@ public class PostHogApi(
         while (true) {
             logRequestHeaders(request)
 
-            captureClient.newCall(request).execute().use {
-                val response = logResponse(it)
+            captureClient.newCall(request).execute().use { response ->
+                // The status only: the results name event uuids.
+                config.logger.log("Response ${response.request.url}: ${response.code}")
 
                 if (response.code != 307 && response.code != 308) {
                     return captureV1Result(response, path, uuids, identity)

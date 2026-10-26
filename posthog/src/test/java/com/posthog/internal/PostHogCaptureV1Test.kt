@@ -351,6 +351,32 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a dropped connection is not resent by the HTTP client`() {
+        val http = httpServers.mockHttp(response = MockResponse().setBody(""))
+        // the second request reuses the pooled connection, which OkHttp would otherwise retry on a new one
+        http.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        http.enqueue(MockResponse().setBody(""))
+        val sut = api(http.url("/").toString())
+
+        sut.captureV1(listOf(event()))
+        assertThrows(IOException::class.java) { sut.captureV1(listOf(event())) }
+
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `debug logs leave out event content`() {
+        val sent = event(properties = mapOf("email" to "user@example.com"))
+        val http = httpServers.mockHttp(response = resultsResponse(sent.uuid!! to "ok"))
+        val config = config(http.url("/").toString()).apply { debug = true }
+
+        PostHogApi(config).captureV1(listOf(sent))
+
+        assertTrue(logger.messages.any { it.endsWith("/i/v1/analytics/events: 1 events") })
+        assertTrue(logger.messages.none { it.contains("user@example.com") || it.contains(sent.uuid.toString()) })
+    }
+
+    @Test
     fun `a different set of events starts a new request identity`() {
         val event = event()
         val other = event("other")
@@ -485,6 +511,58 @@ internal class PostHogCaptureV1Test {
         assertEquals(listOf(retry.uuid.toString()), batch(second).map { it["uuid"] })
         assertEquals("2", second.headers["PostHog-Attempt"])
         assertEquals(first.headers["PostHog-Request-Id"], second.headers["PostHog-Request-Id"])
+    }
+
+    @Test
+    fun `queue resends a failed batch alone under the same request id`() {
+        val failed = event("failed")
+        val later = event("later")
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503))
+        http.enqueue(resultsResponse(failed.uuid!! to "ok"))
+        http.enqueue(resultsResponse(later.uuid!! to "ok"))
+        val sut = queue(http)
+
+        sut.add(failed)
+        executor.awaitExecution()
+        sut.add(later)
+        executor.awaitExecution()
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(3, http.requestCount)
+        val requests = List(3) { http.takeRequest() }
+        assertEquals(
+            listOf(listOf(failed.uuid.toString()), listOf(failed.uuid.toString()), listOf(later.uuid.toString())),
+            requests.map { request -> batch(request).map { it["uuid"] } },
+        )
+        assertEquals(listOf("1", "2", "1"), requests.map { it.headers["PostHog-Attempt"] })
+        assertEquals(requests[0].headers["PostHog-Request-Id"], requests[1].headers["PostHog-Request-Id"])
+        assertNotEquals(requests[1].headers["PostHog-Request-Id"], requests[2].headers["PostHog-Request-Id"])
+        assertTrue(sut.dequeList.isEmpty())
+    }
+
+    @Test
+    fun `queue resends only the retried events while newer ones wait`() {
+        val ok = event("ok")
+        val retry = event("retry")
+        val later = event("later")
+        val http = httpServers.mockHttp(response = resultsResponse(ok.uuid!! to "ok", retry.uuid!! to "retry"))
+        http.enqueue(resultsResponse(retry.uuid!! to "ok"))
+        val sut = queue(http, flushAt = 2)
+
+        sut.add(ok)
+        sut.add(retry)
+        executor.awaitExecution()
+        sut.add(later)
+        executor.awaitExecution()
+
+        assertEquals(2, http.requestCount)
+        val first = http.takeRequest()
+        val second = http.takeRequest()
+        assertEquals(listOf(retry.uuid.toString()), batch(second).map { it["uuid"] })
+        assertEquals("2", second.headers["PostHog-Attempt"])
+        assertEquals(first.headers["PostHog-Request-Id"], second.headers["PostHog-Request-Id"])
+        assertEquals(1, sut.dequeList.size)
     }
 
     @Test

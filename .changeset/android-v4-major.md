@@ -20,3 +20,4 @@
 - **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header; a value set in properties, super properties or `beforeSend` is removed before sending
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped with a warning
 - **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token
+- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies
