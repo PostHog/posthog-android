@@ -265,18 +265,13 @@ public open class PostHogStateless protected constructor(
                     appendGroups = !groupIdentify,
                 )
 
-            val eventProperties =
-                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
-                    minimizeFeatureFlagCalledProperties(mergedProperties)
-                } else {
-                    mergedProperties
-                }
+            val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties.toMutableMap())
 
             val postHogEvent =
                 buildEvent(
                     event,
                     distinctId,
-                    eventProperties.toMutableMap(),
+                    eventProperties,
                     timestamp,
                 )
             if (postHogEvent == null) {
@@ -536,9 +531,15 @@ public open class PostHogStateless protected constructor(
      * enabled minimal flag-called events for this team AND the evaluated flag is not linked to an
      * experiment. Any missing signal (gate absent from the response or cache, `has_experiment`
      * unknown) keeps the full legacy shape, and experiment-linked flags always send the full
-     * envelope because experiment exposure analysis reads it.
+     * envelope because experiment exposure analysis reads it. Other events pass through unchanged.
      */
-    internal fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
+    internal fun minimizeIfFeatureFlagCalled(
+        event: String,
+        properties: MutableMap<String, Any>,
+    ): MutableMap<String, Any> {
+        if (event != PostHogEventName.FEATURE_FLAG_CALLED.event) {
+            return properties
+        }
         if (!isMinimalFlagCalledEventsEnabled()) {
             return properties
         }
@@ -546,7 +547,7 @@ public open class PostHogStateless protected constructor(
             return properties
         }
 
-        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }
+        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }.toMutableMap()
     }
 
     /**

@@ -2540,6 +2540,28 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `an event edited by beforeSend is sent as edited`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        var calls = 0
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                it.copy(distinctId = "hooked-${++calls}")
+            })
+
+        sut.capture("event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals("hooked-1", batch.batch.first().distinctId)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `an event is dropped when beforeSend opts out`() {
         val http = mockHttp()
         val url = http.url("/")

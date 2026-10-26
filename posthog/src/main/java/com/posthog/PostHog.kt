@@ -1037,12 +1037,7 @@ public class PostHog private constructor(
                     },
                 )
 
-            val eventProperties =
-                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
-                    minimizeFeatureFlagCalledProperties(mergedProperties).toMutableMap()
-                } else {
-                    mergedProperties
-                }
+            val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
 
             val postHogEvent = buildEvent(event, newDistinctId, eventProperties, timestamp)
             if (postHogEvent == null) {
