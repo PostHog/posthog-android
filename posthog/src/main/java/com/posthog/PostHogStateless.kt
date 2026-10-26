@@ -241,26 +241,14 @@ public open class PostHogStateless protected constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
-        captureStatelessInternal(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
-    }
-
-    internal fun captureStatelessInternal(
-        event: String,
-        distinctId: String,
-        properties: Map<String, Any>?,
-        userProperties: Map<String, Any>?,
-        userPropertiesSetOnce: Map<String, Any>?,
-        groups: Map<String, String>?,
-        timestamp: Date?,
-    ): Boolean {
         try {
             if (!isEnabled()) {
-                return false
+                return
             }
 
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return false
+                return
             }
 
             var groupIdentify = false
@@ -277,18 +265,13 @@ public open class PostHogStateless protected constructor(
                     appendGroups = !groupIdentify,
                 )
 
-            val eventProperties =
-                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
-                    minimizeFeatureFlagCalledProperties(mergedProperties)
-                } else {
-                    mergedProperties
-                }
+            val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties.toMutableMap())
 
             val postHogEvent =
                 buildEvent(
                     event,
                     distinctId,
-                    eventProperties.toMutableMap(),
+                    eventProperties,
                     timestamp,
                 )
             if (postHogEvent == null) {
@@ -300,15 +283,12 @@ public open class PostHogStateless protected constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return false
+                return
             }
 
-            val queue = queue ?: return false
-            queue.add(postHogEvent)
-            return true
+            queue?.add(postHogEvent)
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
-            return false
         }
     }
 
@@ -551,9 +531,15 @@ public open class PostHogStateless protected constructor(
      * enabled minimal flag-called events for this team AND the evaluated flag is not linked to an
      * experiment. Any missing signal (gate absent from the response or cache, `has_experiment`
      * unknown) keeps the full legacy shape, and experiment-linked flags always send the full
-     * envelope because experiment exposure analysis reads it.
+     * envelope because experiment exposure analysis reads it. Other events pass through unchanged.
      */
-    private fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
+    internal fun minimizeIfFeatureFlagCalled(
+        event: String,
+        properties: MutableMap<String, Any>,
+    ): MutableMap<String, Any> {
+        if (event != PostHogEventName.FEATURE_FLAG_CALLED.event) {
+            return properties
+        }
         if (!isMinimalFlagCalledEventsEnabled()) {
             return properties
         }
@@ -561,7 +547,7 @@ public open class PostHogStateless protected constructor(
             return properties
         }
 
-        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }
+        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }.toMutableMap()
     }
 
     /**

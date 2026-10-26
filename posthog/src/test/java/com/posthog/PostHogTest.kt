@@ -2518,6 +2518,100 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `beforeSend runs once per capture`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        var calls = 0
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                calls++
+                it
+            })
+
+        sut.capture("event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, calls)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `an event edited by beforeSend is sent as edited`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        var calls = 0
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                it.copy(distinctId = "hooked-${++calls}")
+            })
+
+        sut.capture("event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals("hooked-1", batch.batch.first().distinctId)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `an event is dropped when beforeSend opts out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        lateinit var sut: PostHogInterface
+
+        sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                sut.optOut()
+                it
+            })
+
+        sut.capture("event")
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `beforeSend sees the minimal feature flag called event`() {
+        val file = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json")
+        val http = mockHttp(response = MockResponse().setBody(file.readText()))
+        http.enqueue(MockResponse().setBody(""))
+        val url = http.url("/")
+        val seenProperties = mutableListOf<Set<String>>()
+
+        val sut =
+            getSut(url.toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "\$feature_flag_called") seenProperties.add(it.properties.orEmpty().keys.toSet())
+                it
+            })
+        sut.register("myCustomProp", "value")
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        sut.getFeatureFlag("IAmInactive")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, seenProperties.size)
+        assertFalse(seenProperties.first().contains("myCustomProp"))
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `creates a group`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -3683,10 +3777,8 @@ internal class PostHogTest {
     fun `an SDK event captured from inside beforeSend does not also carry the bundle`() {
         val http = mockHttp()
         lateinit var sut: PostHogInterface
-        // beforeSend runs twice per stateful capture (PostHog.capture, then captureStateless), so the
-        // nested capture fires twice.
         sut =
-            replayDebugSut(http, flushAt = 3, beforeSend = {
+            replayDebugSut(http, flushAt = 2, beforeSend = {
                 if (it.event == "\$outer") sut.capture("\$inner")
                 it
             })
