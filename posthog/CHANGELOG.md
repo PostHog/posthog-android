@@ -1,5 +1,11 @@
 ## Next
 
+## 6.47.5
+
+### Patch Changes
+
+- fb584fd: Upgrade OkHttp to 4.12.1 to block compromised eMudhra intermediate certificates.
+
 ## 6.47.4
 
 ### Patch Changes
