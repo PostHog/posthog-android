@@ -476,6 +476,8 @@ public final class com/posthog/server/PostHogRequestContext {
 	public static final field Companion Lcom/posthog/server/PostHogRequestContext$Companion;
 	public static final field DISTINCT_ID_HEADER Ljava/lang/String;
 	public static final field SESSION_ID_HEADER Ljava/lang/String;
+	public static final fun beginScope (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;)Lcom/posthog/server/PostHogRequestContext$Scope;
+	public static final fun beginScope (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;Z)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public static final fun beginScope (Lcom/posthog/server/PostHogRequestContextData;)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public static final fun beginScope (Lcom/posthog/server/PostHogRequestContextData;Z)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public static final fun current ()Lcom/posthog/server/PostHogRequestContextData;
@@ -485,6 +487,8 @@ public final class com/posthog/server/PostHogRequestContext {
 }
 
 public final class com/posthog/server/PostHogRequestContext$Companion {
+	public final fun beginScope (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;)Lcom/posthog/server/PostHogRequestContext$Scope;
+	public final fun beginScope (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;Z)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public final fun beginScope (Lcom/posthog/server/PostHogRequestContextData;)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public final fun beginScope (Lcom/posthog/server/PostHogRequestContextData;Z)Lcom/posthog/server/PostHogRequestContext$Scope;
 	public final fun current ()Lcom/posthog/server/PostHogRequestContextData;
@@ -492,6 +496,8 @@ public final class com/posthog/server/PostHogRequestContext$Companion {
 	public final fun fromHeaders (Ljava/util/Map;Z)Lcom/posthog/server/PostHogRequestContextData;
 	public final fun fromHeaders (Ljava/util/Map;ZLjava/util/Map;)Lcom/posthog/server/PostHogRequestContextData;
 	public static synthetic fun fromHeaders$default (Lcom/posthog/server/PostHogRequestContext$Companion;Ljava/util/Map;ZLjava/util/Map;ILjava/lang/Object;)Lcom/posthog/server/PostHogRequestContextData;
+	public final fun withContext (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+	public final fun withContext (Lcom/posthog/server/PostHogInterface;Lcom/posthog/server/PostHogRequestContextData;ZLkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 	public final fun withContext (Lcom/posthog/server/PostHogRequestContextData;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 	public final fun withContext (Lcom/posthog/server/PostHogRequestContextData;ZLkotlin/jvm/functions/Function0;)Ljava/lang/Object;
 }
@@ -507,5 +513,15 @@ public final class com/posthog/server/PostHogRequestContextData {
 	public final fun getDistinctId ()Ljava/lang/String;
 	public final fun getProperties ()Ljava/util/Map;
 	public final fun getSessionId ()Ljava/lang/String;
+}
+
+public final class com/posthog/server/otel/PostHogContextSpanProcessor : io/opentelemetry/sdk/trace/SpanProcessor {
+	public fun <init> (Lcom/posthog/server/PostHogInterface;)V
+	public fun forceFlush ()Lio/opentelemetry/sdk/common/CompletableResultCode;
+	public fun isEndRequired ()Z
+	public fun isStartRequired ()Z
+	public fun onEnd (Lio/opentelemetry/sdk/trace/ReadableSpan;)V
+	public fun onStart (Lio/opentelemetry/context/Context;Lio/opentelemetry/sdk/trace/ReadWriteSpan;)V
+	public fun shutdown ()Lio/opentelemetry/sdk/common/CompletableResultCode;
 }
 
