@@ -3084,4 +3084,105 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
         http.shutdown()
     }
+
+    private fun loadFlagsWithPayloads(
+        payloads: Map<String, String>,
+        logs: MutableList<String> = mutableListOf(),
+    ): PostHogRemoteConfig {
+        val serializedPayloads = payloads.entries.joinToString(",") { (key, value) -> "\"$key\":${jsonString(value)}" }
+        val flags = payloads.keys.joinToString(",") { "\"$it\":\"blue\"" }
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """{"errorsWhileComputingFlags":false,"featureFlags":{$flags,"beta-ui":true},""" +
+                            """"featureFlagPayloads":{$serializedPayloads,"beta-ui":"{\"color\":\"green\"}"}}""",
+                    ),
+            )
+        val sut = getSut(host = http.url("/").toString())
+        config!!.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    logs.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+        http.shutdown()
+        return sut
+    }
+
+    private fun jsonString(value: String): String = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).gson.toJson(value)
+
+    @Test
+    fun `malformed, empty or whitespace payloads are null and keep the flag and sibling payloads`() {
+        for (input in listOf("{broken", "", "   ", "hello", "{\"a\":1} trailing")) {
+            preferences.clear()
+            val logs = mutableListOf<String>()
+            val sut = loadFlagsWithPayloads(mapOf("checkout" to input), logs)
+
+            assertNull(sut.getFeatureFlagPayload("checkout"), "payload for input '$input'")
+            val result = sut.getFeatureFlagResult("checkout")
+            assertNotNull(result)
+            assertTrue(result.enabled)
+            assertEquals("blue", result.variant)
+            assertNull(result.payload)
+            assertEquals(mapOf<String, Any>("checkout" to "blue", "beta-ui" to true), sut.getFeatureFlags())
+            assertEquals(mapOf("color" to "green"), sut.getFeatureFlagPayload("beta-ui"))
+            assertTrue(logs.any { "checkout" in it && "malformed" in it }, "logs for input '$input': $logs")
+
+            // the cache holds no raw string either, so a later launch reads no payload
+            assertNull(getSut(host = "http://127.0.0.1:1/").getFeatureFlagPayload("checkout"))
+        }
+    }
+
+    @Test
+    fun `valid JSON payloads keep their decoded value`() {
+        val sut =
+            loadFlagsWithPayloads(
+                mapOf(
+                    "string" to "\"hello\"",
+                    "empty" to "\"\"",
+                    "false" to "false",
+                    "zero" to "0",
+                    "null" to "null",
+                    "object" to "{\"color\":\"green\"}",
+                    "array" to "[1,false]",
+                ),
+            )
+
+        assertEquals("hello", sut.getFeatureFlagPayload("string"))
+        assertEquals("", sut.getFeatureFlagPayload("empty"))
+        assertEquals(false, sut.getFeatureFlagPayload("false"))
+        assertEquals(0, sut.getFeatureFlagPayload("zero"))
+        assertNull(sut.getFeatureFlagPayload("null"))
+        assertEquals(mapOf("color" to "green"), sut.getFeatureFlagPayload("object"))
+        assertEquals(listOf(1, false), sut.getFeatureFlagPayload("array"))
+    }
+
+    @Test
+    fun `bootstrapped string payloads are not JSON-decoded again`() {
+        for (payload in listOf("hello", "123", "true")) {
+            val sut =
+                getSut(
+                    host = "http://127.0.0.1:1/",
+                    bootstrap =
+                        PostHogBootstrapConfig(
+                            featureFlags = mapOf("beta-ui" to "variant-a"),
+                            featureFlagPayloads = mapOf("beta-ui" to payload),
+                        ),
+                )
+
+            assertEquals(payload, sut.getFeatureFlagResult("beta-ui")?.payload)
+        }
+    }
 }
