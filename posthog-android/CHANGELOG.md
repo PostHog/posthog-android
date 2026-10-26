@@ -1,5 +1,11 @@
 ## Next
 
+## 3.72.10
+
+### Patch Changes
+
+- cb6fe68: Fix `beforeSend` running twice for each captured event, which discarded the hook's changes to `distinctId`, `timestamp` and `uuid` and compounded random sampling
+
 ## 3.72.9
 
 ### Patch Changes
