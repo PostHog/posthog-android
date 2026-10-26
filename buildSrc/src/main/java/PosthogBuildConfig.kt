@@ -64,7 +64,7 @@ object PosthogBuildConfig {
         val LIFECYCLE = "2.6.2"
         val GSON = "2.10.1"
 
-        val OKHTTP = "4.12.0"
+        val OKHTTP = "4.12.1"
         val OPENFEATURE = "1.23.0"
         val OKIO = "3.11.0"
         val CURTAINS = "1.2.5"
