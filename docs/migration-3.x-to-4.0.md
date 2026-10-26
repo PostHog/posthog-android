@@ -33,6 +33,7 @@ You need to change something if your app does any of these:
 | --- | --- | --- |
 | Analytics events | `/batch` | `/i/v1/analytics/events` |
 | Session replay | `/s/` | `/s/`, unchanged |
+| AI events (`captureAi`) | – | `/i/v1/ai/events` (see [AI events](#ai-events)) |
 | Logs | `/i/v1/logs` | `/i/v1/logs`, unchanged |
 | Feature flags | `/flags` | `/flags`, unchanged |
 
