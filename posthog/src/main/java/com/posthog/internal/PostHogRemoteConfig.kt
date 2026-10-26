@@ -1,5 +1,8 @@
 package com.posthog.internal
 
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.MalformedJsonException
 import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInternal
@@ -17,6 +20,7 @@ import com.posthog.internal.PostHogPreferences.Companion.PUSH
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
+import java.io.StringReader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -1198,26 +1202,28 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> {
-        val parsedPayloads = (featureFlagPayloads ?: mapOf()).toMutableMap()
-
-        for (item in parsedPayloads) {
-            val value = item.value
-
-            try {
-                // only try to parse if its a String, since the JSON values are stringified
-                if (value is String) {
-                    // try to deserialize as Any?
-                    config.serializer.deserializeString(value)?.let {
-                        parsedPayloads[item.key] = it
-                    }
-                }
-            } catch (ignored: Throwable) {
-                // if it fails, we keep the original value
-            }
+    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> =
+        (featureFlagPayloads ?: mapOf()).mapValues { (key, value) ->
+            // payloads arrive as serialized JSON strings; other values are already decoded
+            if (value is String) decodePayload(key, value) else value
         }
-        return parsedPayloads
-    }
+
+    // Strict JSON, so a malformed, empty or whitespace-only payload is no payload (null), never the raw string.
+    private fun decodePayload(
+        key: String,
+        serialized: String,
+    ): Any? =
+        try {
+            val reader = JsonReader(StringReader(serialized))
+            val decoded = config.serializer.gson.getAdapter(Any::class.java).read(reader)
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                throw MalformedJsonException("Unexpected data after the JSON value")
+            }
+            decoded
+        } catch (e: Throwable) {
+            config.logger.log("Ignoring malformed payload for feature flag $key: $e")
+            null
+        }
 
     private fun normalizeFlagsResponse(flagsResponse: PostHogFlagsResponse): PostHogFlagsResponse {
         val flags = flagsResponse.flags
