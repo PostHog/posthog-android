@@ -118,8 +118,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * [PostHogConfig.flushIntervalSeconds], like other events, and
      * [PostHogConfig.captureAiCompression], [PostHogConfig.captureAiMaxQueueSize] and
      * [PostHogConfig.captureAiTimeout] instead of `compression`, `maxQueueSize` and the default
-     * timeouts. An event over [PostHogConfig.captureAiMaxEventBytes] (8 MiB by default) is dropped
-     * when it's queued, with a log line naming the event and its size. Requests carry up to about
+     * timeouts. A serialized event over [PostHogConfig.captureAiMaxEventBytes] plus 64 KiB (8 MiB +
+     * 64 KiB by default) is dropped, with a log line naming the event and its size. Requests carry up to about
      * 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events
      * are kept on disk; beyond that, the oldest are dropped.
      *
@@ -136,7 +136,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
      * @param options settings that tell PostHog how to process this event, see `options` in [capture]
      * @return the event's uuid once it's handed to the queue, or null when it isn't: the SDK is
-     *   disabled or opted out, or `beforeSend` dropped it
+     *   disabled or opted out, `beforeSend` dropped it, or it's over the size limit
      */
     public fun captureAi(
         event: String,

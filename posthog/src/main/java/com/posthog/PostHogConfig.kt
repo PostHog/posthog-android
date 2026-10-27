@@ -443,8 +443,8 @@ public open class PostHogConfig(
     public var captureAiMaxQueueSize: Int = DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
 
     /**
-     * Timeout in seconds of a [PostHog.captureAi] request: its HTTP client's call, read and write
-     * timeouts.
+     * How long, in seconds, a [PostHog.captureAi] request can go without network activity before it
+     * times out: its HTTP client's read and write timeouts.
      *
      * AI requests can carry several MB, so this is longer than for other requests, which keep
      * OkHttp's 10 second defaults. A value of 0 or less uses the default.
@@ -454,8 +454,9 @@ public open class PostHogConfig(
     public var captureAiTimeout: Int = DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
 
     /**
-     * Maximum size, in bytes, of a [PostHog.captureAi] event. The SDK drops a larger event when it
-     * queues it, logging only the event name and size.
+     * Maximum size, in bytes, of a [PostHog.captureAi] event's properties. The SDK drops a serialized
+     * event over this plus 64 KiB for the rest of the event, measured before [encryption]; then
+     * `captureAi` returns null and logs only the event name and size.
      *
      * Use it to lower the limit. PostHog drops an AI event whose properties are over 8 MiB, so a
      * larger value, or a value of 0 or less, uses 8 MiB.

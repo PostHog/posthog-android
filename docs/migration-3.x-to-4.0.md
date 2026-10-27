@@ -51,9 +51,9 @@ PostHog Cloud (`us.i.posthog.com`, `eu.i.posthog.com`) serves it.
 
 If you send events through your own reverse proxy, update it before you upgrade:
 
-- Forward `/i/v1/analytics/events` to PostHog.
+- Forward `/i/v1/analytics/events` and `/i/v1/ai/events` to PostHog.
 - Pass `Authorization` (the project token, sent as `Bearer <token>`), every `PostHog-*` header, `Content-Type`, `Content-Encoding` and `User-Agent` through unchanged. PostHog answers `401` without `Authorization` and `400` without the others, and the events are dropped.
-- Accept request bodies up to 20 MB. nginx and ingress-nginx default to 1 MB. A `413` from the proxy makes the SDK halve the batch until it fits, and drops an event that doesn't fit on its own.
+- Accept request bodies up to 20 MB. AI requests are often larger than 1 MB, the default limit in nginx and ingress-nginx. A `413` from the proxy makes the SDK halve the batch until it fits, and drops an event that doesn't fit on its own.
 
 PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
 
@@ -161,10 +161,10 @@ It takes the same arguments as `capture`, and the events go through the same `be
 PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "$ai_trace_id" to traceId))
 ```
 
-- `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, or `beforeSend` dropped it.
-- An AI event can be up to 8 MiB. The SDK drops a larger event when it writes it to the queue and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower the limit.
+- `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, `beforeSend` dropped it, or it's over the size limit.
+- An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`, and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower the properties limit; the SDK adds 64 KiB to it for the rest of the event.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
-- AI requests time out after 60 seconds, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
+- AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
