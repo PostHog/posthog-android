@@ -3111,6 +3111,20 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `a failed first load reports the persisted flags`() {
+        preferences.setValue(FEATURE_FLAGS, mapOf("cached-flag" to true))
+        val http = mockHttp(response = MockResponse().setResponseCode(500))
+        val sut = getSut(host = http.url("/").toString())
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(loaded.errorsLoading)
+        assertEquals(mapOf<String, Any>("cached-flag" to true), loaded.variants)
+    }
+
+    @Test
     fun `a throwing internal callback does not suppress the caller's callback`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val sut = getSut(host = http.url("/").toString())

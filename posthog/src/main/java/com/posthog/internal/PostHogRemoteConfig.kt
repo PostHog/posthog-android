@@ -290,7 +290,11 @@ public class PostHogRemoteConfig(
         // because the app might be waiting for it.
         internalOnFeatureFlags?.let { runSafely(it) }
         onFeatureFlags?.let { callback ->
-            runSafely { callback.loaded(PostHogFeatureFlagsLoaded(getFeatureFlags() ?: emptyMap(), errorsLoading)) }
+            runSafely {
+                // a failed first load still reports the persisted flags, so hydrate them first
+                loadFeatureFlagsFromCacheIfNeeded()
+                callback.loaded(PostHogFeatureFlagsLoaded(getFeatureFlags() ?: emptyMap(), errorsLoading))
+            }
         }
     }
 
