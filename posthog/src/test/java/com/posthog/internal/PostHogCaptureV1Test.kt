@@ -18,6 +18,7 @@ import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -64,11 +65,12 @@ internal class PostHogCaptureV1Test {
     private fun queue(
         http: MockWebServer,
         flushAt: Int = 1,
+        storagePrefix: String = tmpDir.newFolder().absolutePath,
     ): PostHogQueue<PostHogEvent> {
         val config =
             config(http.url("/").toString()).apply {
                 this.flushAt = flushAt
-                storagePrefix = tmpDir.newFolder().absolutePath
+                this.storagePrefix = storagePrefix
             }
         // pause time pinned to the past so a backoff never blocks the next flush
         clock.setAddSecondsToCurrentDate(parseISO8601Date("1970-01-01T00:00:00.000Z")!!)
@@ -616,6 +618,29 @@ internal class PostHogCaptureV1Test {
         val options = mapOf<String, Any?>("process_person_profile" to false, "product_tour_id" to 7)
         assertEquals<Map<String, Any?>?>(options, stored.options)
         assertEquals(options, batch(http.takeRequest()).single().options())
+    }
+
+    @Test
+    fun `a 3x event queued on disk is sent in the capture v1 shape`() {
+        val uuid = UUID.randomUUID()
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        File(storagePrefix, PROJECT_TOKEN).apply { mkdirs() }.resolve("$uuid.event").writeText(
+            "{\"uuid\":\"$uuid\",\"event\":\"legacy\",\"distinct_id\":\"d\",\"timestamp\":\"2023-09-19T07:23:00.165Z\"," +
+                "\"properties\":{\"a\":\"b\",\"\$process_person_profile\":false,\"\$lib\":\"posthog-android\"," +
+                "\"\$lib_version\":\"3.20.0\",\"\$session_id\":\"session\"}}",
+        )
+        val http = httpServers.mockHttp(response = resultsResponse(uuid to "ok"))
+        val sut = queue(http, storagePrefix = storagePrefix)
+
+        sut.flush()
+        executor.awaitExecution()
+
+        val sent = batch(http.takeRequest()).single()
+        assertEquals(uuid.toString(), sent["uuid"])
+        assertEquals("session", sent["session_id"])
+        assertEquals(mapOf<String, Any?>("process_person_profile" to false), sent.options())
+        assertEquals(mapOf<String, Any?>("a" to "b"), sent.properties())
+        assertTrue(sut.dequeList.isEmpty())
     }
 
     @Test
