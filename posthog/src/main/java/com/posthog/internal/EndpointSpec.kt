@@ -219,16 +219,26 @@ internal val PostHogConfig.effectiveCaptureAiMaxQueueSize: Int
 internal val PostHogConfig.effectiveCaptureAiTimeoutSeconds: Int
     get() = if (captureAiTimeout > 0) captureAiTimeout else PostHogConfig.DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
 
+/** Thrown by [serializedSize]'s counter to stop serializing once the count passes its bound. */
+private object SerializedSizeExceeded : RuntimeException() {
+    override fun fillInStackTrace(): Throwable = this
+}
+
 /**
  * Bytes [event] takes serialized as the queue stores it, before any [PostHogConfig.encryption].
- * Counted as it's written, so the event isn't held in memory a second time.
+ * Counted as it's written, so the event isn't held in memory a second time. Stops at
+ * [stopAfter] + 1, so an oversized event costs no more than the bound to reject.
  */
-internal fun PostHogConfig.serializedSize(event: PostHogEvent): Long {
+internal fun PostHogConfig.serializedSize(
+    event: PostHogEvent,
+    stopAfter: Long = Long.MAX_VALUE,
+): Long {
     var count = 0L
     val counter =
         object : OutputStream() {
             override fun write(b: Int) {
                 count++
+                if (count > stopAfter) throw SerializedSizeExceeded
             }
 
             override fun write(
@@ -237,9 +247,14 @@ internal fun PostHogConfig.serializedSize(event: PostHogEvent): Long {
                 len: Int,
             ) {
                 count += len
+                if (count > stopAfter) throw SerializedSizeExceeded
             }
         }
-    serializer.serialize(event, counter.writer().buffered())
+    try {
+        serializer.serialize(event, counter.writer().buffered())
+    } catch (e: SerializedSizeExceeded) {
+        return stopAfter + 1
+    }
     return count
 }
 

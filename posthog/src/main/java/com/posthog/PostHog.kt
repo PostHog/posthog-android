@@ -1059,16 +1059,16 @@ public class PostHog private constructor(
 
     /**
      * Whether [event], serialized and before [PostHogConfig.encryption], is over the AI event limit.
-     * Logs the name and size only: AI properties can hold prompts and media.
+     * Counting stops at the limit, so rejecting a large payload on the caller's thread costs no more
+     * than the limit. Logs the name and size only: AI properties can hold prompts and media.
      */
     private fun isOverAiEventLimit(event: PostHogEvent): Boolean {
         val config = config ?: return false
-        val size = config.serializedSize(event)
         val limit = config.captureAiMaxStoredEventBytes
-        if (size <= limit) {
+        if (config.serializedSize(event, stopAfter = limit) <= limit) {
             return false
         }
-        config.logger.log("Dropping AI event ${event.event} of $size bytes, over the $limit byte limit.")
+        config.logger.log("Dropping AI event ${event.event} of more than $limit bytes, over the limit.")
         return true
     }
 

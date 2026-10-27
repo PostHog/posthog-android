@@ -198,7 +198,7 @@ internal class PostHogCaptureAiTest {
         assertTrue(aiQueueFiles().isEmpty())
         val dropped = logger.messages.single { it.startsWith("Dropping AI event") }
         assertTrue(
-            dropped.matches(Regex("Dropping AI event \\\$ai_generation of \\d+ bytes, over the ${1 + 64 * 1024} byte limit\\.")),
+            dropped.matches(Regex("Dropping AI event \\\$ai_generation of more than ${1 + 64 * 1024} bytes, over the limit\\.")),
             dropped,
         )
         assertTrue(logger.messages.none { it.contains("pppp") })
