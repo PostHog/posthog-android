@@ -1,6 +1,7 @@
 package com.posthog.android.internal
 
 import android.content.Context
+import android.content.pm.InstallSourceInfo
 import android.net.ConnectivityManager
 import android.telephony.TelephonyManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -11,9 +12,12 @@ import com.posthog.android.mockDisplayMetrics
 import com.posthog.android.mockPackageInfo
 import com.posthog.android.mockTelephone
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowBuild
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -88,6 +92,75 @@ internal class PostHogAndroidContextTest {
         assertNotNull(staticContext["\$os_version"])
 
         assertNotNull(staticContext["\$is_emulator"])
+        assertNotNull(staticContext["\$is_sideloaded"])
+    }
+
+    @Suppress("DEPRECATION")
+    private fun mockInstaller(
+        installer: String? = null,
+        error: Throwable? = null,
+    ) {
+        context.mockPackageInfo()
+        val stub = whenever(context.packageManager.getInstallerPackageName(any()))
+        if (error != null) stub.thenThrow(error) else stub.thenReturn(installer)
+    }
+
+    private fun getStaticContext(): Map<String, Any> {
+        context.mockDisplayMetrics()
+        context.mockAppInfo()
+        return getSut().getStaticContext()
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `reports sideloaded when the installer is unknown`() {
+        mockInstaller()
+
+        assertEquals(true, getStaticContext()["\$is_sideloaded"])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `reports sideloaded when the installer is not a store`() {
+        mockInstaller("com.google.android.packageinstaller")
+
+        assertEquals(true, getStaticContext()["\$is_sideloaded"])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `reports not sideloaded when installed from a store`() {
+        mockInstaller("com.android.vending")
+
+        assertEquals(false, getStaticContext()["\$is_sideloaded"])
+    }
+
+    @Test
+    @Config(sdk = [30])
+    fun `reads the install source on API 30 and above`() {
+        context.mockPackageInfo()
+        val installSourceInfo = mock<InstallSourceInfo>()
+        whenever(installSourceInfo.installingPackageName).thenReturn("com.android.vending")
+        whenever(context.packageManager.getInstallSourceInfo(any())).thenReturn(installSourceInfo)
+
+        assertEquals(false, getStaticContext()["\$is_sideloaded"])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `reports not sideloaded on an emulator`() {
+        mockInstaller()
+        ShadowBuild.setFingerprint("generic")
+
+        assertEquals(false, getStaticContext()["\$is_sideloaded"])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `reports not sideloaded when the package manager throws`() {
+        mockInstaller(error = RuntimeException())
+
+        assertEquals(false, getStaticContext()["\$is_sideloaded"])
     }
 
     @Test

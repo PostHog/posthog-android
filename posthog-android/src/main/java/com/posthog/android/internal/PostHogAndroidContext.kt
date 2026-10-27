@@ -81,6 +81,7 @@ internal class PostHogAndroidContext(
         staticContext["\$os_version"] = Build.VERSION.RELEASE
 
         staticContext["\$is_emulator"] = isEmulator
+        staticContext["\$is_sideloaded"] = isSideloaded
 
         staticContext
     }
@@ -154,4 +155,44 @@ internal class PostHogAndroidContext(
                 Build.PRODUCT.contains("emulator") ||
                 Build.PRODUCT.contains("simulator")
         )
+
+    // Emulators report false so dev builds don't count as sideloaded
+    private val isSideloaded: Boolean
+        get() {
+            if (isEmulator) {
+                return false
+            }
+            return try {
+                installerPackageName() !in STORE_INSTALLERS
+            } catch (e: Throwable) {
+                config.logger.log("Error getting installer package: $e.")
+                false
+            }
+        }
+
+    @Suppress("DEPRECATION")
+    private fun installerPackageName(): String? {
+        val packageManager = context.packageManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            packageManager.getInstallerPackageName(context.packageName)
+        }
+    }
 }
+
+private val STORE_INSTALLERS =
+    setOf(
+        // Google Play
+        "com.android.vending",
+        // Google Play legacy installer name
+        "com.google.android.feedback",
+        // Amazon Appstore
+        "com.amazon.venezia",
+        // Samsung Galaxy Store
+        "com.sec.android.app.samsungapps",
+        // Huawei AppGallery
+        "com.huawei.appmarket",
+        // Xiaomi GetApps
+        "com.xiaomi.mipicks",
+    )
