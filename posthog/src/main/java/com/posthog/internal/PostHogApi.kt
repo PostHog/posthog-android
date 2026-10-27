@@ -222,7 +222,7 @@ public class PostHogApi(
                 config.logger.log("Response ${response.request.url}: ${response.code}")
 
                 if (response.code != 307 && response.code != 308) {
-                    return captureV1Result(response, path, uuids, identity)
+                    return captureV1Result(response, path, events, identity)
                 }
 
                 val target = response.header("Location")?.let { location -> request.url.resolve(location) }
@@ -280,7 +280,7 @@ public class PostHogApi(
     private fun captureV1Result(
         response: Response,
         path: String,
-        uuids: List<String>,
+        events: List<PostHogEvent>,
         identity: CaptureV1RequestIdentity,
     ): SendResult {
         if (!response.isSuccessful) {
@@ -293,22 +293,27 @@ public class PostHogApi(
         val results = readCaptureV1Results(response)
         if (results == null) {
             config.logger.log(
-                "Capture returned ${response.code} without readable per-event results, treating ${uuids.size} events as delivered.",
+                "Capture returned ${response.code} without readable per-event results, treating ${events.size} events as delivered.",
             )
         }
 
         val retryUuids = mutableSetOf<String>()
         var dropped = 0
         // Events missing from the results count as delivered.
-        for (uuid in uuids) {
+        for (event in events) {
+            val uuid = event.uuid?.toString() ?: continue
             val entry = results?.get(uuid) as? Map<*, *> ?: continue
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
-                "drop" -> dropped++
+                "drop" -> {
+                    dropped++
+                    // The event name, uuid and the server's reason (such as misrouted_event or
+                    // ai_event_too_big), never the properties.
+                    config.logger.log("Capture dropped event ${event.event} ($uuid): ${entry["details"] ?: "no details"}.")
+                }
             }
         }
 
-        // Counts only: event uuids and server details can identify users.
         if (dropped > 0 || retryUuids.isNotEmpty()) {
             config.logger.log("Capture: $dropped dropped, ${retryUuids.size} to retry.")
         }

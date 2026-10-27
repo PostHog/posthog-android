@@ -205,6 +205,28 @@ internal class PostHogCaptureAiTest {
     }
 
     @Test
+    fun `an AI event whose properties are exactly 8 MiB is sent`() {
+        val ceiling = 8 * 1024 * 1024
+        val http = httpServers.mockHttp()
+        val sut =
+            getSut(http) {
+                captureAiCompression = PostHogCompression.NONE
+                // pin the properties after the SDK's enrichment; {"$ai_input":"…"} is 16 bytes around the value
+                addBeforeSend { event -> event.copy(properties = mutableMapOf("\$ai_input" to "a".repeat(ceiling - 16))) }
+            }
+
+        assertNotNull(sut.captureAi("\$ai_generation"))
+
+        aiExecutor.awaitExecution()
+        val body = takeRequest(http).body.readUtf8()
+        // the properties object is the event's last field, closed by the event, batch and body
+        val properties = body.substring(body.indexOf("\"properties\":") + "\"properties\":".length, body.length - "}]}".length)
+        assertEquals(ceiling, properties.toByteArray(Charsets.UTF_8).size)
+        assertEquals("\$ai_generation", captureV1Events(body).single()["event"])
+        assertTrue(logger.messages.none { it.startsWith("Dropping AI event") })
+    }
+
+    @Test
     fun `the AI event limit is measured before encryption`() {
         val http = httpServers.mockHttp()
         val sut =

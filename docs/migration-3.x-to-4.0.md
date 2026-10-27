@@ -70,7 +70,7 @@ If a proxy redirects capture requests to another host, point `host` at the final
 
 Capture v1 checks each event on its own and drops only the invalid ones, so the rest of the batch is delivered.
 The SDK doesn't check these before sending. PostHog drops the event, and the SDK removes it from the queue.
-With `debug` on, the SDK logs how many events were dropped.
+With `debug` on, the SDK logs the name and uuid of each dropped event and the reason PostHog gives, such as `misrouted_event`, never its properties.
 
 - An event with an empty event name is dropped, for example `capture("")`.
 - An event with an empty or whitespace-only distinct ID is dropped, for example one `beforeSend` sets to `""`.

@@ -332,7 +332,30 @@ internal class PostHogCaptureV1Test {
         assertEquals(setOf(retry.uuid.toString()), result.retryIds)
         assertEquals(7, result.retryAfterSeconds)
         assertTrue(logger.messages.contains("Capture: 1 dropped, 1 to retry."))
+        assertTrue(logger.messages.contains("Capture dropped event dropped (${dropped.uuid}): no details."))
         assertTrue(logger.messages.none { it.contains(retry.uuid.toString()) })
+    }
+
+    @Test
+    fun `logs each dropped event with the details capture gives, without its properties`() {
+        val misrouted = event("button_clicked", properties = mapOf("prompt" to "secret prompt"))
+        val tooBig = event("\$ai_generation", properties = mapOf("prompt" to "secret prompt"))
+        val http =
+            httpServers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{" +
+                            "\"${misrouted.uuid}\":{\"result\":\"drop\",\"details\":\"misrouted_event\"}," +
+                            "\"${tooBig.uuid}\":{\"result\":\"drop\",\"details\":\"ai_event_too_big\"}}}",
+                    ),
+            )
+
+        api(http.url("/").toString()).captureAi(listOf(misrouted, tooBig))
+
+        assertTrue(logger.messages.contains("Capture dropped event button_clicked (${misrouted.uuid}): misrouted_event."))
+        assertTrue(logger.messages.contains("Capture dropped event \$ai_generation (${tooBig.uuid}): ai_event_too_big."))
+        assertTrue(logger.messages.contains("Capture: 2 dropped, 0 to retry."))
+        assertTrue(logger.messages.none { it.contains("secret prompt") })
     }
 
     @Test

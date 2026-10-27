@@ -29,6 +29,6 @@
 - use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event, so a link can't set a PostHog property such as `$process_person_profile`
 - stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
-- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies
+- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies, and name each event PostHog drops with the reason it gives
 - add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB
 - cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own
