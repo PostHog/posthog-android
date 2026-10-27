@@ -231,6 +231,32 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
+    fun `a null legacy person processing property keeps the personless option when profiles are never processed`() {
+        assertNullLegacyPropertyKeepsPersonlessOption(PersonProfiles.NEVER)
+    }
+
+    @Test
+    fun `a null legacy person processing property keeps the personless option for an anonymous user`() {
+        assertNullLegacyPropertyKeepsPersonlessOption(PersonProfiles.IDENTIFIED_ONLY)
+    }
+
+    private fun assertNullLegacyPropertyKeepsPersonlessOption(personProfiles: PersonProfiles) {
+        // Java callers can put a null value in the properties map.
+        @Suppress("UNCHECKED_CAST")
+        val nullLegacy = hashMapOf<String, Any?>("\$process_person_profile" to null) as Map<String, Any>
+        val http = httpServers.mockHttp()
+        val sut = getSut(http.url("/").toString(), personProfiles = personProfiles, beforeSend = { it })
+
+        sut.capture("null_legacy", properties = nullLegacy)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val event = sentEvents(http).single()
+        assertEquals(false, event.processPersonProfile())
+        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+        sut.close()
+    }
+
+    @Test
     fun `registered properties win over SDK properties, caller properties win over registered ones`() {
         val sut = getSut()
         sut.register("\$os_name", "registered")

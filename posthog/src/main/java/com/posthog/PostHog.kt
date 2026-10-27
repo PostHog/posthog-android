@@ -943,7 +943,7 @@ public class PostHog private constructor(
 
     /**
      * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
-     * event, unless the caller set that option or [properties] carry the legacy
+     * event, unless the caller set that option or [properties] carry a non-null legacy
      * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
      * PostHog processes person profiles by default. Returns a copy, so `beforeSend` edits never
      * reach the caller's map.
@@ -953,7 +953,7 @@ public class PostHog private constructor(
         properties: Map<String, Any>,
     ): MutableMap<String, Any?>? {
         val eventOptions = options?.toMutableMap()
-        if (hasPersonProcessing() || properties.containsKey("\$process_person_profile")) {
+        if (hasPersonProcessing() || properties["\$process_person_profile"] != null) {
             return eventOptions
         }
         val result = eventOptions ?: mutableMapOf()
