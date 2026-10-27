@@ -3,6 +3,7 @@ package com.posthog.internal
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.TestLogger
 import com.posthog.date
 import com.posthog.generateEvent
 import org.junit.Rule
@@ -312,5 +313,29 @@ internal class PostHogSerializerTest {
             """.replace(" ", "").replace("\n", "")
 
         assertEquals(expectedJson, actualJson)
+    }
+
+    private data class Turn(val prompt: String, val score: Double)
+
+    @Test
+    fun `an unserializable property is logged by key and type, never by value`() {
+        val logger = TestLogger()
+        val config = PostHogConfig(PROJECT_TOKEN).apply { this.logger = logger }
+        val event = generateEvent().copy(properties = mutableMapOf("turn" to Turn("SECRET-PROMPT", Double.NaN)))
+
+        config.serializer.serialize(event, StringWriter())
+
+        val message = logger.messages.single { it.contains("cannot be serialized") }
+        assertTrue(message.contains("'turn'"), message)
+        assertTrue(logger.messages.none { it.contains("SECRET-PROMPT") })
+    }
+
+    @Test
+    fun `serializedSize stops counting past its bound`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val event = generateEvent().copy(properties = mutableMapOf("big" to "a".repeat(1_000_000)))
+
+        assertEquals(1_001L, config.serializedSize(event, stopAfter = 1_000))
+        assertTrue(config.serializedSize(event) > 1_000_000)
     }
 }
