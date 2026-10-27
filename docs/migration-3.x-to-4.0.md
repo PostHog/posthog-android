@@ -98,7 +98,7 @@ An event's properties are merged in this order, and later values win:
 4. `beforeSend`
 
 In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$process_person_profile` and the session replay debug properties also won over the properties you pass.
-In 4.0 a value you register or pass wins, for example `register("$os_name", "custom")` sends every event with that value.
+In 4.0 a value you register or pass wins, for example `register("\$os_name", "custom")` sends every event with that value.
 A registered `$session_id` now overrides the SDK's session ID, which can detach events from their session replay.
 A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
 
@@ -120,7 +120,7 @@ For `identify`, the options apply to the `$identify` or `$set` event the call se
 
 ```kotlin
 // 3.x
-PostHog.capture("signed_up", properties = mapOf("$cookieless_mode" to true))
+PostHog.capture("signed_up", properties = mapOf("\$cookieless_mode" to true))
 
 // 4.0
 PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
