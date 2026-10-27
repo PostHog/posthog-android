@@ -93,7 +93,8 @@ data class CaptureRequest(
 
 data class CaptureResponse(
     val success: Boolean,
-    val uuid: String,
+    // Null (omitted from the JSON) when the SDK didn't queue the event.
+    val uuid: String? = null,
 )
 
 data class FlagRequest(
@@ -318,6 +319,8 @@ fun main() {
                     config.httpClient = httpClient
 
                     req.max_retries?.let { config.pushNotificationSubscriptionMaxRetries = it }
+                    // The harness sends one enable_compression flag and no AI-lane setting, so it sets
+                    // both lanes. With it unset, the AI lane keeps its documented default (gzip).
                     req.enable_compression?.let {
                         val compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
                         config.compression = compression
@@ -417,12 +420,16 @@ fun main() {
                         options = req.options,
                     )
 
-                AdapterContext.lock.withLock {
-                    AdapterContext.state.totalEventsCaptured++
-                    AdapterContext.state.pendingEvents++
+                // A null uuid means the SDK didn't queue the event (for example it's over the size
+                // limit), so no request will carry it and no uuid is reported.
+                if (uuid != null) {
+                    AdapterContext.lock.withLock {
+                        AdapterContext.state.totalEventsCaptured++
+                        AdapterContext.state.pendingEvents++
+                    }
                 }
 
-                call.respond(CaptureResponse(success = true, uuid = (uuid ?: UUID.randomUUID()).toString()))
+                call.respond(CaptureResponse(success = true, uuid = uuid?.toString()))
             }
 
             post("/get_feature_flag") {
