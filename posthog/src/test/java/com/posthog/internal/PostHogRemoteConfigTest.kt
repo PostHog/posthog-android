@@ -3125,6 +3125,29 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `a failed reload after a successful load reports the loaded flags, not bootstrap`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setBody(""))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old")),
+            )
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+        assertEquals(true, results.poll(5, TimeUnit.SECONDS)!!.variants["4535-funnel-bar-viz"])
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val reloaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(reloaded.errorsLoading)
+        assertEquals(true, reloaded.variants["4535-funnel-bar-viz"])
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
+    }
+
+    @Test
     fun `a throwing internal callback does not suppress the caller's callback`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val sut = getSut(host = http.url("/").toString())

@@ -1282,7 +1282,9 @@ public class PostHogRemoteConfig(
     }
 
     private fun loadFeatureFlagsFromCacheIfNeeded() {
-        if (!isFeatureFlagsLoaded) {
+        // after a remote load this session the in-memory flags are newest; a failed reload must not
+        // hydrate over them, which would also reapply bootstrap
+        if (!isFeatureFlagsLoaded && !flagsLoadedFromRemote) {
             loadFeatureFlagsFromCache()
         }
     }
