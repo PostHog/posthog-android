@@ -226,8 +226,8 @@ private object SerializedSizeExceeded : RuntimeException() {
 
 /**
  * Bytes [event] takes serialized as the queue stores it, before any [PostHogConfig.encryption].
- * Counted as it's written, so the event isn't held in memory a second time. Stops at
- * [stopAfter] + 1, so an oversized event costs no more than the bound to reject.
+ * Counted as it's written, so the event isn't held in memory a second time. Stops writing at
+ * [stopAfter] + 1, though the serializer still builds the whole properties JSON tree first.
  */
 internal fun PostHogConfig.serializedSize(
     event: PostHogEvent,
