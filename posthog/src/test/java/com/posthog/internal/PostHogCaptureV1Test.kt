@@ -706,9 +706,9 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
-    fun `queue drops the batch on 429 and keeps it on 503`() {
-        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(429))
-        http.enqueue(MockResponse().setResponseCode(503))
+    fun `queue drops the batch on 400 and keeps it on 429`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(400))
+        http.enqueue(MockResponse().setResponseCode(429))
         val sut = queue(http)
 
         sut.add(event())

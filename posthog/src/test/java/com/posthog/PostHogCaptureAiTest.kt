@@ -168,18 +168,16 @@ internal class PostHogCaptureAiTest {
     }
 
     @Test
-    fun `a 404 from the AI endpoint is terminal`() {
-        val http = httpServers.mockHttp(total = 2, response = MockResponse().setResponseCode(404))
+    fun `a 404 from the AI endpoint keeps the event queued`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(404))
         val sut = getSut(http)
 
         sut.captureAi("\$ai_generation")
         aiExecutor.awaitExecution()
-        sut.flush()
-        aiExecutor.awaitExecution()
 
         assertEquals(1, http.requestCount)
         assertEquals("/i/v1/ai/events", takeRequest(http).path)
-        assertTrue(aiQueueFiles().isEmpty())
+        assertEquals(1, aiQueueFiles().size)
     }
 
     @Test

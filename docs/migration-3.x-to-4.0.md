@@ -24,7 +24,7 @@ You need to change something if your app does any of these:
 - registers a super property, or passes an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expects the SDK's value to win
 - calls `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` or `captureException` from Java, implements `PostHogInterface`, or calls `identify` through a `PostHogCoreInterface` reference
 - sets the event `uuid` in `beforeSend`
-- relies on 429 responses being retried, or on a `Retry-After` longer than 30 seconds
+- relies on a `Retry-After` longer than 30 seconds
 - sets `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig`
 
 ## Endpoints
@@ -57,7 +57,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 
 PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
 
-The SDK doesn't fall back to `/batch`. A 404, or any other error status that isn't retried, such as 403 or 405, drops the events.
+The SDK doesn't fall back to `/batch`. A 404 is retried, so the events stay queued until the path is served. Any other error status that isn't retried, such as 403 or 405, drops the events.
 
 ### Redirects
 
@@ -172,7 +172,7 @@ PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "
 
 ## Retries
 
-- The SDK retries network errors and 408, 500, 502, 503 and 504 responses. Other statuses drop the events, including 429. 3.x also retried 429 and 3xx responses. Capture itself doesn't return 429, but a proxy in front of it can.
+- The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
 - A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. OkHttp doesn't retry capture requests on its own.
 - A `Retry-After` header pauses sending for at most 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
