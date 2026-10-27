@@ -674,40 +674,40 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `backoff doubles from one to thirty seconds with 25 percent jitter rounded to whole seconds`() {
+    fun `backoff doubles from one to thirty seconds with 25 percent jitter kept in milliseconds`() {
         val http = mockHttp(total = 20, response = MockResponse().setResponseCode(503).setBody("error"))
-        val delays = mutableListOf<Int>()
         val dateProvider =
             object : PostHogDateProvider {
                 override fun currentDate() = Date()
 
-                override fun addSecondsToCurrentDate(seconds: Int): Date {
-                    delays.add(seconds)
-                    // keep the pause in the past so every flush sends
-                    return Date(0)
-                }
+                // the epoch plus the delay, so the pause stays in the past and every flush sends
+                override fun addSecondsToCurrentDate(seconds: Int) = Date(seconds * 1000L)
 
                 override fun currentTimeMillis() = System.currentTimeMillis()
 
                 override fun nanoTime() = System.nanoTime()
             }
         val sut = getSut(host = http.url("/").toString(), flushAt = 1, dateProvider = dateProvider)
-        sut.add(generateEvent())
-        executor.awaitExecution()
-
         var jitter = 0.0
         sut.jitterUnit = { jitter }
-        repeat(6) {
+        val delays = mutableListOf<Long>()
+        sut.add(generateEvent())
+        executor.awaitExecution()
+        delays.add(sut.pausedUntil!!.time)
+
+        repeat(5) {
             sut.flush()
             executor.awaitExecution()
+            delays.add(sut.pausedUntil!!.time)
         }
         jitter = 0.999
-        repeat(6) {
+        repeat(3) {
             sut.flush()
             executor.awaitExecution()
+            delays.add(sut.pausedUntil!!.time)
         }
-        // -25%: 2→1.5 rounds to 2, 4→3, 8→6, 16→12, then 30→22.5 rounds to 23; +25% is capped at 30
-        assertEquals(listOf(1, 2, 3, 6, 12, 23, 23, 30, 30, 30, 30, 30, 30), delays)
+        // -25% of 1, 2, 4, 8, 16 and 30 s; +25% of 64 s is capped at 30 s
+        assertEquals(listOf(750L, 1500L, 3000L, 6000L, 12000L, 22500L, 30000L, 30000L, 30000L), delays)
 
         sut.clear()
         awaitQueue()

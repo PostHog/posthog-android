@@ -16,7 +16,7 @@ import kotlin.concurrent.schedule
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
-import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * Generic file-backed queue. One implementation, multiple instances —
@@ -36,7 +36,10 @@ public class PostHogQueue<Record>(
     // resends exactly these, so the request keeps its id and counts the attempt. Guarded by dequeLock.
     private var retryFiles: List<File> = emptyList()
     private val timerLock = Any()
-    private var pausedUntil: Date? = null
+
+    @PostHogVisibleForTesting
+    internal var pausedUntil: Date? = null
+        private set
     private var retryCount = 0
 
     // The Retry-After of the last 2xx that kept some records for retry; read by executeWithRetry.
@@ -452,7 +455,7 @@ public class PostHogQueue<Record>(
     /**
      * Pauses the queue after the [retryCount]-th consecutive failure. The delay doubles from
      * [initialRetryDelaySeconds] to [maxRetryDelaySeconds], scaled by a jitter factor in
-     * `[1 - retryJitter, 1 + retryJitter)` and capped again, in whole seconds. A server `Retry-After`,
+     * `[1 - retryJitter, 1 + retryJitter)` and capped again, in milliseconds. A server `Retry-After`,
      * capped at [maxRetryDelaySeconds], is a floor applied after jitter, so jitter never retries
      * earlier than the server asked.
      */
@@ -465,9 +468,13 @@ public class PostHogQueue<Record>(
             val computed = min(initialRetryDelaySeconds * 2.0.pow((retryCount - 1).toDouble()), maxDelay)
             val unit = jitterUnit()
             val factor = if (unit >= 0.0 && unit < 1.0) 1 - retryJitter + 2 * retryJitter * unit else 1.0
-            val jittered = min(computed * factor, maxDelay).roundToInt()
-            val retryAfterFloor = (retryAfterSeconds ?: 0).coerceIn(0, maxRetryDelaySeconds)
-            pausedUntil = config.dateProvider.addSecondsToCurrentDate(max(jittered, retryAfterFloor))
+            val jitteredMillis = (min(computed * factor, maxDelay) * 1000).roundToLong()
+            val retryAfterFloorMillis = (retryAfterSeconds ?: 0).coerceIn(0, maxRetryDelaySeconds) * 1000L
+            val delayMillis = max(jitteredMillis, retryAfterFloorMillis)
+            // Whole seconds through the date provider, the rest in milliseconds, so the short early
+            // waits keep their jitter instead of rounding to the same second on every device.
+            val wholeSeconds = config.dateProvider.addSecondsToCurrentDate((delayMillis / 1000).toInt())
+            pausedUntil = Date(wholeSeconds.time + delayMillis % 1000)
         }
     }
 
