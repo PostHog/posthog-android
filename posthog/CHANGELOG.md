@@ -1,5 +1,11 @@
 ## Next
 
+## 6.47.7
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
 ## 6.47.6
 
 ### Patch Changes
