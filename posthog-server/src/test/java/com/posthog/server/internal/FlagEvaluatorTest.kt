@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
+import com.posthog.server.PostHogUnresolvedFlagReason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -3477,5 +3478,351 @@ internal class FlagEvaluatorTest {
 
         assertEquals(true, result)
         assertEquals(false, evaluationCache["base-flag"])
+    }
+
+    private fun reasonFlag(
+        key: String,
+        groups: String,
+        continuity: Boolean = false,
+    ): FlagDefinition =
+        config.serializer.gson.fromJson(
+            """{"id": 1, "name": "$key", "key": "$key", "active": true, "ensure_experience_continuity": $continuity,
+                "filters": {"groups": [$groups]}, "version": 1}""",
+            FlagDefinition::class.java,
+        )
+
+    private fun reasonCondition(vararg properties: String): String =
+        """{"properties": [${properties.joinToString(",")}], "rollout_percentage": 100}"""
+
+    private fun reasonDependency(vararg chain: String): String =
+        """{"key": "${chain.lastOrNull() ?: "x"}", "value": true, "operator": "flag_evaluates_to", "type": "flag",
+            "dependency_chain": [${chain.joinToString(",") { "\"$it\"" }}]}"""
+
+    private fun personFilter(
+        key: String,
+        operator: String,
+        value: String,
+    ): String = """{"key": "$key", "value": $value, "operator": "$operator", "type": "person"}"""
+
+    private val staticCohortFilter = """{"key": "id", "value": 99, "operator": "in", "type": "cohort"}"""
+
+    @Test
+    internal fun testInconclusiveReasonSeparatesDefinitionFromCallerValues() {
+        data class Row(
+            val name: String,
+            val groups: String,
+            val properties: Map<String, Any?>,
+            val reason: PostHogUnresolvedFlagReason,
+            val otherFlags: List<FlagDefinition> = emptyList(),
+        )
+
+        val continuityFlag = reasonFlag("continuity-dep", reasonCondition(), continuity = true)
+        val contextFlag = reasonFlag("context-dep", reasonCondition(personFilter("plan", "exact", "\"pro\"")))
+        val rows =
+            listOf(
+                Row(
+                    "caller float",
+                    reasonCondition(personFilter("n", "exact", "\"1\"")),
+                    mapOf("n" to 1.5),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition float",
+                    reasonCondition(personFilter("n", "exact", "1.5")),
+                    mapOf("n" to "x"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition float",
+                    reasonCondition(personFilter("n", "exact", "[1.5]")),
+                    mapOf("n" to 2.5),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller date",
+                    reasonCondition(personFilter("d", "is_date_before", "\"2024-01-01\"")),
+                    mapOf("d" to "not-a-date"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition date",
+                    reasonCondition(personFilter("d", "is_date_before", "\"not-a-date\"")),
+                    mapOf("d" to "2024-01-01"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"1.2.3\"")),
+                    mapOf("v" to "abc"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"abc\"")),
+                    mapOf("v" to "1.2.3"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"abc\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition wildcard",
+                    reasonCondition(personFilter("v", "semver_wildcard", "\"1x.*\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller tilde",
+                    reasonCondition(personFilter("v", "semver_tilde", "\"1.2.3\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "unknown operator and missing property",
+                    reasonCondition(personFilter("plan", "some_future_operator", "\"pro\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "malformed date filter and missing property",
+                    reasonCondition(personFilter("d", "is_date_after", "\"not-a-date\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "malformed number filter",
+                    reasonCondition(personFilter("n", "gt", "\"9px\"")),
+                    mapOf("n" to 10),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "regex syntax local evaluation does not support",
+                    reasonCondition(personFilter("email", "regex", "\"\\\\bacme\"")),
+                    mapOf("email" to "a@acme.com"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "negated invalid regex",
+                    reasonCondition("""{"key": "email", "value": "(", "operator": "regex", "type": "person", "negation": true}"""),
+                    mapOf("email" to "a@acme.com"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "regex on a non-ASCII value",
+                    reasonCondition(personFilter("name", "regex", "\"^a\"")),
+                    mapOf("name" to "année"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "unloaded dependency",
+                    reasonCondition(reasonDependency("gone")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "circular dependency",
+                    reasonCondition(reasonDependency()),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "dependency with experience continuity",
+                    reasonCondition(reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "dependency that needs context",
+                    reasonCondition(reasonDependency("context-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(contextFlag),
+                ),
+                Row(
+                    "inconclusive dependency before an unloaded one in the chain",
+                    reasonCondition(reasonDependency("continuity-dep", "gone")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "missing property before an unresolved dependency",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\""), reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "missing property in one condition, static cohort in the next",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\"")) + "," + reasonCondition(staticCohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "missing property and static cohort in one condition",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\""), staticCohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+            )
+        for (row in rows) {
+            val flag = reasonFlag("f", row.groups)
+            val flagsByKey = (row.otherFlags + flag).associateBy { it.key }
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>(row.name) {
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", row.properties, emptyMap(), flagsByKey, mutableMapOf())
+                }
+            assertEquals(row.name, row.reason, error.reason)
+        }
+
+        val continuityError =
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchFeatureFlagProperties(continuityFlag, "user-123", emptyMap())
+            }
+        assertEquals(PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY, continuityError.reason)
+    }
+
+    @Test
+    internal fun testPickUnresolvedReasonFollowsSpecPrecedence() {
+        val precedence =
+            listOf(
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        for ((i, first) in precedence.withIndex()) {
+            assertEquals(first, pickUnresolvedReason(null, first))
+            for ((j, second) in precedence.withIndex()) {
+                val expected = precedence[minOf(i, j)]
+                assertEquals("$first then $second", expected, pickUnresolvedReason(first, second))
+            }
+        }
+    }
+
+    @Test
+    internal fun testConditionWithAnUncheckableFilterAndAFailingFilterDoesNotMatch() {
+        val planIsFree = personFilter("plan", "exact", "\"free\"")
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val unknownOperator = personFilter("plan", "some_future_operator", "\"pro\"")
+        val properties = mapOf("plan" to "pro")
+        for (uncheckable in listOf(missingEmail, staticCohortFilter, unknownOperator, reasonDependency("gone"))) {
+            for (filters in listOf(arrayOf(uncheckable, planIsFree), arrayOf(planIsFree, uncheckable))) {
+                val flag = reasonFlag("f", reasonCondition(*filters))
+                assertEquals(
+                    filters.joinToString(),
+                    false,
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", properties, emptyMap(), mapOf("f" to flag), mutableMapOf()),
+                )
+            }
+        }
+    }
+
+    @Test
+    internal fun testConditionWithAnUncheckableFilterLetsALaterConditionMatch() {
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val planIsPro = personFilter("plan", "exact", "\"pro\"")
+        for (uncheckable in listOf(missingEmail, staticCohortFilter)) {
+            val flag = reasonFlag("f", reasonCondition(uncheckable, planIsPro) + "," + reasonCondition(planIsPro))
+            assertEquals(
+                uncheckable,
+                true,
+                evaluator.matchFeatureFlagProperties(
+                    flag,
+                    "user-123",
+                    mapOf("plan" to "pro"),
+                    emptyMap(),
+                    mapOf("f" to flag),
+                    mutableMapOf(),
+                ),
+            )
+        }
+    }
+
+    @Test
+    internal fun testInactiveDependencyWithExperienceContinuityResolvesToFalse() {
+        val dependency =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "dep", "key": "dep", "active": false, "ensure_experience_continuity": true, "version": 1,
+                    "filters": {"groups": [${reasonCondition()}]}}""",
+                FlagDefinition::class.java,
+            )
+        val flag = reasonFlag("f", reasonCondition(reasonDependency("dep")))
+
+        assertEquals(
+            false,
+            evaluator.matchFeatureFlagProperties(
+                flag,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+                mapOf("dep" to dependency, "f" to flag),
+                mutableMapOf(),
+            ),
+        )
+    }
+
+    @Test
+    internal fun testDefinitionUnresolvedReason() {
+        val cohorts =
+            mapOf(
+                "1" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "AND", "values": [{"type": "AND", "values": [
+                            {"key": "plan", "value": "pro", "operator": "some_future_operator", "type": "person"}]}]}""",
+                        PropertyGroup::class.java,
+                    ),
+                "2" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [{"key": "plan", "value": "pro", "operator": "exact", "type": "person"}]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
+        val dependency = reasonFlag("dependency", reasonCondition(), continuity = true)
+        val unknownGroupType =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "g", "key": "g", "active": true, "version": 1,
+                    "filters": {"aggregation_group_type_index": 7, "groups": [${reasonCondition()}]}}""",
+                FlagDefinition::class.java,
+            )
+        val inactive =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "i", "key": "i", "active": false, "ensure_experience_continuity": true, "version": 1,
+                    "filters": {"groups": [${reasonCondition(staticCohortFilter)}]}}""",
+                FlagDefinition::class.java,
+            )
+        val rows =
+            listOf(
+                reasonFlag("f", reasonCondition(), continuity = true) to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+                reasonFlag("f", reasonCondition(staticCohortFilter)) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("plan", "some_future_operator", "\"pro\""))) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("v", "semver_caret", "\"x.y\""))) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("n", "lt", "\"ten\""))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(reasonDependency("gone"))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(reasonDependency())) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition("""{"key": "id", "value": 1, "operator": "in", "type": "cohort"}""")) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                unknownGroupType to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                inactive to null,
+                reasonFlag("f", reasonCondition()) to null,
+                reasonFlag("f", reasonCondition(personFilter("plan", "exact", "\"pro\""))) to null,
+                reasonFlag("f", reasonCondition("""{"key": "id", "value": 2, "operator": "in", "type": "cohort"}""")) to null,
+                reasonFlag("f", reasonCondition(reasonDependency("dependency"))) to null,
+                reasonFlag("f", reasonCondition(personFilter("email", "regex", "\"(\""))) to null,
+            )
+        for ((index, row) in rows.withIndex()) {
+            val (flag, reason) = row
+            assertEquals(
+                "row $index",
+                reason,
+                evaluator.definitionUnresolvedReason(flag, mapOf("dependency" to dependency, flag.key to flag), emptyMap(), cohorts),
+            )
+        }
     }
 }

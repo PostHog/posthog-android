@@ -74,6 +74,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         definitionsLoadedAt: Long? = null,
         responseError: String? = null,
         groups: Map<String, String>? = null,
+        unresolvedFlags: Map<String, PostHogUnresolvedFlagReason> = emptyMap(),
     ) = PostHogFeatureFlagEvaluations(
         distinctId = distinctId,
         flagMap = flags,
@@ -84,6 +85,7 @@ internal class PostHogFeatureFlagEvaluationsTest {
         responseError = responseError,
         host = host,
         groups = groups,
+        unresolvedFlags = unresolvedFlags,
     )
 
     @Test
@@ -127,6 +129,42 @@ internal class PostHogFeatureFlagEvaluationsTest {
             "errors_while_computing_flags,flag_missing",
             host.captures.single().properties["\$feature_flag_error"],
         )
+    }
+
+    @Test
+    fun `reading an unresolved flag reports local_evaluation_inconclusive alongside response errors`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                responseError = "errors_while_computing_flags",
+                unresolvedFlags = mapOf("checkout" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY),
+            )
+
+        assertFalse(snapshot.isEnabled("checkout"))
+
+        assertEquals(
+            "errors_while_computing_flags,local_evaluation_inconclusive",
+            host.captures.single().properties["\$feature_flag_error"],
+        )
+    }
+
+    @Test
+    fun `filtered snapshots do not carry unresolved flags`() {
+        val host = FakeHost()
+        val snapshot =
+            snapshot(
+                host = host,
+                flags = mapOf("known" to flag("known")),
+                unresolvedFlags = mapOf("checkout" to PostHogUnresolvedFlagReason.MISSING_CONTEXT),
+            )
+
+        val filtered = snapshot.only("known", "checkout")
+        filtered.isEnabled("checkout")
+
+        assertTrue(filtered.unresolvedFlags.isEmpty())
+        assertEquals(mapOf("checkout" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), snapshot.unresolvedFlags)
+        assertEquals("flag_missing", host.captures.single().properties["\$feature_flag_error"])
     }
 
     @Test

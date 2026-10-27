@@ -10,6 +10,7 @@ package com.posthog.server.internal
  * Error values:
  *   ERRORS_WHILE_COMPUTING: Server returned errorsWhileComputingFlags=true
  *   FLAG_MISSING: Requested flag not in API response
+ *   LOCAL_EVALUATION_INCONCLUSIVE: Flag has a local definition, but local evaluation could not resolve it
  *   QUOTA_LIMITED: Rate/quota limit exceeded
  *   TIMEOUT: Request timed out
  *   CONNECTION_ERROR: Network connectivity issue
@@ -20,6 +21,7 @@ package com.posthog.server.internal
 internal object FeatureFlagError {
     const val ERRORS_WHILE_COMPUTING: String = "errors_while_computing_flags"
     const val FLAG_MISSING: String = "flag_missing"
+    const val LOCAL_EVALUATION_INCONCLUSIVE: String = "local_evaluation_inconclusive"
     const val QUOTA_LIMITED: String = "quota_limited"
     const val TIMEOUT: String = "timeout"
     const val CONNECTION_ERROR: String = "connection_error"

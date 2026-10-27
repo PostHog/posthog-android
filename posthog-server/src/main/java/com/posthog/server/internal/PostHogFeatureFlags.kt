@@ -12,6 +12,7 @@ import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.internal.PostHogFlagsResponse
 import com.posthog.internal.PropertyGroup
 import com.posthog.server.PostHogFlagDefinitionCacheProvider
+import com.posthog.server.PostHogUnresolvedFlagReason
 import java.io.IOException
 import java.io.StringReader
 import java.io.StringWriter
@@ -76,6 +77,9 @@ internal class PostHogFeatureFlags(
 
     @Volatile
     private var definitionsLoadedAt: Long? = null
+
+    // Flag key to the fingerprint of the definition last warned about as never locally resolvable.
+    private val warnedUnresolvableFlags = mutableMapOf<String, String>()
 
     @Volatile
     private var isLoading = false
@@ -251,14 +255,14 @@ internal class PostHogFeatureFlags(
 
     /**
      * The result of one local evaluation pass. [flags] holds every flag that resolved, whether or
-     * not [needsRemote] is set, so callers can fill only the gaps from `/flags`.
-     * [continuityFlagKeys] holds the flags that did not resolve because experience continuity is on.
+     * not [needsRemote] is set, so callers can fill only the gaps from `/flags`. [unresolved] holds
+     * why each flag with a local definition did not resolve.
      */
     private data class LocalEvaluationOutcome(
         val flags: Map<String, FeatureFlag>,
         val needsRemote: Boolean,
         val missingDefinitionKeys: Set<String>,
-        val continuityFlagKeys: Set<String>,
+        val unresolved: Map<String, PostHogUnresolvedFlagReason>,
     )
 
     private class MissingFlagProbe {
@@ -316,10 +320,10 @@ internal class PostHogFeatureFlags(
 
         config.logger.log("Attempting local evaluation for distinctId: $distinctId")
         val localFlags = mutableMapOf<String, FeatureFlag>()
+        val unresolved = mutableMapOf<String, PostHogUnresolvedFlagReason>()
         val props = localPersonProperties(distinctId, personProperties)
         val requestedKeys = flagKeys?.toHashSet()
         var needsRemote = false
-        val continuityFlagKeys = mutableSetOf<String>()
 
         for ((key, flagDef) in currentFlagDefinitions) {
             if (requestedKeys != null && key !in requestedKeys) {
@@ -340,10 +344,8 @@ internal class PostHogFeatureFlags(
                 localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
             } catch (e: InconclusiveMatchException) {
                 config.logger.log("Local evaluation inconclusive for flag '$key': ${e.message}")
+                unresolved[key] = e.reason
                 needsRemote = true
-                if (flagDef.ensureExperienceContinuity) {
-                    continuityFlagKeys.add(key)
-                }
             } catch (e: Exception) {
                 config.logger.log("Local evaluation failed for flag '$key': ${e.message}")
                 needsRemote = true
@@ -364,7 +366,7 @@ internal class PostHogFeatureFlags(
         }
 
         config.logger.log("Local evaluation resolved ${localFlags.size} flags, needsRemote=$needsRemote")
-        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys, continuityFlagKeys)
+        return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys, unresolved)
     }
 
     /**
@@ -777,6 +779,7 @@ internal class PostHogFeatureFlags(
         response: LocalEvaluationResponse,
         cacheData: Map<String, Any?>?,
     ) {
+        var appliedSnapshot: DefinitionSnapshot? = null
         val invalidated =
             synchronized(missingFlagKeysLock) {
                 synchronized(loadLock) {
@@ -791,12 +794,80 @@ internal class PostHogFeatureFlags(
                             )
                         cache = PostHogFeatureFlagCache(maxSize = cacheMaxSize, maxAgeMs = cacheMaxAgeMs)
                     }
+                    appliedSnapshot = definitionSnapshot
                     definitionsLoaded = true
                     definitionsLoadedAt = System.currentTimeMillis()
                 }
                 invalidateMissingFlagStateLocked()
             }
         invalidated.forEach { it.complete() }
+        appliedSnapshot?.let { warnAboutUnresolvableFlags(recordUnresolvableFlags(it)) }
+    }
+
+    /**
+     * Returns the flags whose definition local evaluation can never resolve and that were not
+     * warned about at their current definition, grouped by reason, and remembers them.
+     *
+     * Only keys absent from the loaded definitions are forgotten, which keeps the map bounded. A
+     * flag that is inactive or resolvable for a while keeps its entry, so it warns again only when
+     * it returns with a different definition.
+     */
+    private fun recordUnresolvableFlags(snapshot: DefinitionSnapshot): Map<PostHogUnresolvedFlagReason, List<String>> {
+        val flagsByKey = snapshot.flagsByKey.orEmpty()
+        val groupTypeMapping = snapshot.groupTypeMapping.orEmpty()
+        val cohorts = snapshot.cohorts.orEmpty()
+        val unresolvable = linkedMapOf<PostHogUnresolvedFlagReason, MutableList<String>>()
+        synchronized(warnedUnresolvableFlags) {
+            warnedUnresolvableFlags.keys.retainAll(flagsByKey.keys)
+            for ((key, flag) in flagsByKey) {
+                val reason =
+                    try {
+                        snapshot.evaluator.definitionUnresolvedReason(flag, flagsByKey, groupTypeMapping, cohorts)
+                    } catch (e: Exception) {
+                        config.logger.log("Could not check whether flag '$key' resolves locally: ${e.message}")
+                        null
+                    } ?: continue
+                val fingerprint = definitionFingerprint(flag)
+                if (warnedUnresolvableFlags.put(key, fingerprint) != fingerprint) {
+                    unresolvable.getOrPut(reason) { mutableListOf() }.add(key)
+                }
+            }
+        }
+        return unresolvable
+    }
+
+    // The version alone misses edits that the endpoint serves without a version bump.
+    private fun definitionFingerprint(flag: FlagDefinition): String {
+        val json =
+            try {
+                StringWriter().also { config.serializer.serialize(flag, it) }.toString()
+            } catch (e: Throwable) {
+                ""
+            }
+        return "${flag.version}:${json.hashCode()}"
+    }
+
+    private fun warnAboutUnresolvableFlags(unresolvable: Map<PostHogUnresolvedFlagReason, List<String>>) {
+        unresolvable[PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY]?.let { keys ->
+            config.logger.logWarning(
+                "PostHog: You are using local evaluation but ${keys.size} flag(s) have experience continuity " +
+                    "enabled and cannot be resolved locally " +
+                    "(reason: ${PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY.value}): ${keys.joinToString(", ")}. " +
+                    "Evaluating these flags makes a /flags request, or leaves them unresolved with local-only " +
+                    "evaluation. To evaluate them locally, turn off experience continuity on these flags in PostHog.",
+            )
+        }
+        unresolvable[PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION]?.let { keys ->
+            config.logger.logWarning(
+                "PostHog: You are using local evaluation but ${keys.size} flag(s) use something local evaluation " +
+                    "does not support, such as a static cohort, an unknown operator, a malformed value, or a missing " +
+                    "or circular flag dependency " +
+                    "(reason: ${PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION.value}): ${keys.joinToString(", ")}. " +
+                    "Evaluating these flags makes a /flags request when evaluation reaches that part, or leaves them " +
+                    "unresolved with local-only evaluation. To evaluate them locally, change these flags in PostHog " +
+                    "or upgrade posthog-server.",
+            )
+        }
     }
 
     private fun clearKnownMissingFlagKeys() {
@@ -935,7 +1006,10 @@ internal class PostHogFeatureFlags(
 
                 if (groupTypeName == null) {
                     config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
-                    throw InconclusiveMatchException("Flag has unknown group type index")
+                    throw InconclusiveMatchException(
+                        "Flag has unknown group type index",
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    )
                 }
 
                 val groupKey = groups?.get(groupTypeName)
@@ -1097,6 +1171,7 @@ internal class PostHogFeatureFlags(
                     evaluatedAt = entry.evaluatedAt,
                     definitionsLoadedAt = definitionsLoadedAt,
                     responseError = entry.error,
+                    unresolvedFlags = EMPTY_UNRESOLVED_FLAGS,
                 )
             }
         }
@@ -1120,9 +1195,11 @@ internal class PostHogFeatureFlags(
             }
 
         if (local != null && ((!local.needsRemote && !hasMissingKeyToProbe) || onlyEvaluateLocally)) {
-            if (onlyEvaluateLocally && local.continuityFlagKeys.isNotEmpty()) {
+            val continuityFlagKeys =
+                local.unresolved.filterValues { it == PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY }.keys
+            if (onlyEvaluateLocally && continuityFlagKeys.isNotEmpty()) {
                 config.logger.log(
-                    "Local-only evaluation omitted flag(s) ${local.continuityFlagKeys.joinToString(", ")}: " +
+                    "Local-only evaluation omitted flag(s) ${continuityFlagKeys.joinToString(", ")}: " +
                         "experience continuity is incompatible with local evaluation. " +
                         "Allow remote evaluation or turn off experience continuity for these flags.",
                 )
@@ -1134,6 +1211,7 @@ internal class PostHogFeatureFlags(
                 evaluatedAt = null,
                 definitionsLoadedAt = definitionsLoadedAt,
                 responseError = null,
+                unresolvedFlags = local.unresolved,
             )
         }
 
@@ -1180,6 +1258,8 @@ internal class PostHogFeatureFlags(
             evaluatedAt = entry?.evaluatedAt,
             definitionsLoadedAt = definitionsLoadedAt,
             responseError = entry?.error,
+            // A flag stays unresolved only when `/flags` failed or did not return it.
+            unresolvedFlags = local?.unresolved?.filterKeys { it !in merged }.orEmpty(),
         )
     }
 
@@ -1404,6 +1484,7 @@ internal class PostHogFeatureFlags(
         private val EMPTY_COHORT_PROPERTIES: Map<String, PropertyGroup> = emptyMap()
         private val EMPTY_FLAGS: Map<String, FeatureFlag> = emptyMap()
         private val EMPTY_LOCALLY_EVALUATED: Map<String, Boolean> = emptyMap()
+        private val EMPTY_UNRESOLVED_FLAGS: Map<String, PostHogUnresolvedFlagReason> = emptyMap()
         private val EMPTY_EVALUATE_FLAGS_RESULT =
             EvaluateFlagsResult(
                 flags = EMPTY_FLAGS,
@@ -1412,6 +1493,7 @@ internal class PostHogFeatureFlags(
                 evaluatedAt = null,
                 definitionsLoadedAt = null,
                 responseError = null,
+                unresolvedFlags = EMPTY_UNRESOLVED_FLAGS,
             )
     }
 }
