@@ -1,5 +1,11 @@
 ## Next
 
+## 3.73.0
+
+### Minor Changes
+
+- 5809b4f: Add `$is_sideloaded` to the static context, reporting whether the app was installed outside a known app store
+
 ## 3.72.10
 
 ### Patch Changes
