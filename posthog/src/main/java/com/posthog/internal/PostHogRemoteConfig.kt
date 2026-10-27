@@ -1191,6 +1191,9 @@ public class PostHogRemoteConfig(
 
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
+            // unreadable storage (e.g. Direct Boot) reads as empty: don't latch, so a later read retries
+            val readable = preferences.isAvailable()
+
             @Suppress("UNCHECKED_CAST")
             val flags =
                 preferences.getValue(
@@ -1226,7 +1229,7 @@ public class PostHogRemoteConfig(
                 this.minimalFlagCalledEvents = cachedMinimalFlagCalledEvents
                 // Bootstrap is an initial snapshot that wins over persisted flags (spec precedence).
                 applyBootstrapSnapshotLocked()
-                isFeatureFlagsLoaded = true
+                isFeatureFlagsLoaded = readable
             }
         }
     }

@@ -3124,6 +3124,50 @@ internal class PostHogRemoteConfigTest {
         assertEquals(mapOf<String, Any>("cached-flag" to true), loaded.variants)
     }
 
+    // Unreadable until [available] is set, like Android preferences before first unlock (Direct Boot).
+    private class LockedPreferences(private val delegate: PostHogPreferences) : PostHogPreferences {
+        @Volatile
+        var available = false
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? = if (available) delegate.getValue(key, defaultValue) else defaultValue
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) = delegate.setValue(key, value)
+
+        override fun clear(except: List<String>) = delegate.clear(except)
+
+        override fun remove(key: String) = delegate.remove(key)
+
+        override fun getAll(): Map<String, Any> = if (available) delegate.getAll() else emptyMap()
+
+        override fun isAvailable(): Boolean = available
+    }
+
+    @Test
+    fun `a failed load while storage is unreadable still serves the persisted flags once readable`() {
+        val locked = LockedPreferences(PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("cached-flag" to true)) })
+        val offline =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = false
+            }
+        val sut = getSut(host = "http://localhost", networkStatus = offline, cachePreferences = locked)
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(loaded.errorsLoading)
+        assertTrue(loaded.variants.isEmpty())
+
+        locked.available = true
+
+        assertEquals(true, sut.getFeatureFlag("cached-flag"))
+    }
+
     @Test
     fun `a failed reload after a successful load reports the loaded flags, not bootstrap`() {
         // fixture returns featureFlags {"4535-funnel-bar-viz": true}
