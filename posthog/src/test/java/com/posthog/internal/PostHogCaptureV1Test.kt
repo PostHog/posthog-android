@@ -417,6 +417,23 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 404 warns once with the capture URL`() {
+        val http = httpServers.mockHttp(total = 2, response = MockResponse().setResponseCode(404))
+        val host = http.url("/").toString().trimEnd('/')
+        val sut = api(host)
+
+        repeat(2) { assertThrows(PostHogApiError::class.java) { sut.captureV1(listOf(event())) } }
+
+        assertEquals(
+            listOf(
+                "$host/i/v1/analytics/events returned 404. Events stay queued and are retried. " +
+                    "If you use a reverse proxy or self-host PostHog, make sure it serves /i/v1/analytics/events.",
+            ),
+            logger.warnings,
+        )
+    }
+
+    @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
         http.enqueue(MockResponse().setBody(""))
