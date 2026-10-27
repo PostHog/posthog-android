@@ -48,6 +48,7 @@ public class PostHogApi(
         private const val ERROR_BODY_PEEK_BYTES = 2048L
         private const val CAPTURE_V1_ANALYTICS_PATH = "/i/v1/analytics/events"
         private const val CAPTURE_V1_MAX_REDIRECTS = 5
+        private const val CAPTURE_V1_MAX_RESULTS_BYTES = 1024L * 1024L
     }
 
     private val mediaType by lazy {
@@ -286,7 +287,10 @@ public class PostHogApi(
 
     private fun readCaptureV1Results(response: Response): Map<*, *>? {
         return try {
-            val body = response.body?.string() ?: return null
+            // Bounded: an oversized or endless body counts as unreadable instead of filling the heap.
+            val source = response.body?.source() ?: return null
+            if (source.request(CAPTURE_V1_MAX_RESULTS_BYTES + 1)) return null
+            val body = source.buffer.readUtf8()
             (config.serializer.deserializeString(body) as? Map<*, *>)?.get("results") as? Map<*, *>
         } catch (e: Throwable) {
             null

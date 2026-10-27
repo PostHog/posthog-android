@@ -306,6 +306,20 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 2xx with results over 1 MiB counts as delivered`() {
+        val event = event()
+        val padding = "x".repeat(1024 * 1024)
+        val http =
+            httpServers.mockHttp(
+                response = MockResponse().setBody("{\"results\":{\"${event.uuid}\":{\"result\":\"retry\"}},\"pad\":\"$padding\"}"),
+            )
+
+        val result = api(http.url("/").toString()).captureV1(listOf(event))
+
+        assertTrue(result.retryIds.isEmpty())
+    }
+
+    @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
         http.enqueue(MockResponse().setBody(""))
