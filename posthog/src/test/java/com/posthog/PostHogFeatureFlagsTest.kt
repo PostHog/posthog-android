@@ -437,6 +437,26 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `onFeatureFlags reports and replays the persisted flags when the first load fails`() {
+        val persisted = mapOf<String, Any>("beta-ui" to true)
+        val cache = PostHogMemoryPreferences().apply { setValue("featureFlags", persisted) }
+        val http = mockHttp(response = MockResponse().setResponseCode(500))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, cachePreferences = cache)
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        sut.reloadFeatureFlags()
+
+        val failed = updates.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(failed.errorsLoading)
+        assertEquals(persisted, failed.variants)
+
+        val lateUpdates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { lateUpdates.add(it) }
+        assertEquals(persisted, lateUpdates.poll(5, TimeUnit.SECONDS)!!.variants)
+    }
+
+    @Test
     fun `onFeatureFlags replays loaded flags to a late listener`() {
         val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
         val http = mockHttp(response = MockResponse().setBody(flags))
