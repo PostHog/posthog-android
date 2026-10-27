@@ -10,3 +10,4 @@
 - **Breaking:** remove the deprecated `PostHogSessionReplayConfig.debouncerDelayMs`; use `throttleDelayMs` instead
 - **Breaking:** return `null` instead of the raw string for a malformed, empty or whitespace-only feature flag payload from `getFeatureFlagResult(key)?.payload`; payloads must be valid JSON (a JSON `null` payload now also reads as `null` instead of the string `"null"`)
 - **Breaking:** make SDK-internal helpers in the `com.posthog.internal` and `com.posthog.android.replay.internal` packages non-public
+- **Breaking:** remove the deprecated `remoteConfig` config option; the SDK now always loads remote config at setup

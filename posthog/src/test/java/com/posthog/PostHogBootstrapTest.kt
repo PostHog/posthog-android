@@ -30,13 +30,13 @@ internal class PostHogBootstrapTest {
     private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
 
-    @Suppress("DEPRECATION")
     private fun getSut(
         host: String = PostHogConfig.DEFAULT_HOST,
         bootstrap: PostHogBootstrapConfig? = null,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
         preloadFeatureFlags: Boolean = false,
-        reloadFeatureFlags: Boolean = true,
+        // setup always requests /config; skip it when the test doesn't preload flags
+        reloadFeatureFlags: Boolean = preloadFeatureFlags,
         sendFeatureFlagEvent: Boolean = true,
         flushAt: Int = 1,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
@@ -52,8 +52,6 @@ internal class PostHogBootstrapTest {
                 this.preloadFeatureFlags = preloadFeatureFlags
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.cachePreferences = cachePreferences
-                // keep setup on the single /flags path instead of the /config + /flags path
-                this.remoteConfig = false
                 this.bootstrap = bootstrap
                 this.optOut = optOut
                 this.onFeatureFlags = onFeatureFlags
@@ -370,6 +368,9 @@ internal class PostHogBootstrapTest {
         var loaded = false
         val sut =
             getSut(
+                host = "http://127.0.0.1:1",
+                // the callback fires from setup's flag loading, before /config answers
+                reloadFeatureFlags = true,
                 bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
                 onFeatureFlags = PostHogOnFeatureFlags { loaded = true },
             )

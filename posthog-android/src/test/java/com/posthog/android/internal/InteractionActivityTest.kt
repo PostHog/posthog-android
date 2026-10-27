@@ -46,7 +46,7 @@ internal class InteractionActivityTest {
     fun `real Compose and embedded Views capture through window with replay off`() {
         val events = CopyOnWriteArrayList<PostHogEvent>()
         val config =
-            PostHogAndroidConfig("test").apply {
+            PostHogAndroidConfig("test", "http://127.0.0.1:1").apply {
                 captureElementInteractions = true
                 sessionReplay = false
                 captureApplicationLifecycleEvents = false
@@ -54,8 +54,6 @@ internal class InteractionActivityTest {
                 captureDeepLinks = false
                 capturePushNotificationOpened = false
                 capturePushNotificationSubscriptions = false
-                @Suppress("DEPRECATION") // Test isolation: do not fetch remote configuration.
-                remoteConfig = false
                 preloadFeatureFlags = false
                 addBeforeSend { event ->
                     events += event
