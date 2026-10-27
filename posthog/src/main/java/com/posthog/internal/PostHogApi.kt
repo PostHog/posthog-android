@@ -13,6 +13,7 @@ import com.posthog.internal.logs.PostHogLogsOTLP
 import com.posthog.logs.PostHogLogRecord
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -83,11 +84,25 @@ public class PostHogApi(
     // Capture v1 decides its own redirects (see captureV1): OkHttp would follow any 3xx, drop the
     // Authorization header on a cross-host hop and turn a 302 into a body-less GET. The queue owns
     // retries too: an OkHttp resend would repeat PostHog-Attempt and PostHog-Request-Timestamp.
+    // OkHttp also resends a 503 with `Retry-After: 0` whatever retryOnConnectionFailure says, so
+    // that header is dropped below its retry layer; the queue waits the same with or without it.
     private val captureClient: OkHttpClient by lazy {
         client.newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
             .retryOnConnectionFailure(false)
+            .addNetworkInterceptor(
+                object : Interceptor {
+                    override fun intercept(chain: Interceptor.Chain): Response {
+                        val response = chain.proceed(chain.request())
+                        return if (response.code == 503 && response.header("Retry-After")?.toIntOrNull() == 0) {
+                            response.newBuilder().removeHeader("Retry-After").build()
+                        } else {
+                            response
+                        }
+                    }
+                },
+            )
             .build()
     }
 

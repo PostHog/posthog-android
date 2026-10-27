@@ -306,6 +306,16 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
+        http.enqueue(MockResponse().setBody(""))
+
+        assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
+
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
     fun `a retry reuses the request id and created_at and increments the attempt`() {
         val event = event()
         val http = httpServers.mockHttp(response = resultsResponse(event.uuid!! to "retry"))
