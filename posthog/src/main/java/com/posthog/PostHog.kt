@@ -397,7 +397,11 @@ public class PostHog private constructor(
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
-                        internalOnFeatureFlagsLoaded()
+                        try {
+                            internalOnFeatureFlagsLoaded()
+                        } catch (e: Throwable) {
+                            config.logger.log("Executing the internal feature flags callback failed: $e")
+                        }
                         notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     loadRemoteConfigRequest(
