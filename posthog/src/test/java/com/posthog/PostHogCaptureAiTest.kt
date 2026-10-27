@@ -8,6 +8,9 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -179,16 +182,15 @@ internal class PostHogCaptureAiTest {
     }
 
     @Test
-    fun `an AI event over captureAiMaxEventBytes is dropped when queued and logs only its name and size`() {
+    fun `an AI event over captureAiMaxEventBytes returns null and logs only its name and size`() {
         val http = httpServers.mockHttp()
-        // the stored limit is the configured bytes plus a 64 KiB envelope
+        // the limit is the configured bytes plus a 64 KiB envelope
         val sut = getSut(http) { captureAiMaxEventBytes = 1 }
         val prompt = "p".repeat(70_000)
 
         val uuid = sut.captureAi("\$ai_generation", properties = mapOf("\$ai_input" to prompt))
 
-        // handed to the queue, which drops it on its own thread
-        assertNotNull(uuid)
+        assertNull(uuid)
         aiExecutor.awaitExecution()
         sut.flush()
         aiExecutor.awaitExecution()
@@ -200,6 +202,30 @@ internal class PostHogCaptureAiTest {
             dropped,
         )
         assertTrue(logger.messages.none { it.contains("pppp") })
+    }
+
+    @Test
+    fun `the AI event limit is measured before encryption`() {
+        val http = httpServers.mockHttp()
+        val sut =
+            getSut(http) {
+                captureAiMaxEventBytes = 1
+                // Base64 stores a third more bytes than it's given
+                encryption =
+                    object : PostHogEncryption {
+                        override fun encrypt(outputStream: OutputStream): OutputStream = Base64.getEncoder().wrap(outputStream)
+
+                        override fun decrypt(inputStream: InputStream): InputStream = Base64.getDecoder().wrap(inputStream)
+                    }
+            }
+        // under the 64 KiB + 1 byte limit as JSON, over it once encrypted
+        val prompt = "p".repeat(60_000)
+
+        val uuid = sut.captureAi("\$ai_generation", properties = mapOf("\$ai_input" to prompt))
+
+        assertNotNull(uuid)
+        aiExecutor.awaitExecution()
+        assertEquals(uuid.toString(), events(takeRequest(http)).single()["uuid"])
     }
 
     @Test

@@ -23,8 +23,7 @@ import java.io.OutputStream
  * request, a record larger than the limit goes alone, and the queue flushes as
  * soon as that many bytes are queued. [maxQueueBytes] is a FIFO limit on the
  * queued files on top of [maxQueueSize]; the newest record is always kept.
- * [maxRecordBytes] drops a larger record when it is queued. Null means no
- * limit.
+ * Null means no limit.
  *
  * The queue itself stays record-type-agnostic; everything that varies
  * between endpoints lives here.
@@ -47,7 +46,6 @@ public class EndpointSpec<Record> internal constructor(
     internal val recordId: ((Record) -> String?)? = null,
     internal val maxBatchBytes: Long? = null,
     internal val maxQueueBytes: Long? = null,
-    internal val maxRecordBytes: Long? = null,
 ) {
     public companion object {
         @JvmStatic
@@ -109,7 +107,6 @@ public class EndpointSpec<Record> internal constructor(
                 recordId = { event -> event.uuid?.toString() },
                 maxBatchBytes = CAPTURE_V1_MAX_BATCH_BYTES,
                 maxQueueBytes = AI_MAX_QUEUE_BYTES,
-                maxRecordBytes = config.captureAiMaxStoredEventBytes,
             )
 
         @JvmStatic
@@ -223,7 +220,31 @@ internal val PostHogConfig.effectiveCaptureAiTimeoutSeconds: Int
     get() = if (captureAiTimeout > 0) captureAiTimeout else PostHogConfig.DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
 
 /**
- * Stored-size limit for an AI event: [PostHogConfig.captureAiMaxEventBytes], capped at PostHog's
+ * Bytes [event] takes serialized as the queue stores it, before any [PostHogConfig.encryption].
+ * Counted as it's written, so the event isn't held in memory a second time.
+ */
+internal fun PostHogConfig.serializedSize(event: PostHogEvent): Long {
+    var count = 0L
+    val counter =
+        object : OutputStream() {
+            override fun write(b: Int) {
+                count++
+            }
+
+            override fun write(
+                b: ByteArray,
+                off: Int,
+                len: Int,
+            ) {
+                count += len
+            }
+        }
+    serializer.serialize(event, counter.writer().buffered())
+    return count
+}
+
+/**
+ * Size limit for a serialized AI event, before any [PostHogConfig.encryption]: [PostHogConfig.captureAiMaxEventBytes], capped at PostHog's
  * 8 MiB limit, plus the envelope allowance.
  */
 internal val PostHogConfig.captureAiMaxStoredEventBytes: Long

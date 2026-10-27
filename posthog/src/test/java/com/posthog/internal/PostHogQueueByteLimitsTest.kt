@@ -46,7 +46,6 @@ internal class PostHogQueueByteLimitsTest {
     private fun queue(
         maxBatchBytes: Long? = null,
         maxQueueBytes: Long? = null,
-        maxRecordBytes: Long? = null,
         flushAt: Int = 50,
         maxQueueSize: Int = 1000,
     ): PostHogQueue<String> {
@@ -77,7 +76,6 @@ internal class PostHogQueueByteLimitsTest {
                 isRetriableStatusCode = { false },
                 maxBatchBytes = maxBatchBytes,
                 maxQueueBytes = maxQueueBytes,
-                maxRecordBytes = maxRecordBytes,
             )
         return PostHogQueue(config, spec, executor)
     }
@@ -135,21 +133,6 @@ internal class PostHogQueueByteLimitsTest {
     }
 
     @Test
-    fun `drops a record over maxRecordBytes, logging its description and size`() {
-        val sut = queue(maxRecordBytes = 50, maxQueueBytes = 1000, flushAt = 50)
-
-        sut.add(record("big", 80))
-        sut.add(record("small", 20))
-        executor.awaitExecution()
-
-        assertEquals(listOf("small"), queuedIds(sut))
-        assertEquals(1, File(storagePrefix, PROJECT_TOKEN).listFiles()!!.size)
-        // the dropped record was never counted, so it must not be subtracted either
-        assertEquals(sut.dequeList.single().length(), sut.queuedBytesForTesting)
-        assertEquals(listOf("Dropping blob big of 80 bytes, over the 50 byte limit."), logger.messages.filter { it.startsWith("Dropping") })
-    }
-
-    @Test
     fun `evicts the oldest records over maxQueueBytes when a record is added`() {
         val sut = queue(maxQueueBytes = 100, flushAt = 50)
 
@@ -188,19 +171,17 @@ internal class PostHogQueueByteLimitsTest {
     }
 
     @Test
-    fun `the analytics spec caps a request at 5 MiB and the AI spec adds the disk and event caps`() {
+    fun `the analytics spec caps a request at 5 MiB and the AI spec adds the disk cap`() {
         val config = PostHogConfig(PROJECT_TOKEN)
         val api = PostHogApi(config)
 
         val batch = EndpointSpec.batch(config, api, null)
         assertEquals(5L * 1024 * 1024, batch.maxBatchBytes)
         assertEquals(null, batch.maxQueueBytes)
-        assertEquals(null, batch.maxRecordBytes)
 
         val ai = EndpointSpec.ai(config, api, null)
         assertEquals(5L * 1024 * 1024, ai.maxBatchBytes)
         assertEquals(50L * 1024 * 1024, ai.maxQueueBytes)
-        assertEquals(8L * 1024 * 1024 + 64 * 1024, ai.maxRecordBytes)
         assertEquals(100, ai.maxQueueSize(config))
     }
 
@@ -210,11 +191,11 @@ internal class PostHogQueueByteLimitsTest {
         val api = PostHogApi(config)
 
         config.captureAiMaxEventBytes = 1024
-        assertEquals(1024L + 64 * 1024, EndpointSpec.ai(config, api, null).maxRecordBytes)
+        assertEquals(1024L + 64 * 1024, config.captureAiMaxStoredEventBytes)
         config.captureAiMaxEventBytes = 16 * 1024 * 1024
-        assertEquals(8L * 1024 * 1024 + 64 * 1024, EndpointSpec.ai(config, api, null).maxRecordBytes)
+        assertEquals(8L * 1024 * 1024 + 64 * 1024, config.captureAiMaxStoredEventBytes)
         config.captureAiMaxEventBytes = 0
-        assertEquals(8L * 1024 * 1024 + 64 * 1024, EndpointSpec.ai(config, api, null).maxRecordBytes)
+        assertEquals(8L * 1024 * 1024 + 64 * 1024, config.captureAiMaxStoredEventBytes)
 
         config.captureAiMaxQueueSize = 0
         assertEquals(100, EndpointSpec.ai(config, api, null).maxQueueSize(config))

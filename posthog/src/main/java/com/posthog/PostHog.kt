@@ -33,10 +33,12 @@ import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.captureAiMaxStoredEventBytes
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.serializedSize
 import com.posthog.internal.sortMapRecursively
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.logs.PostHogLogRecord
@@ -1056,6 +1058,21 @@ public class PostHog private constructor(
     }
 
     /**
+     * Whether [event], serialized and before [PostHogConfig.encryption], is over the AI event limit.
+     * Logs the name and size only: AI properties can hold prompts and media.
+     */
+    private fun isOverAiEventLimit(event: PostHogEvent): Boolean {
+        val config = config ?: return false
+        val size = config.serializedSize(event)
+        val limit = config.captureAiMaxStoredEventBytes
+        if (size <= limit) {
+            return false
+        }
+        config.logger.log("Dropping AI event ${event.event} of $size bytes, over the $limit byte limit.")
+        return true
+    }
+
+    /**
      * Enriches and queues one event. Returns its uuid once it's handed to the queue, or null when
      * it isn't. [aiLane] sends it through the AI queue instead of the analytics (or replay) queue.
      */
@@ -1186,6 +1203,8 @@ public class PostHog private constructor(
             // beforeSend may have opted out
             if (isOptedOut()) {
                 config?.logger?.log("PostHog is in OptOut state.")
+            } else if (aiLane && isOverAiEventLimit(postHogEvent)) {
+                // dropped here rather than in the queue, so captureAi returns null
             } else if (targetQueue != null) {
                 targetQueue.add(postHogEvent)
                 queued = true

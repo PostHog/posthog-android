@@ -103,19 +103,8 @@ public class PostHogQueue<Record>(
                 os.use { theOutputStream ->
                     spec.encode(record, theOutputStream)
                 }
-                val size = file.length()
-                val maxRecordBytes = spec.maxRecordBytes
-                if (maxRecordBytes != null && size > maxRecordBytes) {
-                    // Name and size only: the record can hold prompts and media.
-                    config.logger.log("Dropping ${spec.describe(record)} of $size bytes, over the $maxRecordBytes byte limit.")
-                    // Not counted in queuedBytes yet, so only the deque entry goes.
-                    synchronized(dequeLock) {
-                        deque.remove(file)
-                    }
-                    file.deleteSafely(config)
-                    return false
-                }
                 if (trackBytes) {
+                    val size = file.length()
                     synchronized(dequeLock) {
                         queuedBytes += size
                     }
