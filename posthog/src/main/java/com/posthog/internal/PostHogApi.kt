@@ -30,6 +30,7 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
 /**
@@ -67,6 +68,10 @@ public class PostHogApi(
             null
         }
     }
+
+    // Caps the whole results read, since a body that trickles bytes never hits the read timeout
+    // and would hold the queue thread. Internal so tests can shorten it.
+    internal var captureV1ResultsReadDeadlineMs: Long = 10_000L
 
     private val client: OkHttpClient =
         config.httpClient ?: OkHttpClient.Builder()
@@ -289,6 +294,7 @@ public class PostHogApi(
         return try {
             // Bounded: an oversized or endless body counts as unreadable instead of filling the heap.
             val source = response.body?.source() ?: return null
+            source.timeout().deadline(captureV1ResultsReadDeadlineMs, TimeUnit.MILLISECONDS)
             if (source.request(CAPTURE_V1_MAX_RESULTS_BYTES + 1)) return null
             val body = source.buffer.readUtf8()
             (config.serializer.deserializeString(body) as? Map<*, *>)?.get("results") as? Map<*, *>

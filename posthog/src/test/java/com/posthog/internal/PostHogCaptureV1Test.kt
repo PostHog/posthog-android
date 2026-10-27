@@ -322,6 +322,25 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 2xx whose results trickle past the read deadline counts as delivered`() {
+        val event = event()
+        val padding = "x".repeat(16 * 1024)
+        // throttles the request read too, so allow a whole small request per period
+        val http =
+            httpServers.mockHttp(
+                response =
+                    MockResponse()
+                        .setBody("{\"results\":{\"${event.uuid}\":{\"result\":\"retry\"}},\"pad\":\"$padding\"}")
+                        .throttleBody(1024, 200, TimeUnit.MILLISECONDS),
+            )
+        val sut = api(http.url("/").toString()).apply { captureV1ResultsReadDeadlineMs = 300 }
+
+        val result = sut.captureV1(listOf(event))
+
+        assertTrue(result.retryIds.isEmpty())
+    }
+
+    @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
         http.enqueue(MockResponse().setBody(""))
