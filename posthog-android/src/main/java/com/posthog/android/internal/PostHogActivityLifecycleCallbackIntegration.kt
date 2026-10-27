@@ -168,6 +168,9 @@ internal class PostHogActivityLifecycleCallbackIntegration(
         try {
             data?.let {
                 for (item in it.queryParameterNames) {
+                    // `$` names are PostHog's own, such as `$process_person_profile`, which would
+                    // become a capture option; a link must not set them
+                    if (item.startsWith("$")) continue
                     val param = it.getQueryParameter(item)
                     if (!param.isNullOrEmpty()) {
                         props[item] = param

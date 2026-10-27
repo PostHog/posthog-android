@@ -26,5 +26,6 @@
 - **Breaking:** the SDK sets the `process_person_profile` option to `false` only when person processing is off, and no longer adds a `$process_person_profile` property to every event
 - **Breaking:** keep the uuid of its own capture on the event `beforeSend` returns, so a uuid set in `beforeSend`, for example with `copy(uuid = …)`, is replaced
 - use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
+- **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event, so a link can't set a PostHog property such as `$process_person_profile`
 - stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
 - debug logs for capture requests name the event count and the response status instead of printing the request and response bodies
