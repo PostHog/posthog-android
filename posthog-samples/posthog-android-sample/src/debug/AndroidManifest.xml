@@ -4,11 +4,6 @@
 
     <application
         android:usesCleartextTraffic="true"
-        tools:replace="android:usesCleartextTraffic">
-        <activity
-            android:name=".WindowCompositionProofActivity"
-            android:exported="true"
-            android:theme="@style/Theme.WindowCompositionProof" />
-    </application>
+        tools:replace="android:usesCleartextTraffic" />
 
 </manifest>

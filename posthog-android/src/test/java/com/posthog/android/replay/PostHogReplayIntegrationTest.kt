@@ -2959,7 +2959,6 @@ internal class PostHogReplayIntegrationTest {
     private fun screenshotFixture(
         enableMaskAlignmentVerification: Boolean = true,
         captureTouches: Boolean = true,
-        captureExecutor: ExecutorService? = null,
     ): Pair<RealQueueFixture, PostHogFake> {
         val fx =
             createIntegrationWithRealQueue(
@@ -2968,7 +2967,7 @@ internal class PostHogReplayIntegrationTest {
                 integrationContext = ApplicationProvider.getApplicationContext(),
                 // These fixtures invoke capture explicitly. Automatic scheduling is covered
                 // separately using real root/layout/draw notifications and a queued executor.
-                captureExecutor = captureExecutor ?: mock(),
+                captureExecutor = mock(),
             )
         fx.config.sessionReplayConfig.captureTouches = captureTouches
         fx.config.sessionReplayConfig.screenshot = true
@@ -4695,7 +4694,7 @@ internal class PostHogReplayIntegrationTest {
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
     fun `scene capture reads window metadata and masks on main`() {
         for (verified in listOf(false, true)) {
-            val h = screenshotCaptureHarness(verified, captureExecutor = mock())
+            val h = screenshotCaptureHarness(verified)
             val reads = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
 
             fun record(name: String) {
@@ -4754,7 +4753,7 @@ internal class PostHogReplayIntegrationTest {
         private fun withDialog(test: (DialogSceneFixture, RealQueueFixture, PostHogFake, ViewTreeSnapshotStatus) -> Unit) {
             DialogSceneFixture().use { h ->
                 fixture.mockCurtainsRoot(h.activity.window.decorView).use {
-                    val (fx, fake) = fixture.screenshotFixture(captureExecutor = mock())
+                    val (fx, fake) = fixture.screenshotFixture()
                     shadowOf(Looper.getMainLooper()).idle()
                     h.layoutContent()
                     val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
@@ -5049,11 +5048,8 @@ internal class PostHogReplayIntegrationTest {
     )
 
     // A capturable window with a masked child, so the walks produce a rect to compare.
-    private fun screenshotCaptureHarness(
-        enableMaskAlignmentVerification: Boolean = true,
-        captureExecutor: ExecutorService? = null,
-    ): ScreenshotCaptureHarness {
-        val (fx, fake) = screenshotFixture(enableMaskAlignmentVerification, captureExecutor = captureExecutor)
+    private fun screenshotCaptureHarness(enableMaskAlignmentVerification: Boolean = true): ScreenshotCaptureHarness {
+        val (fx, fake) = screenshotFixture(enableMaskAlignmentVerification)
         val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
         val child = TextView(activity).apply { tag = "ph-no-capture" }
@@ -5084,7 +5080,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
     fun `legacy dialog with masked content becomes an opaque rectangle without copying pixels`() {
-        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false, captureExecutor = mock())
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
         RecordingShadowPixelCopy.reset()
         try {
             val image = assertNotNull(captureDialog(h))
@@ -5103,7 +5099,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
     fun `legacy dialog resumes pixel capture after its masked content is removed`() {
-        val h = screenshotCaptureHarness(captureExecutor = mock())
+        val h = screenshotCaptureHarness()
         RecordingShadowPixelCopy.reset()
         try {
             assertEquals("rectangle", captureDialog(h)?.type)
@@ -5122,7 +5118,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
     fun `legacy dialog with uncertain mask geometry becomes an opaque rectangle`() {
-        val h = screenshotCaptureHarness(captureExecutor = mock())
+        val h = screenshotCaptureHarness()
         RecordingShadowPixelCopy.reset()
         try {
             val animation = mock<Animation>()
@@ -5140,7 +5136,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
     fun `legacy dialog masks the whole window if sensitive content appears during pixel copy`() {
-        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false, captureExecutor = mock())
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
         RecordingShadowPixelCopy.reset()
         try {
             h.child.tag = "ph-no-mask"
@@ -5158,7 +5154,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
     fun `legacy dialog scene replaces cached pixels with a mask and preserves the activity and dim layer`() {
-        val h = screenshotCaptureHarness(captureExecutor = mock())
+        val h = screenshotCaptureHarness()
         val dialog = Dialog(h.hookLayout.context)
         val content =
             TextView(h.hookLayout.context).apply {
@@ -5225,7 +5221,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
     fun `scene keeps RGB565 Activity captures while dialogs preserve alpha`() {
-        val h = screenshotCaptureHarness(captureExecutor = mock())
+        val h = screenshotCaptureHarness()
         h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
         h.fx.config.sessionReplayConfig.screenshotScale = 0.5f
         val dialog = Dialog(h.hookLayout.context)
@@ -5277,7 +5273,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
     fun `modern dialog retains element level screenshot masking`() {
-        val h = screenshotCaptureHarness(captureExecutor = mock())
+        val h = screenshotCaptureHarness()
         RecordingShadowPixelCopy.reset()
         try {
             assertEquals("screenshot", captureDialog(h)?.type)
