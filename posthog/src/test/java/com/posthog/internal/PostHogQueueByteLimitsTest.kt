@@ -101,6 +101,23 @@ internal class PostHogQueueByteLimitsTest {
     }
 
     @Test
+    fun `a queued file deleted from disk is subtracted with the size it was counted with`() {
+        val sut = queue(maxBatchBytes = 100)
+        connected = false
+        sut.add(record("a", 40))
+        sut.add(record("b", 40))
+        executor.awaitExecution()
+        sut.dequeList.first().delete()
+        connected = true
+
+        sut.flush()
+        executor.awaitExecution()
+
+        assertEquals(listOf(listOf("b")), sent)
+        assertEquals(0L, sut.queuedBytesForTesting)
+    }
+
+    @Test
     fun `a record over the byte limit is sent alone and keeps its place`() {
         val sut = queue(maxBatchBytes = 100)
         connected = false

@@ -39,6 +39,9 @@ public class PostHogQueue<Record>(
     // Total size of the files in the deque, kept only for byte-limited endpoints. Guarded by dequeLock.
     private val trackBytes = spec.maxBatchBytes != null || spec.maxQueueBytes != null
     private var queuedBytes = 0L
+
+    // The size each file was counted with, so a file deleted from the cache dir is still subtracted in full.
+    private val fileBytes = HashMap<File, Long>()
     private val timerLock = Any()
 
     @PostHogVisibleForTesting
@@ -106,7 +109,7 @@ public class PostHogQueue<Record>(
                 if (trackBytes) {
                     val size = file.length()
                     synchronized(dequeLock) {
-                        queuedBytes += size
+                        countBytes(file, size)
                     }
                 }
                 config.logger.log("Queued ${spec.describe(record)}: ${file.name}.")
@@ -129,14 +132,33 @@ public class PostHogQueue<Record>(
         return true
     }
 
-    /** Removes [files] from the deque, subtracting their size while they still exist on disk. */
+    /** Removes [files] from the deque and subtracts the size they were counted with. */
     private fun removeFromDeque(files: Collection<File>) {
         synchronized(dequeLock) {
             deque.removeAll(files)
-            if (trackBytes) {
-                queuedBytes -= files.sumOf { it.length() }
-            }
+            files.forEach { uncountBytes(it) }
         }
+    }
+
+    // Must hold dequeLock.
+    private fun countBytes(
+        file: File,
+        size: Long,
+    ) {
+        if (!trackBytes) return
+        fileBytes[file] = size
+        queuedBytes += size
+    }
+
+    // Must hold dequeLock.
+    private fun uncountBytes(file: File) {
+        queuedBytes -= fileBytes.remove(file) ?: 0L
+    }
+
+    // Must hold dequeLock.
+    private fun resetBytes() {
+        fileBytes.clear()
+        queuedBytes = 0
     }
 
     private fun removeRecordSync() {
@@ -145,9 +167,7 @@ public class PostHogQueue<Record>(
                 val first: File
                 synchronized(dequeLock) {
                     first = deque.removeFirst()
-                    if (trackBytes) {
-                        queuedBytes -= first.length()
-                    }
+                    uncountBytes(first)
                 }
                 first.deleteSafely(config)
                 config.logger.log("Queue is full, the oldest ${spec.recordsLabel} ${first.name} is dropped.")
@@ -160,7 +180,7 @@ public class PostHogQueue<Record>(
             // The newest record is always kept, even when it's over the limit on its own.
             while (queuedBytes > maxQueueBytes && deque.size > 1) {
                 val first = deque.removeFirst()
-                queuedBytes -= first.length()
+                uncountBytes(first)
                 evicted.add(first)
             }
         }
@@ -501,7 +521,7 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             tempFiles = deque.toList()
             deque.clear()
-            queuedBytes = 0
+            resetBytes()
         }
         tempFiles.forEach {
             it.deleteSafely(config)
@@ -573,9 +593,7 @@ public class PostHogQueue<Record>(
             deque.clear()
             deque.addAll(files)
             deque.addAll(existingFiles)
-            if (trackBytes) {
-                queuedBytes += files.sumOf { it.length() }
-            }
+            files.forEach { countBytes(it, it.length()) }
         }
         config.logger.log("Loaded ${files.size} cached ${spec.recordsLabel} from disk.")
     }
@@ -618,9 +636,8 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             deque.clear()
             deque.addAll(files)
-            if (trackBytes) {
-                queuedBytes = files.sumOf { it.length() }
-            }
+            resetBytes()
+            files.forEach { countBytes(it, it.length()) }
         }
         cachedRecordsLoaded = true
     }
