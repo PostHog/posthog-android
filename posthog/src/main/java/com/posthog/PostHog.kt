@@ -213,8 +213,7 @@ public class PostHog private constructor(
 
     // Runs on the remote config thread after every flags load, whether it succeeded or failed.
     // Create it when the load starts, so listeners skip a load that reset() or close() superseded.
-    private fun internalOnFeatureFlagsLoaded(): (errorsLoading: Boolean) -> Unit {
-        val generation = featureFlagsGeneration
+    private fun internalOnFeatureFlagsLoaded(generation: Int = featureFlagsGeneration): (errorsLoading: Boolean) -> Unit {
         return { errorsLoading ->
             startSessionReplayOnFeatureFlagsLoaded()
             notifyFeatureFlagsListeners(errorsLoading, generation)
@@ -461,6 +460,8 @@ public class PostHog private constructor(
 
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
+                    // Captured before the config callback below, which may close() and so supersede this load.
+                    val generation = featureFlagsGeneration
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
@@ -470,12 +471,11 @@ public class PostHog private constructor(
                             config.logger.log("Executing the internal feature flags callback failed: $e")
                         }
                         // listeners run on the remote config thread, queued ahead of setup's own load
-                        val generation = featureFlagsGeneration
                         remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
                         notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     loadRemoteConfigRequest(
-                        internalOnFeatureFlagsLoaded(),
+                        internalOnFeatureFlagsLoaded(generation),
                         config.onFeatureFlags,
                     )
                 }

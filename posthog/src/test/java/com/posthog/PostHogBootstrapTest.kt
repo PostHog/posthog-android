@@ -14,11 +14,14 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogBootstrapTest {
@@ -402,6 +405,40 @@ internal class PostHogBootstrapTest {
         assertEquals(mapOf<String, Any>("beta-ui" to true), loaded.variants)
 
         sut.close()
+    }
+
+    @Test
+    fun `closing from the bootstrap flags callback drops setup's load for listeners`() {
+        val http = mockHttp(total = 5, response = MockResponse().setBody("""{"hasFeatureFlags":false}"""))
+        val completed = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val first = AtomicBoolean(true)
+        val config =
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
+                storagePrefix = tmpDir.newFolder().absolutePath
+                cachePreferences = PostHogMemoryPreferences()
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true))
+                onFeatureFlags =
+                    PostHogFeatureFlagsCallback {
+                        // the bootstrap delivery closes the SDK; setup's own load completes later
+                        if (first.compareAndSet(true, false)) PostHog.close() else completed.add(it)
+                    }
+            }
+
+        try {
+            PostHog.setup(config)
+
+            // setup's load notifies listeners just before this completion
+            assertNotNull(completed.poll(5, TimeUnit.SECONDS))
+
+            // close() cleared the snapshot, so only a load it superseded could refill it
+            val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+            val subscription = PostHog.onFeatureFlags { updates.add(it) }
+            assertNull(updates.poll(500, TimeUnit.MILLISECONDS))
+            subscription.unsubscribe()
+        } finally {
+            PostHog.close()
+            http.shutdown()
+        }
     }
 
     @Test
