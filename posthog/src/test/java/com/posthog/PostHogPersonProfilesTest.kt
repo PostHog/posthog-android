@@ -119,7 +119,7 @@ internal class PostHogPersonProfilesTest {
     }
 
     @Test
-    fun `caller person processing properties win if identified only and not identified`() {
+    fun `caller person processing properties don't override the personless option if identified only and not identified`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -138,8 +138,8 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        // the caller's legacy property is hoisted into the option when the event is sent
-        assertEquals(true, event.processPersonProfile)
+        // the SDK's personless option wins; the caller's legacy property is removed when sent
+        assertEquals(false, event.processPersonProfile)
         assertFalse(event.properties!!.containsKey("\$process_person_profile"))
         assertEquals(true, event.properties!!["\$is_identified"] as Boolean)
 
@@ -424,7 +424,7 @@ internal class PostHogPersonProfilesTest {
     }
 
     @Test
-    fun `caller process person override wins if never`() {
+    fun `caller process person property doesn't override never`() {
         val http = mockHttp()
         val url = http.url("/")
 
@@ -440,7 +440,7 @@ internal class PostHogPersonProfilesTest {
 
         val event = batch.batch.first()
 
-        assertEquals(true, event.processPersonProfile)
+        assertEquals(false, event.processPersonProfile)
         assertFalse(event.properties!!.containsKey("\$process_person_profile"))
 
         sut.close()
