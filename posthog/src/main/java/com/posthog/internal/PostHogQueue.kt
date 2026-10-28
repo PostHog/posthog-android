@@ -43,9 +43,10 @@ public class PostHogQueue<Record>(
     // The size each file was counted with, so a file deleted from the cache dir is still subtracted in full.
     private val fileBytes = HashMap<File, Long>()
 
-    // Records handed to the executor by addMeasured and not yet written to disk. Guarded by pendingLock.
+    // Records added by addMeasured and not yet taken by the executor to be written to disk, oldest
+    // first, with their sizes. Guarded by pendingLock.
     private val pendingLock = Any()
-    private var pendingRecords = 0
+    private val pending: ArrayDeque<Pair<Record, Long>> = ArrayDeque()
     private var pendingBytes = 0L
     private val timerLock = Any()
 
@@ -214,16 +215,9 @@ public class PostHogQueue<Record>(
     private fun flushRecordSync(
         record: Record,
         isFatal: Boolean = false,
-        onWritten: () -> Unit = {},
     ) {
         ensureCachedRecordsLoaded()
-        val added =
-            try {
-                addRecordSync(record)
-            } finally {
-                onWritten()
-            }
-        if (added) {
+        if (addRecordSync(record)) {
             removeRecordSync()
             // this is best effort since we dont know if theres
             // enough time to flush records to the wire
@@ -244,10 +238,10 @@ public class PostHogQueue<Record>(
     }
 
     /**
-     * Adds [record], [bytes] long, unless the records still waiting to be written already hold
-     * [EndpointSpec.maxQueueSize] records or would go over [EndpointSpec.maxQueueBytes]. The disk keeps
-     * no more than that, so waiting in memory with more can't deliver more, while a slow send on the
-     * executor would let large records pile up. Returns whether the record was handed to the executor.
+     * Adds [record], [bytes] long. While a slow send holds the executor, records wait in memory before
+     * they're written; once more than [EndpointSpec.maxQueueSize] records or [EndpointSpec.maxQueueBytes]
+     * wait, the oldest waiting ones are dropped, as the disk queue drops its oldest. The newest record
+     * is always kept. Returns false only when the executor no longer accepts work.
      */
     internal fun addMeasured(
         record: Record,
@@ -259,24 +253,37 @@ public class PostHogQueue<Record>(
             return true
         }
         val maxRecords = spec.maxQueueSize(config).coerceAtLeast(1)
+        val entry = record to bytes
+        var dropped = 0
         synchronized(pendingLock) {
-            if (pendingRecords >= maxRecords || pendingBytes + bytes > maxQueueBytes) {
-                return false
-            }
-            pendingRecords++
+            pending.addLast(entry)
             pendingBytes += bytes
-        }
-        val written = {
-            synchronized(pendingLock) {
-                pendingRecords--
-                pendingBytes -= bytes
+            while (pending.size > 1 && (pending.size > maxRecords || pendingBytes > maxQueueBytes)) {
+                pendingBytes -= pending.removeFirst().second
+                dropped++
             }
+        }
+        if (dropped > 0) {
+            config.logger.log("Too many ${spec.recordsLabel} are waiting to be written, the oldest $dropped are dropped.")
         }
         try {
-            executor.execute { flushRecordSync(record, onWritten = written) }
+            // One task per record; a task whose record was dropped finds an earlier-added one or nothing.
+            executor.execute {
+                val next =
+                    synchronized(pendingLock) {
+                        pending.removeFirstOrNull()?.also { pendingBytes -= it.second }
+                    }
+                if (next != null) {
+                    flushRecordSync(next.first)
+                }
+            }
         } catch (e: Throwable) {
             // RejectedExecutionException once the queue is shut down
-            written()
+            synchronized(pendingLock) {
+                if (pending.remove(entry)) {
+                    pendingBytes -= bytes
+                }
+            }
             return false
         }
         return true

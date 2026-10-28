@@ -1071,7 +1071,7 @@ public class PostHog private constructor(
 
     /**
      * Hands [event] to [aiQueue] unless, serialized and before [PostHogConfig.encryption], it's over
-     * the AI event limit or too many AI events are still waiting to be written. Runs on the caller's
+     * the AI event limit or the queue is shut down. Runs on the caller's
      * thread so captureAi can return null; writing stops at the limit, but the properties JSON tree is
      * built in full first. Logs the name and size only: AI properties can hold prompts and media.
      */
@@ -1087,7 +1087,7 @@ public class PostHog private constructor(
             return false
         }
         if (!aiQueue.addMeasured(event, bytes)) {
-            config.logger.log("Dropping AI event ${event.event} of $bytes bytes, too many AI events are waiting to be written.")
+            config.logger.log("Dropping AI event ${event.event} of $bytes bytes, the AI queue is shut down.")
             return false
         }
         return true

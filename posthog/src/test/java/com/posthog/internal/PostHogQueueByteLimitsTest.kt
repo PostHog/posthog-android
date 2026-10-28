@@ -14,7 +14,6 @@ import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -120,25 +119,24 @@ internal class PostHogQueueByteLimitsTest {
     }
 
     @Test
-    fun `addMeasured refuses a record while those waiting to be written are at the limits`() {
+    fun `addMeasured drops the oldest waiting records once those waiting to be written are over the limits`() {
         val sut = queue(maxQueueBytes = 100, maxQueueSize = 3)
         val release = CountDownLatch(1)
         executor.execute { release.await() }
 
         assertTrue(sut.addMeasured(record("a", 40), 40))
         assertTrue(sut.addMeasured(record("b", 40), 40))
-        // 120 bytes waiting
-        assertFalse(sut.addMeasured(record("c", 40), 40))
+        // 120 bytes waiting: a is dropped
+        assertTrue(sut.addMeasured(record("c", 40), 40))
         assertTrue(sut.addMeasured(record("d", 20), 20))
-        // 3 records waiting
-        assertFalse(sut.addMeasured(record("e", 1), 1))
+        // 4 records waiting: b is dropped
+        assertTrue(sut.addMeasured(record("e", 1), 1))
+        // dropped while waiting, before the disk limits ever see them
+        assertEquals(2, logger.messages.count { it.contains("blobs are waiting to be written, the oldest 1 are dropped") })
         release.countDown()
         executor.awaitExecution()
 
-        assertTrue(sut.addMeasured(record("f", 40), 40))
-        executor.awaitExecution()
-        // the disk limits then evict the oldest, as for any record
-        assertEquals(listOf("b", "d", "f"), queuedIds(sut))
+        assertEquals(listOf("c", "d", "e"), queuedIds(sut))
     }
 
     @Test

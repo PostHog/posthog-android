@@ -89,7 +89,7 @@ internal class PostHogCaptureAiTest {
     private fun Map<String, Any?>.properties(): Map<String, Any?> = this["properties"] as Map<String, Any?>
 
     @Test
-    fun `captureAi returns null while captureAiMaxQueueSize events wait to be written`() {
+    fun `captureAi keeps the newest events while captureAiMaxQueueSize events wait to be written`() {
         val http = httpServers.mockHttp(total = 3)
         val sut = getSut(http) { captureAiMaxQueueSize = 2 }
         val release = CountDownLatch(1)
@@ -97,12 +97,11 @@ internal class PostHogCaptureAiTest {
 
         assertNotNull(sut.captureAi("\$ai_generation"))
         assertNotNull(sut.captureAi("\$ai_generation"))
-        assertNull(sut.captureAi("\$ai_generation"))
-        assertTrue(logger.messages.any { it.contains("too many AI events are waiting to be written") })
+        assertNotNull(sut.captureAi("\$ai_generation"))
+        assertTrue(logger.messages.any { it.contains("the oldest 1 are dropped") })
 
         release.countDown()
         aiExecutor.awaitExecution()
-        assertNotNull(sut.captureAi("\$ai_generation"))
     }
 
     @Test

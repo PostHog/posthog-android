@@ -139,8 +139,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
      * @param options settings that tell PostHog how to process this event, see `options` in [capture]
      * @return the event's uuid once it's handed to the queue, or null when it isn't: the SDK is
-     *   disabled or opted out, `beforeSend` dropped it, it's over the size limit, or
-     *   [PostHogConfig.captureAiMaxQueueSize] events or 50 MiB are still waiting to be written to disk
+     *   disabled or opted out, `beforeSend` dropped it, or it's over the size limit
      */
     public fun captureAi(
         event: String,
