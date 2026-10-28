@@ -35,6 +35,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.captureAiMaxStoredEventBytes
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
+import com.posthog.internal.isFalseOptionValue
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -1000,9 +1001,9 @@ public class PostHog private constructor(
     private fun isPersonProcessed(options: Map<String, Any?>?): Boolean {
         val option = options?.get("process_person_profile")
         if (option != null) {
-            return option != false
+            return !isFalseOptionValue(option)
         }
-        return getPreferences().getValue("\$process_person_profile") != false
+        return !isFalseOptionValue(getPreferences().getValue("\$process_person_profile"))
     }
 
     /**

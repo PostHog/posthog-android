@@ -882,6 +882,22 @@ internal fun liftStringProperty(
     return null
 }
 
+/**
+ * Whether capture reads [value] as a false flag option: `false`, a zero number, or a string such as
+ * `"false"`, `"no"`, `"off"` or `"0"`, ignoring case and surrounding spaces.
+ */
+internal fun isFalseOptionValue(value: Any?): Boolean {
+    return when (value) {
+        is Boolean -> !value
+        is Number -> value.toDouble() == 0.0
+        is String -> {
+            val text = value.trim().lowercase()
+            text in setOf("false", "f", "no", "n", "off") || text.toDoubleOrNull() == 0.0
+        }
+        else -> false
+    }
+}
+
 private fun jsonTypeName(value: Any): String {
     return when (value) {
         is Boolean -> "bool"

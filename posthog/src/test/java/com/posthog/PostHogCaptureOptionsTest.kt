@@ -336,6 +336,21 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
+    fun `a set with a false value capture reads leniently is personless too`() {
+        for (value in listOf<Any>("false", " Off ", 0, "0.0")) {
+            val sut = getSut()
+            sut.identify("user_id")
+            captured.clear()
+
+            sut.setPersonProperties(userProps, options = mapOf("process_person_profile" to value))
+            sut.setPersonProperties(userProps)
+
+            assertEquals(2, captured.count { it.event == PostHogEventName.SET.event }, "for $value")
+            sut.close()
+        }
+    }
+
+    @Test
     fun `an event returned by beforeSend keeps the uuid of its own capture`() {
         val http = httpServers.mockHttp(total = 2)
         var cached: PostHogEvent? = null
