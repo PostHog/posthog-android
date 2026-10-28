@@ -434,6 +434,20 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `the 404 warning leaves out credentials and the query in the host`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(404))
+        val origin = http.url("/").toString().trimEnd('/')
+        val host = origin.replace("://", "://proxy-user:proxy-password@") + "?secret=s3cr3t"
+        val sut = api(host)
+
+        assertThrows(PostHogApiError::class.java) { sut.captureV1(listOf(event())) }
+
+        val warning = logger.warnings.single()
+        assertTrue(warning.startsWith("$origin/"), warning)
+        listOf("proxy-user", "proxy-password", "s3cr3t").forEach { assertFalse(warning.contains(it), warning) }
+    }
+
+    @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
         http.enqueue(MockResponse().setBody(""))

@@ -226,8 +226,16 @@ public class PostHogApi(
                 config.logger.log("Response ${response.request.url}: ${response.code}")
 
                 if (response.code == 404 && warnedCaptureNotFound.compareAndSet(false, true)) {
+                    // Warnings log even with debug off, so drop any credentials or query the host carries.
+                    val safeUrl =
+                        response.request.url.newBuilder()
+                            .username("")
+                            .password("")
+                            .query(null)
+                            .fragment(null)
+                            .build()
                     config.logger.logWarning(
-                        "$url returned 404. Events stay queued and are retried. " +
+                        "$safeUrl returned 404. Events stay queued and are retried. " +
                             "If you use a reverse proxy or self-host PostHog, make sure it serves $path.",
                     )
                 }
