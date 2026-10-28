@@ -3176,6 +3176,33 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `a reset during cache hydration doesn't restore the previous identity's flags`() {
+        val stored = PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("old-user-flag" to true)) }
+        lateinit var sut: PostHogRemoteConfig
+        var resetMidRead = false
+        // stands in for reset() landing between hydration's cache read and its commit
+        val resetting =
+            object : PostHogPreferences by stored {
+                override fun getValue(
+                    key: String,
+                    defaultValue: Any?,
+                ): Any? {
+                    val value = stored.getValue(key, defaultValue)
+                    if (key == FEATURE_FLAGS && resetMidRead) {
+                        resetMidRead = false
+                        stored.clear()
+                        sut.clear()
+                    }
+                    return value
+                }
+            }
+        sut = getSut(host = "http://localhost", cachePreferences = resetting)
+        resetMidRead = true
+
+        assertNull(sut.getFeatureFlag("old-user-flag"))
+    }
+
+    @Test
     fun `flag reads while storage is unreadable don't read the flag cache`() {
         val locked = LockedPreferences(PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("cached-flag" to true)) })
         val sut = getSut(host = "http://localhost", cachePreferences = locked)

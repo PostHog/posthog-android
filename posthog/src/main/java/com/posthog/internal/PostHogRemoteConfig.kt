@@ -117,6 +117,10 @@ public class PostHogRemoteConfig(
     @Volatile
     private var isFeatureFlagsLoaded = false
 
+    // Bumped by clear(), so a cache hydration that read the previous identity's flags before a reset
+    // doesn't commit them after it. Guarded by featureFlagsLock.
+    private var featureFlagsGeneration = 0
+
     // Whether a /flags response has been received this session. In-memory and reset each launch
     // (matching posthog-js), so a returning user still reports $used_bootstrap_value true while served
     // bootstrap values until this session's own /flags. Distinct from isFeatureFlagsLoaded, which also
@@ -1196,6 +1200,7 @@ public class PostHogRemoteConfig(
             if (!preferences.isAvailable()) {
                 return
             }
+            val generation = synchronized(featureFlagsLock) { featureFlagsGeneration }
 
             @Suppress("UNCHECKED_CAST")
             val flags =
@@ -1224,6 +1229,9 @@ public class PostHogRemoteConfig(
             val cachedMinimalFlagCalledEvents = preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS) as? Boolean ?: false
 
             synchronized(featureFlagsLock) {
+                if (generation != featureFlagsGeneration) {
+                    return
+                }
                 this.flags = flags
                 this.featureFlags = featureFlags
                 this.featureFlagPayloads = payloads
@@ -1742,6 +1750,7 @@ public class PostHogRemoteConfig(
             sessionReplayLinkedFlagConfigured = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
+            featureFlagsGeneration++
             // Bootstrap is first-session only: drop the retained base layer and the "loaded from
             // remote" signal so a later identity is never served the previous user's bootstrapped
             // values and $used_bootstrap_value reports true again until its own /flags response.
