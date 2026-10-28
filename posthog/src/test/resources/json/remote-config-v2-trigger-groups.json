@@ -1,0 +1,81 @@
+{
+  "token": "phc_QFbR1y41s5sxnNTZoyKG2NJo2RlsCIWkUfdpawgb40D",
+  "supportedCompression": [
+    "gzip",
+    "gzip-js"
+  ],
+  "hasFeatureFlags": false,
+  "captureDeadClicks": false,
+  "capturePerformance": {
+    "network_timing": true,
+    "web_vitals": false,
+    "web_vitals_allowed_metrics": null
+  },
+  "autocapture_opt_out": true,
+  "autocaptureExceptions": false,
+  "errorTracking": {
+    "autocaptureExceptions": true
+  },
+  "analytics": {
+    "endpoint": "/i/v0/e/"
+  },
+  "elementsChainAsString": true,
+  "sessionRecording": {
+    "endpoint": "/s/",
+    "consoleLogRecordingEnabled": true,
+    "recorderVersion": "v2",
+    "version": 2,
+    "sampleRate": null,
+    "minimumDurationMilliseconds": 1000,
+    "linkedFlag": null,
+    "networkPayloadCapture": {
+      "recordBody": true,
+      "recordHeaders": true
+    },
+    "masking": null,
+    "urlTriggers": [],
+    "urlBlocklist": [],
+    "eventTriggers": ["legacy-trigger"],
+    "scriptConfig": null,
+    "recordCanvas": true,
+    "canvasFps": 3,
+    "canvasQuality": "0.4",
+    "triggerGroups": [
+      {
+        "id": "group-a",
+        "name": "Always on",
+        "sampleRate": 1.0,
+        "minDurationMs": 30000,
+        "conditions": {
+          "matchType": "all"
+        }
+      },
+      {
+        "id": "group-b",
+        "name": "Big purchases",
+        "sampleRate": 1.0,
+        "minDurationMs": 5000,
+        "conditions": {
+          "matchType": "any",
+          "events": [
+            {
+              "name": "purchase",
+              "properties": [
+                {
+                  "key": "amount",
+                  "type": "event",
+                  "operator": "gt",
+                  "value": 100
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "heatmaps": false,
+  "surveys": false,
+  "defaultIdentifiedOnly": true,
+  "siteApps": []
+}
