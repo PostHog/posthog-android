@@ -315,7 +315,8 @@ internal class PostHogSerializerTest {
         assertEquals(expectedJson, actualJson)
     }
 
-    private data class Turn(val prompt: String, val score: Double)
+    // not a data class: its generated hashCode calls Double.hashCode(double), missing on API 23
+    private class Turn(val prompt: String, val score: Double)
 
     @Test
     fun `an unserializable property is logged by key and type, never by value`() {
