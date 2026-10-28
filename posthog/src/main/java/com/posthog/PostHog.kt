@@ -135,7 +135,7 @@ public class PostHog private constructor(
 
     // The AI lane never shares a queue, executor or retry state with analytics events.
     @Volatile
-    private var aiQueue: PostHogQueueInterface<PostHogEvent>? = null
+    private var aiQueue: PostHogQueue<PostHogEvent>? = null
 
     private var pushSubscriptionManager: PostHogPushSubscriptionManager? = null
 
@@ -1070,18 +1070,26 @@ public class PostHog private constructor(
     }
 
     /**
-     * Whether [event], serialized and before [PostHogConfig.encryption], is over the AI event limit.
-     * Runs on the caller's thread so captureAi can return null; writing stops at the limit, but the
-     * properties JSON tree is built in full first. Logs the name and size only: AI properties can
-     * hold prompts and media.
+     * Hands [event] to [aiQueue] unless, serialized and before [PostHogConfig.encryption], it's over
+     * the AI event limit or too many AI events are still waiting to be written. Runs on the caller's
+     * thread so captureAi can return null; writing stops at the limit, but the properties JSON tree is
+     * built in full first. Logs the name and size only: AI properties can hold prompts and media.
      */
-    private fun isOverAiEventLimit(event: PostHogEvent): Boolean {
+    private fun queueAiEvent(
+        aiQueue: PostHogQueue<PostHogEvent>,
+        event: PostHogEvent,
+    ): Boolean {
         val config = config ?: return false
         val limit = config.captureAiMaxStoredEventBytes
-        if (config.serializedSize(event, stopAfter = limit) <= limit) {
+        val bytes = config.serializedSize(event, stopAfter = limit)
+        if (bytes > limit) {
+            config.logger.log("Dropping AI event ${event.event} of more than $limit bytes, over the limit.")
             return false
         }
-        config.logger.log("Dropping AI event ${event.event} of more than $limit bytes, over the limit.")
+        if (!aiQueue.addMeasured(event, bytes)) {
+            config.logger.log("Dropping AI event ${event.event} of $bytes bytes, too many AI events are waiting to be written.")
+            return false
+        }
         return true
     }
 
@@ -1216,12 +1224,16 @@ public class PostHog private constructor(
             // beforeSend may have opted out
             if (isOptedOut()) {
                 config?.logger?.log("PostHog is in OptOut state.")
-            } else if (aiLane && isOverAiEventLimit(postHogEvent)) {
-                // dropped here rather than in the queue, so captureAi returns null
             } else if (targetQueue != null) {
-                targetQueue.add(postHogEvent)
-                queued = true
-                if (claimedReplayDebugBundle) {
+                // AI events are measured and admitted here rather than in the queue, so captureAi returns null
+                queued =
+                    if (aiLane) {
+                        queueAiEvent(aiQueue ?: return null, postHogEvent)
+                    } else {
+                        targetQueue.add(postHogEvent)
+                        true
+                    }
+                if (queued && claimedReplayDebugBundle) {
                     commitReplayDebugPropertiesWindow()
                 }
             }

@@ -12,6 +12,7 @@ import java.io.FilterInputStream
 import java.io.FilterOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -86,6 +87,23 @@ internal class PostHogCaptureAiTest {
 
     @Suppress("UNCHECKED_CAST")
     private fun Map<String, Any?>.properties(): Map<String, Any?> = this["properties"] as Map<String, Any?>
+
+    @Test
+    fun `captureAi returns null while captureAiMaxQueueSize events wait to be written`() {
+        val http = httpServers.mockHttp(total = 3)
+        val sut = getSut(http) { captureAiMaxQueueSize = 2 }
+        val release = CountDownLatch(1)
+        aiExecutor.execute { release.await() }
+
+        assertNotNull(sut.captureAi("\$ai_generation"))
+        assertNotNull(sut.captureAi("\$ai_generation"))
+        assertNull(sut.captureAi("\$ai_generation"))
+        assertTrue(logger.messages.any { it.contains("too many AI events are waiting to be written") })
+
+        release.countDown()
+        aiExecutor.awaitExecution()
+        assertNotNull(sut.captureAi("\$ai_generation"))
+    }
 
     @Test
     fun `captureAi posts to the AI endpoint and returns the uuid on the wire`() {

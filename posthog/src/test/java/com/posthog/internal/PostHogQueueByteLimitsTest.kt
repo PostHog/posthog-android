@@ -9,10 +9,12 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -115,6 +117,28 @@ internal class PostHogQueueByteLimitsTest {
 
         assertEquals(listOf(listOf("b")), sent)
         assertEquals(0L, sut.queuedBytesForTesting)
+    }
+
+    @Test
+    fun `addMeasured refuses a record while those waiting to be written are at the limits`() {
+        val sut = queue(maxQueueBytes = 100, maxQueueSize = 3)
+        val release = CountDownLatch(1)
+        executor.execute { release.await() }
+
+        assertTrue(sut.addMeasured(record("a", 40), 40))
+        assertTrue(sut.addMeasured(record("b", 40), 40))
+        // 120 bytes waiting
+        assertFalse(sut.addMeasured(record("c", 40), 40))
+        assertTrue(sut.addMeasured(record("d", 20), 20))
+        // 3 records waiting
+        assertFalse(sut.addMeasured(record("e", 1), 1))
+        release.countDown()
+        executor.awaitExecution()
+
+        assertTrue(sut.addMeasured(record("f", 40), 40))
+        executor.awaitExecution()
+        // the disk limits then evict the oldest, as for any record
+        assertEquals(listOf("b", "d", "f"), queuedIds(sut))
     }
 
     @Test

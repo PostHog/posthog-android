@@ -42,6 +42,11 @@ public class PostHogQueue<Record>(
 
     // The size each file was counted with, so a file deleted from the cache dir is still subtracted in full.
     private val fileBytes = HashMap<File, Long>()
+
+    // Records handed to the executor by addMeasured and not yet written to disk. Guarded by pendingLock.
+    private val pendingLock = Any()
+    private var pendingRecords = 0
+    private var pendingBytes = 0L
     private val timerLock = Any()
 
     @PostHogVisibleForTesting
@@ -209,9 +214,16 @@ public class PostHogQueue<Record>(
     private fun flushRecordSync(
         record: Record,
         isFatal: Boolean = false,
+        onWritten: () -> Unit = {},
     ) {
         ensureCachedRecordsLoaded()
-        if (addRecordSync(record)) {
+        val added =
+            try {
+                addRecordSync(record)
+            } finally {
+                onWritten()
+            }
+        if (added) {
             removeRecordSync()
             // this is best effort since we dont know if theres
             // enough time to flush records to the wire
@@ -229,6 +241,45 @@ public class PostHogQueue<Record>(
                 flushRecordSync(record)
             }
         }
+    }
+
+    /**
+     * Adds [record], [bytes] long, unless the records still waiting to be written already hold
+     * [EndpointSpec.maxQueueSize] records or would go over [EndpointSpec.maxQueueBytes]. The disk keeps
+     * no more than that, so waiting in memory with more can't deliver more, while a slow send on the
+     * executor would let large records pile up. Returns whether the record was handed to the executor.
+     */
+    internal fun addMeasured(
+        record: Record,
+        bytes: Long,
+    ): Boolean {
+        val maxQueueBytes = spec.maxQueueBytes
+        if (maxQueueBytes == null) {
+            add(record)
+            return true
+        }
+        val maxRecords = spec.maxQueueSize(config).coerceAtLeast(1)
+        synchronized(pendingLock) {
+            if (pendingRecords >= maxRecords || pendingBytes + bytes > maxQueueBytes) {
+                return false
+            }
+            pendingRecords++
+            pendingBytes += bytes
+        }
+        val written = {
+            synchronized(pendingLock) {
+                pendingRecords--
+                pendingBytes -= bytes
+            }
+        }
+        try {
+            executor.execute { flushRecordSync(record, onWritten = written) }
+        } catch (e: Throwable) {
+            // RejectedExecutionException once the queue is shut down
+            written()
+            return false
+        }
+        return true
     }
 
     private fun flushIfOverThreshold(isFatal: Boolean) {

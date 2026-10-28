@@ -437,7 +437,9 @@ public open class PostHogConfig(
      * are dropped.
      *
      * AI events can be megabytes, so this is lower than [maxQueueSize]. The queue also keeps at most
-     * 50 MiB of AI events, whatever this is set to. A value of 0 or less uses the default.
+     * 50 MiB of AI events, whatever this is set to. The same limits apply to AI events still waiting
+     * to be written to disk, for example during a slow upload: over them, [PostHog.captureAi] drops
+     * the new event and returns null. A value of 0 or less uses the default.
      *
      * Default: 100.
      */
