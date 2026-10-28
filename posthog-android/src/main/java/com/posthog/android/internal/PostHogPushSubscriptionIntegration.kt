@@ -7,8 +7,8 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOptInReceiver
-import com.posthog.PostHogPushTokenType
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.executeSafely
 import java.util.concurrent.ExecutorService
@@ -59,8 +59,13 @@ internal class PostHogPushSubscriptionIntegration(
 
     private fun fetchAndRegister() {
         executor.executeSafely {
-            tokenFetcher.fetchToken { token, appId, tokenType ->
-                this.postHog?.registerPushNotificationToken(token, appId, tokenType)
+            tokenFetcher.fetchToken { token, appId ->
+                val postHog = this.postHog
+                if (postHog is PostHogPushSubscriptionReceiver) {
+                    postHog.registerPushNotificationTokenIfNeeded(token, appId)
+                } else {
+                    postHog?.registerPushNotificationToken(token, appId)
+                }
             }
         }
     }
@@ -84,7 +89,7 @@ internal class PostHogPushSubscriptionIntegration(
  * dependency stays isolated to [FirebasePushTokenFetcher] and can be faked in tests.
  */
 internal fun interface PushTokenFetcher {
-    fun fetchToken(onToken: (token: String, appId: String, tokenType: PostHogPushTokenType) -> Unit)
+    fun fetchToken(onToken: (token: String, appId: String) -> Unit)
 }
 
 private const val FIREBASE_MESSAGING_CLASS = "com.google.firebase.messaging.FirebaseMessaging"
@@ -106,7 +111,7 @@ internal class FirebasePushTokenFetcher(
     // path is exercised by probing for a class name that doesn't resolve
     private val messagingClassName: String = FIREBASE_MESSAGING_CLASS,
 ) : PushTokenFetcher {
-    override fun fetchToken(onToken: (token: String, appId: String, tokenType: PostHogPushTokenType) -> Unit) {
+    override fun fetchToken(onToken: (token: String, appId: String) -> Unit) {
         try {
             Class.forName(messagingClassName)
         } catch (e: Throwable) {
@@ -116,7 +121,7 @@ internal class FirebasePushTokenFetcher(
         fetchFirebaseToken(onToken)
     }
 
-    private fun fetchFirebaseToken(onToken: (token: String, appId: String, tokenType: PostHogPushTokenType) -> Unit) {
+    private fun fetchFirebaseToken(onToken: (token: String, appId: String) -> Unit) {
         val firebaseApp =
             try {
                 FirebaseApp.getInstance()
@@ -146,11 +151,11 @@ internal class FirebasePushTokenFetcher(
             // FID as a send target.
             if (isInstallationIdEnabled(firebaseApp)) {
                 FirebaseInstallations.getInstance(firebaseApp).id
-                    .handleCompletion("Firebase Installation ID", PostHogPushTokenType.FID, projectId, onToken)
+                    .handleCompletion("Firebase Installation ID", projectId, onToken)
             } else {
                 @Suppress("DEPRECATION")
                 FirebaseMessaging.getInstance().token
-                    .handleCompletion("push token", PostHogPushTokenType.FCM_TOKEN, projectId, onToken)
+                    .handleCompletion("push token", projectId, onToken)
             }
         } catch (e: Throwable) {
             config.logger.log("Failed to request Firebase push token: $e.")
@@ -159,9 +164,8 @@ internal class FirebasePushTokenFetcher(
 
     private fun Task<String>.handleCompletion(
         label: String,
-        tokenType: PostHogPushTokenType,
         projectId: String,
-        onToken: (token: String, appId: String, tokenType: PostHogPushTokenType) -> Unit,
+        onToken: (token: String, appId: String) -> Unit,
     ) {
         addOnCompleteListener { task ->
             // The completion runs later, on Play Services' Tasks executor — outside the caller's
@@ -170,7 +174,7 @@ internal class FirebasePushTokenFetcher(
                 if (task.isSuccessful) {
                     val token = task.result
                     if (!token.isNullOrBlank()) {
-                        onToken(token, projectId, tokenType)
+                        onToken(token, projectId)
                     } else {
                         config.logger.log("Firebase returned a blank $label, skipping registration.")
                     }

@@ -9,7 +9,6 @@ import com.posthog.PostHogConfig.Companion.DEFAULT_US_ASSETS_HOST
 import com.posthog.PostHogConfig.Companion.DEFAULT_US_HOST
 import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
-import com.posthog.PostHogPushTokenType
 import com.posthog.internal.logs.PostHogLogsOTLP
 import com.posthog.logs.PostHogLogRecord
 import okhttp3.MediaType.Companion.toMediaType
@@ -143,8 +142,7 @@ public class PostHogApi(
         deviceToken: String,
         appId: String,
         identityToken: String? = null,
-        tokenType: PostHogPushTokenType = PostHogPushTokenType.FCM_TOKEN,
-    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, appId, identityToken, tokenType)
+    ): Unit = sendPushSubscription("POST", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     public fun pushUnsubscription(
@@ -152,7 +150,7 @@ public class PostHogApi(
         deviceToken: String,
         appId: String,
         identityToken: String? = null,
-    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, appId, identityToken, null)
+    ): Unit = sendPushSubscription("DELETE", distinctId, deviceToken, appId, identityToken)
 
     @Throws(PostHogApiError::class, IOException::class)
     private fun sendPushSubscription(
@@ -161,7 +159,6 @@ public class PostHogApi(
         deviceToken: String,
         appId: String,
         identityToken: String?,
-        tokenType: PostHogPushTokenType?,
     ) {
         val pushSubscription =
             PostHogPushSubscriptionRequest(
@@ -170,7 +167,6 @@ public class PostHogApi(
                 deviceToken = deviceToken,
                 appId = appId,
                 identityToken = identityToken,
-                tokenType = tokenType?.takeIf { it != PostHogPushTokenType.FCM_TOKEN },
             )
 
         val url = "$theHost/api/push_subscriptions/"

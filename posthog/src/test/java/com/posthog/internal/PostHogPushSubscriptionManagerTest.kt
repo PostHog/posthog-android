@@ -3,7 +3,6 @@ package com.posthog.internal
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEncryption
-import com.posthog.PostHogPushTokenType
 import com.posthog.TestHttpServers
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
 import com.posthog.shutdownAndAwaitTermination
@@ -152,8 +151,6 @@ internal class PostHogPushSubscriptionManagerTest {
         val request = http.takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/api/push_subscriptions/", request.path)
-        // An FCM registration token keeps the body every existing backend already accepts.
-        assertFalse(request.body.unGzip().contains("token_type"))
 
         val file = pendingFile(storagePrefix!!)
         assertTrue(file.exists())
@@ -821,42 +818,41 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `register sends the token type for a Firebase Installation ID and persists it`() {
+    fun `register sends a Firebase Installation ID as the device token and persists it`() {
         val http = mockHttp()
         val (sut, config, storagePrefix) = getSut(http)
 
-        sut.register("firebase-fid", "firebase-project", PostHogPushTokenType.FID)
+        sut.register("firebase-fid", "firebase-project")
         flush()
 
         val body = http.takeRequest().body.unGzip()
         assertTrue(body.contains("\"device_token\":\"firebase-fid\""))
-        assertTrue(body.contains("\"token_type\":\"fid\""))
-        assertEquals(PostHogPushTokenType.FID, readRecord(config, pendingFile(storagePrefix!!))?.tokenType)
+        assertEquals("firebase-fid", readRecord(config, pendingFile(storagePrefix!!))?.deviceToken)
     }
 
     @Test
-    fun `a persisted Firebase Installation ID is retried with its token type on the next launch`() {
+    fun `a persisted Firebase Installation ID is retried on the next launch`() {
         val http = mockHttp()
         val (sut, _, storagePrefix) = getSut(http)
         val file = pendingFile(storagePrefix!!)
         file.parentFile.mkdirs()
-        file.writeText("""{"device_token":"firebase-fid","app_id":"firebase-project","token_type":"fid"}""")
+        file.writeText("""{"device_token":"firebase-fid","app_id":"firebase-project"}""")
 
         sut.retryPending()
         flush()
 
         val request = http.takeRequest(2, TimeUnit.SECONDS)
         assertNotNull(request)
-        assertTrue(request.body.unGzip().contains("\"token_type\":\"fid\""))
+        assertTrue(request.body.unGzip().contains("\"device_token\":\"firebase-fid\""))
     }
 
     @Test
-    fun `handleReset re-registers a Firebase Installation ID with its token type`() {
+    fun `handleReset re-registers a Firebase Installation ID`() {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
         val (sut, _, _) = getSut(http)
 
         distinctId = "user-A"
-        sut.register("firebase-fid", "firebase-project", PostHogPushTokenType.FID)
+        sut.register("firebase-fid", "firebase-project")
         flush()
         http.takeRequest()
 
@@ -867,7 +863,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals("DELETE", http.takeRequest().method)
         val post = http.takeRequest()
         assertEquals("POST", post.method)
-        assertTrue(post.body.unGzip().contains("\"token_type\":\"fid\""))
+        assertTrue(post.body.unGzip().contains("\"device_token\":\"firebase-fid\""))
     }
 
     @Test
@@ -1037,8 +1033,6 @@ internal class PostHogPushSubscriptionManagerTest {
         val body = request.body.unGzip()
         assertTrue(body.contains("\"device_token\":\"fcm-token\""))
         assertFalse(body.contains("\"platform\""))
-        // Records from before token types existed were all FCM registration tokens.
-        assertFalse(body.contains("token_type"))
         http.shutdown()
     }
 
@@ -1184,6 +1178,120 @@ internal class PostHogPushSubscriptionManagerTest {
         flush()
 
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `automatic FID registration skips a delivered record restored from disk`() {
+        val http = mockHttp()
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.register("firebase-fid", "firebase-project")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        sut.close()
+
+        val (restarted, _, _) = getSut(http, storagePrefix = storagePrefix)
+        restarted.register("firebase-fid", "firebase-project")
+        restarted.retryPending()
+        flush()
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `explicit refresh re-sends a delivered FID restored from disk`() {
+        val http = mockHttp(total = 2)
+        val (sut, _, storagePrefix) = getSut(http)
+        sut.register("firebase-fid", "firebase-project")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        sut.close()
+
+        val (restarted, config, _) = getSut(http, storagePrefix = storagePrefix)
+        restarted.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        assertTrue(request.body.unGzip().contains("\"device_token\":\"firebase-fid\""))
+        assertEquals(distinctId, readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `explicit refresh preserves an active retry backoff`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(429).setHeader("Retry-After", "60"))
+        val (sut, _, _) = getSut(http)
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+
+        http.enqueue(MockResponse().setBody(""))
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        assertEquals(1, http.requestCount)
+
+        clock.advance(61_000)
+        sut.retryPending()
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `identical explicit registrations share an in-flight identity mint and send`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+        var heldCompletion: ((String?) -> Unit)? = null
+        var mints = 0
+        config.pushIdentityProvider = { _, _, completion ->
+            mints++
+            heldCompletion = completion
+        }
+
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        assertEquals(1, mints)
+        assertEquals(0, http.requestCount)
+
+        assertNotNull(heldCompletion).invoke("jwt")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        assertEquals(1, http.requestCount)
+    }
+
+    @Test
+    fun `same FID registration after identify replays when the previous identity mint finishes`() {
+        val http = mockHttp()
+        val (sut, config, _) = getSut(http)
+        var heldCompletion: ((String?) -> Unit)? = null
+        val mintedFor = mutableListOf<String>()
+        config.pushIdentityProvider = { id, _, completion ->
+            mintedFor.add(id)
+            if (id == "anonymous-A") {
+                heldCompletion = completion
+            } else {
+                completion("jwt-B")
+            }
+        }
+
+        distinctId = "anonymous-A"
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        assertNotNull(heldCompletion)
+
+        distinctId = "identified-B"
+        sut.resendIfDistinctIdChanged()
+        sut.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        heldCompletion?.invoke("jwt-A")
+        flush()
+
+        val request = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(request)
+        val body = request.body.unGzip()
+        assertTrue(body.contains("\"distinct_id\":\"identified-B\""))
+        assertTrue(body.contains("\"identity_token\":\"jwt-B\""))
+        assertEquals(listOf("anonymous-A", "identified-B"), mintedFor)
         assertEquals(1, http.requestCount)
     }
 
@@ -1608,7 +1716,7 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `a folded identical re-register does not clear a halt set by the in-flight send's own failure`() {
+    fun `an identical re-register does not clear a halt set by the in-flight send's own failure`() {
         val http = mockHttp(total = 1, response = MockResponse().setResponseCode(400))
         val (sut, config, storagePrefix) = getSut(http)
         var holdNext = true
@@ -1628,8 +1736,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertNotNull(heldCompletion)
         holdNext = false
 
-        // An identical re-register arrives mid-mint: isIdenticalUndelivered is true, so it folds in
-        // without resetting state (resetStateOnFold = false).
+        // An identical re-register arrives mid-mint and shares the pending attempt.
         sut.register("fcm-token", "firebase-project")
         flush()
 
@@ -1639,8 +1746,7 @@ internal class PostHogPushSubscriptionManagerTest {
         assertEquals("POST", http.takeRequest(2, TimeUnit.SECONDS)!!.method)
         assertEquals(1, http.requestCount)
 
-        // The folded replay must not have undone the halt: no second POST, and a later retryPending()
-        // stays a no-op.
+        // No second POST, and a later retryPending() stays a no-op after the terminal failure.
         sut.retryPending()
         flush()
         assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))

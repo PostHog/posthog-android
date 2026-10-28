@@ -23,6 +23,7 @@ import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJEC
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
@@ -5750,15 +5751,14 @@ internal class PostHogTest {
         assertEquals("fcm-token", parsed["device_token"])
         assertEquals("firebase-project", parsed["app_id"])
         assertFalse(parsed.containsKey("platform"))
-        assertFalse(parsed.containsKey("token_type"))
         assertEquals(sut.distinctId(), parsed["distinct_id"])
 
         sut.close()
     }
 
     @Test
-    fun `registerPushNotificationToken sends the token type for a Firebase Installation ID`() {
-        val http = mockHttp()
+    fun `explicit FID registration refreshes a delivered subscription while automatic registration skips it`() {
+        val http = mockHttp(total = 2)
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
@@ -5766,7 +5766,6 @@ internal class PostHogTest {
         sut.registerPushNotificationToken(
             deviceToken = "firebase-fid",
             appId = "firebase-project",
-            tokenType = PostHogPushTokenType.FID,
         )
 
         queueExecutor.awaitExecution()
@@ -5774,7 +5773,24 @@ internal class PostHogTest {
         val request = http.takeRequest()
         val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals("firebase-fid", parsed["device_token"])
-        assertEquals("fid", parsed["token_type"])
+        assertEquals("firebase-project", parsed["app_id"])
+
+        (sut as PostHogPushSubscriptionReceiver)
+            .registerPushNotificationTokenIfNeeded("firebase-fid", "firebase-project")
+        queueExecutor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        // Firebase may report a successful registration with the same FID after a delivery failure.
+        sut.registerPushNotificationToken("firebase-fid", "firebase-project")
+        queueExecutor.awaitExecution()
+        val refreshed = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(refreshed)
+        assertEquals("POST", refreshed.method)
+        assertEquals(
+            parsed,
+            serializer.deserialize<Map<String, Any>>(refreshed.body.unGzip().reader()),
+        )
+        assertEquals(2, http.requestCount)
 
         sut.close()
     }

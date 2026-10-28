@@ -26,6 +26,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogPushSubscriptionManager
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
@@ -107,7 +108,7 @@ public class PostHog private constructor(
             PostHogThreadFactory("PostHogPushSubscriptionThread"),
         ),
     private val reloadFeatureFlags: Boolean = true,
-) : PostHogInterface, PostHogStateless() {
+) : PostHogInterface, PostHogStateless(), PostHogPushSubscriptionReceiver {
     private val anonymousLock = Any()
     private val deviceIdLock = Any()
     private val identifiedLock = Any()
@@ -2357,13 +2358,21 @@ public class PostHog private constructor(
         deviceToken: String,
         appId: String,
     ) {
-        registerPushNotificationToken(deviceToken, appId, PostHogPushTokenType.FCM_TOKEN)
+        registerPushNotificationToken(deviceToken, appId, refresh = true)
     }
 
-    override fun registerPushNotificationToken(
+    @PostHogInternal
+    override fun registerPushNotificationTokenIfNeeded(
         deviceToken: String,
         appId: String,
-        tokenType: PostHogPushTokenType,
+    ) {
+        registerPushNotificationToken(deviceToken, appId, refresh = false)
+    }
+
+    private fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        refresh: Boolean,
     ) {
         if (!isEnabled()) {
             return
@@ -2384,7 +2393,7 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
-            tokenType = tokenType,
+            refresh = refresh,
         )
     }
 
@@ -2915,14 +2924,6 @@ public class PostHog private constructor(
             appId: String,
         ) {
             shared.registerPushNotificationToken(deviceToken, appId)
-        }
-
-        override fun registerPushNotificationToken(
-            deviceToken: String,
-            appId: String,
-            tokenType: PostHogPushTokenType,
-        ) {
-            shared.registerPushNotificationToken(deviceToken, appId, tokenType)
         }
 
         override fun unregisterPushNotificationToken() {

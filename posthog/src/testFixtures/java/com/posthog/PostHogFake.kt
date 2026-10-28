@@ -1,12 +1,13 @@
 package com.posthog
 
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.logs.PostHogLogSeverity
 import com.posthog.logs.PostHogLogger
 import java.util.Date
 import java.util.UUID
 
-public class PostHogFake : PostHogInterface {
+public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
     public var event: String? = null
     public var screenTitle: String? = null
     public var properties: Map<String, Any>? = null
@@ -17,8 +18,8 @@ public class PostHogFake : PostHogInterface {
     public var stopSessionReplayCalls: Int = 0
     public var pushDeviceToken: String? = null
     public var pushAppId: String? = null
-    public var pushTokenType: PostHogPushTokenType? = null
     public var pushRegistrations: Int = 0
+    public var automaticPushRegistrations: Int = 0
     public var pushUnregistrations: Int = 0
     public var pushOpenedTitle: String? = null
     public var pushOpenedBody: String? = null
@@ -254,18 +255,17 @@ public class PostHogFake : PostHogInterface {
         deviceToken: String,
         appId: String,
     ) {
-        registerPushNotificationToken(deviceToken, appId, PostHogPushTokenType.FCM_TOKEN)
-    }
-
-    override fun registerPushNotificationToken(
-        deviceToken: String,
-        appId: String,
-        tokenType: PostHogPushTokenType,
-    ) {
         pushDeviceToken = deviceToken
         pushAppId = appId
-        pushTokenType = tokenType
         pushRegistrations++
+    }
+
+    override fun registerPushNotificationTokenIfNeeded(
+        deviceToken: String,
+        appId: String,
+    ) {
+        automaticPushRegistrations++
+        registerPushNotificationToken(deviceToken, appId)
     }
 
     override fun unregisterPushNotificationToken() {

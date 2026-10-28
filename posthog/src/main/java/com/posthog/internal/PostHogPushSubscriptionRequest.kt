@@ -1,7 +1,6 @@
 package com.posthog.internal
 
 import com.google.gson.annotations.SerializedName
-import com.posthog.PostHogPushTokenType
 
 /** Request body for the push subscriptions API. `appId` is the Firebase project_id (Android) or APNS bundle_id (iOS). */
 internal data class PostHogPushSubscriptionRequest(
@@ -16,8 +15,4 @@ internal data class PostHogPushSubscriptionRequest(
     // Gson omits null fields, so an absent token keeps the body byte-identical to the 5-field contract.
     @SerializedName("identity_token")
     val identityToken: String? = null,
-    // Only sent for an FID; an absent type is an FCM registration token, which keeps the body of
-    // every existing registration unchanged.
-    @SerializedName("token_type")
-    val tokenType: PostHogPushTokenType? = null,
 )

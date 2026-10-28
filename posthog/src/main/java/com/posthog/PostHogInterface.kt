@@ -419,31 +419,17 @@ public interface PostHogInterface : PostHogCoreInterface {
      * The token is persisted and (re)sent with the current [distinctId]; transient failures
      * are retried automatically. On Android, when Firebase Messaging is on the classpath and
      * `capturePushNotificationSubscriptions` is enabled, this is called for you at startup.
-     * Call it manually to forward tokens refreshed via Firebase's `onNewToken`.
+     * Call it manually to forward Firebase's `onNewToken` or `onRegistered` callback. An explicit
+     * call refreshes a previously delivered subscription, even when the identifier is unchanged,
+     * so a subscription removed after a delivery failure can be restored. Pending registrations
+     * retain their retry backoff.
      *
-     * @param deviceToken the device push token (e.g. the FCM registration token)
+     * @param deviceToken the device push token or Firebase Installation ID (FID)
      * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
      */
     public fun registerPushNotificationToken(
         deviceToken: String,
         appId: String,
-    )
-
-    /**
-     * Registers a push notification identifier with PostHog, saying which kind it is.
-     *
-     * Use [PostHogPushTokenType.FID] when the app uses Firebase Installation ID registration
-     * (`firebase_messaging_installation_id_enabled`), and forward the installation id from
-     * `FirebaseMessagingService.onRegistered`. Otherwise behaves like the two-argument overload.
-     *
-     * @param deviceToken the FCM registration token or the Firebase Installation ID
-     * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
-     * @param tokenType which kind of identifier [deviceToken] is
-     */
-    public fun registerPushNotificationToken(
-        deviceToken: String,
-        appId: String,
-        tokenType: PostHogPushTokenType,
     )
 
     /**

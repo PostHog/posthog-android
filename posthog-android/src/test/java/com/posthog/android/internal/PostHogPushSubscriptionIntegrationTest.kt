@@ -11,7 +11,6 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHog
-import com.posthog.PostHogPushTokenType
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
@@ -70,31 +69,30 @@ internal class PostHogPushSubscriptionIntegrationTest {
     @Test
     fun `install registers the fetched token and app id`() {
         val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        val fetcher = PushTokenFetcher { onToken -> onToken("fcm-token", "firebase-project", PostHogPushTokenType.FCM_TOKEN) }
+        val fetcher = PushTokenFetcher { onToken -> onToken("fcm-token", "firebase-project") }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
 
         sut.install(fake)
 
         assertEquals(1, fake.pushRegistrations)
+        assertEquals(1, fake.automaticPushRegistrations)
         assertEquals("fcm-token", fake.pushDeviceToken)
         assertEquals("firebase-project", fake.pushAppId)
-        assertEquals(PostHogPushTokenType.FCM_TOKEN, fake.pushTokenType)
 
         sut.uninstall()
     }
 
     @Test
-    fun `install registers a Firebase Installation ID with its token type`() {
+    fun `install registers a Firebase Installation ID`() {
         val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        val fetcher = PushTokenFetcher { onToken -> onToken("firebase-fid", "firebase-project", PostHogPushTokenType.FID) }
+        val fetcher = PushTokenFetcher { onToken -> onToken("firebase-fid", "firebase-project") }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
 
         sut.install(fake)
 
         assertEquals("firebase-fid", fake.pushDeviceToken)
-        assertEquals(PostHogPushTokenType.FID, fake.pushTokenType)
 
         sut.uninstall()
     }
@@ -106,7 +104,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         val fetcher =
             PushTokenFetcher { onToken ->
                 fetchCount++
-                onToken("fcm-token", "firebase-project", PostHogPushTokenType.FCM_TOKEN)
+                onToken("fcm-token", "firebase-project")
             }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
@@ -126,7 +124,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         val fetcher =
             PushTokenFetcher { onToken ->
                 fetchCount++
-                onToken("fcm-token", "firebase-project", PostHogPushTokenType.FCM_TOKEN)
+                onToken("fcm-token", "firebase-project")
             }
         val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
         val fake = createPostHogFake()
@@ -134,6 +132,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         sut.install(fake)
         assertEquals(1, fetchCount)
         assertEquals(1, fake.pushRegistrations)
+        assertEquals(1, fake.automaticPushRegistrations)
 
         // A logout unregister would have cleared the token; opt-in must refetch and re-register.
         sut.onOptIn()
@@ -166,7 +165,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         val fetcher = FirebasePushTokenFetcher(config, messagingClassName = "com.google.firebase.messaging.NotOnClasspath")
 
         var called = false
-        fetcher.fetchToken { _, _, _ -> called = true }
+        fetcher.fetchToken { _, _ -> called = true }
 
         assertEquals(false, called)
         assertTrue(logger.messages.any { it.contains("Firebase Messaging not found") })
@@ -201,16 +200,13 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
                 var receivedToken: String? = null
                 var receivedAppId: String? = null
-                var receivedType: PostHogPushTokenType? = null
-                FirebasePushTokenFetcher(config).fetchToken { token, appId, tokenType ->
+                FirebasePushTokenFetcher(config).fetchToken { token, appId ->
                     receivedToken = token
                     receivedAppId = appId
-                    receivedType = tokenType
                 }
 
                 assertEquals("fcm-token", receivedToken)
                 assertEquals("firebase-project", receivedAppId)
-                assertEquals(PostHogPushTokenType.FCM_TOKEN, receivedType)
             }
         }
     }
@@ -250,14 +246,11 @@ internal class PostHogPushSubscriptionIntegrationTest {
                     staticMessaging.`when`<FirebaseMessaging> { FirebaseMessaging.getInstance() }.thenReturn(messaging)
 
                     var receivedToken: String? = null
-                    var receivedType: PostHogPushTokenType? = null
-                    FirebasePushTokenFetcher(config).fetchToken { token, _, tokenType ->
+                    FirebasePushTokenFetcher(config).fetchToken { token, _ ->
                         receivedToken = token
-                        receivedType = tokenType
                     }
 
                     assertEquals("firebase-fid", receivedToken)
-                    assertEquals(PostHogPushTokenType.FID, receivedType)
                     // getToken() fails in this mode, so it must not be called.
                     verify(messaging, never()).token
                 }
@@ -279,7 +272,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
             staticApp.`when`<FirebaseApp> { FirebaseApp.getInstance() }.thenReturn(firebaseApp)
 
             var called = false
-            FirebasePushTokenFetcher(config).fetchToken { _, _, _ -> called = true }
+            FirebasePushTokenFetcher(config).fetchToken { _, _ -> called = true }
 
             assertEquals(false, called)
             assertTrue(logger.messages.any { it.contains("project id is missing") })
@@ -293,7 +286,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
         // No FirebaseApp.initializeApp ran in this process, so getInstance throws.
         var called = false
-        FirebasePushTokenFetcher(config).fetchToken { _, _, _ -> called = true }
+        FirebasePushTokenFetcher(config).fetchToken { _, _ -> called = true }
 
         assertEquals(false, called)
         assertTrue(logger.messages.any { it.contains("Firebase is not initialized") })
