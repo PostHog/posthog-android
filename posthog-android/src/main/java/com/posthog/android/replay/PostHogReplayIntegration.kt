@@ -49,6 +49,7 @@ import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -1303,6 +1304,7 @@ public class PostHogReplayIntegration(
                             return@Runnable
                         }
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
+                    val unmaskedLayouts = mutableSetOf<LayoutInfo>()
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
@@ -1318,7 +1320,7 @@ public class PostHogReplayIntegration(
                         when {
                             // postHogUnmask has precedence over everything, skip masking
                             isUnmaskEnabled -> {
-                                // do not mask this node
+                                unmaskedLayouts.add(node.layoutInfo)
                             }
 
                             // postHogMask forces masking
@@ -1340,6 +1342,13 @@ public class PostHogReplayIntegration(
                                 }
                             }
                         }
+                    }
+                    if (config.sessionReplayConfig.maskAllImages) {
+                        collectComposeImageRects(
+                            semanticsOwner.unmergedRootSemanticsNode.layoutInfo,
+                            unmaskedLayouts,
+                            maskableWidgets,
+                        )
                     }
                     traversalSucceeded = true
                 } catch (e: Throwable) {

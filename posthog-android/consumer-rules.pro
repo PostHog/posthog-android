@@ -108,6 +108,13 @@
     public androidx.compose.ui.node.LayoutNode getLayoutNode();
 }
 
+# Session replay walks the Compose layout tree to mask images that have no semantics.
+-keepclassmembers class androidx.compose.ui.node.LayoutNode {
+    java.util.List getChildren$ui();
+    java.util.List getChildren$ui_release();
+    java.util.List getChildrenInfo();
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable
