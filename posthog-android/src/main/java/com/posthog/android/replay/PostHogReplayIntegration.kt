@@ -159,6 +159,15 @@ public class PostHogReplayIntegration(
         val windowHeight: Int,
         val windowAlpha: Float,
         val bitmapConfig: Bitmap.Config,
+        val maskAllTextInputs: Boolean,
+        val maskAllImages: Boolean,
+    )
+
+    private data class SceneMetadata(
+        val viewport: Pair<Int, Int>,
+        val title: String,
+        val keyboardVisible: Boolean,
+        val keyboardEvent: RRCustomEvent?,
     )
 
     private val passwordInputTypes =
@@ -560,7 +569,13 @@ public class PostHogReplayIntegration(
         }
         val timestamp = config.dateProvider.currentTimeMillis()
         val colorMode = config.sessionReplayConfig.screenshotColorMode
+        val maskAllTextInputs = config.sessionReplayConfig.maskAllTextInputs
+        val maskAllImages = config.sessionReplayConfig.maskAllImages
         val scene = mutableListOf<RRWireframe>()
+
+        fun maskingSettingsChanged(): Boolean =
+            config.sessionReplayConfig.maskAllTextInputs != maskAllTextInputs ||
+                config.sessionReplayConfig.maskAllImages != maskAllImages
 
         fun restoreDirty(layer: SceneLayer) {
             synchronized(decorViews) {
@@ -588,7 +603,8 @@ public class PostHogReplayIntegration(
             val image =
                 if (!recheckDialogMasks && !dirty && cached != null &&
                     cached.windowWidth == layer.width && cached.windowHeight == layer.height &&
-                    cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig
+                    cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig &&
+                    cached.maskAllTextInputs == maskAllTextInputs && cached.maskAllImages == maskAllImages
                 ) {
                     cached.wireframe
                 } else {
@@ -632,13 +648,22 @@ public class PostHogReplayIntegration(
                         if (!isActive() || snapshotGeneration != generation ||
                             PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
-                            layer.view.width != layer.width || layer.view.height != layer.height
+                            layer.view.width != layer.width || layer.view.height != layer.height || maskingSettingsChanged()
                         ) {
                             return@runOnMainThreadBlocking false
                         }
                         // Keep each validated image even if a later layer fails. Draws arriving after
                         // this layer's dirty flag was consumed remain pending for the next capture.
-                        sceneImages[layer.view] = SceneImage(positioned, layer.width, layer.height, layer.windowAlpha, bitmapConfig)
+                        sceneImages[layer.view] =
+                            SceneImage(
+                                positioned,
+                                layer.width,
+                                layer.height,
+                                layer.windowAlpha,
+                                bitmapConfig,
+                                maskAllTextInputs,
+                                maskAllImages,
+                            )
                         true
                     }
                 }
@@ -667,7 +692,7 @@ public class PostHogReplayIntegration(
             )
         }
         // Do not hold the producer lock while waiting for main: start/stop also need it.
-        val events =
+        val metadata =
             runOnMainThreadBlocking {
                 val base = layers.first()
                 val screenSize = base.view.context.screenSize() ?: return@runOnMainThreadBlocking null
@@ -678,27 +703,46 @@ public class PostHogReplayIntegration(
                         layers.any { layer ->
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
                                 layer.view.width != layer.width || layer.view.height != layer.height
-                        } || layers.drop(1).any { it.window.attributes.alpha != it.windowAlpha }
+                        } || layers.drop(1).any { it.window.attributes.alpha != it.windowAlpha } || maskingSettingsChanged()
                     ) {
                         return@runOnMainThreadBlocking null
                     }
-                    val result = mutableListOf<RREvent>()
-                    val sceneChanged = lastScene != scene
-                    if (sceneViewport != viewport || sceneChanged) {
-                        val title = base.window.attributes.title?.toString()?.substringAfter("/") ?: ""
-                        result.add(RRMetaEvent(width = viewport.first, height = viewport.second, timestamp = timestamp, href = title))
-                        sceneViewport = viewport
-                    }
-                    if (sceneChanged) {
-                        result.add(RRFullSnapshotEvent(scene, 0, 0, timestamp))
-                        lastScene = scene
-                    }
+                    val title = base.window.attributes.title?.toString()?.substringAfter("/") ?: ""
                     val (visible, keyboardEvent) = detectKeyboardVisibility(base.view, base.status.keyboardVisible)
-                    base.status.keyboardVisible = visible
-                    keyboardEvent?.let { result.add(it) }
-                    result
+                    SceneMetadata(viewport, title, visible, keyboardEvent)
                 }
             } ?: return false
+        // Only the worker that received the result may consume snapshot history. A main-thread
+        // task can finish after its waiter times out; it must leave the keyframe available to retry.
+        val events =
+            synchronized(decorViews) {
+                if (!isActive() || snapshotGeneration != generation ||
+                    PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
+                    layers.any { decorViews[it.view] !== it.status } || maskingSettingsChanged()
+                ) {
+                    return false
+                }
+                val result = mutableListOf<RREvent>()
+                val sceneChanged = lastScene != scene
+                if (sceneViewport != metadata.viewport || sceneChanged) {
+                    result.add(
+                        RRMetaEvent(
+                            width = metadata.viewport.first,
+                            height = metadata.viewport.second,
+                            timestamp = timestamp,
+                            href = metadata.title,
+                        ),
+                    )
+                    sceneViewport = metadata.viewport
+                }
+                if (sceneChanged) {
+                    result.add(RRFullSnapshotEvent(scene, 0, 0, timestamp))
+                    lastScene = scene
+                }
+                layers.first().status.keyboardVisible = metadata.keyboardVisible
+                metadata.keyboardEvent?.let { result.add(it) }
+                result
+            }
         captureSnapshotEvents(postHog, events, sessionId)
         return true
     }
