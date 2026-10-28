@@ -1,5 +1,6 @@
 package com.posthog.compliance
 
+import com.google.gson.JsonParser
 import com.posthog.PersonProfiles
 import com.posthog.PostHog
 import com.posthog.PostHogCompression
@@ -208,8 +209,10 @@ class TrackingInterceptor : Interceptor {
                     AdapterContext.state.requestsMade.add(record)
 
                     if (response.isSuccessful) {
-                        AdapterContext.state.totalEventsSent += eventCount
-                        AdapterContext.state.pendingEvents = maxOf(0, AdapterContext.state.pendingEvents - eventCount)
+                        // Events the server asks to retry stay queued and count once a later request delivers them.
+                        val delivered = eventCount - retriedCount(response, uuidList)
+                        AdapterContext.state.totalEventsSent += delivered
+                        AdapterContext.state.pendingEvents = maxOf(0, AdapterContext.state.pendingEvents - delivered)
                     }
 
                     if (retryCount > 0) {
@@ -225,6 +228,19 @@ class TrackingInterceptor : Interceptor {
         return response
     }
 }
+
+// How many of [uuids] the capture v1 per-event results ask to retry. Peeks so the SDK still reads the body.
+private fun retriedCount(
+    response: Response,
+    uuids: List<String>,
+): Int =
+    try {
+        val body = response.peekBody(1024 * 1024).string()
+        val results = JsonParser.parseString(body).asJsonObject.getAsJsonObject("results")
+        uuids.count { uuid -> results?.getAsJsonObject(uuid)?.get("result")?.asString == "retry" }
+    } catch (_: Exception) {
+        0
+    }
 
 // The harness sends RFC 3339 timestamps, with any offset; the SDK serializes the instant in UTC.
 private fun parseHarnessTimestamp(timestamp: String?): Date? =
