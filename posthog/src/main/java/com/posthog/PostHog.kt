@@ -207,7 +207,7 @@ public class PostHog private constructor(
         @Volatile
         var active = true
 
-        // Only touched on the remote config thread, where every delivery and replay runs.
+        // Only touched on the listener thread (see runFeatureFlagsListener), where every delivery and replay runs.
         var lastDelivered: PostHogFeatureFlagsLoaded? = null
     }
 
@@ -249,7 +249,14 @@ public class PostHog private constructor(
             if (featureFlagsGeneration != generation) return
             lastFeatureFlagsLoaded = loaded
         }
-        featureFlagsListeners.forEach { deliverFeatureFlags(it, loaded) }
+        featureFlagsListeners.forEach { listener -> runFeatureFlagsListener { deliverFeatureFlags(listener, loaded) } }
+    }
+
+    // Called on the remote config thread. Hands the block to the platform's listener executor (the main
+    // thread on Android), or runs it right away when there's none.
+    private fun runFeatureFlagsListener(block: () -> Unit) {
+        val executor = config?.featureFlagsListenerExecutor ?: return block()
+        executor.executeSafely(block)
     }
 
     private fun deliverFeatureFlags(
@@ -257,8 +264,8 @@ public class PostHog private constructor(
         loaded: PostHogFeatureFlagsLoaded,
     ) {
         // An earlier callback may have unsubscribed this one, or reset()/close() or a newer load
-        // may have superseded this update.
-        if (!listener.active || lastFeatureFlagsLoaded !== loaded) return
+        // may have superseded this update. A replay queued next to the same update is skipped too.
+        if (!listener.active || lastFeatureFlagsLoaded !== loaded || listener.lastDelivered === loaded) return
         listener.lastDelivered = loaded
         try {
             listener.callback.loaded(loaded)
@@ -2019,11 +2026,9 @@ public class PostHog private constructor(
         featureFlagsListeners.add(listener)
 
         remoteConfigExecutor.executeSafely {
-            // Read at delivery time so a delivery already queued can't be followed by an older value,
-            // and skip it if that delivery already passed these values.
-            val current = lastFeatureFlagsLoaded
-            if (current != null && current !== listener.lastDelivered) {
-                deliverFeatureFlags(listener, current)
+            runFeatureFlagsListener {
+                // Read at delivery time so a delivery already queued can't be followed by an older value.
+                lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) }
             }
         }
 

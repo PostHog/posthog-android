@@ -10,6 +10,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -62,6 +63,7 @@ internal class PostHogFeatureFlagsTest {
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
+        featureFlagsListenerExecutor: Executor? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -83,6 +85,7 @@ internal class PostHogFeatureFlagsTest {
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
                 this.context = context
+                this.featureFlagsListenerExecutor = featureFlagsListenerExecutor
             }
         return PostHog.withInternal(
             config,
@@ -519,5 +522,47 @@ internal class PostHogFeatureFlagsTest {
         remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
         assertTrue(result!!.errorsLoading)
         assertNull(updates.poll())
+    }
+
+    @Test
+    fun `onFeatureFlags listeners run on the listener executor`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val listenerExecutor = Executors.newSingleThreadExecutor { Thread(it, "listener-thread") }
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, featureFlagsListenerExecutor = listenerExecutor)
+
+        val threads = LinkedBlockingQueue<String>()
+        sut.onFeatureFlags { threads.add(Thread.currentThread().name) }
+        sut.reloadFeatureFlags()
+        assertEquals("listener-thread", threads.poll(5, TimeUnit.SECONDS))
+
+        sut.onFeatureFlags { threads.add(Thread.currentThread().name) }
+        assertEquals("listener-thread", threads.poll(5, TimeUnit.SECONDS))
+        listenerExecutor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `onFeatureFlags delivers a queued update once and drops it after unsubscribe`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val queued = LinkedBlockingQueue<Runnable>()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, featureFlagsListenerExecutor = Executor { queued.add(it) })
+
+        val kept = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val dropped = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { kept.add(it) }
+        val subscription = sut.onFeatureFlags { dropped.add(it) }
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+
+        // Each listener has its replay and the load's delivery queued, both carrying the loaded flags.
+        subscription.unsubscribe()
+        generateSequence { queued.poll() }.forEach { it.run() }
+
+        assertEquals(1, kept.size)
+        assertFalse(kept.single().errorsLoading)
+        assertTrue(dropped.isEmpty())
     }
 }

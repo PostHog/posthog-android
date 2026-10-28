@@ -144,7 +144,8 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Registers a callback that's invoked whenever feature flags are loaded or updated.
      *
-     * The callback runs on the SDK's background remote config thread, never the main thread. It's
+     * On Android, the callback runs on the main thread, after the getters already return the new
+     * values. On the JVM, it runs on the SDK's background remote config thread. It's
      * invoked after the SDK loads flags at startup (including from bootstrap values), after
      * [reloadFeatureFlags], and after calls that reload flags such as [identify], [group] or [reset].
      * If a load fails, [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last
