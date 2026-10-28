@@ -3128,11 +3128,18 @@ internal class PostHogRemoteConfigTest {
     private class LockedPreferences(private val delegate: PostHogPreferences) : PostHogPreferences {
         @Volatile
         var available = false
+        val lockedReads = AtomicInteger()
 
         override fun getValue(
             key: String,
             defaultValue: Any?,
-        ): Any? = if (available) delegate.getValue(key, defaultValue) else defaultValue
+        ): Any? {
+            if (!available) {
+                lockedReads.incrementAndGet()
+                return defaultValue
+            }
+            return delegate.getValue(key, defaultValue)
+        }
 
         override fun setValue(
             key: String,
@@ -3166,6 +3173,17 @@ internal class PostHogRemoteConfigTest {
         locked.available = true
 
         assertEquals(true, sut.getFeatureFlag("cached-flag"))
+    }
+
+    @Test
+    fun `flag reads while storage is unreadable don't read the flag cache`() {
+        val locked = LockedPreferences(PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("cached-flag" to true)) })
+        val sut = getSut(host = "http://localhost", cachePreferences = locked)
+        val readsAtStartup = locked.lockedReads.get()
+
+        repeat(3) { assertNull(sut.getFeatureFlag("cached-flag")) }
+
+        assertEquals(readsAtStartup, locked.lockedReads.get())
     }
 
     @Test
