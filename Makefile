@@ -89,7 +89,13 @@ updateLocks:
 	./gradlew build :posthog-android-gradle-plugin:build --write-locks
 	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
 
-.PHONY: testSurveyUI
+.PHONY: testSurveyUI maskingSnapshots recordMaskingSnapshots
+
+maskingSnapshots:
+	./gradlew -PenableDebugTests=true :posthog-android:testDebugUnitTest --tests '*PostHogReplayMaskingSnapshotsTest' --rerun
+
+recordMaskingSnapshots:
+	UPDATE_MASKING_SNAPSHOTS=1 $(MAKE) maskingSnapshots
 
 # Compose interaction tests require the debug variant, which CI otherwise skips.
 testSurveyUI:
