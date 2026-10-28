@@ -179,7 +179,7 @@ PostHog.captureAi(
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
 - A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. OkHttp doesn't retry capture requests on its own.
 - A `Retry-After` header pauses sending for at most 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
-- After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter, rounded to whole seconds. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
+- After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter at millisecond precision. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
 - Event, session replay and log retries have no limit, as in 3.x: queued records stay until they're delivered or a full queue evicts them (`maxQueueSize`, or `logs.maxBufferSize` for logs).
 - `maxRetries` is renamed to `pushNotificationSubscriptionMaxRetries`, with no deprecated alias. It only limits push-notification subscription retries.
 - A request carries at most `maxBatchSize` events and about 5 MiB, and the SDK sends as soon as about 5 MiB of events is queued, even before `flushAt` is reached. In 3.x, batches were limited by event count only.
