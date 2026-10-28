@@ -301,6 +301,12 @@ public class PostHogQueue<Record>(
             return
         }
 
+        if (isFatal) {
+            // The process may exit after this send, so it takes a FIFO window that can include the
+            // fatal record instead of resending only the request waiting to be retried.
+            keepForRetry(emptyList())
+        }
+
         executeBatch()
     }
 

@@ -1056,6 +1056,25 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `a fatal event is sent with a request waiting to be retried`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(503).setBody("error"))
+        http.enqueue(MockResponse().setBody(""))
+        val sut = getSut(host = http.url("/").toString(), flushAt = 1)
+
+        sut.add(PostHogEvent("before", "123"))
+        awaitQueue()
+        http.takeRequest(5, TimeUnit.SECONDS)
+
+        val props = mutableMapOf<String, Any>(ThrowableCoercer.EXCEPTION_LEVEL_ATTRIBUTE to ThrowableCoercer.EXCEPTION_LEVEL_FATAL)
+        sut.add(PostHogEvent(PostHogEventName.EXCEPTION.event, "123", properties = props))
+
+        val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+        val batch = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+        assertEquals(listOf("before", PostHogEventName.EXCEPTION.event), batch.batch.map { it.event })
+        assertEquals(0, sut.dequeList.size)
+    }
+
+    @Test
     fun `loads cached events from disk on first add`() {
         val http = mockHttp()
         val url = http.url("/")
