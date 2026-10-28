@@ -588,7 +588,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * A `$screen` event caches its `$screen_name` as the current screen, as [screen] does.
      *
      * Returns null when the SDK wouldn't capture the event: disabled, opted out, an ignored
-     * exception type, or a `$screen` event without a non-blank `$screen_name`. Defaults to null.
+     * exception type, or a `$screen` event (not on the AI lane) without a non-blank `$screen_name`. Defaults to null.
      *
      * ```kotlin
      * val event = PostHog.buildEventForWrapper("purchase", properties = mapOf("plan" to "pro"))
@@ -618,6 +618,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * `beforeSend` chain, then queues it on the analytics lane, or the AI lane when [ai] is true.
      * The event keeps its uuid and timestamp. Legacy option properties are moved into options when
      * the event is sent, as for [capture].
+     * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
      *
      * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
      *

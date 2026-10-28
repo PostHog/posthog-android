@@ -165,6 +165,19 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `send returns null after an opt-out since the build`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        val built = assertNotNull(sut.buildEventForWrapper("purchase"))
+        sut.optOut()
+
+        assertNull(sut.sendBuiltEventForWrapper(built))
+
+        queueExecutor.awaitExecution()
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
     fun `build returns null when opted out`() {
         val sut = getSut(httpServers.mockHttp())
         sut.optOut()

@@ -129,6 +129,10 @@ public class PostHog private constructor(
     private var lastReplayDebugPropertiesAt: Long? = null
     private var replayDebugClaimOutstanding = false
 
+    // The wrapper-built event carrying the replay debug bundle, whose send starts the window.
+    // Guarded by replayDebugPropertiesLock.
+    private var wrapperReplayDebugEventUuid: UUID? = null
+
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
@@ -670,6 +674,7 @@ public class PostHog private constructor(
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
                     replayDebugClaimOutstanding = false
+                    wrapperReplayDebugEventUuid = null
                 }
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
@@ -1341,10 +1346,12 @@ public class PostHog private constructor(
                     ai,
                     claimReplayDebugBundle = { claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it } },
                 ) ?: return null
-            // The bundle is in the built event, and the wrapper's send can't report back, so the
-            // window starts now.
+            // The window starts when this event is queued, as for capture. The claim is released
+            // below, so another event may carry the bundle until then.
             if (claimedReplayDebugBundle) {
-                commitReplayDebugPropertiesWindow()
+                synchronized(replayDebugPropertiesLock) {
+                    wrapperReplayDebugEventUuid = prepared.event.uuid
+                }
             }
             return prepared.event
         } catch (e: Throwable) {
@@ -1373,13 +1380,21 @@ public class PostHog private constructor(
             val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
             val builtEvent = if (event.uuid == null) event.copy(uuid = uuid) else event
             // Copied before the hooks run, which can change the map in place.
-            val handlerProperties = builtEvent.properties?.toMap() ?: emptyMap()
+            val handlerProperties =
+                if (surveysHandler != null || sessionReplayHandler != null) builtEvent.properties?.toMap() ?: emptyMap() else emptyMap()
             val postHogEvent = runBeforeSend(builtEvent, uuid)
             if (postHogEvent == null) {
                 logDroppedEvent(builtEvent.event)
                 return null
             }
-            return enqueueEvent(postHogEvent, builtEvent.event, handlerProperties, ai)
+            return enqueueEvent(postHogEvent, builtEvent.event, handlerProperties, ai) {
+                synchronized(replayDebugPropertiesLock) {
+                    if (wrapperReplayDebugEventUuid == uuid) {
+                        wrapperReplayDebugEventUuid = null
+                        lastReplayDebugPropertiesAt = currentTimeMillis()
+                    }
+                }
+            }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
