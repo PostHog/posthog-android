@@ -183,7 +183,6 @@ internal class PostHogCaptureAiTest {
     @Test
     fun `an AI event over captureAiMaxEventBytes returns null and logs only its name and size`() {
         val http = httpServers.mockHttp()
-        // the limit is the configured bytes plus a 64 KiB envelope
         val sut = getSut(http) { captureAiMaxEventBytes = 1 }
         val prompt = "p".repeat(70_000)
 
@@ -197,10 +196,22 @@ internal class PostHogCaptureAiTest {
         assertTrue(aiQueueFiles().isEmpty())
         val dropped = logger.messages.single { it.startsWith("Dropping AI event") }
         assertTrue(
-            dropped.matches(Regex("Dropping AI event \\\$ai_generation of more than ${1 + 64 * 1024} bytes, over the limit\\.")),
+            dropped.matches(Regex("Dropping AI event \\\$ai_generation of more than 1 bytes, over the limit\\.")),
             dropped,
         )
         assertTrue(logger.messages.none { it.contains("pppp") })
+    }
+
+    @Test
+    fun `a captureAiMaxEventBytes over the ceiling logs a warning`() {
+        getSut(httpServers.mockHttp()) { captureAiMaxEventBytes = 16 * 1024 * 1024 }
+
+        assertTrue(
+            logger.messages.any {
+                it == "captureAiMaxEventBytes 16777216 is over the 8454144 byte ceiling, using 8454144."
+            },
+            logger.messages.toString(),
+        )
     }
 
     @Test
@@ -230,7 +241,7 @@ internal class PostHogCaptureAiTest {
         val http = httpServers.mockHttp()
         val sut =
             getSut(http) {
-                captureAiMaxEventBytes = 1
+                captureAiMaxEventBytes = 100_000
                 // writes every byte twice, so the stored event is double its JSON size
                 encryption =
                     object : PostHogEncryption {
@@ -275,7 +286,7 @@ internal class PostHogCaptureAiTest {
                             }
                     }
             }
-        // under the 64 KiB + 1 byte limit as JSON, over it once encrypted
+        // under the 100,000 byte limit as JSON, over it once encrypted
         val prompt = "p".repeat(60_000)
 
         val uuid = sut.captureAi("\$ai_generation", properties = mapOf("\$ai_input" to prompt))

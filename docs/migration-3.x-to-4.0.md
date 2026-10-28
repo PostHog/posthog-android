@@ -165,7 +165,7 @@ PostHog.captureAi(
 ```
 
 - `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, `beforeSend` dropped it, or it's over the size limit.
-- An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`, and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower the properties limit; the SDK adds 64 KiB to it for the rest of the event.
+- An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`, and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB and logs a warning.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.

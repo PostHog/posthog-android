@@ -118,8 +118,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * [PostHogConfig.flushIntervalSeconds], like other events, and
      * [PostHogConfig.captureAiCompression], [PostHogConfig.captureAiMaxQueueSize] and
      * [PostHogConfig.captureAiTimeout] instead of `compression`, `maxQueueSize` and the default
-     * timeouts. A serialized event over [PostHogConfig.captureAiMaxEventBytes] plus 64 KiB (8 MiB +
-     * 64 KiB by default) is dropped, with a log line naming the event and its size. Requests carry up to about
+     * timeouts. A serialized event over [PostHogConfig.captureAiMaxEventBytes] (8 MiB + 64 KiB by
+     * default) is dropped, with a log line naming the event and its size. Requests carry up to about
      * 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events
      * are kept on disk; beyond that, the oldest are dropped.
      *

@@ -270,6 +270,13 @@ public class PostHog private constructor(
                         EndpointSpec.logs(config, api, config.logsStoragePrefix),
                         logsExecutor,
                     )
+                val aiEventBytesCeiling = PostHogConfig.DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
+                if (config.captureAiMaxEventBytes > aiEventBytesCeiling) {
+                    config.logger.log(
+                        "captureAiMaxEventBytes ${config.captureAiMaxEventBytes} is over the " +
+                            "$aiEventBytesCeiling byte ceiling, using $aiEventBytesCeiling.",
+                    )
+                }
                 val aiQueue =
                     PostHogQueue(
                         config,

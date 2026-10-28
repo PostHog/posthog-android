@@ -79,7 +79,7 @@ public class EndpointSpec<Record> internal constructor(
          * Returns the [EndpointSpec] for the capture v1 AI endpoint (`/i/v1/ai/events`), used by
          * `captureAi`. Same codec, results and retry policy as [batch], on its own queue: AI events
          * can be megabytes, so the queue is capped by bytes as well as count, and an event over
-         * [PostHogConfig.captureAiMaxEventBytes] (plus the stored envelope) is dropped when queued.
+         * [PostHogConfig.captureAiMaxEventBytes] is dropped when queued.
          */
         @JvmStatic
         public fun ai(
@@ -206,12 +206,6 @@ internal const val CAPTURE_V1_MAX_BATCH_BYTES: Long = 5L * 1024 * 1024
 /** Disk budget for queued AI events; the oldest are dropped first. */
 internal const val AI_MAX_QUEUE_BYTES: Long = 50L * 1024 * 1024
 
-/**
- * The stored AI event also holds its envelope (name, ids, timestamp), so this much is allowed on
- * top of the properties limit, which PostHog measures on the properties alone.
- */
-internal const val AI_EVENT_ENVELOPE_BYTES: Long = 64L * 1024
-
 /** [PostHogConfig.captureAiMaxQueueSize], or its default when it isn't positive. */
 internal val PostHogConfig.effectiveCaptureAiMaxQueueSize: Int
     get() = if (captureAiMaxQueueSize > 0) captureAiMaxQueueSize else PostHogConfig.DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
@@ -260,14 +254,13 @@ internal fun PostHogConfig.serializedSize(
 }
 
 /**
- * Size limit for a serialized AI event, before any [PostHogConfig.encryption]: [PostHogConfig.captureAiMaxEventBytes], capped at PostHog's
- * 8 MiB limit, plus the envelope allowance.
+ * Size limit for a serialized AI event, before any [PostHogConfig.encryption]: [PostHogConfig.captureAiMaxEventBytes],
+ * capped at its default (PostHog's 8 MiB properties limit plus 64 KiB for the rest of the event).
  */
 internal val PostHogConfig.captureAiMaxStoredEventBytes: Long
     get() {
         val limit = PostHogConfig.DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
-        val bytes = if (captureAiMaxEventBytes > 0) minOf(captureAiMaxEventBytes, limit) else limit
-        return bytes + AI_EVENT_ENVELOPE_BYTES
+        return (if (captureAiMaxEventBytes > 0) minOf(captureAiMaxEventBytes, limit) else limit).toLong()
     }
 
 /** `/snapshot` (replay) retry policy: 408, 429, the listed 5xx, plus 3xx redirects. */

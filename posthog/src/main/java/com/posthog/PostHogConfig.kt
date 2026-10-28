@@ -454,14 +454,14 @@ public open class PostHogConfig(
     public var captureAiTimeout: Int = DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
 
     /**
-     * Maximum size, in bytes, of a [PostHog.captureAi] event's properties. The SDK drops a serialized
-     * event over this plus 64 KiB for the rest of the event, measured before [encryption]; then
-     * `captureAi` returns null and logs only the event name and size.
+     * Maximum size, in bytes, of a serialized [PostHog.captureAi] event, measured before [encryption].
+     * The SDK drops a larger event; then `captureAi` returns null and logs only the event name and size.
      *
-     * Use it to lower the limit. PostHog drops an AI event whose properties are over 8 MiB, so a
-     * larger value, or a value of 0 or less, uses 8 MiB.
+     * Use it to lower the limit. PostHog drops AI events whose properties are over 8 MiB, so the default
+     * allows 8 MiB plus 64 KiB for the rest of the event. A larger value uses the default and logs a
+     * warning. A value of 0 or less uses the default.
      *
-     * Default: 8388608 (8 MiB).
+     * Default: 8454144 (8 MiB + 64 KiB).
      */
     public var captureAiMaxEventBytes: Int = DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
 
@@ -642,8 +642,8 @@ public open class PostHogConfig(
         /** Default for [captureAiTimeout]. */
         public const val DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS: Int = 60
 
-        /** Default for [captureAiMaxEventBytes]: PostHog's 8 MiB limit on an AI event's properties. */
-        public const val DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES: Int = 8 * 1024 * 1024
+        /** Default for [captureAiMaxEventBytes]: PostHog's 8 MiB limit on an AI event's properties, plus 64 KiB for the rest of the event. */
+        public const val DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES: Int = 8 * 1024 * 1024 + 64 * 1024
 
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"

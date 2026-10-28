@@ -191,7 +191,7 @@ internal class PostHogQueueByteLimitsTest {
         val api = PostHogApi(config)
 
         config.captureAiMaxEventBytes = 1024
-        assertEquals(1024L + 64 * 1024, config.captureAiMaxStoredEventBytes)
+        assertEquals(1024L, config.captureAiMaxStoredEventBytes)
         config.captureAiMaxEventBytes = 16 * 1024 * 1024
         assertEquals(8L * 1024 * 1024 + 64 * 1024, config.captureAiMaxStoredEventBytes)
         config.captureAiMaxEventBytes = 0
