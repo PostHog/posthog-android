@@ -284,10 +284,11 @@ private fun padProperties(
     marker: String?,
 ): Map<String, Any> {
     val padded = properties.orEmpty().toMutableMap()
-    padded["\$test_padding"] = ""
-    val baseBytes = Gson().toJson(padded).toByteArray(Charsets.UTF_8).size
     val prefix = marker.orEmpty()
-    padded["\$test_padding"] = prefix + "x".repeat(maxOf(0, targetBytes - baseBytes - prefix.length))
+    padded["\$test_padding"] = prefix
+    // Measure with the marker in place so its serialized (escaped, UTF-8) size is counted.
+    val baseBytes = Gson().toJson(padded).toByteArray(Charsets.UTF_8).size
+    padded["\$test_padding"] = prefix + "x".repeat(maxOf(0, targetBytes - baseBytes))
     return padded
 }
 
