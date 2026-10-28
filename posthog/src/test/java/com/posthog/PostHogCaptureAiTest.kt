@@ -242,6 +242,19 @@ internal class PostHogCaptureAiTest {
                                     out.write(b)
                                     out.write(b)
                                 }
+
+                                override fun write(
+                                    b: ByteArray,
+                                    off: Int,
+                                    len: Int,
+                                ) {
+                                    val doubled = ByteArray(len * 2)
+                                    for (i in 0 until len) {
+                                        doubled[2 * i] = b[off + i]
+                                        doubled[2 * i + 1] = b[off + i]
+                                    }
+                                    out.write(doubled)
+                                }
                             }
 
                         override fun decrypt(inputStream: InputStream): InputStream =
