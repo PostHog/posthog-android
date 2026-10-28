@@ -193,9 +193,22 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Reloads the feature flags
-     * @param onFeatureFlags the callback to get notified once feature flags is ready to use
+     *
+     * The callback is invoked when the reload finishes, on a background thread. If the request fails,
+     * [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last known flags. If
+     * the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
+     *
+     * ```kotlin
+     * PostHog.reloadFeatureFlags { loaded ->
+     *     if (loaded.errorsLoading) {
+     *         // The reload failed. loaded.variants holds the last known flags.
+     *     }
+     * }
+     * ```
+     *
+     * @param onFeatureFlags the callback to get notified once the reload finishes, defaults to none
      */
-    public fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
+    public fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
 
     /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean

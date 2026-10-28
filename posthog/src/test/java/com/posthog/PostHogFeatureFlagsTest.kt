@@ -392,11 +392,13 @@ internal class PostHogFeatureFlagsTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
         sut.close()
 
-        var called = false
-        sut.reloadFeatureFlags { called = true }
+        var result: PostHogFeatureFlagsLoaded? = null
+        sut.reloadFeatureFlags { result = it }
 
         // isEnabled() is false after close(), so reloadFeatureFlags early-returns. The
         // callback must still fire (synchronously) rather than leave awaiting callers hanging.
-        assertTrue(called)
+        assertTrue(result!!.errorsLoading)
+        assertTrue(result!!.flags.isEmpty())
+        assertTrue(result!!.variants.isEmpty())
     }
 }

@@ -154,10 +154,11 @@ public open class PostHogConfig(
      */
     public var encryption: PostHogEncryption? = null,
     /**
-     * Hook that is called when feature flags are loaded
+     * Hook that is called when feature flags are loaded, or loading them failed
+     * It receives a [PostHogFeatureFlagsLoaded]; see [PostHogFeatureFlagsCallback] for the thread it runs on
      * Defaults to no callback
      */
-    public var onFeatureFlags: PostHogOnFeatureFlags? = null,
+    public var onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     /**
      * Enable Recording of Session Replays for Android
      * Requires Record user sessions to be enabled in the PostHog Project Settings

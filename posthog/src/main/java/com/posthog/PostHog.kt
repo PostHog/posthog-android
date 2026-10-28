@@ -198,8 +198,8 @@ public class PostHog private constructor(
     private var isPersonProcessingLoaded: Boolean = false
 
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
-    private val internalOnFeatureFlagsLoaded =
-        PostHogOnFeatureFlags {
+    private val internalOnFeatureFlagsLoaded: () -> Unit =
+        {
             // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
             synchronized(setupLock) {
                 sessionReplayHandler?.let {
@@ -430,8 +430,12 @@ public class PostHog private constructor(
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
-                        notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
-                        notifyFeatureFlagsCallback(config.onFeatureFlags)
+                        try {
+                            internalOnFeatureFlagsLoaded()
+                        } catch (e: Throwable) {
+                            config.logger.log("Executing the internal feature flags callback failed: $e")
+                        }
+                        notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     loadRemoteConfigRequest(
                         internalOnFeatureFlagsLoaded,
@@ -2094,18 +2098,22 @@ public class PostHog private constructor(
     }
 
     // Invokes the feature flags callback, swallowing exceptions like runOnFeatureFlagsCallbacks.
-    private fun notifyFeatureFlagsCallback(onFeatureFlags: PostHogOnFeatureFlags?) {
+    private fun notifyFeatureFlagsCallback(
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
+        featureFlags: Map<String, Any>?,
+        errorsLoading: Boolean,
+    ) {
         try {
-            onFeatureFlags?.loaded()
+            onFeatureFlags?.loaded(PostHogFeatureFlagsLoaded(featureFlags ?: emptyMap(), errorsLoading))
         } catch (e: Throwable) {
             config?.logger?.log("Executing the feature flags callback failed: $e")
         }
     }
 
-    public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+    public override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
         if (!isEnabled()) {
             // Still invoke the callback so awaiting callers aren't left hanging.
-            notifyFeatureFlagsCallback(onFeatureFlags)
+            notifyFeatureFlagsCallback(onFeatureFlags, featureFlags = null, errorsLoading = true)
             return
         }
         loadFeatureFlagsRequest(
@@ -2115,8 +2123,8 @@ public class PostHog private constructor(
     }
 
     private fun loadFeatureFlagsRequest(
-        internalOnFeatureFlags: PostHogOnFeatureFlags,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: () -> Unit,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
@@ -2131,7 +2139,7 @@ public class PostHog private constructor(
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
             // Still invoke the callback so awaiting callers aren't left hanging.
-            notifyFeatureFlagsCallback(onFeatureFlags)
+            notifyFeatureFlagsCallback(onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = true)
             return
         }
 
@@ -2145,8 +2153,8 @@ public class PostHog private constructor(
     }
 
     private fun loadRemoteConfigRequest(
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: (() -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
     ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
@@ -2916,7 +2924,7 @@ public class PostHog private constructor(
             )
         }
 
-        public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+        public override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
             shared.reloadFeatureFlags(onFeatureFlags)
         }
 
