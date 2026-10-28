@@ -125,7 +125,10 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * Example:
      * ```
-     * PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "$ai_trace_id" to traceId))
+     * PostHog.captureAi(
+     *     "\$ai_generation",
+     *     properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),
+     * )
      * ```
      * @param event the AI event name, such as `$ai_generation`
      * @param distinctId the distinctId, the generated [distinctId] is used if not given or blank

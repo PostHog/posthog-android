@@ -158,7 +158,10 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 It takes the same arguments as `capture`, and the events go through the same `beforeSend` hooks.
 
 ```kotlin
-PostHog.captureAi("$ai_generation", properties = mapOf("$ai_model" to "gpt-5", "$ai_trace_id" to traceId))
+PostHog.captureAi(
+    "\$ai_generation",
+    properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),
+)
 ```
 
 - `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, `beforeSend` dropped it, or it's over the size limit.
