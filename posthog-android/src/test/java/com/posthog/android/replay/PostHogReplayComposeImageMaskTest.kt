@@ -6,7 +6,6 @@ import android.view.ViewGroup
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -96,9 +95,7 @@ internal class PostHogReplayComposeImageMaskTest {
     @Test
     fun `does not mask an image without a content description inside postHogUnmask`() {
         compose.activity.setContent {
-            Column {
-                Box(Modifier.postHogUnmask()) { PhotoImage() }
-            }
+            Box(Modifier.postHogUnmask()) { PhotoImage() }
         }
 
         assertTrue(maskRects().isEmpty())
