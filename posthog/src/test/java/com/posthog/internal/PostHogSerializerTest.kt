@@ -315,8 +315,11 @@ internal class PostHogSerializerTest {
         assertEquals(expectedJson, actualJson)
     }
 
-    // not a data class: its generated hashCode calls Double.hashCode(double), missing on API 23
-    private class Turn(val prompt: String, val score: Double)
+    // not a data class: its generated hashCode calls Double.hashCode(double), missing on API 23.
+    // toString carries the prompt so logging the value would leak it
+    private class Turn(val prompt: String, val score: Double) {
+        override fun toString(): String = "Turn(prompt=$prompt)"
+    }
 
     @Test
     fun `an unserializable property is logged by key and type, never by value`() {
