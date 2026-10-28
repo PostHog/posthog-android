@@ -417,6 +417,37 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 404 warns once with the capture URL`() {
+        val http = httpServers.mockHttp(total = 2, response = MockResponse().setResponseCode(404))
+        val host = http.url("/").toString().trimEnd('/')
+        val sut = api(host)
+
+        repeat(2) { assertThrows(PostHogApiError::class.java) { sut.captureV1(listOf(event())) } }
+
+        assertEquals(
+            listOf(
+                "$host/i/v1/analytics/events returned 404. Events stay queued and are retried. " +
+                    "If you use a reverse proxy or self-host PostHog, make sure it serves /i/v1/analytics/events.",
+            ),
+            logger.warnings,
+        )
+    }
+
+    @Test
+    fun `the 404 warning leaves out credentials and the query in the host`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(404))
+        val origin = http.url("/").toString().trimEnd('/')
+        val host = origin.replace("://", "://proxy-user:proxy-password@") + "?secret=s3cr3t"
+        val sut = api(host)
+
+        assertThrows(PostHogApiError::class.java) { sut.captureV1(listOf(event())) }
+
+        val warning = logger.warnings.single()
+        assertTrue(warning.startsWith("$origin/"), warning)
+        listOf("proxy-user", "proxy-password", "s3cr3t").forEach { assertFalse(warning.contains(it), warning) }
+    }
+
+    @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
         http.enqueue(MockResponse().setBody(""))
@@ -706,9 +737,9 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
-    fun `queue drops the batch on 429 and keeps it on 503`() {
-        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(429))
-        http.enqueue(MockResponse().setResponseCode(503))
+    fun `queue drops the batch on 400 and keeps it on 429`() {
+        val http = httpServers.mockHttp(response = MockResponse().setResponseCode(400))
+        http.enqueue(MockResponse().setResponseCode(429))
         val sut = queue(http)
 
         sut.add(event())

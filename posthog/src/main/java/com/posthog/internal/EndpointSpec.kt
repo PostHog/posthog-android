@@ -194,10 +194,11 @@ internal class SendResult(
 )
 
 /**
- * Capture v1 retry policy: 408 and the listed 5xx. Everything else, including 429 and 3xx, is
- * terminal; 413 is handled by the queue's batch halving.
+ * Capture v1 retry policy: 404, 408, 429 and the listed 5xx. A 404 usually means a misconfigured
+ * proxy and a 429 an overloaded ingress, so neither drops events. Everything else, including 3xx,
+ * is terminal; 413 is handled by the queue's batch halving.
  */
-internal fun isCaptureV1RetriableStatusCode(code: Int): Boolean = code == 408 || code in setOf(500, 502, 503, 504)
+internal fun isCaptureV1RetriableStatusCode(code: Int): Boolean = code in setOf(404, 408, 429, 500, 502, 503, 504)
 
 /** Soft request size for the capture v1 analytics and AI endpoints, well under their body limits. */
 internal const val CAPTURE_V1_MAX_BATCH_BYTES: Long = 5L * 1024 * 1024

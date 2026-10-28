@@ -274,13 +274,9 @@ internal class EndpointSpecTest {
 
     @Test
     fun `events spec does not retry non-retriable status codes`() {
-        // Events keeps a curated retry set (408, 500, 502, 503, 504); it must not
-        // retry 429, 3xx, arbitrary 4xx, nor the extra 5xx codes the broad logs
-        // policy (500..599) covers. Guards against widening the set by mistake.
         assertEquals(false, isCaptureV1RetriableStatusCode(307))
         assertEquals(false, isCaptureV1RetriableStatusCode(400))
         assertEquals(false, isCaptureV1RetriableStatusCode(413))
-        assertEquals(false, isCaptureV1RetriableStatusCode(429))
         assertEquals(false, isCaptureV1RetriableStatusCode(501))
         assertEquals(false, isCaptureV1RetriableStatusCode(505))
         assertEquals(false, isCaptureV1RetriableStatusCode(599))

@@ -31,6 +31,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLException
 
 /**
@@ -61,6 +62,9 @@ public class PostHogApi(
             null
         }
     }
+
+    // A 404 keeps the events queued, so the warning is printed once instead of on every retry.
+    private val warnedCaptureNotFound = AtomicBoolean(false)
 
     private val captureMediaType by lazy {
         try {
@@ -221,6 +225,20 @@ public class PostHogApi(
                 // The status only: the results name event uuids.
                 config.logger.log("Response ${response.request.url}: ${response.code}")
 
+                if (response.code == 404 && warnedCaptureNotFound.compareAndSet(false, true)) {
+                    // Warnings log even with debug off, so drop any credentials or query the host carries.
+                    val safeUrl =
+                        response.request.url.newBuilder()
+                            .username("")
+                            .password("")
+                            .query(null)
+                            .fragment(null)
+                            .build()
+                    config.logger.logWarning(
+                        "$safeUrl returned 404. Events stay queued and are retried. " +
+                            "If you use a reverse proxy or self-host PostHog, make sure it serves $path.",
+                    )
+                }
                 if (response.code != 307 && response.code != 308) {
                     return captureV1Result(response, path, events, identity)
                 }

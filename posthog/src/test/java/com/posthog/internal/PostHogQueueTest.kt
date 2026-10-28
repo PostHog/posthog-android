@@ -990,12 +990,14 @@ internal class PostHogQueueTest {
     }
 
     @Test
-    fun `does not retry on 429`() {
-        val e = PostHogApiError(429, "", null)
+    fun `retries on 404 and 429`() {
         val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
-        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+        for (status in listOf(404, 429)) {
+            val e = PostHogApiError(status, "", null)
+            assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+        }
     }
 
     @Test
