@@ -560,7 +560,7 @@ public class PostHogReplayIntegration(
         }
         val timestamp = config.dateProvider.currentTimeMillis()
         val colorMode = config.sessionReplayConfig.screenshotColorMode
-        val images = mutableListOf<RRWireframe>()
+        val scene = mutableListOf<RRWireframe>()
 
         fun restoreDirty(layer: SceneLayer) {
             synchronized(decorViews) {
@@ -646,28 +646,25 @@ public class PostHogReplayIntegration(
                 restoreDirty(layer)
                 return false
             }
-            images.add(positioned)
+            scene.add(positioned)
         }
 
         // Android applies the topmost requesting window's dim to the scene beneath it.
         val dimIndex = layers.indexOfLast { it.dimAmount > 0f }
-        val scene = mutableListOf<RRWireframe>()
-        images.forEachIndexed { index, image ->
-            if (index == dimIndex) {
-                val base = images.first()
-                scene.add(
-                    RRWireframe(
-                        id = 10_000_000,
-                        x = base.x,
-                        y = base.y,
-                        width = base.width,
-                        height = base.height,
-                        type = "rectangle",
-                        style = RRStyle(backgroundColor = "rgba(0,0,0,${layers[index].dimAmount})"),
-                    ),
-                )
-            }
-            scene.add(image)
+        if (dimIndex >= 0) {
+            val base = scene.first()
+            scene.add(
+                dimIndex,
+                RRWireframe(
+                    id = 10_000_000,
+                    x = base.x,
+                    y = base.y,
+                    width = base.width,
+                    height = base.height,
+                    type = "rectangle",
+                    style = RRStyle(backgroundColor = "rgba(0,0,0,${layers[dimIndex].dimAmount})"),
+                ),
+            )
         }
         // Do not hold the producer lock while waiting for main: start/stop also need it.
         val events =
