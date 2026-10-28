@@ -8,9 +8,10 @@ import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.FilterInputStream
+import java.io.FilterOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -232,12 +233,35 @@ internal class PostHogCaptureAiTest {
         val sut =
             getSut(http) {
                 captureAiMaxEventBytes = 1
-                // Base64 stores a third more bytes than it's given
+                // writes every byte twice, so the stored event is double its JSON size
                 encryption =
                     object : PostHogEncryption {
-                        override fun encrypt(outputStream: OutputStream): OutputStream = Base64.getEncoder().wrap(outputStream)
+                        override fun encrypt(outputStream: OutputStream): OutputStream =
+                            object : FilterOutputStream(outputStream) {
+                                override fun write(b: Int) {
+                                    out.write(b)
+                                    out.write(b)
+                                }
+                            }
 
-                        override fun decrypt(inputStream: InputStream): InputStream = Base64.getDecoder().wrap(inputStream)
+                        override fun decrypt(inputStream: InputStream): InputStream =
+                            object : FilterInputStream(inputStream) {
+                                override fun read(): Int = super.read().also { super.read() }
+
+                                override fun read(
+                                    b: ByteArray,
+                                    off: Int,
+                                    len: Int,
+                                ): Int {
+                                    var n = 0
+                                    while (n < len) {
+                                        val c = read()
+                                        if (c < 0) break
+                                        b[off + n++] = c.toByte()
+                                    }
+                                    return if (n == 0 && len > 0) -1 else n
+                                }
+                            }
                     }
             }
         // under the 64 KiB + 1 byte limit as JSON, over it once encrypted
