@@ -4332,6 +4332,12 @@ internal class PostHogFeatureFlagsTest {
                     mapOf("plan" to "enterprise"),
                     PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 ),
+                Row(
+                    "unknown operator on a missing person property",
+                    """[{"key": "plan", "value": "pro", "operator": "some_future_operator", "type": "person"}]""",
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
                 Row("static cohort", "[$staticCohort]", null, PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION),
                 Row(
                     "static cohort and missing person property",
@@ -4390,6 +4396,28 @@ internal class PostHogFeatureFlagsTest {
 
         assertNull(result.flags["beta-ui"])
         assertEquals(mapOf("beta-ui" to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION), result.unresolvedFlags)
+    }
+
+    @Test
+    fun `a group flag with experience continuity and an unknown group type reports experience continuity`() {
+        val flag =
+            """
+            {
+                "id": 1,
+                "name": "org-feature",
+                "key": "org-feature",
+                "active": true,
+                "ensure_experience_continuity": true,
+                "filters": {"aggregation_group_type_index": 99, "groups": [{"properties": [], "rollout_percentage": 100}]},
+                "version": 1
+            }
+            """.trimIndent()
+        val mockServer = createMockHttp(jsonResponse(createLocalEvaluationResponseFrom(flag)))
+        val featureFlags = localFeatureFlags(mockServer)
+
+        val result = featureFlags.evaluate(onlyEvaluateLocally = true)
+
+        assertEquals(mapOf("org-feature" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), result.unresolvedFlags)
     }
 
     @Test

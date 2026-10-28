@@ -1550,7 +1550,7 @@ internal class FlagEvaluatorTest {
             evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
             assertTrue("Should have thrown InconclusiveMatchException", false)
         } catch (e: InconclusiveMatchException) {
-            // Expected
+            assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, e.reason)
         }
     }
 
@@ -3514,8 +3514,29 @@ internal class FlagEvaluatorTest {
             val properties: Map<String, Any?>,
             val reason: PostHogUnresolvedFlagReason,
             val otherFlags: List<FlagDefinition> = emptyList(),
+            val cohorts: Map<String, PropertyGroup> = emptyMap(),
         )
 
+        val unknownOperatorLeaf = personFilter("plan", "some_future_operator", "\"pro\"")
+        val missingEmailLeaf = personFilter("email", "exact", "\"a@acme.com\"")
+        val cohortFilter = """{"key": "id", "value": 5, "operator": "in", "type": "cohort"}"""
+        val flatCohort =
+            mapOf(
+                "5" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [$unknownOperatorLeaf, $missingEmailLeaf]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
+        val nestedCohort =
+            mapOf(
+                "5" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [{"type": "OR", "values": [$unknownOperatorLeaf]},
+                            {"type": "OR", "values": [$missingEmailLeaf]}]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
         val continuityFlag = reasonFlag("continuity-dep", reasonCondition(), continuity = true)
         val contextFlag = reasonFlag("context-dep", reasonCondition(personFilter("plan", "exact", "\"pro\"")))
         val rows =
@@ -3668,13 +3689,50 @@ internal class FlagEvaluatorTest {
                     emptyMap(),
                     PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 ),
+                Row(
+                    "static cohort in one condition, missing property in the next",
+                    reasonCondition(staticCohortFilter) + "," + reasonCondition(personFilter("plan", "exact", "\"pro\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "unresolved dependency referenced by two conditions",
+                    reasonCondition(reasonDependency("continuity-dep")) + "," + reasonCondition(reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "dependency with an invalid operator on an unresolved flag",
+                    reasonCondition(
+                        """{"key": "continuity-dep", "value": true, "operator": "exact", "type": "flag",
+                            "dependency_chain": ["continuity-dep"]}""",
+                    ),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "cohort with an unknown operator leaf before a missing property leaf",
+                    reasonCondition(cohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    cohorts = flatCohort,
+                ),
+                Row(
+                    "cohort with an unknown operator group before a missing property group",
+                    reasonCondition(cohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    cohorts = nestedCohort,
+                ),
             )
         for (row in rows) {
             val flag = reasonFlag("f", row.groups)
             val flagsByKey = (row.otherFlags + flag).associateBy { it.key }
             val error =
                 kotlin.test.assertFailsWith<InconclusiveMatchException>(row.name) {
-                    evaluator.matchFeatureFlagProperties(flag, "user-123", row.properties, emptyMap(), flagsByKey, mutableMapOf())
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", row.properties, row.cohorts, flagsByKey, mutableMapOf())
                 }
             assertEquals(row.name, row.reason, error.reason)
         }
@@ -3744,6 +3802,43 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testUnexpectedErrorAfterAnUncheckableFilterLetsALaterConditionMatch() {
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val planRegex = personFilter("plan", "regex", "\"^pro\"")
+        val unprintable =
+            object {
+                override fun toString(): String = throw IllegalStateException("unprintable")
+            }
+        val properties = mapOf("plan" to unprintable)
+        val catchAll = reasonCondition()
+
+        val afterUncheckable = reasonFlag("f", reasonCondition(missingEmail, planRegex) + "," + catchAll)
+        assertEquals(
+            true,
+            evaluator.matchFeatureFlagProperties(
+                afterUncheckable,
+                "user-123",
+                properties,
+                emptyMap(),
+                mapOf("f" to afterUncheckable),
+                mutableMapOf(),
+            ),
+        )
+
+        val beforeUncheckable = reasonFlag("f", reasonCondition(planRegex, missingEmail) + "," + catchAll)
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            evaluator.matchFeatureFlagProperties(
+                beforeUncheckable,
+                "user-123",
+                properties,
+                emptyMap(),
+                mapOf("f" to beforeUncheckable),
+                mutableMapOf(),
+            )
+        }
+    }
+
+    @Test
     internal fun testInactiveDependencyWithExperienceContinuityResolvesToFalse() {
         val dependency =
             config.serializer.gson.fromJson(
@@ -3806,6 +3901,12 @@ internal class FlagEvaluatorTest {
                 reasonFlag("f", reasonCondition(personFilter("n", "lt", "\"ten\""))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 reasonFlag("f", reasonCondition(reasonDependency("gone"))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 reasonFlag("f", reasonCondition(reasonDependency())) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag(
+                    "f",
+                    reasonCondition(
+                        """{"key": "dependency", "value": true, "operator": "exact", "type": "flag", "dependency_chain": ["dependency"]}""",
+                    ),
+                ) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 reasonFlag("f", reasonCondition("""{"key": "id", "value": 1, "operator": "in", "type": "cohort"}""")) to
                     PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                 unknownGroupType to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,

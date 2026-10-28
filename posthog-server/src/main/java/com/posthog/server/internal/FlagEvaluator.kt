@@ -59,6 +59,14 @@ internal class FlagEvaluator(
             }
     }
 
+    /**
+     * Keys of the active flags whose top-level property filters all passed [assertFilterSupported]
+     * when definitions loaded, so evaluation does not check them again for each absent property.
+     * Empty until that check runs, so evaluation checks every filter until then.
+     */
+    @Volatile
+    var flagsWithSupportedFilters: Set<String> = emptySet()
+
     private data class VariantLookupEntry(
         val key: String,
         val valueMin: Double,
@@ -229,13 +237,7 @@ internal class FlagEvaluator(
             PropertyOperator.REGEX, PropertyOperator.NOT_REGEX -> {
                 val matches = matchesRegex(propertyValue.toString(), overrideValue.toString())
                 if (matches == null) {
-                    // A malformed cohort leaf must not become true when its result is negated.
-                    if (inCohort || property.negation == true) {
-                        throw InconclusiveMatchException(
-                            "Cannot negate an invalid regex criterion locally",
-                            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
-                        )
-                    }
+                    assertInvalidRegexNotNegated(property, inCohort)
                     false
                 } else if (propertyOperator == PropertyOperator.REGEX) {
                     matches
@@ -299,11 +301,8 @@ internal class FlagEvaluator(
 
             PropertyOperator.REGEX, PropertyOperator.NOT_REGEX -> {
                 val pattern = value.toString()
-                if (pattern.isNotEmpty() && compileRegex(pattern) == null && (inCohort || property.negation == true)) {
-                    throw InconclusiveMatchException(
-                        "Cannot negate an invalid regex criterion locally",
-                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
-                    )
+                if (pattern.isNotEmpty() && compileRegex(pattern) == null) {
+                    assertInvalidRegexNotNegated(property, inCohort)
                 }
             }
 
@@ -325,12 +324,53 @@ internal class FlagEvaluator(
 
             PropertyOperator.SEMVER_WILDCARD -> computeWildcardFilterBounds(value.toString())
 
-            else -> throw InconclusiveMatchException(
+            // Listed by name, not `else`, so a new operator does not compile until this check handles it.
+            PropertyOperator.UNKNOWN, PropertyOperator.IN, PropertyOperator.FLAG_EVALUATES_TO -> throw InconclusiveMatchException(
                 "Unknown operator: ${property.propertyOperator}",
                 PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             )
         }
     }
+
+    // A malformed cohort leaf must not become true when its result is negated.
+    private fun assertInvalidRegexNotNegated(
+        property: FlagProperty,
+        inCohort: Boolean,
+    ) {
+        if (inCohort || property.negation == true) {
+            throw InconclusiveMatchException(
+                "Cannot negate an invalid regex criterion locally",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+    }
+
+    /**
+     * Throws an [PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION] error when a flag dependency
+     * filter is unusable whatever the chain evaluates to: no chain, a circular chain, or an operator
+     * other than `flag_evaluates_to`.
+     */
+    private fun assertDependencySupported(property: FlagProperty) {
+        val chain = property.dependencyChain
+        val problem =
+            when {
+                chain == null -> "Flag dependency property for '${property.key}' is missing required 'dependency_chain' field"
+                chain.isEmpty() -> "Circular dependency detected for flag '${property.key}'"
+                property.propertyValue != null &&
+                    (property.propertyOperator ?: PropertyOperator.EXACT) != PropertyOperator.FLAG_EVALUATES_TO ->
+                    "Flag dependency property for '${property.key}' has invalid operator '${property.propertyOperator}'"
+                else -> return
+            }
+        throw InconclusiveMatchException(problem, PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION)
+    }
+
+    private inline fun throwsInconclusive(check: () -> Unit): Boolean =
+        try {
+            check()
+            false
+        } catch (e: InconclusiveMatchException) {
+            true
+        }
 
     /**
      * The unresolved reason that comes from the flag's definition alone, so it is known when
@@ -372,12 +412,9 @@ internal class FlagEvaluator(
         visitedCohortIds: MutableSet<String>,
     ): Boolean =
         when (property.type) {
-            PropertyType.FLAG -> {
-                val dependencyChain = property.dependencyChain
-                dependencyChain.isNullOrEmpty() ||
-                    dependencyChain.any { it !in flagsByKey } ||
-                    (property.propertyValue != null && property.propertyOperator != PropertyOperator.FLAG_EVALUATES_TO)
-            }
+            PropertyType.FLAG ->
+                throwsInconclusive { assertDependencySupported(property) } ||
+                    property.dependencyChain.orEmpty().any { it !in flagsByKey }
 
             PropertyType.COHORT -> {
                 val cohortId = property.propertyValue?.toString()
@@ -391,13 +428,7 @@ internal class FlagEvaluator(
                 }
             }
 
-            else ->
-                try {
-                    assertFilterSupported(property, inCohort)
-                    false
-                } catch (e: InconclusiveMatchException) {
-                    true
-                }
+            else -> throwsInconclusive { assertFilterSupported(property, inCohort) }
         }
 
     private fun isUnsupportedPropertyGroup(
@@ -1434,9 +1465,11 @@ internal class FlagEvaluator(
 
                             else -> {
                                 if (!properties.containsKey(prop.key)) {
-                                    // Same result as matchProperty for an absent key, without the cost
-                                    // of throwing for every missing filter.
-                                    assertFilterSupported(prop, inCohort = false)
+                                    // Same result as matchProperty for an absent key. Filters that passed the
+                                    // load-time check skip it, since it can compile a regex or parse a date.
+                                    if (featureFlag.key !in flagsWithSupportedFilters) {
+                                        assertFilterSupported(prop, inCohort = false)
+                                    }
                                     inconclusiveReason =
                                         pickUnresolvedReason(inconclusiveReason, PostHogUnresolvedFlagReason.MISSING_CONTEXT)
                                     continue
@@ -1447,6 +1480,12 @@ internal class FlagEvaluator(
                     } catch (e: InconclusiveMatchException) {
                         inconclusiveReason = pickUnresolvedReason(inconclusiveReason, e.reason)
                         continue
+                    } catch (e: Exception) {
+                        // An earlier inconclusive filter already stops this condition, so an unexpected
+                        // error in a later filter must not fail the whole flag.
+                        if (inconclusiveReason == null) throw e
+                        config.logger.log("Failed to compute property ${prop.key} locally: ${e.message}")
+                        break
                     }
 
                 if (!matches) {
@@ -1555,23 +1594,9 @@ internal class FlagEvaluator(
         properties: Map<String, Any?>,
         cohortProperties: Map<String, PropertyGroup>,
     ): Boolean {
-        // Check if dependency_chain is present
-        val dependencyChain = property.dependencyChain
-        if (dependencyChain == null) {
-            throw InconclusiveMatchException(
-                "Flag dependency property for '${property.key}' is missing required 'dependency_chain' field",
-                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
-            )
-        }
-
-        // Handle circular dependency (empty chain means circular)
-        if (dependencyChain.isEmpty()) {
-            config.logger.log("Circular dependency detected for flag: ${property.key}")
-            throw InconclusiveMatchException(
-                "Circular dependency detected for flag '${property.key}'",
-                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
-            )
-        }
+        // A definition problem outranks whatever the chain evaluates to, so check it first.
+        assertDependencySupported(property)
+        val dependencyChain = property.dependencyChain.orEmpty()
 
         // A dependency with no loaded definition outranks one that is only inconclusive, wherever
         // it sits in the chain.
@@ -1644,7 +1669,6 @@ internal class FlagEvaluator(
         // Now check if the final flag value matches the expected value in the property
         val flagKey = property.key
         val expectedValue = property.propertyValue
-        val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
 
         if (expectedValue != null) {
             // Get the actual value of the flag we're checking
@@ -1659,15 +1683,8 @@ internal class FlagEvaluator(
                 )
             }
 
-            // For flag dependencies, we need to compare the actual flag result with expected value
-            if (propertyOperator == PropertyOperator.FLAG_EVALUATES_TO) {
-                return matchesDependencyValue(expectedValue, actualValue)
-            } else {
-                throw InconclusiveMatchException(
-                    "Flag dependency property for '${property.key}' has invalid operator '$propertyOperator'",
-                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
-                )
-            }
+            // assertDependencySupported already rejected every operator but flag_evaluates_to.
+            return matchesDependencyValue(expectedValue, actualValue)
         }
 
         // If no value check needed, return True (all dependencies passed)

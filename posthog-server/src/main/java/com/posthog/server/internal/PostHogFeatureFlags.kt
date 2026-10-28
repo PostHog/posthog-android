@@ -793,8 +793,9 @@ internal class PostHogFeatureFlags(
                                 cacheData,
                             )
                         cache = PostHogFeatureFlagCache(maxSize = cacheMaxSize, maxAgeMs = cacheMaxAgeMs)
+                        // Unchanged definitions cannot add a warning, so only a new snapshot is checked.
+                        appliedSnapshot = definitionSnapshot
                     }
-                    appliedSnapshot = definitionSnapshot
                     definitionsLoaded = true
                     definitionsLoadedAt = System.currentTimeMillis()
                 }
@@ -806,7 +807,8 @@ internal class PostHogFeatureFlags(
 
     /**
      * Returns the flags whose definition local evaluation can never resolve and that were not
-     * warned about at their current definition, grouped by reason, and remembers them.
+     * warned about at their current definition, grouped by reason, and remembers them. Also tells
+     * the snapshot's evaluator which flags passed the check.
      *
      * Only keys absent from the loaded definitions are forgotten, which keeps the map bounded. A
      * flag that is inactive or resolvable for a while keeps its entry, so it warns again only when
@@ -817,6 +819,7 @@ internal class PostHogFeatureFlags(
         val groupTypeMapping = snapshot.groupTypeMapping.orEmpty()
         val cohorts = snapshot.cohorts.orEmpty()
         val unresolvable = linkedMapOf<PostHogUnresolvedFlagReason, MutableList<String>>()
+        val flagsWithSupportedFilters = mutableSetOf<String>()
         synchronized(warnedUnresolvableFlags) {
             warnedUnresolvableFlags.keys.retainAll(flagsByKey.keys)
             for ((key, flag) in flagsByKey) {
@@ -825,14 +828,20 @@ internal class PostHogFeatureFlags(
                         snapshot.evaluator.definitionUnresolvedReason(flag, flagsByKey, groupTypeMapping, cohorts)
                     } catch (e: Exception) {
                         config.logger.log("Could not check whether flag '$key' resolves locally: ${e.message}")
-                        null
-                    } ?: continue
+                        continue
+                    }
+                if (reason == null) {
+                    // An inactive flag skips the check, so its filters are unknown.
+                    if (flag.active) flagsWithSupportedFilters.add(key)
+                    continue
+                }
                 val fingerprint = definitionFingerprint(flag)
                 if (warnedUnresolvableFlags.put(key, fingerprint) != fingerprint) {
                     unresolvable.getOrPut(reason) { mutableListOf() }.add(key)
                 }
             }
         }
+        snapshot.evaluator.flagsWithSupportedFilters = flagsWithSupportedFilters
         return unresolvable
     }
 
@@ -1008,7 +1017,12 @@ internal class PostHogFeatureFlags(
                     config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
                     throw InconclusiveMatchException(
                         "Flag has unknown group type index",
-                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                        // Experience continuity outranks every other reason, as in the load-time warning.
+                        if (flag.ensureExperienceContinuity) {
+                            PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
+                        } else {
+                            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
+                        },
                     )
                 }
 
