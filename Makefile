@@ -92,7 +92,7 @@ updateLocks:
 .PHONY: testSurveyUI maskingSnapshots recordMaskingSnapshots
 
 maskingSnapshots:
-	./gradlew -PenableDebugTests=true :posthog-android:testDebugUnitTest --tests '*PostHogReplayMaskingSnapshotsTest' --rerun
+	./gradlew -PenableDebugTests=true :posthog-android:testDebugUnitTest --tests '*PostHogReplayMaskingSnapshotsTest' --tests '*PostHogReplaySceneSchedulingTest.stacked dialogs masking snapshot' --rerun
 
 recordMaskingSnapshots:
 	UPDATE_MASKING_SNAPSHOTS=1 $(MAKE) maskingSnapshots

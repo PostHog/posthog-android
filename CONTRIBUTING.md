@@ -29,7 +29,9 @@ Use focused tests during iteration and select module/behavior checks before subm
 
 ## Replay masking image snapshots
 
-`make maskingSnapshots` verifies the committed PNGs in `posthog-android/src/test/resources/snapshots/replay-masking/`. Each image shows the original native View fixture beside the SDK-masked result. The suite covers defaults, global masking options, explicit mask/unmask markers, scrolling, scaling and dialog-local coordinates. It uses the production mask collection and painter, not PixelCopy scheduling or image encoding; the replay integration tests cover those paths separately.
+`make maskingSnapshots` verifies the committed PNGs in `posthog-android/src/test/resources/snapshots/replay-masking/`. Each image shows the original native View fixture beside the SDK-masked result. The suite covers defaults, global masking options, explicit mask/unmask markers, scrolling, scaling and dialog-local coordinates. The single-window fixtures use the production mask collection and painter without PixelCopy scheduling or image encoding.
+
+The stacked-dialog golden exercises registered Activity/dialog windows through the scene producer, masking and image encoding. Its PixelCopy shadow draws each native window into the SDK's target bitmap. Both panels rasterize the emitted screenshot/dim wireframes in SDK order and coordinates, before and after enabling text masking; this checks producer composition, not rrweb playback. It covers an Activity beneath two overlapping dialogs, topmost-window dimming and masking across all three windows.
 
 The renderer is pinned to Robolectric API 28, native graphics, mdpi, US English and light mode. Verification compares decoded pixels exactly and never creates missing baselines. On failure, expected/actual/diff PNGs are written to `posthog-android/build/reports/replay-masking-snapshots/` and uploaded by CI. The tests also run with the normal Android unit suite.
 
