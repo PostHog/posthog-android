@@ -61,6 +61,14 @@ jobs:
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make checkRelease
 
+      - name: Upload replay masking snapshot differences
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: replay-masking-snapshot-diffs
+          path: posthog-android/build/reports/replay-masking-snapshots/
+          if-no-files-found: ignore
+
       - name: Make stop
         if: needs.detect-markdown-only.outputs.markdown_only != 'true'
         run: make stop

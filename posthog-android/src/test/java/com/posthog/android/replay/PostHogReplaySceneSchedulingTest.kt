@@ -4,16 +4,25 @@ import android.app.Activity
 import android.app.Dialog
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.os.Binder
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Base64
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.PixelCopy
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogFake
@@ -22,6 +31,7 @@ import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
+import com.posthog.android.replay.internal.assertReplayMaskingGolden
 import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
@@ -50,6 +60,7 @@ import java.util.UUID
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -103,6 +114,7 @@ internal class PostHogReplaySceneSchedulingTest {
             var copies = 0
             val formats = mutableListOf<Pair<Window, Bitmap.Config?>>()
             var fillColor: Int? = null
+            var drawWindowContent = false
             var onCopy: ((Window) -> Int)? = null
             var deferWindow: Window? = null
             val pending = mutableListOf<Pair<Bitmap, PixelCopy.OnPixelCopyFinishedListener>>()
@@ -123,7 +135,14 @@ internal class PostHogReplaySceneSchedulingTest {
             ) {
                 copies++
                 formats.add(window to bitmap.config)
-                bitmap.eraseColor(fillColor ?: Color.rgb(copies % 255, 40, 80))
+                if (drawWindowContent) {
+                    bitmap.eraseColor(Color.TRANSPARENT)
+                    val canvas = Canvas(bitmap)
+                    canvas.scale(bitmap.width.toFloat() / window.decorView.width, bitmap.height.toFloat() / window.decorView.height)
+                    window.decorView.draw(canvas)
+                } else {
+                    bitmap.eraseColor(fillColor ?: Color.rgb(copies % 255, 40, 80))
+                }
                 if (window === deferWindow) {
                     pending.add(bitmap to listener)
                 } else {
@@ -152,6 +171,7 @@ internal class PostHogReplaySceneSchedulingTest {
         ScenePixelCopy.copies = 0
         ScenePixelCopy.formats.clear()
         ScenePixelCopy.fillColor = null
+        ScenePixelCopy.drawWindowContent = false
         ScenePixelCopy.onCopy = null
         ScenePixelCopy.deferWindow = null
         ScenePixelCopy.pending.clear()
@@ -265,8 +285,9 @@ internal class PostHogReplaySceneSchedulingTest {
         error("Scene scheduling did not settle")
     }
 
-    private fun showDialog(): Dialog {
+    private fun showDialog(titleless: Boolean = false): Dialog {
         val dialog = Dialog(controller.get()).also { dialogs.add(it) }
+        if (titleless) dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setContentView(View(controller.get()))
         dialog.window!!.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         dialog.window!!.setDimAmount(0.35f)
@@ -277,6 +298,158 @@ internal class PostHogReplaySceneSchedulingTest {
         roots.add(decor)
         shadowOf(Looper.getMainLooper()).idle()
         return dialog
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w320dp-h400dp-notnight-mdpi")
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `stacked dialogs masking snapshot`() {
+        val activity = controller.get()
+        activity.actionBar?.hide()
+        val first = showDialog(titleless = true)
+        val second = showDialog(titleless = true)
+        val baseContent = FrameLayout(activity).apply { setBackgroundColor(Color.rgb(230, 238, 248)) }
+        val firstContent = FrameLayout(activity).apply { setBackgroundColor(Color.rgb(255, 240, 213)) }
+        val secondContent = FrameLayout(activity).apply { setBackgroundColor(Color.rgb(227, 242, 229)) }
+
+        fun label(
+            parent: FrameLayout,
+            text: String,
+            top: Int,
+            width: Int,
+            masked: Boolean = false,
+        ) {
+            val view =
+                TextView(activity).apply {
+                    this.text = text
+                    typeface = Typeface.MONOSPACE
+                    setTextSize(TypedValue.COMPLEX_UNIT_PX, 16f)
+                    setTextColor(Color.rgb(25, 35, 50))
+                    setBackgroundColor(Color.WHITE)
+                    setPadding(4, 4, 4, 4)
+                    includeFontPadding = false
+                    if (!masked) tag = "ph-no-mask"
+                }
+            parent.addView(
+                view,
+                FrameLayout.LayoutParams(width, 32).apply {
+                    leftMargin = 16
+                    topMargin = top
+                },
+            )
+        }
+        label(baseContent, "Checkout", 16, 288)
+        label(baseContent, "Ada Lovelace", 56, 288, masked = true)
+        label(baseContent, "Order total: $42", 348, 288)
+        label(firstContent, "Delivery", 12, 220)
+        label(firstContent, "42 Example Street", 52, 220, masked = true)
+        label(firstContent, "London", 96, 220, masked = true)
+        label(firstContent, "Continue", 156, 220)
+        label(secondContent, "Confirm", 12, 184)
+        label(secondContent, "ada@example.test", 52, 184, masked = true)
+        label(secondContent, "Place order", 108, 184)
+        activity.setContentView(baseContent)
+        first.setContentView(firstContent)
+        second.setContentView(secondContent)
+        first.window!!.setDimAmount(0.2f)
+        second.window!!.setDimAmount(0.4f)
+        val windows = listOf(activity.window, first.window!!, second.window!!)
+        val bounds = listOf(Rect(0, 0, 320, 400), Rect(24, 108, 276, 312), Rect(88, 216, 304, 372))
+        windows.zip(bounds).forEach { (window, rect) ->
+            window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            window.attributes =
+                window.attributes.apply {
+                    gravity = Gravity.TOP or Gravity.LEFT
+                    x = rect.left
+                    y = rect.top
+                    width = rect.width()
+                    height = rect.height()
+                }
+        }
+        shadowOf(Looper.getMainLooper()).idle()
+        windows.zip(bounds).forEach { (window, rect) ->
+            val root = window.decorView
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(rect.width(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(rect.height(), View.MeasureSpec.EXACTLY),
+            )
+            root.layout(0, 0, rect.width(), rect.height())
+        }
+        config.sessionReplayConfig.screenshotCompressionQuality = 100
+        config.sessionReplayConfig.maskAllTextInputs = false
+        config.sessionReplayConfig.maskAllImages = false
+        ScenePixelCopy.drawWindowContent = true
+        start()
+        drain()
+
+        fun renderScene(): Bitmap {
+            val events = fake.properties!!["\$snapshot_data"] as List<*>
+            val metadata = events.filterIsInstance<RRMetaEvent>().single().data as Map<*, *>
+            val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
+            val frames = (snapshot.data as Map<*, *>)["wireframes"] as List<*>
+            val scene = frames.map { it as RRWireframe }
+            assertEquals(listOf("screenshot", "screenshot", "rectangle", "screenshot"), scene.map { it.type })
+            val images = scene.filter { it.type == "screenshot" }
+            assertEquals(bounds.map { it.left to it.top }, images.map { it.x to it.y })
+            assertEquals(bounds.map { it.width() to it.height() }, images.map { it.width to it.height })
+            assertEquals("rgba(0,0,0,0.4)", scene[2].style?.backgroundColor)
+            val bitmap = Bitmap.createBitmap(metadata["width"] as Int, metadata["height"] as Int, Bitmap.Config.ARGB_8888)
+            try {
+                val canvas = Canvas(bitmap)
+                // Rasterize only the emitted screenshot and black-dim wireframes, in their
+                // emitted order and geometry. This checks producer output, not rrweb playback.
+                for (frame in scene) {
+                    val x = assertNotNull(frame.x)
+                    val y = assertNotNull(frame.y)
+                    val rect = Rect(x, y, x + assertNotNull(frame.width), y + assertNotNull(frame.height))
+                    when (frame.type) {
+                        "screenshot" -> {
+                            val bytes = Base64.decode(assertNotNull(frame.base64).substringAfter(','), Base64.DEFAULT)
+                            val image = assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                            try {
+                                canvas.drawBitmap(image, null, rect, null)
+                            } finally {
+                                image.recycle()
+                            }
+                        }
+                        "rectangle" -> {
+                            val color = assertNotNull(frame.style?.backgroundColor)
+                            val match = assertNotNull(Regex("rgba\\(0,0,0,([0-9.]+)\\)").matchEntire(color))
+                            val alpha = (match.groupValues[1].toFloat() * 255).roundToInt()
+                            canvas.drawRect(rect, Paint().apply { this.color = Color.argb(alpha, 0, 0, 0) })
+                        }
+                        else -> error("Unexpected scene wireframe: ${frame.type}")
+                    }
+                }
+                return bitmap
+            } catch (e: Throwable) {
+                bitmap.recycle()
+                throw e
+            }
+        }
+        val original = renderScene()
+        try {
+            val copies = ScenePixelCopy.copies
+            config.sessionReplayConfig.maskAllTextInputs = true
+            activityStatus.listener.onDraw()
+            drain()
+            assertEquals(copies + 3, ScenePixelCopy.copies)
+            val masked = renderScene()
+            try {
+                assertFalse(original.sameAs(masked))
+                assertReplayMaskingGolden(
+                    "stacked-dialogs",
+                    "Stacked dialogs: Activity + delivery + confirmation",
+                    original,
+                    masked,
+                    originalLabel = "SDK unmasked",
+                )
+            } finally {
+                masked.recycle()
+            }
+        } finally {
+            original.recycle()
+        }
     }
 
     private fun timeoutDialogCopy(): Dialog {
