@@ -577,4 +577,55 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Builds the event that [capture] (or [captureAi] when [ai] is true) would send: the same
+     * checks, SDK and registered properties, per-call values, session, screen and options, with a
+     * new uuid and timestamp. It doesn't run `beforeSend` and doesn't queue the event, so a wrapper
+     * can run its own hook on the full event, then pass the result to [sendBuiltEventForWrapper].
+     * A `$screen` event caches its `$screen_name` as the current screen, as [screen] does.
+     *
+     * Returns null when the SDK wouldn't capture the event: disabled, opted out, an ignored
+     * exception type, or a `$screen` event without a non-blank `$screen_name`. Defaults to null.
+     *
+     * ```kotlin
+     * val event = PostHog.buildEventForWrapper("purchase", properties = mapOf("plan" to "pro"))
+     *     ?: return
+     * PostHog.sendBuiltEventForWrapper(wrapperBeforeSend(event) ?: return)
+     * ```
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun buildEventForWrapper(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        options: Map<String, Any?>? = null,
+        ai: Boolean = false,
+        timestamp: Date? = null,
+    ): PostHogEvent? = null
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Sends an event from [buildEventForWrapper] without adding properties again: runs the native
+     * `beforeSend` chain, then queues it on the analytics lane, or the AI lane when [ai] is true.
+     * The event keeps its uuid and timestamp. Legacy option properties are moved into options when
+     * the event is sent, as for [capture].
+     *
+     * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun sendBuiltEventForWrapper(
+        event: PostHogEvent,
+        ai: Boolean = false,
+    ): UUID? = null
 }
