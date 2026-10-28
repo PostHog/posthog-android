@@ -19,6 +19,7 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
@@ -35,6 +36,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
+    private val warnedEmptyEventName = AtomicBoolean(false)
     private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     // Read on the capture path from any caller thread without setupLock.
@@ -219,8 +221,27 @@ public open class PostHogStateless protected constructor(
         properties?.let {
             props.putAll(it)
         }
+        putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups })
 
         return props
+    }
+
+    /**
+     * A typed per-call value wins key by key over the same map in the caller's [properties]:
+     * `userProperties` over `$set`, `userPropertiesSetOnce` over `$set_once` and `groups` over `$groups`.
+     */
+    internal fun putTypedValuesOverCaller(
+        props: MutableMap<String, Any>,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+    ) {
+        for ((key, typed) in listOf("\$set" to userProperties, "\$set_once" to userPropertiesSetOnce, "\$groups" to groups)) {
+            val caller = properties?.get(key) as? Map<*, *> ?: continue
+            if (typed == null) continue
+            props[key] = LinkedHashMap<Any?, Any?>(caller).apply { putAll(typed) }
+        }
     }
 
     protected fun mergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
@@ -340,6 +361,14 @@ public open class PostHogStateless protected constructor(
         // earlier call, and a batch must never repeat a uuid.
         if (uuid != null && eventChecked.uuid != uuid) {
             eventChecked = eventChecked.copy(uuid = uuid)
+        }
+
+        // Capture drops an event with an empty name, so it's dropped here, after beforeSend too.
+        if (eventChecked.event.isEmpty()) {
+            if (warnedEmptyEventName.compareAndSet(false, true)) {
+                config?.logger?.log("Dropping an event with an empty name.")
+            }
+            return null
         }
 
         return eventChecked

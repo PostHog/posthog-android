@@ -69,15 +69,20 @@ If a proxy redirects capture requests to another host, point `host` at the final
 ## Event validation
 
 Capture v1 checks each event on its own and drops only the invalid ones, so the rest of the batch is delivered.
-The SDK doesn't check these before sending. PostHog drops the event, and the SDK removes it from the queue.
-With `debug` on, the SDK logs the name and uuid of each dropped event and the reason PostHog gives, such as `misrouted_event`, never its properties.
 
-- An event with an empty event name is dropped, for example `capture("")`.
+The SDK drops an event whose name is empty before sending it, for example `capture("")` or one `beforeSend` renames to `""`.
+With `debug` on, it logs this once.
+
+The SDK doesn't check the rest before sending. PostHog drops the event, and the SDK removes it from the queue.
+With `debug` on, the SDK logs one line per batch with how many events PostHog dropped, how many duplicate copies it dropped and how many it asked to retry, never the event names or properties.
+
 - An event with an empty or whitespace-only distinct ID is dropped, for example one `beforeSend` sets to `""`.
 - An event whose name is over 200 UTF-8 bytes is dropped. Legacy capture had no limit on event name length.
 - An event whose distinct ID is over 200 UTF-8 bytes is dropped. Legacy capture shortened the ID to 200 characters and kept the event.
 
 In 3.x, an empty event name or distinct ID made legacy capture reject the whole batch it was in.
+
+A `NaN` or infinite number in the properties is dropped from the event, and the event is sent without it.
 
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
@@ -95,7 +100,7 @@ An event's properties are merged in this order, and later values win:
 
 1. properties the SDK sets itself, such as `$os_name`, `$app_version`, `$screen_name`, `$is_identified`, `$session_id` and the session replay debug properties (`$recording_status`, `$sdk_debug_*`)
 2. registered super properties (`register`)
-3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here
+3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here, and when you also pass that key in properties they win key by key
 4. `beforeSend`
 
 In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$process_person_profile` and the session replay debug properties also won over the properties you pass.

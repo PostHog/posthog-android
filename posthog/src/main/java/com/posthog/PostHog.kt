@@ -868,6 +868,9 @@ public class PostHog private constructor(
         properties?.let {
             props.putAll(it)
         }
+        if (appendSharedProps) {
+            putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups })
+        }
 
         // only Session replay needs distinct_id also in the props
         // remove after https://github.com/PostHog/posthog/pull/18954 gets merged

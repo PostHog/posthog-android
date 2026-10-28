@@ -51,6 +51,7 @@ public class PostHogApi(
         private const val CAPTURE_V1_ANALYTICS_PATH = "/i/v1/analytics/events"
         private const val CAPTURE_V1_AI_PATH = "/i/v1/ai/events"
         private const val CAPTURE_V1_MAX_REDIRECTS = 5
+        private const val CAPTURE_V1_MAX_PENDING_RETRIES = 16
         private const val CAPTURE_V1_MAX_RESULTS_BYTES = 1024L * 1024L
     }
 
@@ -137,9 +138,15 @@ public class PostHogApi(
 
     private val captureV1Lock = Any()
 
-    // The identity of the last capture v1 request per endpoint path whose events are still to be
-    // retried. In memory only: a new request id after an app restart is fine, the server only logs it.
-    private val captureV1PendingRetry = mutableMapOf<String, CaptureV1RequestIdentity>()
+    // The identity of each capture v1 request whose events are still to be retried, keyed by endpoint
+    // path and uuid set, so a send of other events in between keeps it. Holds the most recent
+    // CAPTURE_V1_MAX_PENDING_RETRIES: an entry stays when the queue drops its events instead of
+    // retrying them. In memory only: a new request id after an app restart is fine, the server only logs it.
+    private val captureV1PendingRetry =
+        object : LinkedHashMap<Pair<String, Set<String>>, CaptureV1RequestIdentity>() {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Set<String>>, CaptureV1RequestIdentity>?): Boolean =
+                size > CAPTURE_V1_MAX_PENDING_RETRIES
+        }
 
     private val theHost: String
         get() {
@@ -246,7 +253,7 @@ public class PostHogApi(
                 val target = response.header("Location")?.let { location -> request.url.resolve(location) }
                 if (redirects >= CAPTURE_V1_MAX_REDIRECTS || target == null || !isConfiguredOrigin(target)) {
                     config.logger.log("Capture did not follow a ${response.code} redirect.")
-                    clearCaptureV1Retry(path)
+                    clearCaptureV1Retry(path, identity)
                     throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
                 }
                 // Same origin, so the body and every header are safe to resend.
@@ -267,9 +274,9 @@ public class PostHogApi(
         uuids: Set<String>,
     ): CaptureV1RequestIdentity {
         synchronized(captureV1Lock) {
-            val pending = captureV1PendingRetry[path]
+            val pending = captureV1PendingRetry[path to uuids]
             val identity =
-                if (pending != null && pending.uuids == uuids) {
+                if (pending != null) {
                     pending.copy(attempt = pending.attempt + 1)
                 } else {
                     CaptureV1RequestIdentity(
@@ -279,14 +286,17 @@ public class PostHogApi(
                         createdAt = formatISO8601Date(config.dateProvider.currentDate()),
                     )
                 }
-            captureV1PendingRetry[path] = identity
+            captureV1PendingRetry[path to uuids] = identity
             return identity
         }
     }
 
-    private fun clearCaptureV1Retry(path: String) {
+    private fun clearCaptureV1Retry(
+        path: String,
+        identity: CaptureV1RequestIdentity,
+    ) {
         synchronized(captureV1Lock) {
-            captureV1PendingRetry.remove(path)
+            captureV1PendingRetry.remove(path to identity.uuids)
         }
     }
 
@@ -303,7 +313,7 @@ public class PostHogApi(
     ): SendResult {
         if (!response.isSuccessful) {
             if (!isCaptureV1RetriableStatusCode(response.code)) {
-                clearCaptureV1Retry(path)
+                clearCaptureV1Retry(path, identity)
             }
             throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
         }
@@ -317,30 +327,29 @@ public class PostHogApi(
 
         val retryUuids = mutableSetOf<String>()
         var dropped = 0
-        // Events missing from the results count as delivered.
-        for (event in events) {
-            val uuid = event.uuid?.toString() ?: continue
+        var duplicatesDropped = 0
+        // Events missing from the results count as delivered. The uuids are read once, so a repeated
+        // uuid's later copies (`duplicates_dropped`) are counted, not given the kept copy's verdict.
+        for (uuid in events.mapNotNullTo(LinkedHashSet()) { it.uuid?.toString() }) {
             val entry = results?.get(uuid) as? Map<*, *> ?: continue
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
-                "drop" -> {
-                    dropped++
-                    // The event name, uuid and the server's reason (such as misrouted_event or
-                    // ai_event_too_big), never the properties.
-                    config.logger.log("Capture dropped event ${event.event} ($uuid): ${entry["details"] ?: "no details"}.")
-                }
+                "drop" -> dropped++
             }
+            duplicatesDropped += (entry["duplicates_dropped"] as? Number)?.toInt() ?: 0
         }
 
-        if (dropped > 0 || retryUuids.isNotEmpty()) {
-            config.logger.log("Capture: $dropped dropped, ${retryUuids.size} to retry.")
+        // Counts only: one line per batch, never per event.
+        if (dropped > 0 || duplicatesDropped > 0 || retryUuids.isNotEmpty()) {
+            config.logger.log(
+                "Capture: $dropped dropped, $duplicatesDropped duplicate copies dropped, ${retryUuids.size} to retry.",
+            )
         }
 
         synchronized(captureV1Lock) {
-            if (retryUuids.isEmpty()) {
-                captureV1PendingRetry.remove(path)
-            } else {
-                captureV1PendingRetry[path] = identity.copy(uuids = retryUuids)
+            captureV1PendingRetry.remove(path to identity.uuids)
+            if (retryUuids.isNotEmpty()) {
+                captureV1PendingRetry[path to retryUuids] = identity.copy(uuids = retryUuids)
             }
         }
         return SendResult(retryUuids, parseRetryAfter(response))

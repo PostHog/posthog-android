@@ -331,13 +331,11 @@ internal class PostHogCaptureV1Test {
 
         assertEquals(setOf(retry.uuid.toString()), result.retryIds)
         assertEquals(7, result.retryAfterSeconds)
-        assertTrue(logger.messages.contains("Capture: 1 dropped, 1 to retry."))
-        assertTrue(logger.messages.contains("Capture dropped event dropped (${dropped.uuid}): no details."))
-        assertTrue(logger.messages.none { it.contains(retry.uuid.toString()) })
+        assertTrue(logger.messages.contains("Capture: 1 dropped, 0 duplicate copies dropped, 1 to retry."))
     }
 
     @Test
-    fun `logs each dropped event with the details capture gives, without its properties`() {
+    fun `logs one count line per batch, without event names, uuids or properties`() {
         val misrouted = event("button_clicked", properties = mapOf("prompt" to "secret prompt"))
         val tooBig = event("\$ai_generation", properties = mapOf("prompt" to "secret prompt"))
         val http =
@@ -352,10 +350,31 @@ internal class PostHogCaptureV1Test {
 
         api(http.url("/").toString()).captureAi(listOf(misrouted, tooBig))
 
-        assertTrue(logger.messages.contains("Capture dropped event button_clicked (${misrouted.uuid}): misrouted_event."))
-        assertTrue(logger.messages.contains("Capture dropped event \$ai_generation (${tooBig.uuid}): ai_event_too_big."))
-        assertTrue(logger.messages.contains("Capture: 2 dropped, 0 to retry."))
-        assertTrue(logger.messages.none { it.contains("secret prompt") })
+        assertEquals(
+            listOf("Capture: 2 dropped, 0 duplicate copies dropped, 0 to retry."),
+            logger.messages.filter { it.startsWith("Capture:") },
+        )
+        assertTrue(
+            logger.messages.none {
+                it.contains("secret prompt") || it.contains("button_clicked") ||
+                    it.contains(misrouted.uuid.toString()) || it.contains(tooBig.uuid.toString())
+            },
+        )
+    }
+
+    @Test
+    fun `counts the duplicate copies capture dropped`() {
+        val kept = event()
+        val copy = kept.copy()
+        val http =
+            httpServers.mockHttp(
+                response = MockResponse().setBody("{\"results\":{\"${kept.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":1}}}"),
+            )
+
+        val result = api(http.url("/").toString()).captureV1(listOf(kept, copy))
+
+        assertTrue(result.retryIds.isEmpty())
+        assertTrue(logger.messages.contains("Capture: 0 dropped, 1 duplicate copies dropped, 0 to retry."))
     }
 
     @Test
@@ -543,6 +562,27 @@ internal class PostHogCaptureV1Test {
         val second = http.takeRequest()
         assertEquals("1", second.headers["PostHog-Attempt"])
         assertNotEquals(first.headers["PostHog-Request-Id"], second.headers["PostHog-Request-Id"])
+    }
+
+    @Test
+    fun `sending other events in between keeps the pending retry identity`() {
+        val retried = event()
+        val other = event("other")
+        val http = httpServers.mockHttp(response = resultsResponse(retried.uuid!! to "retry"))
+        http.enqueue(resultsResponse(other.uuid!! to "ok"))
+        http.enqueue(resultsResponse(retried.uuid!! to "ok"))
+        val sut = api(http.url("/").toString())
+
+        sut.captureV1(listOf(retried))
+        sut.captureV1(listOf(other))
+        sut.captureV1(listOf(retried))
+
+        val (first, between, resent) = List(3) { http.takeRequest() }
+        assertEquals("1", between.headers["PostHog-Attempt"])
+        assertNotEquals(first.headers["PostHog-Request-Id"], between.headers["PostHog-Request-Id"])
+        assertEquals("2", resent.headers["PostHog-Attempt"])
+        assertEquals(first.headers["PostHog-Request-Id"], resent.headers["PostHog-Request-Id"])
+        assertEquals(body(first)["created_at"], body(resent)["created_at"])
     }
 
     @Test

@@ -2131,6 +2131,55 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `typed per-call values win key by key over the same maps in properties`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            properties =
+                mapOf(
+                    "\$set" to mapOf("plan" to "free", "seen" to true),
+                    "\$set_once" to mapOf("first" to "a", "source" to "ad"),
+                    "\$groups" to mapOf("company" to "caller", "team" to "t1"),
+                ),
+            userProperties = mapOf("plan" to "pro"),
+            userPropertiesSetOnce = mapOf("first" to "b"),
+            groups = mapOf("company" to "typed"),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val properties = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertEquals(mapOf("plan" to "pro", "seen" to true), properties["\$set"])
+        assertEquals(mapOf("first" to "b", "source" to "ad"), properties["\$set_once"])
+        assertEquals(mapOf("company" to "typed", "team" to "t1"), properties["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `drops an event whose name is empty, also after beforeSend`() {
+        val http = mockHttp()
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "blanked") it.copy(event = "") else it
+            })
+
+        sut.capture("")
+        sut.capture("blanked")
+        sut.capture(EVENT)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(EVENT, serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.single().event)
+
+        sut.close()
+    }
+
+    @Test
     fun `captures an event with a custom timestamp`() {
         val http = mockHttp()
         val url = http.url("/")
