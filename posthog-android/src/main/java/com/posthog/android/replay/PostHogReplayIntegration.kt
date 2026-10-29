@@ -448,8 +448,8 @@ public class PostHogReplayIntegration(
         return Pair(imeVisible, event)
     }
 
-    // Main thread only, like the window callbacks that add and remove these interceptors.
-    private val touchInterceptors = WeakHashMap<Window, TouchEventInterceptor>()
+    // Window callbacks add these on the main thread; install() and uninstall() remove them on the caller's.
+    private val touchInterceptors = Collections.synchronizedMap(WeakHashMap<Window, TouchEventInterceptor>())
 
     // A FLAG_SECURE window is recorded fully masked, so its touches aren't recorded either.
     // The flag is read per touch because apps toggle it at runtime.

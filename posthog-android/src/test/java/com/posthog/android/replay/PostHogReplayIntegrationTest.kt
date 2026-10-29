@@ -637,32 +637,34 @@ internal class PostHogReplayIntegrationTest {
         val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
         val fake = createPostHogFake()
         fake.sessionReplayActive = false
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val window = controller.get().window
+        val curtains = mockCurtainsRoot(window.decorView)
         sut.install(fake)
         try {
             PostHogSessionManager.startSession()
             sut.onSessionIdChanged()
             shadowOf(Looper.getMainLooper()).idle()
             assertTrue(sut.isActive())
-            val window = Robolectric.buildActivity(Activity::class.java).setup().get().window
-            val interceptor = sut.touchInterceptor(window)
             val touch = {
                 val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
-                val state = interceptor.intercept(event) { DispatchState.Consumed }
+                window.callback.dispatchTouchEvent(event)
                 event.recycle()
                 awaitReplayExecutors()
-                state
             }
 
-            assertEquals(DispatchState.Consumed, touch())
+            touch()
             val submitsBeforeSecure = submits.get()
             assertTrue(submitsBeforeSecure >= 1)
 
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
-            assertEquals(DispatchState.Consumed, touch())
+            touch()
             assertEquals(submitsBeforeSecure, submits.get())
         } finally {
             sut.uninstall()
+            curtains.close()
+            controller.pause().stop().destroy()
         }
     }
 
