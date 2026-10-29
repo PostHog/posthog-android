@@ -378,6 +378,24 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `clamps each duplicate count to the batch size`() {
+        val first = event()
+        val second = event()
+        val http =
+            httpServers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{\"${first.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":99999999999999999999}," +
+                            "\"${second.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":-5}}}",
+                    ),
+            )
+
+        api(http.url("/").toString()).captureV1(listOf(first, second))
+
+        assertTrue(logger.messages.contains("Capture: 0 dropped, 2 duplicate copies dropped, 0 to retry."))
+    }
+
+    @Test
     fun `a 2xx without readable results counts as delivered`() {
         val http = httpServers.mockHttp(response = MockResponse().setBody("not json"))
 

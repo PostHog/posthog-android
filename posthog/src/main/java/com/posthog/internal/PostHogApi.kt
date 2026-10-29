@@ -336,7 +336,8 @@ public class PostHogApi(
                 "retry" -> retryUuids.add(uuid)
                 "drop" -> dropped++
             }
-            duplicatesDropped += (entry["duplicates_dropped"] as? Number)?.toInt() ?: 0
+            // Clamped to the batch size, so a malformed count can't overflow the sum.
+            duplicatesDropped += (entry["duplicates_dropped"] as? Number)?.toLong()?.coerceIn(0L, events.size.toLong())?.toInt() ?: 0
         }
 
         // Counts only: one line per batch, never per event.
