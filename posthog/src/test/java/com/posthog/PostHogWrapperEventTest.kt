@@ -145,12 +145,15 @@ internal class PostHogWrapperEventTest {
     fun `send on the AI lane posts to the AI endpoint`() {
         val http = httpServers.mockHttp()
         val sut = getSut(http)
+        sut.startSession()
         val built = assertNotNull(sut.buildEventForWrapper("\$ai_generation", ai = true))
 
         assertEquals(built.uuid, sut.sendBuiltEventForWrapper(built, ai = true))
 
         aiExecutor.awaitExecution()
-        assertEquals("/i/v1/ai/events", takeRequest(http).path)
+        val request = takeRequest(http)
+        assertEquals("/i/v1/ai/events", request.path)
+        assertNotNull(events(request).single().properties()["\$sdk_debug_session_start"])
     }
 
     @Test

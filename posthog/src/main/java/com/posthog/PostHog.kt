@@ -1398,7 +1398,7 @@ public class PostHog private constructor(
             built.uuid?.let { uuid ->
                 // Snapshotted now, so a new session during the round trip doesn't change them.
                 val deferredReplayDebug =
-                    if (!ai && isReplayDebugEvent(event)) {
+                    if (isReplayDebugEvent(event)) {
                         sdkDebugProperties(built.properties?.get("\$session_id") as? String, built.timestamp) { true }
                             .filterKeys { it !in UNTHROTTLED_DEBUG_PROPERTY_KEYS }
                             .takeIf { it.isNotEmpty() }
@@ -1491,7 +1491,7 @@ public class PostHog private constructor(
             // built event the wrapper drops never holds or starts it. Eligibility and values come from
             // the build, since the wrapper's hook can rename the event and the session can change.
             val deferredReplayDebug = build.deferredReplayDebug
-            if (!ai && deferredReplayDebug != null && claimReplayDebugPropertiesWindow()) {
+            if (deferredReplayDebug != null && claimReplayDebugPropertiesWindow()) {
                 claimedReplayDebugBundle = true
                 // Only keys the event lacks, so the wrapper's values win.
                 deferredReplayDebug.forEach { (key, value) ->
