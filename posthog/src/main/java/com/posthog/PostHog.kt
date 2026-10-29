@@ -65,6 +65,19 @@ private val REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS =
         "\$sdk_debug_replay_internal_buffer_length",
     )
 
+// On every event whether or not the bundle is claimed; the rest of the bundle needs the claim.
+private val UNTHROTTLED_DEBUG_PROPERTY_KEYS =
+    REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS + setOf("\$sdk_debug_pending_queue_size", "\$sdk_debug_error_capturing_properties")
+
+// Wrapper builds waiting for their send, and recent sends. A build the wrapper drops is evicted by newer ones.
+private const val MAX_TRACKED_WRAPPER_EVENTS = 1000
+
+private fun requiresPersonProcessing(
+    userProperties: Map<String, Any>?,
+    userPropertiesSetOnce: Map<String, Any>?,
+    groups: Map<String, String>?,
+): Boolean = userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false
+
 private fun isReplayDebugEvent(event: String): Boolean =
     event.startsWith("\$") &&
         event != PostHogEventName.FEATURE_FLAG_CALLED.event &&
@@ -128,6 +141,10 @@ public class PostHog private constructor(
     // Guarded by replayDebugPropertiesLock.
     private var lastReplayDebugPropertiesAt: Long? = null
     private var replayDebugClaimOutstanding = false
+
+    // Keyed by event uuid in build order. Both guarded by pendingWrapperBuilds.
+    private val pendingWrapperBuilds = LinkedHashMap<UUID, WrapperBuild>()
+    private val sentWrapperEvents = LinkedHashSet<UUID>()
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -976,15 +993,20 @@ public class PostHog private constructor(
      * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
      * event, unless the caller set that option or [properties] carry a non-null legacy
      * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
-     * PostHog processes person profiles by default. Returns a copy, so `beforeSend` edits never
-     * reach the caller's map.
+     * PostHog processes person profiles by default. [personProcessingPending] counts a person
+     * processing change a wrapper build defers to its send. Returns a copy, so `beforeSend` edits
+     * never reach the caller's map.
      */
     private fun personProcessingOptions(
         options: Map<String, Any?>?,
         properties: Map<String, Any>,
+        personProcessingPending: Boolean = false,
     ): MutableMap<String, Any?>? {
         val eventOptions = options?.toMutableMap()
-        if (hasPersonProcessing() || properties["\$process_person_profile"] != null) {
+        if ((personProcessingPending && config?.personProfiles != PersonProfiles.NEVER) ||
+            hasPersonProcessing() ||
+            properties["\$process_person_profile"] != null
+        ) {
             return eventOptions
         }
         val result = eventOptions ?: mutableMapOf()
@@ -1149,6 +1171,16 @@ public class PostHog private constructor(
     )
 
     /**
+     * What [buildEventForWrapper] decided from the call, read back by [sendBuiltEventForWrapper]:
+     * the wrapper's hook can rename the event, and a build changes no SDK state.
+     */
+    private class WrapperBuild(
+        val replayDebugEligible: Boolean,
+        val requiresPersonProcessing: Boolean,
+        val sdkDistinctId: String,
+    )
+
+    /**
      * Checks and enriches one event without running `beforeSend` or queueing it. Returns null when
      * the SDK wouldn't capture it. [claimReplayDebugBundle] is called only for events that may carry
      * the replay debug bundle.
@@ -1165,6 +1197,7 @@ public class PostHog private constructor(
         aiLane: Boolean,
         claimReplayDebugBundle: () -> Boolean,
         setFlagPersonProperties: Boolean = true,
+        deferPersonProcessing: Boolean = false,
     ): PreparedEvent? {
         if (!isEnabled()) {
             return null
@@ -1179,7 +1212,8 @@ public class PostHog private constructor(
 
         // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
         // we should still enable person processing since this is intentional
-        if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
+        val requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups)
+        if (requiresPersonProcessing && !deferPersonProcessing) {
             requirePersonProcessing("capture", ignoreMessage = true)
         }
 
@@ -1245,7 +1279,11 @@ public class PostHog private constructor(
 
         // Snapshots don't carry the SDK's person-processing option.
         val eventOptions =
-            if (isSnapshotEvent) options?.toMutableMap() else personProcessingOptions(options, mergedProperties)
+            if (isSnapshotEvent) {
+                options?.toMutableMap()
+            } else {
+                personProcessingOptions(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing)
+            }
 
         // This capture's identity, kept through beforeSend.
         val uuid = TimeBasedEpochGenerator.generate()
@@ -1331,19 +1369,36 @@ public class PostHog private constructor(
                 } else {
                     properties
                 }
-            return prepareEvent(
-                event,
-                distinctId,
-                eventProperties,
-                userProperties,
-                userPropertiesSetOnce,
-                groups,
-                timestamp,
-                options,
-                ai,
-                claimReplayDebugBundle = { false },
-                setFlagPersonProperties = false,
-            )?.event
+            val built =
+                prepareEvent(
+                    event,
+                    distinctId,
+                    eventProperties,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    groups,
+                    timestamp,
+                    options,
+                    ai,
+                    claimReplayDebugBundle = { false },
+                    setFlagPersonProperties = false,
+                    deferPersonProcessing = true,
+                )?.event ?: return null
+            built.uuid?.let { uuid ->
+                val build =
+                    WrapperBuild(
+                        replayDebugEligible = isReplayDebugEvent(event),
+                        requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups),
+                        sdkDistinctId = this.distinctId,
+                    )
+                synchronized(pendingWrapperBuilds) {
+                    pendingWrapperBuilds[uuid] = build
+                    if (pendingWrapperBuilds.size > MAX_TRACKED_WRAPPER_EVENTS) {
+                        pendingWrapperBuilds.remove(pendingWrapperBuilds.keys.first())
+                    }
+                }
+            }
+            return built
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
@@ -1357,6 +1412,22 @@ public class PostHog private constructor(
     ): UUID? {
         var claimedReplayDebugBundle = false
         try {
+            var alreadySent = false
+            val build =
+                event.uuid?.let { uuid ->
+                    synchronized(pendingWrapperBuilds) {
+                        // Checked and recorded together, so two concurrent sends can't both queue it.
+                        alreadySent = !sentWrapperEvents.add(uuid)
+                        if (sentWrapperEvents.size > MAX_TRACKED_WRAPPER_EVENTS) {
+                            sentWrapperEvents.remove(sentWrapperEvents.first())
+                        }
+                        pendingWrapperBuilds.remove(uuid)
+                    }
+                }
+            if (alreadySent) {
+                config?.logger?.log("Event ${event.uuid} was already sent.")
+                return null
+            }
             if (!isEnabled()) {
                 return null
             }
@@ -1364,25 +1435,38 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return null
             }
+            if (build?.requiresPersonProcessing == true) {
+                requirePersonProcessing("capture", ignoreMessage = true)
+            }
             val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
             val properties = event.properties ?: mutableMapOf()
-            @Suppress("UNCHECKED_CAST")
-            setPersonPropertiesForFlagsIfNeeded(
-                properties["\$set"] as? Map<String, Any>,
-                properties["\$set_once"] as? Map<String, Any>,
-            )
+            // Skipped when reset() or identify() changed the user since the build: the event belongs
+            // to the previous one.
+            if (build == null || build.sdkDistinctId == this.distinctId) {
+                @Suppress("UNCHECKED_CAST")
+                setPersonPropertiesForFlagsIfNeeded(
+                    properties["\$set"] as? Map<String, Any>,
+                    properties["\$set_once"] as? Map<String, Any>,
+                )
+            }
             if (!ai && event.event == PostHogEventName.SCREEN.event) {
                 (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
             }
             // The build added only the required replay debug keys. The full bundle is claimed here,
-            // so a built event the wrapper drops never holds or starts the window.
-            if (isReplayDebugEvent(event.event)) {
+            // so a built event the wrapper drops never holds or starts the window. Eligibility comes
+            // from the name the event was built with, since the wrapper's hook can rename it.
+            if (build?.replayDebugEligible ?: isReplayDebugEvent(event.event)) {
                 val debugProperties =
                     sdkDebugProperties(properties["\$session_id"] as? String, event.timestamp) {
                         claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
                     }
                 if (claimedReplayDebugBundle) {
-                    debugProperties.forEach { (key, value) -> properties.putIfAbsent(key, value) }
+                    // Only the keys the build left out, so a key the wrapper's hook removed stays removed.
+                    debugProperties.forEach { (key, value) ->
+                        if (key !in UNTHROTTLED_DEBUG_PROPERTY_KEYS && !properties.containsKey(key)) {
+                            properties[key] = value
+                        }
+                    }
                 }
             }
             val builtEvent = if (event.uuid == null || event.properties == null) event.copy(uuid = uuid, properties = properties) else event

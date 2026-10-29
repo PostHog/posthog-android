@@ -210,6 +210,19 @@ internal class PostHogWrapperEventTest {
 
         assertFalse(next.properties!!.containsKey("\$screen_name"))
         assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+        assertEquals(false, next.options?.get("process_person_profile"))
+    }
+
+    @Test
+    fun `send turns on person processing for a build with user properties`() {
+        val sut = getSut(httpServers.mockHttp())
+        val identified = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(identified))
+        val next = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertNull(identified.options?.get("process_person_profile"))
+        assertNull(next.options?.get("process_person_profile"))
     }
 
     @Test
@@ -248,5 +261,64 @@ internal class PostHogWrapperEventTest {
         val (sentFirst, sentSecond) = events(takeRequest(http))
         assertNotNull(sentFirst.properties()["\$sdk_debug_session_start"])
         assertFalse(sentSecond.properties().containsKey("\$sdk_debug_session_start"))
+    }
+
+    @Test
+    fun `replay debug eligibility follows the built name across a rename`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { flushAt = 2 }
+        sut.startSession()
+        val renamedAway = assertNotNull(sut.buildEventForWrapper("\$first"))
+        val renamedTo = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(renamedTo.copy(event = "\$second")))
+        assertNotNull(sut.sendBuiltEventForWrapper(renamedAway.copy(event = "custom")))
+
+        queueExecutor.awaitExecution()
+        val (sentTo, sentAway) = events(takeRequest(http))
+        assertNotNull(sentAway.properties()["\$sdk_debug_session_start"])
+        assertFalse(sentTo.properties().containsKey("\$sdk_debug_session_start"))
+    }
+
+    @Test
+    fun `send keeps a replay debug key the wrapper removed`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.startSession()
+        val event = assertNotNull(sut.buildEventForWrapper("\$first"))
+        event.properties?.remove("\$recording_status")
+
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+
+        queueExecutor.awaitExecution()
+        val sent = events(takeRequest(http)).single().properties()
+        assertNotNull(sent["\$sdk_debug_session_start"])
+        assertFalse(sent.containsKey("\$recording_status"))
+    }
+
+    @Test
+    fun `a second send of the same built event is a no-op`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { flushAt = 2 }
+        val event = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+        assertNull(sut.sendBuiltEventForWrapper(event))
+        assertNotNull(sut.sendBuiltEventForWrapper(assertNotNull(sut.buildEventForWrapper("next"))))
+
+        queueExecutor.awaitExecution()
+        assertEquals(listOf("tap", "next"), events(takeRequest(http)).map { it["event"] })
+    }
+
+    @Test
+    fun `send skips the person properties for flags after the user changed`() {
+        val prefs = PostHogMemoryPreferences()
+        val sut = getSut(httpServers.mockHttp()) { cachePreferences = prefs }
+        val event = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        sut.reset()
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+
+        assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
     }
 }

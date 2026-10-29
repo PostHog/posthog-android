@@ -586,7 +586,10 @@ public interface PostHogInterface : PostHogCoreInterface {
      * new uuid and timestamp. It doesn't run `beforeSend` and doesn't queue the event, so a wrapper
      * can run its own hook on the full event, then pass the result to [sendBuiltEventForWrapper].
      * It changes no SDK state, so a wrapper can drop the event: the current screen, the person
-     * properties used for flags and the replay debug window are updated by [sendBuiltEventForWrapper].
+     * properties used for flags, person processing turned on by [userProperties],
+     * [userPropertiesSetOnce] or [groups], and the replay debug window are updated by
+     * [sendBuiltEventForWrapper]. That send uses the event name passed here to decide whether the
+     * replay debug bundle applies, even if the wrapper's hook renamed the event.
      *
      * Returns null when the SDK wouldn't capture the event: disabled, opted out, an ignored
      * exception type, or a `$screen` event (not on the AI lane) without a non-blank `$screen_name`. Defaults to null.
@@ -621,8 +624,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * the event is sent, as for [capture].
      * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
      * Like [capture], it updates the person properties used for flags from `$set` and `$set_once`,
-     * caches a `$screen` event's `$screen_name` as the current screen, and may add the full replay
-     * debug bundle.
+     * caches a `$screen` event's `$screen_name` as the current screen, turns person processing on
+     * when the build had user properties or groups, and may add the replay debug bundle keys the
+     * event lacks. Keys the wrapper's hook removed aren't added back.
+     *
+     * The person properties for flags are skipped when `reset()` or `identify()` changed the user
+     * since the build. A second send of the same built event does nothing and returns null.
      *
      * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
      *
