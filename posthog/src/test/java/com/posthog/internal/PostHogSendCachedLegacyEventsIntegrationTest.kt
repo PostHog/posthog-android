@@ -163,7 +163,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     @Test
     fun `sends events from the legacy queue in batches`() {
         val prefix = writeLegacyFile(listOf(event, event))
-        val http = servers.mockHttp(2)
+        val http = servers.mockHttp(2, MockResponse().setBody("{\"results\":{}}"))
         getSut(prefix, http.url("/").toString(), maxBatchSize = 1).install(mock())
         executor.shutdownAndAwaitTermination()
         assertEquals(emptyList(), retained(prefix))
@@ -173,7 +173,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     @Test
     fun `send a valid event and discard a broken event`() {
         val prefix = writeLegacyFile(listOf("invalid event", event))
-        val http = servers.mockHttp(2)
+        val http = servers.mockHttp(2, MockResponse().setBody("{\"results\":{}}"))
         getSut(prefix, http.url("/").toString(), maxBatchSize = 1).install(mock())
         executor.shutdownAndAwaitTermination()
         assertEquals(emptyList(), retained(prefix))
