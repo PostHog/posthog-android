@@ -129,10 +129,6 @@ public class PostHog private constructor(
     private var lastReplayDebugPropertiesAt: Long? = null
     private var replayDebugClaimOutstanding = false
 
-    // The wrapper-built event carrying the replay debug bundle, whose send starts the window.
-    // Guarded by replayDebugPropertiesLock.
-    private var wrapperReplayDebugEventUuid: UUID? = null
-
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
     private var logsQueue: PostHogQueueInterface<PostHogLogRecord>? = null
@@ -674,7 +670,6 @@ public class PostHog private constructor(
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
                     replayDebugClaimOutstanding = false
-                    wrapperReplayDebugEventUuid = null
                 }
 
                 PostHogSessionManager.setOnSessionIdChangedListener(null)
@@ -1169,6 +1164,7 @@ public class PostHog private constructor(
         options: Map<String, Any?>?,
         aiLane: Boolean,
         claimReplayDebugBundle: () -> Boolean,
+        setFlagPersonProperties: Boolean = true,
     ): PreparedEvent? {
         if (!isEnabled()) {
             return null
@@ -1188,7 +1184,9 @@ public class PostHog private constructor(
         }
 
         // Automatically set person properties for feature flags during capture event
-        setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+        if (setFlagPersonProperties) {
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+        }
 
         if (newDistinctId.isBlank()) {
             config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
@@ -1321,46 +1319,34 @@ public class PostHog private constructor(
         ai: Boolean,
         timestamp: Date?,
     ): PostHogEvent? {
-        var claimedReplayDebugBundle = false
         try {
             if (!isEnabled()) {
                 return null
             }
+            // The wrapper may drop the event after this, so state changes wait for the send.
             val eventProperties =
                 if (!ai && event == PostHogEventName.SCREEN.event) {
                     val screenTitle = properties?.get("\$screen_name") as? String ?: return null
-                    screenProperties(screenTitle, properties) ?: return null
+                    screenProperties(screenTitle, properties, cacheScreenName = false) ?: return null
                 } else {
                     properties
                 }
-            val prepared =
-                prepareEvent(
-                    event,
-                    distinctId,
-                    eventProperties,
-                    userProperties,
-                    userPropertiesSetOnce,
-                    groups,
-                    timestamp,
-                    options,
-                    ai,
-                    claimReplayDebugBundle = { claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it } },
-                ) ?: return null
-            // The window starts when this event is queued, as for capture. The claim is released
-            // below, so another event may carry the bundle until then.
-            if (claimedReplayDebugBundle) {
-                synchronized(replayDebugPropertiesLock) {
-                    wrapperReplayDebugEventUuid = prepared.event.uuid
-                }
-            }
-            return prepared.event
+            return prepareEvent(
+                event,
+                distinctId,
+                eventProperties,
+                userProperties,
+                userPropertiesSetOnce,
+                groups,
+                timestamp,
+                options,
+                ai,
+                claimReplayDebugBundle = { false },
+                setFlagPersonProperties = false,
+            )?.event
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
-        } finally {
-            if (claimedReplayDebugBundle) {
-                releaseReplayDebugPropertiesClaim()
-            }
         }
     }
 
@@ -1369,6 +1355,7 @@ public class PostHog private constructor(
         event: PostHogEvent,
         ai: Boolean,
     ): UUID? {
+        var claimedReplayDebugBundle = false
         try {
             if (!isEnabled()) {
                 return null
@@ -1378,26 +1365,47 @@ public class PostHog private constructor(
                 return null
             }
             val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
-            val builtEvent = if (event.uuid == null) event.copy(uuid = uuid) else event
+            val properties = event.properties ?: mutableMapOf()
+            @Suppress("UNCHECKED_CAST")
+            setPersonPropertiesForFlagsIfNeeded(
+                properties["\$set"] as? Map<String, Any>,
+                properties["\$set_once"] as? Map<String, Any>,
+            )
+            if (!ai && event.event == PostHogEventName.SCREEN.event) {
+                (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
+            }
+            // The build added only the required replay debug keys. The full bundle is claimed here,
+            // so a built event the wrapper drops never holds or starts the window.
+            if (isReplayDebugEvent(event.event)) {
+                val debugProperties =
+                    sdkDebugProperties(properties["\$session_id"] as? String, event.timestamp) {
+                        claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
+                    }
+                if (claimedReplayDebugBundle) {
+                    debugProperties.forEach { (key, value) -> properties.putIfAbsent(key, value) }
+                }
+            }
+            val builtEvent = if (event.uuid == null || event.properties == null) event.copy(uuid = uuid, properties = properties) else event
             // Copied before the hooks run, which can change the map in place.
             val handlerProperties =
-                if (surveysHandler != null || sessionReplayHandler != null) builtEvent.properties?.toMap() ?: emptyMap() else emptyMap()
+                if (surveysHandler != null || sessionReplayHandler != null) properties.toMap() else emptyMap()
             val postHogEvent = runBeforeSend(builtEvent, uuid)
             if (postHogEvent == null) {
                 logDroppedEvent(builtEvent.event)
                 return null
             }
             return enqueueEvent(postHogEvent, builtEvent.event, handlerProperties, ai) {
-                synchronized(replayDebugPropertiesLock) {
-                    if (wrapperReplayDebugEventUuid == uuid) {
-                        wrapperReplayDebugEventUuid = null
-                        lastReplayDebugPropertiesAt = currentTimeMillis()
-                    }
+                if (claimedReplayDebugBundle) {
+                    commitReplayDebugPropertiesWindow()
                 }
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
+        } finally {
+            if (claimedReplayDebugBundle) {
+                releaseReplayDebugPropertiesClaim()
+            }
         }
     }
 
@@ -1775,17 +1783,16 @@ public class PostHog private constructor(
     private fun screenProperties(
         screenTitle: String,
         properties: Map<String, Any>?,
+        cacheScreenName: Boolean = true,
     ): MutableMap<String, Any>? {
         val trimmedTitle = screenTitle.trim()
         if (trimmedTitle.isEmpty()) {
             return null
         }
 
-        if (lastScreenName != trimmedTitle) config.notifyIntegrationsChanged()
-
-        // Cache for capture-time context snapshot on log records and for the
-        // $screen_name auto-attach on subsequent events (see buildProperties).
-        this.lastScreenName = trimmedTitle
+        if (cacheScreenName) {
+            cacheScreenName(trimmedTitle)
+        }
 
         val props = mutableMapOf<String, Any>()
         properties?.let {
@@ -1795,6 +1802,13 @@ public class PostHog private constructor(
         // The title wins over a caller-supplied $screen_name, matching the cached value.
         props["\$screen_name"] = trimmedTitle
         return props
+    }
+
+    // Cache for capture-time context snapshot on log records and for the
+    // $screen_name auto-attach on subsequent events (see buildProperties).
+    private fun cacheScreenName(screenName: String) {
+        if (lastScreenName != screenName) config.notifyIntegrationsChanged()
+        this.lastScreenName = screenName
     }
 
     public override fun alias(

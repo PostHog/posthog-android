@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROPERTIES_FOR_FLAGS
 import com.posthog.internal.PostHogThreadFactory
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
@@ -194,13 +195,58 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
-    fun `build of a screen event caches its name for later events`() {
-        val sut = getSut(httpServers.mockHttp())
+    fun `a built event the wrapper drops leaves no state behind`() {
+        val prefs = PostHogMemoryPreferences()
+        val sut = getSut(httpServers.mockHttp()) { cachePreferences = prefs }
 
-        val screen = assertNotNull(sut.buildEventForWrapper("\$screen", properties = mapOf("\$screen_name" to " Home ")))
+        assertNotNull(
+            sut.buildEventForWrapper(
+                "\$screen",
+                properties = mapOf("\$screen_name" to "Home"),
+                userProperties = mapOf("plan" to "pro"),
+            ),
+        )
+        val next = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertFalse(next.properties!!.containsKey("\$screen_name"))
+        assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+    }
+
+    @Test
+    fun `send caches the screen name and the person properties for flags`() {
+        val prefs = PostHogMemoryPreferences()
+        val sut = getSut(httpServers.mockHttp()) { cachePreferences = prefs }
+        val screen =
+            assertNotNull(
+                sut.buildEventForWrapper(
+                    "\$screen",
+                    properties = mapOf("\$screen_name" to " Home "),
+                    userProperties = mapOf("plan" to "pro"),
+                ),
+            )
+
+        assertNotNull(sut.sendBuiltEventForWrapper(screen))
         val next = assertNotNull(sut.buildEventForWrapper("tap"))
 
         assertEquals("Home", screen.properties?.get("\$screen_name"))
         assertEquals("Home", next.properties?.get("\$screen_name"))
+        assertEquals(mapOf("plan" to "pro"), prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+    }
+
+    @Test
+    fun `the replay debug bundle is claimed at send`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { flushAt = 2 }
+        sut.startSession()
+        val first = assertNotNull(sut.buildEventForWrapper("\$first"))
+        val second = assertNotNull(sut.buildEventForWrapper("\$second"))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(first))
+        assertNotNull(sut.sendBuiltEventForWrapper(second))
+
+        queueExecutor.awaitExecution()
+        val (sentFirst, sentSecond) = events(takeRequest(http))
+        assertNotNull(sentFirst.properties()["\$sdk_debug_session_start"])
+        assertFalse(sentSecond.properties().containsKey("\$sdk_debug_session_start"))
     }
 }
