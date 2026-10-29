@@ -814,7 +814,9 @@ public class PostHogReplayIntegration(
             } else if (window.isSecure()) {
                 view.toSecureWireframe() ?: return false
             } else {
-                view.toWireframe() ?: return false
+                val tree = view.toWireframe() ?: return false
+                // The window can turn secure while the tree is walked.
+                if (window.isSecure()) view.toSecureWireframe() ?: return false else tree
             }
 
         // if the decorView has no backgroundColor, we use the theme color
