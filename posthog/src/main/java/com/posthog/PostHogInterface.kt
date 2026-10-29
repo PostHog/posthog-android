@@ -625,11 +625,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
      * Like [capture], it updates the person properties used for flags from `$set` and `$set_once`,
      * caches a `$screen` event's `$screen_name` as the current screen, turns person processing on
-     * when the build had user properties or groups, and may add the replay debug bundle keys the
-     * event lacks. Keys the wrapper's hook removed aren't added back.
+     * when the build had user properties or groups, and may add the replay debug values snapshotted
+     * at build that the event lacks. Keys the wrapper's hook removed aren't added back.
      *
-     * The person properties for flags are skipped when `reset()` or `identify()` changed the user
-     * since the build. A second send of the same built event does nothing and returns null.
+     * Person processing and the person properties for flags are skipped when `reset()` or
+     * `identify()` changed the user since the build. The event is dropped when this instance didn't
+     * build it, when `setup()` or `close()` ran since the build, or when it was already sent.
      *
      * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
      *

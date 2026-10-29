@@ -69,7 +69,8 @@ private val REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS =
 private val UNTHROTTLED_DEBUG_PROPERTY_KEYS =
     REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS + setOf("\$sdk_debug_pending_queue_size", "\$sdk_debug_error_capturing_properties")
 
-// Wrapper builds waiting for their send, and recent sends. A build the wrapper drops is evicted by newer ones.
+// Wrapper builds waiting for their send, and recent sends. A build the wrapper drops is evicted by
+// newer ones; an evicted build can no longer be sent.
 private const val MAX_TRACKED_WRAPPER_EVENTS = 1000
 
 private fun requiresPersonProcessing(
@@ -145,6 +146,11 @@ public class PostHog private constructor(
     // Keyed by event uuid in build order. Both guarded by pendingWrapperBuilds.
     private val pendingWrapperBuilds = LinkedHashMap<UUID, WrapperBuild>()
     private val sentWrapperEvents = LinkedHashSet<UUID>()
+
+    // Incremented by reset(), so a send can tell the user changed since the build even when
+    // reuseAnonymousId keeps the distinct id the same.
+    @Volatile
+    private var resetGeneration = 0L
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -405,6 +411,7 @@ public class PostHog private constructor(
 
                 applyBootstrapIfNeeded(config)
 
+                clearWrapperBuilds()
                 super.enabled = true
 
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
@@ -684,6 +691,7 @@ public class PostHog private constructor(
 
                 featureFlagsCalled.clear()
                 lastScreenName = null
+                clearWrapperBuilds()
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
                     replayDebugClaimOutstanding = false
@@ -1173,11 +1181,14 @@ public class PostHog private constructor(
     /**
      * What [buildEventForWrapper] decided from the call, read back by [sendBuiltEventForWrapper]:
      * the wrapper's hook can rename the event, and a build changes no SDK state.
+     * [deferredReplayDebug] holds the replay debug values from the build, sent only if the send
+     * claims the window; null when the event can't carry them.
      */
     private class WrapperBuild(
-        val replayDebugEligible: Boolean,
+        val deferredReplayDebug: Map<String, Any>?,
         val requiresPersonProcessing: Boolean,
         val sdkDistinctId: String,
+        val resetGeneration: Long,
     )
 
     /**
@@ -1385,11 +1396,21 @@ public class PostHog private constructor(
                     deferPersonProcessing = true,
                 )?.event ?: return null
             built.uuid?.let { uuid ->
+                // Snapshotted now, so a new session during the round trip doesn't change them.
+                val deferredReplayDebug =
+                    if (!ai && isReplayDebugEvent(event)) {
+                        sdkDebugProperties(built.properties?.get("\$session_id") as? String, built.timestamp) { true }
+                            .filterKeys { it !in UNTHROTTLED_DEBUG_PROPERTY_KEYS }
+                            .takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    }
                 val build =
                     WrapperBuild(
-                        replayDebugEligible = isReplayDebugEvent(event),
+                        deferredReplayDebug = deferredReplayDebug,
                         requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups),
                         sdkDistinctId = this.distinctId,
+                        resetGeneration = resetGeneration,
                     )
                 synchronized(pendingWrapperBuilds) {
                     pendingWrapperBuilds[uuid] = build
@@ -1402,6 +1423,12 @@ public class PostHog private constructor(
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
+        }
+    }
+
+    private fun clearWrapperBuilds() {
+        synchronized(pendingWrapperBuilds) {
+            pendingWrapperBuilds.clear()
         }
     }
 
@@ -1428,6 +1455,12 @@ public class PostHog private constructor(
                 config?.logger?.log("Event ${event.uuid} was already sent.")
                 return null
             }
+            // Builds are cleared on setup() and close() and kept per instance, so this also drops an
+            // event built by another instance or before a reconfigure.
+            if (build == null) {
+                config?.logger?.log("Event ${event.event} wasn't built by buildEventForWrapper on this setup, so it was dropped.")
+                return null
+            }
             if (!isEnabled()) {
                 return null
             }
@@ -1435,14 +1468,15 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return null
             }
-            if (build?.requiresPersonProcessing == true) {
+            // Person processing and flag person properties apply only while the SDK still has the
+            // identity the event was built for: after a reset() or identify(), it belongs to the previous one.
+            val sameIdentity = build.sdkDistinctId == this.distinctId && build.resetGeneration == resetGeneration
+            if (sameIdentity && build.requiresPersonProcessing) {
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
-            val uuid = event.uuid ?: TimeBasedEpochGenerator.generate()
+            val uuid = event.uuid
             val properties = event.properties ?: mutableMapOf()
-            // Skipped when reset() or identify() changed the user since the build: the event belongs
-            // to the previous one.
-            if (build == null || build.sdkDistinctId == this.distinctId) {
+            if (sameIdentity) {
                 @Suppress("UNCHECKED_CAST")
                 setPersonPropertiesForFlagsIfNeeded(
                     properties["\$set"] as? Map<String, Any>,
@@ -1452,24 +1486,20 @@ public class PostHog private constructor(
             if (!ai && event.event == PostHogEventName.SCREEN.event) {
                 (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
             }
-            // The build added only the required replay debug keys. The full bundle is claimed here,
-            // so a built event the wrapper drops never holds or starts the window. Eligibility comes
-            // from the name the event was built with, since the wrapper's hook can rename it.
-            if (build?.replayDebugEligible ?: isReplayDebugEvent(event.event)) {
-                val debugProperties =
-                    sdkDebugProperties(properties["\$session_id"] as? String, event.timestamp) {
-                        claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
-                    }
-                if (claimedReplayDebugBundle) {
-                    // Only the keys the build left out, so a key the wrapper's hook removed stays removed.
-                    debugProperties.forEach { (key, value) ->
-                        if (key !in UNTHROTTLED_DEBUG_PROPERTY_KEYS && !properties.containsKey(key)) {
-                            properties[key] = value
-                        }
+            // The build added only the required replay debug keys. The window is claimed here, so a
+            // built event the wrapper drops never holds or starts it. Eligibility and values come from
+            // the build, since the wrapper's hook can rename the event and the session can change.
+            val deferredReplayDebug = build.deferredReplayDebug
+            if (!ai && deferredReplayDebug != null && claimReplayDebugPropertiesWindow()) {
+                claimedReplayDebugBundle = true
+                // Only keys the event lacks, so the wrapper's values win.
+                deferredReplayDebug.forEach { (key, value) ->
+                    if (!properties.containsKey(key)) {
+                        properties[key] = value
                     }
                 }
             }
-            val builtEvent = if (event.uuid == null || event.properties == null) event.copy(uuid = uuid, properties = properties) else event
+            val builtEvent = if (event.properties == null) event.copy(properties = properties) else event
             // Copied before the hooks run, which can change the map in place.
             val handlerProperties =
                 if (surveysHandler != null || sessionReplayHandler != null) properties.toMap() else emptyMap()
@@ -2639,6 +2669,7 @@ public class PostHog private constructor(
         }
 
         config.notifyIntegrationsChanged()
+        resetGeneration++
         // Capture the logging-out identity before preferences are cleared, so the push token can be
         // unregistered for it and re-registered under the new anonymous id (decision 5/6).
         val previousDistinctId = distinctId

@@ -321,4 +321,69 @@ internal class PostHogWrapperEventTest {
 
         assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
     }
+
+    @Test
+    fun `send skips the person properties for flags after a reset that kept the anonymous id`() {
+        val prefs = PostHogMemoryPreferences()
+        val sut =
+            getSut(httpServers.mockHttp()) {
+                cachePreferences = prefs
+                reuseAnonymousId = true
+            }
+        val event = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        sut.reset()
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+
+        assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+    }
+
+    @Test
+    fun `send drops an event built by another instance`() {
+        val built = assertNotNull(getSut(httpServers.mockHttp()).buildEventForWrapper("tap"))
+        val other = getSut(httpServers.mockHttp())
+
+        assertNull(other.sendBuiltEventForWrapper(built))
+    }
+
+    @Test
+    fun `send drops an event built before the SDK was set up again`() {
+        val http = httpServers.mockHttp()
+        var setupConfig: PostHogConfig? = null
+        val sut = getSut(http) { setupConfig = this }
+        val built = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        sut.close()
+        sut.setup(assertNotNull(setupConfig))
+
+        assertNull(sut.sendBuiltEventForWrapper(built))
+    }
+
+    @Test
+    fun `send keeps the replay debug values from the build`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.startSession()
+        val built = assertNotNull(sut.buildEventForWrapper("\$first"))
+        sut.endSession()
+        Thread.sleep(5)
+        sut.startSession()
+
+        assertNotNull(sut.sendBuiltEventForWrapper(built))
+
+        queueExecutor.awaitExecution()
+        val sent = events(takeRequest(http)).single().properties()
+        assertNotNull(sent["\$sdk_debug_session_start"])
+    }
+
+    @Test
+    fun `send skips person processing after the user changed`() {
+        val sut = getSut(httpServers.mockHttp())
+        val identified = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        sut.reset()
+        assertNotNull(sut.sendBuiltEventForWrapper(identified))
+
+        assertEquals(false, assertNotNull(sut.buildEventForWrapper("tap")).options?.get("process_person_profile"))
+    }
 }
