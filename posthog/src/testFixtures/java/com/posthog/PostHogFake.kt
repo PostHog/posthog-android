@@ -82,6 +82,8 @@ public class PostHogFake : PostHogInterface {
     override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
     }
 
+    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription = PostHogFeatureFlagsSubscription {}
+
     override fun isFeatureEnabled(
         key: String,
         defaultValue: Boolean,

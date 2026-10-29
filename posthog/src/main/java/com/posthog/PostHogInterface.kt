@@ -142,6 +142,36 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
 
     /**
+     * Registers a callback that's invoked whenever feature flags are loaded or updated.
+     *
+     * On Android, the callback runs on the main thread, after the getters already return the new
+     * values. On the JVM, it runs on the SDK's background remote config thread. It's
+     * invoked after the SDK loads flags at startup (including from bootstrap values), after
+     * [reloadFeatureFlags], and after calls that reload flags such as [identify], [group] or [reset].
+     * If a load fails, [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last
+     * known flags. If flags have already loaded when you register, it's also invoked with the current
+     * values shortly afterwards.
+     *
+     * You can register before `setup()`, and the callback stays registered across `close()` and
+     * `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
+     *
+     * ```kotlin
+     * val subscription = PostHog.onFeatureFlags { loaded ->
+     *     if (loaded.variants["new-checkout"] == "test") {
+     *         // Show the test variant
+     *     }
+     * }
+     *
+     * // Later, stop listening
+     * subscription.unsubscribe()
+     * ```
+     *
+     * @param callback receives the enabled flags, their values, and whether loading failed
+     * @return a subscription; call [PostHogFeatureFlagsSubscription.unsubscribe] to stop receiving updates
+     */
+    public fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
+
+    /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key

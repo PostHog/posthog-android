@@ -24,6 +24,7 @@ import com.posthog.surveys.PostHogSurveysConfig
 import okhttp3.OkHttpClient
 import java.net.Proxy
 import java.util.UUID
+import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
 /**
@@ -489,6 +490,13 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var sampleRateProvider: (() -> Double?)? = null
+
+    /**
+     * Runs the [PostHog.onFeatureFlags] listeners. Set by platform-specific modules (e.g., Android)
+     * to deliver them on the main thread. When null, they run on the SDK's remote config thread.
+     */
+    @PostHogInternal
+    public var featureFlagsListenerExecutor: Executor? = null
 
     /**
      * Reference to the PostHogRemoteConfig instance, set during setup.
