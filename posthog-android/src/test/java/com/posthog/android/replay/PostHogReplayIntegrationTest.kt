@@ -15,10 +15,12 @@ import android.util.Base64
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -4325,6 +4327,49 @@ internal class PostHogReplayIntegrationTest {
             DrawSequenceShadowPixelCopy.onRequest = null
             h.child.setHasTransientState(false)
             h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `the discard check treats as maskable exactly what the mask walk masks`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val root = FrameLayout(activity)
+            activity.setContentView(root)
+            val views =
+                listOf(
+                    View(activity),
+                    View(activity).apply { tag = "ph-no-capture" },
+                    TextView(activity),
+                    TextView(activity).apply { text = "secret" },
+                    TextView(activity).apply {
+                        text = "secret"
+                        tag = "ph-no-mask"
+                    },
+                    ImageView(activity).apply { setImageBitmap(Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)) },
+                    FrameLayout(activity).apply { addView(TextView(activity).apply { text = "secret" }) },
+                    FrameLayout(activity).apply { addView(View(activity)) },
+                )
+            views.forEach { root.addView(it) }
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activity.window.decorView)
+            root.layout(0, 0, 100, 100)
+            views.forEach { view ->
+                view.layout(0, 0, 100, 20)
+                (view as? ViewGroup)?.getChildAt(0)?.layout(0, 0, 100, 20)
+            }
+
+            val maskedByWalk =
+                views.map { view ->
+                    PostHogReplayIntegration.MaskWalk(failClosed = false).also { fx.sut.findMaskableWidgets(view, it) }.rects.isNotEmpty()
+                }
+            val maskableForDiscard = views.map { with(fx.sut) { it.hasMaskableContent(PostHogReplayIntegration.MaskWalk()) } }
+
+            assertEquals(listOf(false, true, false, true, false, true, true, false), maskedByWalk)
+            assertEquals(maskedByWalk, maskableForDiscard)
+        } finally {
+            fx.sut.uninstall()
         }
     }
 
