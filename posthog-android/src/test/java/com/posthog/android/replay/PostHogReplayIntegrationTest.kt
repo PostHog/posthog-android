@@ -3164,6 +3164,38 @@ internal class PostHogReplayIntegrationTest {
                 RecordingShadowPixelCopy.reset()
             }
         }
+
+        @Test
+        @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+        @GraphicsMode(GraphicsMode.Mode.NATIVE)
+        fun `a window that turns secure during the copy is recorded fully masked`() {
+            val h = captureHarness()
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = {
+                it.eraseColor(Color.WHITE)
+                // Without a relayout, so the copy isn't discarded as a redraw.
+                h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            }
+            try {
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+
+                assertEquals(1, RecordingShadowPixelCopy.requests.size)
+                val bitmap = screenshotBitmap(h.fake)
+                try {
+                    for (x in 0 until bitmap.width) {
+                        for (y in 0 until bitmap.height) {
+                            val pixel = bitmap.getPixel(x, y)
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        }
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
     }
 
     @RunWith(ParameterizedRobolectricTestRunner::class)
