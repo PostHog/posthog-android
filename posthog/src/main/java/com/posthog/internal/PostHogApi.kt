@@ -181,15 +181,17 @@ public class PostHogApi(
      * Sends analytics events to capture v1 (`POST /i/v1/analytics/events`).
      *
      * Returns the uuids of the events the 2xx response asked to retry, with the `Retry-After` it
-     * sent; every other event in [events] was delivered or dropped and must not be sent again. A 2xx
-     * whose per-event results can't be read, including a transfer that failed after the status
-     * arrived, counts as delivered: the server already stored its events and a resend would store
-     * them again.
+     * sent; every other event in [events] was delivered or dropped and must not be sent again.
+     *
+     * A 2xx whose body can't be read as `{"results": {...}}`, including a transfer that failed after
+     * the status arrived, is a terminal failure of the whole batch: it throws a [PostHogApiError]
+     * with that 2xx status, which the queue doesn't retry.
      *
      * Only a 307 or 308 to the origin of [PostHogConfig.host] is followed, at most 5 times, with
      * the same body and headers; any other redirect is a terminal [PostHogApiError].
      *
-     * Throws [PostHogApiError] for a non-2xx status and [IOException] for a transport failure.
+     * Throws [PostHogApiError] for a non-2xx status or unreadable results, and [IOException] for a
+     * transport failure before the status.
      */
     @Throws(PostHogApiError::class, IOException::class)
     internal fun captureV1(events: List<PostHogEvent>): SendResult = postCaptureV1(CAPTURE_V1_ANALYTICS_PATH, events, captureClient)
@@ -309,7 +311,8 @@ public class PostHogApi(
 
     /**
      * Reads the per-event results of a 2xx and records which events, if any, the next request
-     * retries under the same identity. A non-2xx is thrown; a terminal one also drops the identity.
+     * retries under the same identity. A non-2xx is thrown; a terminal one also drops the identity,
+     * as does a 2xx without readable results, which is thrown as a terminal failure.
      */
     @Throws(PostHogApiError::class)
     private fun captureV1Result(
@@ -325,11 +328,13 @@ public class PostHogApi(
             throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
         }
 
+        // Counts only: the body may name event uuids.
         val results = readCaptureV1Results(response)
         if (results == null) {
-            config.logger.log(
-                "Capture returned ${response.code} without readable per-event results, treating ${events.size} events as delivered.",
-            )
+            clearCaptureV1Retry(path, identity)
+            val message = "Capture returned ${response.code} without readable per-event results, dropping ${events.size} events."
+            config.logger.log(message)
+            throw PostHogApiError(response.code, message, null)
         }
 
         val retryUuids = mutableSetOf<String>()
@@ -338,7 +343,7 @@ public class PostHogApi(
         // Events missing from the results count as delivered. The uuids are read once, so a repeated
         // uuid's later copies (`duplicates_dropped`) are counted, not given the kept copy's verdict.
         for (uuid in events.mapNotNullTo(LinkedHashSet()) { it.uuid?.toString() }) {
-            val entry = results?.get(uuid) as? Map<*, *> ?: continue
+            val entry = results[uuid] as? Map<*, *> ?: continue
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
                 "drop" -> dropped++
