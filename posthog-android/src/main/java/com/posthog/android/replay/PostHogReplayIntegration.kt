@@ -451,13 +451,13 @@ public class PostHogReplayIntegration(
     // Main thread only, like the window callbacks that add and remove these interceptors.
     private val touchInterceptors = WeakHashMap<Window, TouchEventInterceptor>()
 
-    // A FLAG_SECURE window is recorded fully masked in screenshot mode, so its touches aren't
-    // recorded either. The flag is read per touch because apps toggle it at runtime.
+    // A FLAG_SECURE window is recorded fully masked, so its touches aren't recorded either.
+    // The flag is read per touch because apps toggle it at runtime.
     internal fun touchInterceptor(window: Window): TouchEventInterceptor =
         touchInterceptors.getOrPut(window) {
             val windowRef = WeakReference(window)
             TouchEventInterceptor { motionEvent, dispatch ->
-                if (isScreenshotCapable && windowRef.get()?.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
+                if (windowRef.get()?.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
                     dispatch(motionEvent)
                 } else {
                     onTouchEventListener.intercept(motionEvent, dispatch)
@@ -811,6 +811,8 @@ public class PostHogReplayIntegration(
                     window,
                     status.drawState,
                 ) ?: return false
+            } else if (window.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
+                view.toSecureWireframe() ?: return false
             } else {
                 view.toWireframe() ?: return false
             }
@@ -2085,6 +2087,25 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         return this.isTextInputSensitive(ancestorUnmasked)
+    }
+
+    // A FLAG_SECURE window is recorded as one black rectangle, with nothing from its view tree.
+    private fun View.toSecureWireframe(): RRWireframe? {
+        if (!isVisible()) {
+            return null
+        }
+        val coordinates = IntArray(2)
+        if (isViewStateStableForMatrixOperations()) {
+            getLocationOnScreen(coordinates)
+        }
+        return RRWireframe(
+            id = System.identityHashCode(this),
+            x = coordinates[0].densityValue(screenDensity),
+            y = coordinates[1].densityValue(screenDensity),
+            width = width.densityValue(screenDensity),
+            height = height.densityValue(screenDensity),
+            style = RRStyle().apply { backgroundColor = "#000000" },
+        )
     }
 
     private fun View.toWireframe(

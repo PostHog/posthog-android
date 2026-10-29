@@ -36,7 +36,7 @@ public class PostHogSessionReplayConfig
          * By default Session replay will capture all the views on the screen as a wireframe,
          * By enabling this option, PostHog will capture the screenshot of the screen.
          * The screenshot may contain sensitive information, use with caution.
-         * Windows that set `FLAG_SECURE` are recorded as a solid black frame, and their touches are not recorded.
+         * In both modes, windows that set `FLAG_SECURE` are recorded as a solid black frame, and their touches are not recorded.
          */
         public var screenshot: Boolean = false,
         /**
