@@ -276,7 +276,7 @@ internal class PostHogTest {
             )
 
         assertTrue(sut.isOptOut())
-        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the project token is required") })
+        assertTrue(logger.warnings.any { it.contains("PostHog SDK is disabled because the project token is required") })
 
         sut.close()
     }
@@ -297,7 +297,7 @@ internal class PostHogTest {
             )
 
         assertTrue(sut.isOptOut())
-        assertTrue(logger.messages.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
+        assertTrue(logger.warnings.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
 
         sut.close()
     }
