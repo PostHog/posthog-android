@@ -23,6 +23,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.internal.PostHogDateProvider
+import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogRemoteConfig
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.replay.RRFullSnapshotEvent
@@ -34,9 +35,11 @@ import org.junit.runner.RunWith
 import org.mockito.MockedStatic
 import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
@@ -277,6 +280,41 @@ internal class PostHogReplaySceneSchedulingTest {
         roots.add(decor)
         shadowOf(Looper.getMainLooper()).idle()
         return dialog
+    }
+
+    @Test
+    fun `posted scene selection failure is logged and a later capture succeeds`() {
+        start()
+        drain()
+        val captures = fake.captures
+        val copies = ScenePixelCopy.copies
+        val logger = mock<PostHogLogger>()
+        config.logger = logger
+        var failSelection = true
+        curtains.`when`<List<View>> { Curtains.rootViews }.thenAnswer {
+            check(!failSelection) { "Window roots unavailable" }
+            roots
+        }
+        try {
+            // The registered root callback posts selection to the real main Handler.
+            showDialog()
+            assertEquals(captures, fake.captures)
+            assertEquals(copies, ScenePixelCopy.copies)
+            assertTrue(executor.tasks.isEmpty())
+            verify(logger, atLeastOnce()).log(
+                "Session Replay scene capture request failed: java.lang.IllegalStateException: Window roots unavailable.",
+            )
+        } finally {
+            failSelection = false
+        }
+
+        activityStatus.listener.onDraw()
+        drain()
+        assertEquals(captures + 1, fake.captures)
+        val events = fake.properties!!["\$snapshot_data"] as List<*>
+        val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
+        val scene = (snapshot.data as Map<*, *>)["wireframes"] as List<*>
+        assertEquals(listOf("screenshot", "rectangle", "screenshot"), scene.map { (it as RRWireframe).type })
     }
 
     private fun timeoutDialogCopy(): Dialog {
