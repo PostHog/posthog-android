@@ -577,4 +577,68 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Builds the event that [capture] (or [captureAi] when [ai] is true) would send: the same
+     * checks, SDK and registered properties, per-call values, session, screen and options, with a
+     * new uuid and timestamp. It doesn't run `beforeSend` and doesn't queue the event, so a wrapper
+     * can run its own hook on the full event, then pass the result to [sendBuiltEventForWrapper].
+     * It changes no SDK state, so a wrapper can drop the event: the current screen, the person
+     * properties used for flags, person processing turned on by [userProperties],
+     * [userPropertiesSetOnce] or [groups], and the replay debug window are updated by
+     * [sendBuiltEventForWrapper]. That send uses the event name passed here to decide whether the
+     * replay debug bundle applies, even if the wrapper's hook renamed the event.
+     *
+     * Returns null when the SDK wouldn't capture the event: disabled, opted out, an ignored
+     * exception type, or a `$screen` event (not on the AI lane) without a non-blank `$screen_name`. Defaults to null.
+     *
+     * ```kotlin
+     * val event = PostHog.buildEventForWrapper("purchase", properties = mapOf("plan" to "pro"))
+     *     ?: return
+     * PostHog.sendBuiltEventForWrapper(wrapperBeforeSend(event) ?: return)
+     * ```
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun buildEventForWrapper(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        options: Map<String, Any?>? = null,
+        ai: Boolean = false,
+        timestamp: Date? = null,
+    ): PostHogEvent? = null
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Sends an event from [buildEventForWrapper] without adding properties again: runs the native
+     * `beforeSend` chain, then queues it on the analytics lane, or the AI lane when [ai] is true.
+     * The event keeps its uuid and timestamp. Legacy option properties are moved into options when
+     * the event is sent, as for [capture].
+     * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
+     * Like [capture], it updates the person properties used for flags from `$set` and `$set_once`,
+     * caches a `$screen` event's `$screen_name` as the current screen, turns person processing on
+     * when the build had user properties or groups, and may add the replay debug values snapshotted
+     * at build that the event lacks. Keys the wrapper's hook removed aren't added back.
+     *
+     * Person processing and the person properties for flags are skipped when `reset()` or
+     * `identify()` changed the user since the build. The event is dropped when this instance didn't
+     * build it, when `setup()` or `close()` ran since the build, or when it was already sent.
+     *
+     * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun sendBuiltEventForWrapper(
+        event: PostHogEvent,
+        ai: Boolean = false,
+    ): UUID? = null
 }
