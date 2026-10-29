@@ -252,7 +252,12 @@ public class PostHogReplayIntegration(
         if (classifyLegacyDraw) {
             val isOnlyAnimationRedraw =
                 !drawState.didLayoutSinceReset &&
-                    (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
+                    // The surface scan walks the whole tree, so it runs only while a legacy
+                    // capture can read the verdict; beginLegacyCapture resets it anyway.
+                    (
+                        view.hasTransientState() ||
+                            (drawState.isLegacyCaptureActive && view.hasActiveSurfaceRendering())
+                    ) &&
                     !view.isAnimationRunning()
             drawState.recordLegacyAnimationRedraw(isOnlyAnimationRedraw)
         }

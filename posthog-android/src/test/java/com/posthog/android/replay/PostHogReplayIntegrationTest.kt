@@ -14,6 +14,7 @@ import android.os.Looper
 import android.util.Base64
 import android.view.MotionEvent
 import android.view.PixelCopy
+import android.view.SurfaceView
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
@@ -4136,6 +4137,48 @@ internal class PostHogReplayIntegrationTest {
             h.hookLayout.setHasTransientState(false)
             DrawSequenceShadowPixelCopy.onRequest = null
             h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `draws outside a legacy capture skip the surface scan`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = CountingChildFrameLayout(activity).apply { addView(View(activity)) }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+            val walkCountAfterFirstDraw = root.childWalkCount
+
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a surface redraw during a legacy capture is animation only`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val surface = SurfaceView(activity)
+            val root = FrameLayout(activity).apply { addView(surface) }
+            surface.layout(0, 0, 100, 100)
+            val drawState = WindowDrawState()
+            drawState.beginLegacyCapture()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
+        } finally {
+            fx.sut.uninstall()
         }
     }
 
