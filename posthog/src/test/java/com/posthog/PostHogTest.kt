@@ -2188,6 +2188,8 @@ internal class PostHogTest {
             getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
                 if (it.event == "blanked") it.copy(event = "") else it
             })
+        val logger = TestLogger()
+        config.logger = logger
 
         sut.capture("")
         sut.capture("blanked")
@@ -2197,6 +2199,8 @@ internal class PostHogTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(EVENT, serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.single().event)
+        assertEquals(1, logger.messages.count { it == "Dropping an event with an empty name." })
+        assertTrue(logger.messages.none { it.contains("was dropped") })
 
         sut.close()
     }

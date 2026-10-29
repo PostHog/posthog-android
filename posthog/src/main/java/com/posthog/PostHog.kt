@@ -1210,6 +1210,9 @@ public class PostHog private constructor(
                 config?.logger?.log(message)
                 return null
             }
+            if (isEmptyNameDropped(postHogEvent)) {
+                return null
+            }
             // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
             isSnapshotEvent = !aiLane && postHogEvent.event == PostHogEventName.SNAPSHOT.event
             // if this is a $snapshot event and $session_id is missing, don't process then event

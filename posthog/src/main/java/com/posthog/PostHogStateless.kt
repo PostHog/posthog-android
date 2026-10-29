@@ -322,6 +322,9 @@ public open class PostHogStateless protected constructor(
                 config?.logger?.log(message)
                 return
             }
+            if (isEmptyNameDropped(postHogEvent)) {
+                return
+            }
 
             queue?.add(postHogEvent)
         } catch (e: Throwable) {
@@ -370,15 +373,21 @@ public open class PostHogStateless protected constructor(
             eventChecked = eventChecked.copy(uuid = uuid)
         }
 
-        // Capture drops an event with an empty name, so it's dropped here, after beforeSend too.
-        if (eventChecked.event.isEmpty()) {
-            if (warnedEmptyEventName.compareAndSet(false, true)) {
-                config?.logger?.log("Dropping an event with an empty name.")
-            }
-            return null
-        }
-
         return eventChecked
+    }
+
+    /**
+     * Capture drops an event with an empty name, so the SDK drops it before queueing, after
+     * beforeSend too. Logs only the first drop, with no event name.
+     */
+    internal fun isEmptyNameDropped(event: PostHogEvent): Boolean {
+        if (event.event.isNotEmpty()) {
+            return false
+        }
+        if (warnedEmptyEventName.compareAndSet(false, true)) {
+            config?.logger?.log("Dropping an event with an empty name.")
+        }
+        return true
     }
 
     public override fun optIn() {
