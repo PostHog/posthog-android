@@ -171,6 +171,12 @@ public class PostHogReplayIntegration(
         val bitmapConfig: Bitmap.Config,
         val maskAllTextInputs: Boolean,
         val maskAllImages: Boolean,
+        val maskRects: List<Rect>?,
+    )
+
+    private data class Screenshot(
+        val wireframe: RRWireframe,
+        val maskRects: List<Rect>?,
     )
 
     private data class SceneMetadata(
@@ -586,6 +592,7 @@ public class PostHogReplayIntegration(
         val maskAllTextInputs = config.sessionReplayConfig.maskAllTextInputs
         val maskAllImages = config.sessionReplayConfig.maskAllImages
         val scene = mutableListOf<RRWireframe>()
+        val sceneMasks = IdentityHashMap<View, List<Rect>>()
 
         fun maskingSettingsChanged(): Boolean =
             config.sessionReplayConfig.maskAllTextInputs != maskAllTextInputs ||
@@ -614,13 +621,27 @@ public class PostHogReplayIntegration(
             // Older dialog surfaces cannot be aligned with decor-coordinate masks. Recheck
             // privacy on every scene capture rather than reusing a previously unmasked image.
             val recheckDialogMasks = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
+            // View tags and semantics can change without a draw. Only reuse pixels whose
+            // current mask geometry still matches their capture baseline. Legacy dialogs
+            // already perform a fresh privacy check and may use a whole-window mask.
+            val maskRects =
+                if (recheckDialogMasks) {
+                    null
+                } else {
+                    runOnMainThreadBlocking { layer.view.collectSceneMaskRects() }
+                        ?: run {
+                            restoreDirty(layer)
+                            return false
+                        }
+                }
             val image =
                 if (!recheckDialogMasks && !dirty && cached != null &&
                     cached.windowWidth == layer.width && cached.windowHeight == layer.height &&
                     cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig &&
-                    cached.maskAllTextInputs == maskAllTextInputs && cached.maskAllImages == maskAllImages
+                    cached.maskAllTextInputs == maskAllTextInputs && cached.maskAllImages == maskAllImages &&
+                    cached.maskRects == maskRects
                 ) {
-                    cached.wireframe
+                    Screenshot(cached.wireframe, cached.maskRects)
                 } else {
                     val drawState = layer.status.drawState
                     // The Activity owns the scene worker; dialogs also need their own copy gate.
@@ -633,7 +654,7 @@ public class PostHogReplayIntegration(
                         return false
                     }
                     try {
-                        layer.view.toScreenshotWireframe(
+                        layer.view.captureScreenshot(
                             layer.window,
                             drawState,
                             isDialog = isDialog,
@@ -649,7 +670,7 @@ public class PostHogReplayIntegration(
                     }
                 }
             val positioned =
-                image.copy(
+                image.wireframe.copy(
                     id = id,
                     x = layer.x.densityValue(screenDensity),
                     y = layer.y.densityValue(screenDensity),
@@ -662,7 +683,8 @@ public class PostHogReplayIntegration(
                         if (!isActive() || snapshotGeneration != generation ||
                             PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
-                            layer.view.width != layer.width || layer.view.height != layer.height || maskingSettingsChanged()
+                            layer.view.width != layer.width || layer.view.height != layer.height || maskingSettingsChanged() ||
+                            (image.maskRects != null && layer.view.collectSceneMaskRects() != image.maskRects)
                         ) {
                             return@runOnMainThreadBlocking false
                         }
@@ -677,6 +699,7 @@ public class PostHogReplayIntegration(
                                 bitmapConfig,
                                 maskAllTextInputs,
                                 maskAllImages,
+                                image.maskRects,
                             )
                         true
                     }
@@ -686,6 +709,7 @@ public class PostHogReplayIntegration(
                 return false
             }
             scene.add(positioned)
+            image.maskRects?.let { sceneMasks[layer.view] = it }
         }
 
         // Android applies the topmost requesting window's dim to the scene beneath it.
@@ -717,7 +741,8 @@ public class PostHogReplayIntegration(
                         layers.any { layer ->
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
                                 layer.view.width != layer.width || layer.view.height != layer.height
-                        } || layers.drop(1).any { it.window.attributes.alpha != it.windowAlpha } || maskingSettingsChanged()
+                        } || layers.drop(1).any { it.window.attributes.alpha != it.windowAlpha } || maskingSettingsChanged() ||
+                        sceneMasks.any { (view, rects) -> view.collectSceneMaskRects() != rects }
                     ) {
                         return@runOnMainThreadBlocking null
                     }
@@ -759,6 +784,15 @@ public class PostHogReplayIntegration(
             }
         captureSnapshotEvents(postHog, events, sessionId)
         return true
+    }
+
+    // Called on main, including for cached windows. A partial or failed walk cannot
+    // establish that a previously redacted image is still safe to reuse.
+    private fun View.collectSceneMaskRects(): List<Rect>? {
+        if (isRenderedButUnplaceable()) return null
+        val walk = MaskWalk()
+        findMaskableWidgets(this, walk)
+        return walk.rects.takeUnless { walk.poisoned || walk.aborted }
     }
 
     private val onRootViewsChangedListener =
@@ -2204,7 +2238,7 @@ public class PostHogReplayIntegration(
         armedCapture: ArmedMaskCapture,
         sourceWidth: Int,
         sourceHeight: Int,
-    ): Boolean {
+    ): List<Rect>? {
         val postWalk =
             runOnMainThreadBlocking {
                 if (width != sourceWidth || height != sourceHeight) {
@@ -2215,7 +2249,7 @@ public class PostHogReplayIntegration(
                         findMaskableWidgets(this, it)
                     }
                 }
-            } ?: return false
+            } ?: return null
 
         val captureAligned =
             drawState.finishMaskCapture(
@@ -2228,9 +2262,9 @@ public class PostHogReplayIntegration(
         ) {
             // Masks may be out of sync with the pixels, discard to avoid a PII leak.
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
-            return false
+            return null
         }
-        return bitmap.paintScreenshotMasks(postWalk.rects, sourceWidth, sourceHeight)
+        return postWalk.rects.takeIf { bitmap.paintScreenshotMasks(it, sourceWidth, sourceHeight) }
     }
 
     private fun View.maskLegacyScreenshot(
@@ -2238,14 +2272,21 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState,
         sourceWidth: Int,
         sourceHeight: Int,
-    ): Boolean {
+    ): Boolean = paintLegacyScreenshotMasks(bitmap, drawState, sourceWidth, sourceHeight) != null
+
+    private fun View.paintLegacyScreenshotMasks(
+        bitmap: Bitmap,
+        drawState: WindowDrawState,
+        sourceWidth: Int,
+        sourceHeight: Int,
+    ): List<Rect>? {
         val unsafeRedraw = {
             width != sourceWidth || height != sourceHeight ||
                 (drawState.isOnDrawnCalled && !drawState.isOnlyAnimationRedraw)
         }
         if (unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
-            return false
+            return null
         }
 
         val walk =
@@ -2253,23 +2294,25 @@ public class PostHogReplayIntegration(
                 MaskWalk(failClosed = false, shouldAbort = unsafeRedraw).also {
                     findMaskableWidgets(this, it)
                 }
-            } ?: return false
+            } ?: return null
         if (walk.aborted || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
-            return false
+            return null
         }
         if (walk.poisoned) {
             config.logger.log("Session Replay screenshot discarded: a view with content to mask is animating or in a transient state.")
             return false
         }
 
-        return bitmap.paintScreenshotMasks(walk.rects, sourceWidth, sourceHeight) {
-            val safe = !unsafeRedraw()
-            if (!safe) {
-                config.logger.log("Session Replay screenshot discarded due to screen changes.")
+        val painted =
+            bitmap.paintScreenshotMasks(walk.rects, sourceWidth, sourceHeight) {
+                val safe = !unsafeRedraw()
+                if (!safe) {
+                    config.logger.log("Session Replay screenshot discarded due to screen changes.")
+                }
+                safe
             }
-            safe
-        }
+        return walk.rects.takeIf { painted }
     }
 
     private class PixelCopyRequestState {
@@ -2348,8 +2391,6 @@ public class PostHogReplayIntegration(
         val secure: Boolean,
     )
 
-    // PixelCopy is only API >= 24 but this is already protected by the isSupported method
-    @SuppressLint("NewApi")
     private fun View.toScreenshotWireframe(
         window: Window,
         drawState: WindowDrawState,
@@ -2360,7 +2401,21 @@ public class PostHogReplayIntegration(
                 PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
             },
         windowAlpha: Float = 1f,
-    ): RRWireframe? {
+    ): RRWireframe? = captureScreenshot(window, drawState, isDialog, bitmapConfig, windowAlpha)?.wireframe
+
+    // Window PixelCopy requires API 26; replay capture is gated by isSupported.
+    @SuppressLint("NewApi")
+    private fun View.captureScreenshot(
+        window: Window,
+        drawState: WindowDrawState,
+        isDialog: Boolean = false,
+        bitmapConfig: Bitmap.Config =
+            when (config.sessionReplayConfig.screenshotColorMode) {
+                PostHogScreenshotColorMode.ARGB_8888 -> Bitmap.Config.ARGB_8888
+                PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
+            },
+        windowAlpha: Float = 1f,
+    ): Screenshot? {
         val view = this
         val geometry =
             runOnMainThreadBlocking {
@@ -2407,6 +2462,7 @@ public class PostHogReplayIntegration(
         val (copyWidth, copyHeight) = copySize ?: (targetWidth to targetHeight)
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         var base64: String? = null
+        var paintedMasks: List<Rect>? = null
 
         // FLAG_SECURE asks that the window never be captured, so it's recorded as one mask
         // without copying its pixels.
@@ -2451,11 +2507,11 @@ public class PostHogReplayIntegration(
         if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             recordScreenshotDiscarded(drawState)
-            return if (maskWholeDialog) maskedDialog() else null
+            return if (maskWholeDialog) Screenshot(maskedDialog(), null) else null
         }
         if (maskWholeDialog && armedCapture!!.preWalk.rects.isNotEmpty()) {
             finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
-            return maskedDialog()
+            return Screenshot(maskedDialog(), null)
         }
 
         if (sourceWidth <= 0 || sourceHeight <= 0 || view.width != sourceWidth || view.height != sourceHeight) {
@@ -2508,12 +2564,13 @@ public class PostHogReplayIntegration(
                             }
                             config.logger.log("Session Replay PixelCopy failed: $copyResult.")
                         } else if (!requestState.isAbandoned()) {
-                            succeeded =
+                            paintedMasks =
                                 if (armedCapture != null) {
                                     view.maskVerifiedScreenshot(bitmap, drawState, armedCapture, sourceWidth, sourceHeight)
                                 } else {
-                                    view.maskLegacyScreenshot(bitmap, drawState, sourceWidth, sourceHeight)
+                                    view.paintLegacyScreenshotMasks(bitmap, drawState, sourceWidth, sourceHeight)
                                 }
+                            succeeded = paintedMasks != null
                         }
                     } catch (e: Throwable) {
                         config.logger.log("Session Replay PixelCopy failed: $e.")
@@ -2606,19 +2663,22 @@ public class PostHogReplayIntegration(
         // instead; the caller retries on the next capture.
         if (base64 == null) {
             recordScreenshotDiscarded(drawState)
-            return if (maskWholeDialog) maskedDialog() else null
+            return if (maskWholeDialog) Screenshot(maskedDialog(), null) else null
         }
         drawState.resetScreenshotDiscards()
 
-        return RRWireframe(
-            id = viewId,
-            x = x,
-            y = y,
-            width = width,
-            height = height,
-            type = "screenshot",
-            base64 = base64,
-            style = RRStyle(),
+        return Screenshot(
+            RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                type = "screenshot",
+                base64 = base64,
+                style = RRStyle(),
+            ),
+            paintedMasks,
         )
     }
 
