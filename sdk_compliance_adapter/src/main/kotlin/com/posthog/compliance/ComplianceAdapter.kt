@@ -220,6 +220,8 @@ class TrackingInterceptor : Interceptor {
             try {
                 // PostHog-Attempt starts at 1; the harness counts retries from 0.
                 val retryCount = (request.header("PostHog-Attempt")?.toIntOrNull() ?: 1) - 1
+                // Read before taking the lock, so a slow body can't stall /state, /reset or the other lane.
+                val retried = if (response.isSuccessful) retriedCount(response, uuidList) else 0
 
                 AdapterContext.lock.withLock {
                     val record =
@@ -235,7 +237,7 @@ class TrackingInterceptor : Interceptor {
 
                     if (response.isSuccessful) {
                         // Events the server asks to retry stay queued and count once a later request delivers them.
-                        val delivered = eventCount - retriedCount(response, uuidList)
+                        val delivered = eventCount - retried
                         AdapterContext.state.totalEventsSent += delivered
                         AdapterContext.state.pendingEvents = maxOf(0, AdapterContext.state.pendingEvents - delivered)
                     }
@@ -254,18 +256,26 @@ class TrackingInterceptor : Interceptor {
     }
 }
 
-// How many of [uuids] the capture v1 per-event results ask to retry. Peeks so the SDK still reads the body.
+// How many of [uuids] the capture v1 per-event results ask to retry. Peeks so the SDK still reads the
+// body, within a deadline so a body that trickles in can't hold the request.
 private fun retriedCount(
     response: Response,
     uuids: List<String>,
-): Int =
-    try {
+): Int {
+    val timeout = response.body?.source()?.timeout()
+    timeout?.deadline(RESPONSE_PEEK_DEADLINE_SECONDS, TimeUnit.SECONDS)
+    return try {
         val body = response.peekBody(1024 * 1024).string()
         val results = JsonParser.parseString(body).asJsonObject.getAsJsonObject("results")
         uuids.count { uuid -> results?.getAsJsonObject(uuid)?.get("result")?.asString == "retry" }
     } catch (_: Exception) {
         0
+    } finally {
+        timeout?.clearDeadline()
     }
+}
+
+private const val RESPONSE_PEEK_DEADLINE_SECONDS = 5L
 
 // The harness sends RFC 3339 timestamps, with any offset; the SDK serializes the instant in UTC.
 private fun parseHarnessTimestamp(timestamp: String?): Date? =

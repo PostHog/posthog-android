@@ -1485,6 +1485,10 @@ public class PostHog private constructor(
                 } else {
                     properties
                 }
+            // Read before the event takes its distinct ID, so a reset() or identify() during the build
+            // makes the send see a different identity instead of pairing the old event with the new one.
+            val sdkDistinctId = this.distinctId
+            val buildResetGeneration = resetGeneration
             // One replay read for the build's required keys and the deferred bundle, so a replay
             // transition between them can't pair keys from two different states.
             val replayDebugSnapshot by lazy { runCatching { readReplayDebugProperties() } }
@@ -1524,8 +1528,8 @@ public class PostHog private constructor(
                     WrapperBuild(
                         deferredReplayDebug = deferredReplayDebug,
                         requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups),
-                        sdkDistinctId = this.distinctId,
-                        resetGeneration = resetGeneration,
+                        sdkDistinctId = sdkDistinctId,
+                        resetGeneration = buildResetGeneration,
                     )
                 synchronized(pendingWrapperBuilds) {
                     pendingWrapperBuilds[uuid] = build

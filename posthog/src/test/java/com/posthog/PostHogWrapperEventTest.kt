@@ -417,6 +417,30 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `send skips the person properties for flags after a reset during the build`() {
+        val prefs = PostHogMemoryPreferences()
+        lateinit var sut: PostHogInterface
+        val replay =
+            PostHogSessionReplayHandlerFake(true).apply {
+                // Runs while the build enriches the event, after it took its distinct ID.
+                onDebugProperties = {
+                    onDebugProperties = null
+                    sut.reset()
+                }
+            }
+        sut =
+            getSut(httpServers.mockHttp()) {
+                cachePreferences = prefs
+                addIntegration(replay)
+            }
+        val event = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+
+        assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+    }
+
+    @Test
     fun `send skips person processing after the user changed`() {
         val sut = getSut(httpServers.mockHttp())
         val identified = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
