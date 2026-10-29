@@ -218,17 +218,15 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
-    fun `a registered legacy person processing property doesn't override the personless option`() {
-        val http = httpServers.mockHttp()
-        val sut = getSut(http.url("/").toString(), personProfiles = PersonProfiles.NEVER, beforeSend = { it })
+    fun `a registered legacy person processing property suppresses the personless option`() {
+        val sut = getSut(personProfiles = PersonProfiles.NEVER)
         sut.register("\$process_person_profile", true)
 
         sut.capture("test_event")
-        queueExecutor.shutdownAndAwaitTermination()
 
-        val event = sentEvents(http).single()
-        assertEquals<Map<String, Any?>?>(mapOf("process_person_profile" to false), event.options)
-        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+        val event = captured.single()
+        assertNull(event.options)
+        assertEquals(true, event.properties!!["\$process_person_profile"])
         sut.close()
     }
 

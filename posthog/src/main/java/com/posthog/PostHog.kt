@@ -809,8 +809,7 @@ public class PostHog private constructor(
             props["\$is_identified"] = isIdentified
             // No `$process_person_profile`: person processing is sent as the `process_person_profile`
             // option, only when it's off (see personProcessingOptions). A registered or caller
-            // `$process_person_profile` only fills that option when the send hoists the property and
-            // the option is still unset.
+            // `$process_person_profile` wins over it when the send hoists the property.
         }
 
         // Session replay should have the SDK info as well
@@ -986,14 +985,17 @@ public class PostHog private constructor(
 
     /**
      * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
-     * event, unless the caller set that option. A legacy `$process_person_profile` property doesn't
-     * prevent it: the send hoists that property only into an unset option. Nothing is added
-     * otherwise: PostHog processes person profiles by default. Returns a copy, so `beforeSend`
-     * edits never reach the caller's map.
+     * event, unless the caller set that option or [properties] carry a non-null legacy
+     * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
+     * PostHog processes person profiles by default. Returns a copy, so `beforeSend` edits never
+     * reach the caller's map.
      */
-    private fun personProcessingOptions(options: Map<String, Any?>?): MutableMap<String, Any?>? {
+    private fun personProcessingOptions(
+        options: Map<String, Any?>?,
+        properties: Map<String, Any>,
+    ): MutableMap<String, Any?>? {
         val eventOptions = options?.toMutableMap()
-        if (hasPersonProcessing()) {
+        if (hasPersonProcessing() || properties["\$process_person_profile"] != null) {
             return eventOptions
         }
         val result = eventOptions ?: mutableMapOf()
@@ -1192,7 +1194,7 @@ public class PostHog private constructor(
 
             // Snapshots don't carry the SDK's person-processing option.
             val eventOptions =
-                if (isSnapshotEvent) options?.toMutableMap() else personProcessingOptions(options)
+                if (isSnapshotEvent) options?.toMutableMap() else personProcessingOptions(options, mergedProperties)
 
             // This capture's identity, kept through beforeSend.
             val uuid = TimeBasedEpochGenerator.generate()
