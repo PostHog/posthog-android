@@ -1483,7 +1483,8 @@ public class PostHog private constructor(
                     properties["\$set_once"] as? Map<String, Any>,
                 )
             }
-            if (!ai && event.event == PostHogEventName.SCREEN.event) {
+            // A reset() since the build cleared the screen name, so the old one isn't restored.
+            if (!ai && build.resetGeneration == resetGeneration && event.event == PostHogEventName.SCREEN.event) {
                 (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
             }
             // The build added only the required replay debug keys. The window is claimed here, so a

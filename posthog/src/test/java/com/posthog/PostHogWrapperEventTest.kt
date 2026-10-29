@@ -247,6 +247,18 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `send after a reset delivers the screen without restoring its name`() {
+        val sut = getSut(httpServers.mockHttp())
+        val screen = assertNotNull(sut.buildEventForWrapper("\$screen", properties = mapOf("\$screen_name" to "Home")))
+
+        sut.reset()
+        assertNotNull(sut.sendBuiltEventForWrapper(screen))
+        val next = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertNull(next.properties?.get("\$screen_name"))
+    }
+
+    @Test
     fun `the replay debug bundle is claimed at send`() {
         val http = httpServers.mockHttp()
         val sut = getSut(http) { flushAt = 2 }
