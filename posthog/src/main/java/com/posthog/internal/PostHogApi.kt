@@ -338,7 +338,8 @@ public class PostHogApi(
         }
 
         val retryUuids = mutableSetOf<String>()
-        var dropped = 0
+        // Drop counts by the server's `details` tag, an opaque string.
+        val droppedByDetails = sortedMapOf<String, Int>()
         var duplicatesDropped = 0
         // Events missing from the results count as delivered. The uuids are read once, so a repeated
         // uuid's later copies (`duplicates_dropped`) are counted, not given the kept copy's verdict.
@@ -346,16 +347,21 @@ public class PostHogApi(
             val entry = results[uuid] as? Map<*, *> ?: continue
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
-                "drop" -> dropped++
+                "drop" -> {
+                    val details = entry["details"] as? String ?: "no details"
+                    droppedByDetails[details] = (droppedByDetails[details] ?: 0) + 1
+                }
             }
             // Clamped to the batch size, so a malformed count can't overflow the sum.
             duplicatesDropped += (entry["duplicates_dropped"] as? Number)?.toLong()?.coerceIn(0L, events.size.toLong())?.toInt() ?: 0
         }
 
-        // Counts only: one line per batch, never per event.
+        // Counts and reasons only: one line per batch, never per event.
+        val dropped = droppedByDetails.values.sum()
         if (dropped > 0 || duplicatesDropped > 0 || retryUuids.isNotEmpty()) {
+            val reasons = if (dropped > 0) droppedByDetails.entries.joinToString(", ", " (", ")") { "${it.key}: ${it.value}" } else ""
             config.logger.log(
-                "Capture: $dropped dropped, $duplicatesDropped duplicate copies dropped, ${retryUuids.size} to retry.",
+                "Capture $path: $dropped dropped$reasons, $duplicatesDropped duplicate copies dropped, ${retryUuids.size} to retry.",
             )
         }
 

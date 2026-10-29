@@ -77,8 +77,15 @@ internal class PostHogSendCachedEventsIntegration(
 
                     val iterator = legacy.iterator()
                     var eventsCount = 0
+                    var batchBytes = 0L
                     while (iterator.hasNext()) {
                         val eventBytes = iterator.next()
+                        // Checked before adding, as the queue does: a non-empty batch is sent before
+                        // it would pass the capture v1 byte target, so order is kept and an event
+                        // over the target ships alone. The event stays at the head for the next batch.
+                        if (events.isNotEmpty() && batchBytes + eventBytes.size > CAPTURE_V1_MAX_BATCH_BYTES) {
+                            break
+                        }
 
                         try {
                             val inputStream = config.encryption?.decrypt(eventBytes.inputStream()) ?: eventBytes.inputStream()
@@ -88,6 +95,7 @@ internal class PostHogSendCachedEventsIntegration(
                                     events.add(normalizeLegacyEvent(event))
                                     eventsBytes.add(eventBytes)
                                     eventsCount++
+                                    batchBytes += eventBytes.size
                                 } ?: run {
                                     removeFileSafely(iterator)
                                 }

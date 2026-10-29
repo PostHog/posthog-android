@@ -331,11 +331,13 @@ internal class PostHogCaptureV1Test {
 
         assertEquals(setOf(retry.uuid.toString()), result.retryIds)
         assertEquals(7, result.retryAfterSeconds)
-        assertTrue(logger.messages.contains("Capture: 1 dropped, 0 duplicate copies dropped, 1 to retry."))
+        assertTrue(
+            logger.messages.contains("Capture /i/v1/analytics/events: 1 dropped (no details: 1), 0 duplicate copies dropped, 1 to retry."),
+        )
     }
 
     @Test
-    fun `logs one count line per batch, without event names, uuids or properties`() {
+    fun `logs one line per batch with the endpoint and drop reasons, without event names, uuids or properties`() {
         val misrouted = event("button_clicked", properties = mapOf("prompt" to "secret prompt"))
         val tooBig = event("\$ai_generation", properties = mapOf("prompt" to "secret prompt"))
         val http =
@@ -351,8 +353,8 @@ internal class PostHogCaptureV1Test {
         api(http.url("/").toString()).captureAi(listOf(misrouted, tooBig))
 
         assertEquals(
-            listOf("Capture: 2 dropped, 0 duplicate copies dropped, 0 to retry."),
-            logger.messages.filter { it.startsWith("Capture:") },
+            listOf("Capture /i/v1/ai/events: 2 dropped (ai_event_too_big: 1, misrouted_event: 1), 0 duplicate copies dropped, 0 to retry."),
+            logger.messages.filter { it.startsWith("Capture /") },
         )
         assertTrue(
             logger.messages.none {
@@ -374,7 +376,7 @@ internal class PostHogCaptureV1Test {
         val result = api(http.url("/").toString()).captureV1(listOf(kept, copy))
 
         assertTrue(result.retryIds.isEmpty())
-        assertTrue(logger.messages.contains("Capture: 0 dropped, 1 duplicate copies dropped, 0 to retry."))
+        assertTrue(logger.messages.contains("Capture /i/v1/analytics/events: 0 dropped, 1 duplicate copies dropped, 0 to retry."))
     }
 
     @Test
@@ -392,7 +394,7 @@ internal class PostHogCaptureV1Test {
 
         api(http.url("/").toString()).captureV1(listOf(first, second))
 
-        assertTrue(logger.messages.contains("Capture: 0 dropped, 2 duplicate copies dropped, 0 to retry."))
+        assertTrue(logger.messages.contains("Capture /i/v1/analytics/events: 0 dropped, 2 duplicate copies dropped, 0 to retry."))
     }
 
     @Test
