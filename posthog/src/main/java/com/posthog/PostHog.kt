@@ -796,6 +796,7 @@ public class PostHog private constructor(
         appendGroups: Boolean = true,
         timestamp: Date? = null,
         claimReplayDebugBundle: () -> Boolean = { false },
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -864,7 +865,7 @@ public class PostHog private constructor(
         if (appendSharedProps) {
             // After session resolution so the debug snapshot never precedes a rotation triggered by
             // getActiveSessionId() above.
-            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle, readReplayDebugProperties))
 
             // Registered super properties win over everything the SDK set above.
             val registeredPrefs = getPreferences().getAll()
@@ -905,10 +906,14 @@ public class PostHog private constructor(
         return props
     }
 
+    private fun readReplayDebugProperties(): Map<String, Any> =
+        sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+
     private fun sdkDebugProperties(
         sessionId: String?,
         timestamp: Date?,
         claimReplayDebugBundle: () -> Boolean,
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
         val managerStart = PostHogSessionManager.getSessionStartedAt()
@@ -921,7 +926,7 @@ public class PostHog private constructor(
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            val replayProps = sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+            val replayProps = readReplayDebugProperties()
             if (claimed) {
                 props.putAll(replayProps)
             } else {
@@ -1207,6 +1212,7 @@ public class PostHog private constructor(
         options: Map<String, Any?>?,
         aiLane: Boolean,
         claimReplayDebugBundle: () -> Boolean,
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
         setFlagPersonProperties: Boolean = true,
         deferPersonProcessing: Boolean = false,
     ): PreparedEvent? {
@@ -1284,6 +1290,7 @@ public class PostHog private constructor(
                 appendGroups = !groupIdentify,
                 timestamp = timestamp,
                 claimReplayDebugBundle = { isReplayDebugEvent(event) && claimReplayDebugBundle() },
+                readReplayDebugProperties = readReplayDebugProperties,
             )
 
         val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
@@ -1380,6 +1387,10 @@ public class PostHog private constructor(
                 } else {
                     properties
                 }
+            // One replay read for the build's required keys and the deferred bundle, so a replay
+            // transition between them can't pair keys from two different states.
+            val replayDebugSnapshot by lazy { runCatching { readReplayDebugProperties() } }
+            val readReplayDebugSnapshot = { replayDebugSnapshot.getOrThrow() }
             val built =
                 prepareEvent(
                     event,
@@ -1392,6 +1403,7 @@ public class PostHog private constructor(
                     options,
                     ai,
                     claimReplayDebugBundle = { false },
+                    readReplayDebugProperties = readReplayDebugSnapshot,
                     setFlagPersonProperties = false,
                     deferPersonProcessing = true,
                 )?.event ?: return null
@@ -1399,7 +1411,12 @@ public class PostHog private constructor(
                 // Snapshotted now, so a new session during the round trip doesn't change them.
                 val deferredReplayDebug =
                     if (isReplayDebugEvent(event)) {
-                        sdkDebugProperties(built.properties?.get("\$session_id") as? String, built.timestamp) { true }
+                        sdkDebugProperties(
+                            built.properties?.get("\$session_id") as? String,
+                            built.timestamp,
+                            claimReplayDebugBundle = { true },
+                            readReplayDebugProperties = readReplayDebugSnapshot,
+                        )
                             .filterKeys { it !in UNTHROTTLED_DEBUG_PROPERTY_KEYS }
                             .takeIf { it.isNotEmpty() }
                     } else {

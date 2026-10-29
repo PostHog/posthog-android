@@ -392,6 +392,31 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `build reads the replay debug state once for the required and deferred keys`() {
+        val http = httpServers.mockHttp()
+        val replay =
+            PostHogSessionReplayHandlerFake(true).apply {
+                debugProperties =
+                    mapOf(
+                        "\$recording_status" to "buffering",
+                        "\$sdk_debug_replay_flush_hold_reason" to "below_minimum_duration",
+                    )
+                // A replay stop between two reads would pair buffering with no hold reason.
+                onDebugProperties = { debugProperties = mapOf("\$recording_status" to "disabled") }
+            }
+        val sut = getSut(http) { addIntegration(replay) }
+        sut.startSession()
+
+        val screen = assertNotNull(sut.buildEventForWrapper("\$screen", properties = mapOf("\$screen_name" to "Home")))
+        assertNotNull(sut.sendBuiltEventForWrapper(screen))
+
+        queueExecutor.awaitExecution()
+        val sent = events(takeRequest(http)).single().properties()
+        assertEquals("buffering", sent["\$recording_status"])
+        assertEquals("below_minimum_duration", sent["\$sdk_debug_replay_flush_hold_reason"])
+    }
+
+    @Test
     fun `send skips person processing after the user changed`() {
         val sut = getSut(httpServers.mockHttp())
         val identified = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
