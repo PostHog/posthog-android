@@ -434,6 +434,12 @@ public class PostHog private constructor(
                 // config callback), any of which may close() and so supersede setup's flags load.
                 val generation = featureFlagsGeneration
 
+                // Queued before integrations install, so a reload one starts there can't hold the
+                // bootstrapped flags behind its network response. Listeners run on the remote config thread.
+                if (reloadFeatureFlags && remoteConfig?.hasBootstrapFlags() == true) {
+                    remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
+                }
+
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
                 // by seeding from the anonymous ID, providing a stable identifier for
                 // device-level feature flag bucketing that survives identify() and reset().
@@ -479,8 +485,6 @@ public class PostHog private constructor(
                         } catch (e: Throwable) {
                             config.logger.log("Executing the internal feature flags callback failed: $e")
                         }
-                        // listeners run on the remote config thread, queued ahead of setup's own load
-                        remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
                         notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     loadRemoteConfigRequest(
