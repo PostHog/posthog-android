@@ -35,6 +35,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.captureAiMaxStoredEventBytes
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
+import com.posthog.internal.executeSafely
 import com.posthog.internal.isFalseOptionValue
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
@@ -49,6 +50,7 @@ import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -64,6 +66,20 @@ private val REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS =
         "\$sdk_debug_replay_linked_flag_trigger_status",
         "\$sdk_debug_replay_internal_buffer_length",
     )
+
+// On every event whether or not the bundle is claimed; the rest of the bundle needs the claim.
+private val UNTHROTTLED_DEBUG_PROPERTY_KEYS =
+    REQUIRED_REPLAY_DEBUG_PROPERTY_KEYS + setOf("\$sdk_debug_pending_queue_size", "\$sdk_debug_error_capturing_properties")
+
+// Wrapper builds waiting for their send, and recent sends. A build the wrapper drops is evicted by
+// newer ones; an evicted build can no longer be sent.
+private const val MAX_TRACKED_WRAPPER_EVENTS = 1000
+
+private fun requiresPersonProcessing(
+    userProperties: Map<String, Any>?,
+    userPropertiesSetOnce: Map<String, Any>?,
+    groups: Map<String, String>?,
+): Boolean = userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false
 
 private fun isReplayDebugEvent(event: String): Boolean =
     event.startsWith("\$") &&
@@ -128,6 +144,15 @@ public class PostHog private constructor(
     // Guarded by replayDebugPropertiesLock.
     private var lastReplayDebugPropertiesAt: Long? = null
     private var replayDebugClaimOutstanding = false
+
+    // Keyed by event uuid in build order. Both guarded by pendingWrapperBuilds.
+    private val pendingWrapperBuilds = LinkedHashMap<UUID, WrapperBuild>()
+    private val sentWrapperEvents = LinkedHashSet<UUID>()
+
+    // Incremented by reset(), so a send can tell the user changed since the build even when
+    // reuseAnonymousId keeps the distinct id the same.
+    @Volatile
+    private var resetGeneration = 0L
 
     private var replayQueue: PostHogQueueInterface<PostHogEvent>? = null
 
@@ -198,19 +223,90 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
+    // Public onFeatureFlags listeners. Owned by this instance rather than the remote config, so
+    // listeners registered before setup() (or across close()/setup()) keep receiving updates.
+    private val featureFlagsListeners = CopyOnWriteArrayList<FeatureFlagsListener>()
+
+    // The last update delivered to listeners, replayed to late subscribers. Null until flags load,
+    // and cleared by reset() and close() so an update they superseded is dropped.
+    @Volatile
+    private var lastFeatureFlagsLoaded: PostHogFeatureFlagsLoaded? = null
+
+    // Bumped by reset() and close(), so a flags load that started before them can't reach listeners.
+    @Volatile
+    private var featureFlagsGeneration = 0
+    private val featureFlagsGenerationLock = Any()
+
+    private class FeatureFlagsListener(val callback: PostHogFeatureFlagsCallback) {
+        @Volatile
+        var active = true
+
+        // Only touched on the listener thread (see runFeatureFlagsListener), where every delivery and replay runs.
+        var lastDelivered: PostHogFeatureFlagsLoaded? = null
+    }
+
+    // Runs on the remote config thread after every flags load, whether it succeeded or failed.
+    // Create it when the load starts, so listeners skip a load that reset() or close() superseded.
+    private fun internalOnFeatureFlagsLoaded(generation: Int = featureFlagsGeneration): (errorsLoading: Boolean) -> Unit {
+        return { errorsLoading ->
+            startSessionReplayOnFeatureFlagsLoaded()
+            notifyFeatureFlagsListeners(errorsLoading, generation)
+        }
+    }
+
+    private fun clearFeatureFlagsLoaded() {
+        synchronized(featureFlagsGenerationLock) {
+            featureFlagsGeneration++
+            lastFeatureFlagsLoaded = null
+        }
+    }
+
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
-    private val internalOnFeatureFlagsLoaded: () -> Unit =
-        {
-            // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
-            synchronized(setupLock) {
-                sessionReplayHandler?.let {
-                    if (isSessionReplayConfigEnabled()) {
-                        // start will bail if session replay is already active anyway
-                        startSessionReplayInternal(resumeCurrent = true)
-                    }
+    private fun startSessionReplayOnFeatureFlagsLoaded() {
+        // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
+        synchronized(setupLock) {
+            sessionReplayHandler?.let {
+                if (isSessionReplayConfigEnabled()) {
+                    // start will bail if session replay is already active anyway
+                    startSessionReplayInternal(resumeCurrent = true)
                 }
             }
         }
+    }
+
+    private fun notifyFeatureFlagsListeners(
+        errorsLoading: Boolean,
+        generation: Int,
+    ) {
+        val loaded = PostHogFeatureFlagsLoaded(remoteConfig?.getFeatureFlags() ?: emptyMap(), errorsLoading)
+        synchronized(featureFlagsGenerationLock) {
+            if (featureFlagsGeneration != generation) return
+            lastFeatureFlagsLoaded = loaded
+        }
+        featureFlagsListeners.forEach { listener -> runFeatureFlagsListener { deliverFeatureFlags(listener, loaded) } }
+    }
+
+    // Called on the remote config thread. Hands the block to the platform's listener executor (the main
+    // thread on Android), or runs it right away when there's none.
+    private fun runFeatureFlagsListener(block: () -> Unit) {
+        val executor = config?.featureFlagsListenerExecutor ?: return block()
+        executor.executeSafely(block)
+    }
+
+    private fun deliverFeatureFlags(
+        listener: FeatureFlagsListener,
+        loaded: PostHogFeatureFlagsLoaded,
+    ) {
+        // An earlier callback may have unsubscribed this one, or reset()/close() or a newer load
+        // may have superseded this update. A replay queued next to the same update is skipped too.
+        if (!listener.active || lastFeatureFlagsLoaded !== loaded || listener.lastDelivered === loaded) return
+        listener.lastDelivered = loaded
+        try {
+            listener.callback.loaded(loaded)
+        } catch (e: Throwable) {
+            config?.logger?.log("Executing the feature flags listener failed: $e")
+        }
+    }
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -388,7 +484,18 @@ public class PostHog private constructor(
 
                 applyBootstrapIfNeeded(config)
 
+                clearWrapperBuilds()
                 super.enabled = true
+
+                // Captured before any user callout below (integrations, session hooks, the bootstrap
+                // config callback), any of which may close() and so supersede setup's flags load.
+                val generation = featureFlagsGeneration
+
+                // Queued before integrations install, so a reload one starts there can't hold the
+                // bootstrapped flags behind its network response. Listeners run on the remote config thread.
+                if (reloadFeatureFlags && remoteConfig?.hasBootstrapFlags() == true) {
+                    remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
+                }
 
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
                 // by seeding from the anonymous ID, providing a stable identifier for
@@ -432,14 +539,14 @@ public class PostHog private constructor(
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
                         try {
-                            internalOnFeatureFlagsLoaded()
+                            startSessionReplayOnFeatureFlagsLoaded()
                         } catch (e: Throwable) {
                             config.logger.log("Executing the internal feature flags callback failed: $e")
                         }
                         notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
                     loadRemoteConfigRequest(
-                        internalOnFeatureFlagsLoaded,
+                        internalOnFeatureFlagsLoaded(generation),
                         config.onFeatureFlags,
                     )
                 }
@@ -666,7 +773,9 @@ public class PostHog private constructor(
                 pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
+                clearFeatureFlagsLoaded()
                 lastScreenName = null
+                clearWrapperBuilds()
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
                     replayDebugClaimOutstanding = false
@@ -771,6 +880,7 @@ public class PostHog private constructor(
         appendGroups: Boolean = true,
         timestamp: Date? = null,
         claimReplayDebugBundle: () -> Boolean = { false },
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
     ): MutableMap<String, Any> {
         val props = mutableMapOf<String, Any>()
 
@@ -839,7 +949,7 @@ public class PostHog private constructor(
         if (appendSharedProps) {
             // After session resolution so the debug snapshot never precedes a rotation triggered by
             // getActiveSessionId() above.
-            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
+            props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle, readReplayDebugProperties))
 
             // Registered super properties win over everything the SDK set above.
             val registeredPrefs = getPreferences().getAll()
@@ -880,10 +990,14 @@ public class PostHog private constructor(
         return props
     }
 
+    private fun readReplayDebugProperties(): Map<String, Any> =
+        sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+
     private fun sdkDebugProperties(
         sessionId: String?,
         timestamp: Date?,
         claimReplayDebugBundle: () -> Boolean,
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
     ): Map<String, Any> {
         val props = mutableMapOf<String, Any>()
         val managerStart = PostHogSessionManager.getSessionStartedAt()
@@ -896,7 +1010,7 @@ public class PostHog private constructor(
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            val replayProps = sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+            val replayProps = readReplayDebugProperties()
             if (claimed) {
                 props.putAll(replayProps)
             } else {
@@ -976,15 +1090,20 @@ public class PostHog private constructor(
      * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
      * event, unless the caller set that option or [properties] carry a non-null legacy
      * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
-     * PostHog processes person profiles by default. Returns a copy, so `beforeSend` edits never
-     * reach the caller's map.
+     * PostHog processes person profiles by default. [personProcessingPending] counts a person
+     * processing change a wrapper build defers to its send. Returns a copy, so `beforeSend` edits
+     * never reach the caller's map.
      */
     private fun personProcessingOptions(
         options: Map<String, Any?>?,
         properties: Map<String, Any>,
+        personProcessingPending: Boolean = false,
     ): MutableMap<String, Any?>? {
         val eventOptions = options?.toMutableMap()
-        if (hasPersonProcessing() || properties["\$process_person_profile"] != null) {
+        if ((personProcessingPending && config?.personProfiles != PersonProfiles.NEVER) ||
+            hasPersonProcessing() ||
+            properties["\$process_person_profile"] != null
+        ) {
             return eventOptions
         }
         val result = eventOptions ?: mutableMapOf()
@@ -1112,6 +1231,351 @@ public class PostHog private constructor(
         // or replacing the event.
         var claimedReplayDebugBundle = false
         try {
+            val prepared =
+                prepareEvent(
+                    event,
+                    distinctId,
+                    properties,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    groups,
+                    timestamp,
+                    options,
+                    aiLane,
+                    claimReplayDebugBundle = { claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it } },
+                ) ?: return null
+            val postHogEvent = runBeforeSend(prepared.event, prepared.event.uuid)
+            if (postHogEvent == null) {
+                logDroppedEvent(event)
+                return null
+            }
+            return enqueueEvent(postHogEvent, event, prepared.mergedProperties, aiLane) {
+                if (claimedReplayDebugBundle) {
+                    commitReplayDebugPropertiesWindow()
+                }
+            }
+        } catch (e: Throwable) {
+            config?.logger?.log("Capture failed: $e.")
+            return null
+        } finally {
+            if (claimedReplayDebugBundle) {
+                releaseReplayDebugPropertiesClaim()
+            }
+        }
+    }
+
+    /**
+     * An event enriched for capture, before the `beforeSend` chain runs.
+     *
+     * @property mergedProperties the enriched properties before the `$feature_flag_called`
+     *   minimization, which the surveys and replay handlers read.
+     */
+    private class PreparedEvent(
+        val event: PostHogEvent,
+        val mergedProperties: Map<String, Any>,
+    )
+
+    /**
+     * What [buildEventForWrapper] decided from the call, read back by [sendBuiltEventForWrapper]:
+     * the wrapper's hook can rename the event, and a build changes no SDK state.
+     * [deferredReplayDebug] holds the replay debug values from the build, sent only if the send
+     * claims the window; null when the event can't carry them.
+     */
+    private class WrapperBuild(
+        val deferredReplayDebug: Map<String, Any>?,
+        val requiresPersonProcessing: Boolean,
+        val sdkDistinctId: String,
+        val resetGeneration: Long,
+    )
+
+    /**
+     * Checks and enriches one event without running `beforeSend` or queueing it. Returns null when
+     * the SDK wouldn't capture it. [claimReplayDebugBundle] is called only for events that may carry
+     * the replay debug bundle.
+     */
+    private fun prepareEvent(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        options: Map<String, Any?>?,
+        aiLane: Boolean,
+        claimReplayDebugBundle: () -> Boolean,
+        readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
+        setFlagPersonProperties: Boolean = true,
+        deferPersonProcessing: Boolean = false,
+    ): PreparedEvent? {
+        if (!isEnabled()) {
+            return null
+        }
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
+            return null
+        }
+
+        // A blank distinct ID falls back to the current one, like null, instead of PostHog dropping the event.
+        val newDistinctId = distinctId?.takeIf { it.isNotBlank() } ?: this.distinctId
+
+        // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
+        // we should still enable person processing since this is intentional
+        val requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups)
+        if (requiresPersonProcessing && !deferPersonProcessing) {
+            requirePersonProcessing("capture", ignoreMessage = true)
+        }
+
+        // Automatically set person properties for feature flags during capture event
+        if (setFlagPersonProperties) {
+            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
+        }
+
+        if (newDistinctId.isBlank()) {
+            config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
+            return null
+        }
+
+        // The AI lane always uses its own queue.
+        val isSnapshotEvent = !aiLane && event == PostHogEventName.SNAPSHOT.event
+        var groupIdentify = false
+        if (event == PostHogEventName.GROUP_IDENTIFY.event) {
+            groupIdentify = true
+        }
+
+        // Externally-built $exception events (e.g. the Flutter/RN bridge) carry only
+        // serialized class names, so they are matched by name instead of isInstance.
+        val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
+        if (!ignored.isNullOrEmpty() &&
+            event == PostHogEventName.EXCEPTION.event &&
+            hasIgnoredTypeInExceptionList(properties, ignored)
+        ) {
+            config?.logger?.log(
+                "Skipping \$exception: an entry in \$exception_list matches ignoredExceptionTypes",
+            )
+            return null
+        }
+
+        // Attach the buffered exception steps to any $exception event (unless the caller
+        // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
+        // bridge) carry steps too, not only those captured via captureException(throwable).
+        val stepsBuffer = exceptionStepsBuffer
+        val effectiveProperties =
+            if (event == PostHogEventName.EXCEPTION.event && stepsBuffer != null) {
+                val mutableProperties = properties?.toMutableMap() ?: mutableMapOf()
+                stepsBuffer.attachTo(mutableProperties)
+                mutableProperties
+            } else {
+                properties
+            }
+
+        val mergedProperties =
+            buildProperties(
+                newDistinctId,
+                properties = effectiveProperties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
+                // only append shared props if not a snapshot event
+                appendSharedProps = !isSnapshotEvent,
+                // only append groups if not a group identify event and not a snapshot
+                appendGroups = !groupIdentify,
+                timestamp = timestamp,
+                claimReplayDebugBundle = { isReplayDebugEvent(event) && claimReplayDebugBundle() },
+                readReplayDebugProperties = readReplayDebugProperties,
+            )
+
+        val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
+
+        // Snapshots don't carry the SDK's person-processing option.
+        val eventOptions =
+            if (isSnapshotEvent) {
+                options?.toMutableMap()
+            } else {
+                personProcessingOptions(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing)
+            }
+
+        // This capture's identity, kept through beforeSend.
+        val uuid = TimeBasedEpochGenerator.generate()
+        return PreparedEvent(newEvent(event, newDistinctId, eventProperties, timestamp, eventOptions, uuid), mergedProperties)
+    }
+
+    private fun logDroppedEvent(event: String) {
+        val originalMessage = "PostHog event $event was dropped"
+        val message =
+            if (PostHogEventName.isUnsafeEditable(event)) {
+                "$originalMessage. This can cause unexpected behavior."
+            } else {
+                originalMessage
+            }
+        config?.logger?.log(message)
+    }
+
+    /**
+     * Queues [postHogEvent], already through `beforeSend`, on its lane and notifies the surveys and
+     * replay handlers with [event] and [mergedProperties] from before the hook. Returns the event's
+     * uuid when it's queued. [onQueued] runs right after the event is added to the analytics or AI
+     * queue.
+     */
+    private fun enqueueEvent(
+        postHogEvent: PostHogEvent,
+        event: String,
+        mergedProperties: Map<String, Any>,
+        aiLane: Boolean,
+        onQueued: () -> Unit = {},
+    ): UUID? {
+        // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
+        val isSnapshotEvent = !aiLane && postHogEvent.event == PostHogEventName.SNAPSHOT.event
+        // if this is a $snapshot event and $session_id is missing, don't process then event
+        if (isSnapshotEvent && postHogEvent.properties?.get("\$session_id") == null) {
+            config?.logger?.log("${postHogEvent.event} event dropped, because the \$session_id property is missing")
+            return null
+        }
+        // Replay has its own queue
+        if (isSnapshotEvent) {
+            replayQueue?.add(postHogEvent)
+            return postHogEvent.uuid
+        }
+        val targetQueue = if (aiLane) aiQueue ?: return null else queue
+        var queued = false
+        // beforeSend may have opted out
+        if (isOptedOut()) {
+            config?.logger?.log("PostHog is in OptOut state.")
+        } else if (targetQueue != null) {
+            // AI events are measured and admitted here rather than in the queue, so captureAi returns null
+            queued =
+                if (aiLane) {
+                    queueAiEvent(aiQueue ?: return null, postHogEvent)
+                } else {
+                    targetQueue.add(postHogEvent)
+                    true
+                }
+            if (queued) {
+                onQueued()
+            }
+        }
+        // Notify surveys integration about the event
+        surveysHandler?.onEvent(event, mergedProperties)
+        // Notify session replay handler about the event for event triggers
+        sessionReplayHandler?.onEvent(event, mergedProperties)
+        return if (queued) postHogEvent.uuid else null
+    }
+
+    @PostHogInternal
+    override fun buildEventForWrapper(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        options: Map<String, Any?>?,
+        ai: Boolean,
+        timestamp: Date?,
+    ): PostHogEvent? {
+        try {
+            if (!isEnabled()) {
+                return null
+            }
+            // The wrapper may drop the event after this, so state changes wait for the send.
+            val eventProperties =
+                if (!ai && event == PostHogEventName.SCREEN.event) {
+                    val screenTitle = properties?.get("\$screen_name") as? String ?: return null
+                    screenProperties(screenTitle, properties, cacheScreenName = false) ?: return null
+                } else {
+                    properties
+                }
+            // One replay read for the build's required keys and the deferred bundle, so a replay
+            // transition between them can't pair keys from two different states.
+            val replayDebugSnapshot by lazy { runCatching { readReplayDebugProperties() } }
+            val readReplayDebugSnapshot = { replayDebugSnapshot.getOrThrow() }
+            val built =
+                prepareEvent(
+                    event,
+                    distinctId,
+                    eventProperties,
+                    userProperties,
+                    userPropertiesSetOnce,
+                    groups,
+                    timestamp,
+                    options,
+                    ai,
+                    claimReplayDebugBundle = { false },
+                    readReplayDebugProperties = readReplayDebugSnapshot,
+                    setFlagPersonProperties = false,
+                    deferPersonProcessing = true,
+                )?.event ?: return null
+            built.uuid?.let { uuid ->
+                // Snapshotted now, so a new session during the round trip doesn't change them.
+                val deferredReplayDebug =
+                    if (isReplayDebugEvent(event)) {
+                        sdkDebugProperties(
+                            built.properties?.get("\$session_id") as? String,
+                            built.timestamp,
+                            claimReplayDebugBundle = { true },
+                            readReplayDebugProperties = readReplayDebugSnapshot,
+                        )
+                            .filterKeys { it !in UNTHROTTLED_DEBUG_PROPERTY_KEYS }
+                            .takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    }
+                val build =
+                    WrapperBuild(
+                        deferredReplayDebug = deferredReplayDebug,
+                        requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups),
+                        sdkDistinctId = this.distinctId,
+                        resetGeneration = resetGeneration,
+                    )
+                synchronized(pendingWrapperBuilds) {
+                    pendingWrapperBuilds[uuid] = build
+                    if (pendingWrapperBuilds.size > MAX_TRACKED_WRAPPER_EVENTS) {
+                        pendingWrapperBuilds.remove(pendingWrapperBuilds.keys.first())
+                    }
+                }
+            }
+            return built
+        } catch (e: Throwable) {
+            config?.logger?.log("Capture failed: $e.")
+            return null
+        }
+    }
+
+    private fun clearWrapperBuilds() {
+        synchronized(pendingWrapperBuilds) {
+            pendingWrapperBuilds.clear()
+        }
+    }
+
+    @PostHogInternal
+    override fun sendBuiltEventForWrapper(
+        event: PostHogEvent,
+        ai: Boolean,
+    ): UUID? {
+        var claimedReplayDebugBundle = false
+        try {
+            var alreadySent = false
+            val build =
+                event.uuid?.let { uuid ->
+                    synchronized(pendingWrapperBuilds) {
+                        // Checked and recorded together, so two concurrent sends can't both queue it.
+                        alreadySent = !sentWrapperEvents.add(uuid)
+                        if (sentWrapperEvents.size > MAX_TRACKED_WRAPPER_EVENTS) {
+                            sentWrapperEvents.remove(sentWrapperEvents.first())
+                        }
+                        pendingWrapperBuilds.remove(uuid)
+                    }
+                }
+            if (alreadySent) {
+                config?.logger?.log("Event ${event.uuid} was already sent.")
+                return null
+            }
+            // Builds are cleared on setup() and close() and kept per instance, so this also drops an
+            // event built by another instance or before a reconfigure.
+            if (build == null) {
+                config?.logger?.log("Event ${event.event} wasn't built by buildEventForWrapper on this setup, so it was dropped.")
+                return null
+            }
             if (!isEnabled()) {
                 return null
             }
@@ -1119,129 +1583,52 @@ public class PostHog private constructor(
                 config?.logger?.log("PostHog is in OptOut state.")
                 return null
             }
-
-            // A blank distinct ID falls back to the current one, like null, instead of PostHog dropping the event.
-            val newDistinctId = distinctId?.takeIf { it.isNotBlank() } ?: this.distinctId
-
-            // if the user isn't identified but passed userProperties, userPropertiesSetOnce or groups,
-            // we should still enable person processing since this is intentional
-            if (userProperties?.isEmpty() == false || userPropertiesSetOnce?.isEmpty() == false || groups?.isEmpty() == false) {
+            // Person processing and flag person properties apply only while the SDK still has the
+            // identity the event was built for: after a reset() or identify(), it belongs to the previous one.
+            val sameIdentity = build.sdkDistinctId == this.distinctId && build.resetGeneration == resetGeneration
+            if (sameIdentity && build.requiresPersonProcessing) {
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
-
-            // Automatically set person properties for feature flags during capture event
-            setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
-
-            if (newDistinctId.isBlank()) {
-                config?.logger?.log("capture call not allowed, distinctId is invalid: $newDistinctId.")
-                return null
-            }
-
-            // The AI lane always uses its own queue.
-            var isSnapshotEvent = !aiLane && event == PostHogEventName.SNAPSHOT.event
-            var groupIdentify = false
-            if (event == PostHogEventName.GROUP_IDENTIFY.event) {
-                groupIdentify = true
-            }
-
-            // Externally-built $exception events (e.g. the Flutter/RN bridge) carry only
-            // serialized class names, so they are matched by name instead of isInstance.
-            val ignored = config?.errorTrackingConfig?.ignoredExceptionTypes
-            if (!ignored.isNullOrEmpty() &&
-                event == PostHogEventName.EXCEPTION.event &&
-                hasIgnoredTypeInExceptionList(properties, ignored)
-            ) {
-                config?.logger?.log(
-                    "Skipping \$exception: an entry in \$exception_list matches ignoredExceptionTypes",
+            val uuid = event.uuid
+            val properties = event.properties ?: mutableMapOf()
+            if (sameIdentity) {
+                @Suppress("UNCHECKED_CAST")
+                setPersonPropertiesForFlagsIfNeeded(
+                    properties["\$set"] as? Map<String, Any>,
+                    properties["\$set_once"] as? Map<String, Any>,
                 )
-                return null
             }
-
-            // Attach the buffered exception steps to any $exception event (unless the caller
-            // already supplied them), so externally-built exceptions (e.g. from the Flutter/RN
-            // bridge) carry steps too, not only those captured via captureException(throwable).
-            val stepsBuffer = exceptionStepsBuffer
-            val effectiveProperties =
-                if (event == PostHogEventName.EXCEPTION.event && stepsBuffer != null) {
-                    val mutableProperties = properties?.toMutableMap() ?: mutableMapOf()
-                    stepsBuffer.attachTo(mutableProperties)
-                    mutableProperties
-                } else {
-                    properties
+            // A reset() since the build cleared the screen name, so the old one isn't restored.
+            if (!ai && build.resetGeneration == resetGeneration && event.event == PostHogEventName.SCREEN.event) {
+                (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
+            }
+            // The build added only the required replay debug keys. The window is claimed here, so a
+            // built event the wrapper drops never holds or starts it. Eligibility and values come from
+            // the build, since the wrapper's hook can rename the event and the session can change.
+            val deferredReplayDebug = build.deferredReplayDebug
+            if (deferredReplayDebug != null && claimReplayDebugPropertiesWindow()) {
+                claimedReplayDebugBundle = true
+                // Only keys the event lacks, so the wrapper's values win.
+                deferredReplayDebug.forEach { (key, value) ->
+                    if (!properties.containsKey(key)) {
+                        properties[key] = value
+                    }
                 }
-
-            val mergedProperties =
-                buildProperties(
-                    newDistinctId,
-                    properties = effectiveProperties,
-                    userProperties = userProperties,
-                    userPropertiesSetOnce = userPropertiesSetOnce,
-                    groups = groups,
-                    // only append shared props if not a snapshot event
-                    appendSharedProps = !isSnapshotEvent,
-                    // only append groups if not a group identify event and not a snapshot
-                    appendGroups = !groupIdentify,
-                    timestamp = timestamp,
-                    claimReplayDebugBundle = {
-                        isReplayDebugEvent(event) && claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it }
-                    },
-                )
-
-            val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
-
-            // Snapshots don't carry the SDK's person-processing option.
-            val eventOptions =
-                if (isSnapshotEvent) options?.toMutableMap() else personProcessingOptions(options, mergedProperties)
-
-            // This capture's identity, kept through beforeSend.
-            val uuid = TimeBasedEpochGenerator.generate()
-            val postHogEvent = buildEvent(event, newDistinctId, eventProperties, timestamp, eventOptions, uuid)
+            }
+            val builtEvent = if (event.properties == null) event.copy(properties = properties) else event
+            // Copied before the hooks run, which can change the map in place.
+            val handlerProperties =
+                if (surveysHandler != null || sessionReplayHandler != null) properties.toMap() else emptyMap()
+            val postHogEvent = runBeforeSend(builtEvent, uuid)
             if (postHogEvent == null) {
-                val originalMessage = "PostHog event $event was dropped"
-                val message =
-                    if (PostHogEventName.isUnsafeEditable(event)) {
-                        "$originalMessage. This can cause unexpected behavior."
-                    } else {
-                        originalMessage
-                    }
-                config?.logger?.log(message)
+                logDroppedEvent(builtEvent.event)
                 return null
             }
-            // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
-            isSnapshotEvent = !aiLane && postHogEvent.event == PostHogEventName.SNAPSHOT.event
-            // if this is a $snapshot event and $session_id is missing, don't process then event
-            if (isSnapshotEvent && postHogEvent.properties?.get("\$session_id") == null) {
-                config?.logger?.log("${postHogEvent.event} event dropped, because the \$session_id property is missing")
-                return null
-            }
-            // Replay has its own queue
-            if (isSnapshotEvent) {
-                replayQueue?.add(postHogEvent)
-                return uuid
-            }
-            val targetQueue = if (aiLane) aiQueue ?: return null else queue
-            var queued = false
-            // beforeSend may have opted out
-            if (isOptedOut()) {
-                config?.logger?.log("PostHog is in OptOut state.")
-            } else if (targetQueue != null) {
-                // AI events are measured and admitted here rather than in the queue, so captureAi returns null
-                queued =
-                    if (aiLane) {
-                        queueAiEvent(aiQueue ?: return null, postHogEvent)
-                    } else {
-                        targetQueue.add(postHogEvent)
-                        true
-                    }
-                if (queued && claimedReplayDebugBundle) {
+            return enqueueEvent(postHogEvent, builtEvent.event, handlerProperties, ai) {
+                if (claimedReplayDebugBundle) {
                     commitReplayDebugPropertiesWindow()
                 }
             }
-            // Notify surveys integration about the event
-            surveysHandler?.onEvent(event, mergedProperties)
-            // Notify session replay handler about the event for event triggers
-            sessionReplayHandler?.onEvent(event, mergedProperties)
-            return if (queued) uuid else null
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
             return null
@@ -1614,16 +2001,28 @@ public class PostHog private constructor(
             return
         }
 
+        val props = screenProperties(screenTitle, properties) ?: return
+
+        capture(PostHogEventName.SCREEN.event, properties = props, options = options)
+    }
+
+    /**
+     * Caches [screenTitle], trimmed, as the current screen and returns [properties] with it as
+     * `$screen_name`. Returns null for a blank title.
+     */
+    private fun screenProperties(
+        screenTitle: String,
+        properties: Map<String, Any>?,
+        cacheScreenName: Boolean = true,
+    ): MutableMap<String, Any>? {
         val trimmedTitle = screenTitle.trim()
         if (trimmedTitle.isEmpty()) {
-            return
+            return null
         }
 
-        if (lastScreenName != trimmedTitle) config.notifyIntegrationsChanged()
-
-        // Cache for capture-time context snapshot on log records and for the
-        // $screen_name auto-attach on subsequent events (see buildProperties).
-        this.lastScreenName = trimmedTitle
+        if (cacheScreenName) {
+            cacheScreenName(trimmedTitle)
+        }
 
         val props = mutableMapOf<String, Any>()
         properties?.let {
@@ -1632,8 +2031,14 @@ public class PostHog private constructor(
 
         // The title wins over a caller-supplied $screen_name, matching the cached value.
         props["\$screen_name"] = trimmedTitle
+        return props
+    }
 
-        capture(PostHogEventName.SCREEN.event, properties = props, options = options)
+    // Cache for capture-time context snapshot on log records and for the
+    // $screen_name auto-attach on subsequent events (see buildProperties).
+    private fun cacheScreenName(screenName: String) {
+        if (lastScreenName != screenName) config.notifyIntegrationsChanged()
+        this.lastScreenName = screenName
     }
 
     public override fun alias(
@@ -2130,13 +2535,30 @@ public class PostHog private constructor(
             return
         }
         loadFeatureFlagsRequest(
-            internalOnFeatureFlags = internalOnFeatureFlagsLoaded,
+            internalOnFeatureFlags = internalOnFeatureFlagsLoaded(),
             onFeatureFlags = onFeatureFlags,
         )
     }
 
+    public override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription {
+        val listener = FeatureFlagsListener(callback)
+        featureFlagsListeners.add(listener)
+
+        remoteConfigExecutor.executeSafely {
+            runFeatureFlagsListener {
+                // Read at delivery time so a delivery already queued can't be followed by an older value.
+                lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) }
+            }
+        }
+
+        return PostHogFeatureFlagsSubscription {
+            listener.active = false
+            featureFlagsListeners.remove(listener)
+        }
+    }
+
     private fun loadFeatureFlagsRequest(
-        internalOnFeatureFlags: () -> Unit,
+        internalOnFeatureFlags: (errorsLoading: Boolean) -> Unit,
         onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         @Suppress("UNCHECKED_CAST")
@@ -2166,7 +2588,7 @@ public class PostHog private constructor(
     }
 
     private fun loadRemoteConfigRequest(
-        internalOnFeatureFlags: (() -> Unit)?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
         onFeatureFlags: PostHogFeatureFlagsCallback?,
     ) {
         @Suppress("UNCHECKED_CAST")
@@ -2380,6 +2802,7 @@ public class PostHog private constructor(
         }
 
         config.notifyIntegrationsChanged()
+        resetGeneration++
         // Capture the logging-out identity before preferences are cleared, so the push token can be
         // unregistered for it and re-registered under the new anonymous id (decision 5/6).
         val previousDistinctId = distinctId
@@ -2424,6 +2847,7 @@ public class PostHog private constructor(
             getPreferences().clear(except = except.toList())
         }
         remoteConfig?.clear()
+        clearFeatureFlagsLoaded()
         featureFlagsCalled.clear()
         lastScreenName = null
         synchronized(cachedPersonPropertiesLock) {
@@ -2941,6 +3365,9 @@ public class PostHog private constructor(
             shared.reloadFeatureFlags(onFeatureFlags)
         }
 
+        public override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription =
+            shared.onFeatureFlags(callback)
+
         public override fun isFeatureEnabled(
             key: String,
             defaultValue: Boolean,
@@ -3089,6 +3516,36 @@ public class PostHog private constructor(
         override fun <T : PostHogConfig> getConfig(): T? {
             return shared.getConfig()
         }
+
+        @PostHogInternal
+        override fun buildEventForWrapper(
+            event: String,
+            distinctId: String?,
+            properties: Map<String, Any>?,
+            userProperties: Map<String, Any>?,
+            userPropertiesSetOnce: Map<String, Any>?,
+            groups: Map<String, String>?,
+            options: Map<String, Any?>?,
+            ai: Boolean,
+            timestamp: Date?,
+        ): PostHogEvent? =
+            shared.buildEventForWrapper(
+                event,
+                distinctId = distinctId,
+                properties = properties,
+                userProperties = userProperties,
+                userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = groups,
+                options = options,
+                ai = ai,
+                timestamp = timestamp,
+            )
+
+        @PostHogInternal
+        override fun sendBuiltEventForWrapper(
+            event: PostHogEvent,
+            ai: Boolean,
+        ): UUID? = shared.sendBuiltEventForWrapper(event, ai)
 
         override fun isSessionActive(): Boolean {
             return shared.isSessionActive()
