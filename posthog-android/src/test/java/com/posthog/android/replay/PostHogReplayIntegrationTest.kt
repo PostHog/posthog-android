@@ -4193,6 +4193,53 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `legacy capture discards a frame with a masked view in transient state`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = { h.child.setHasTransientState(true) }
+
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.child.setHasTransientState(false)
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `legacy mask walk is not poisoned by an animating view with nothing to mask`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val root = FrameLayout(activity)
+            val animated = View(activity)
+            root.addView(animated)
+            activity.setContentView(root)
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activity.window.decorView)
+            root.layout(0, 0, 100, 100)
+            animated.layout(0, 0, 100, 20)
+            animated.animation = runningAnimation()
+
+            val walk = PostHogReplayIntegration.MaskWalk(failClosed = false)
+            fx.sut.findMaskableWidgets(root, walk)
+
+            assertFalse(walk.poisoned)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    private fun runningAnimation(): Animation =
+        mock<Animation>().also {
+            whenever(it.hasStarted()).thenReturn(true)
+            whenever(it.hasEnded()).thenReturn(false)
+        }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
     fun `legacy capture stays pinned when verification is enabled mid-capture`() {
         val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
         try {

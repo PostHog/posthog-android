@@ -1175,7 +1175,9 @@ public class PostHogReplayIntegration(
 
                 if (!viewChild.isVisible(walk)) {
                     // A skipped-but-rendered view could be a masked widget we cannot place.
-                    if (walk.failClosed && viewChild.isRenderedButUnplaceable()) {
+                    if (viewChild.isRenderedButUnplaceable() &&
+                        (walk.failClosed || viewChild.hasMaskableContent(walk))
+                    ) {
                         walk.poisoned = true
                         return
                     }
@@ -1184,6 +1186,29 @@ public class PostHogReplayIntegration(
 
                 findMaskableWidgets(viewChild, walk)
             }
+        }
+    }
+
+    // Whether this subtree holds anything the walk would mask, judged without geometry, so a
+    // legacy walk can tell an unplaceable sensitive view from a harmless animation.
+    private fun View.hasMaskableContent(walk: MaskWalk): Boolean {
+        if (!walk.visitedViews.add(System.identityHashCode(this))) {
+            return false
+        }
+        return when {
+            isComposeView() -> true
+            isUnmasked() -> false
+            isNoCapture() -> true
+            this is TextView ->
+                (text?.isNotEmpty() == true || hint?.isNotEmpty() == true) && shouldMaskTextView()
+            this is Spinner -> shouldMaskSpinner()
+            this is ImageView -> shouldMaskImage()
+            this is WebView -> isAnyInputSensitive()
+            this is ViewGroup ->
+                (0 until childCount).any { i ->
+                    getChildAt(i)?.let { it.visibility == View.VISIBLE && it.hasMaskableContent(walk) } == true
+                }
+            else -> false
         }
     }
 
@@ -1703,7 +1728,7 @@ public class PostHogReplayIntegration(
                     findMaskableWidgets(this, it)
                 }
             } ?: return false
-        if (walk.aborted || unsafeRedraw()) {
+        if (walk.aborted || walk.poisoned || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
