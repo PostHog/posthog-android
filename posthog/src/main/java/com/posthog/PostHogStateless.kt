@@ -218,10 +218,11 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
+        val currentGroups = props["\$groups"] as? Map<*, *>
         properties?.let {
             props.putAll(it)
         }
-        putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups })
+        putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups }, currentGroups)
 
         return props
     }
@@ -229,6 +230,7 @@ public open class PostHogStateless protected constructor(
     /**
      * A typed per-call value wins key by key over the same map in the caller's [properties]:
      * `userProperties` over `$set`, `userPropertiesSetOnce` over `$set_once` and `groups` over `$groups`.
+     * A caller `$groups` adds to [currentGroups] (the stored and per-call groups) instead of replacing them.
      */
     internal fun putTypedValuesOverCaller(
         props: MutableMap<String, Any>,
@@ -236,11 +238,16 @@ public open class PostHogStateless protected constructor(
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
+        currentGroups: Map<*, *>? = null,
     ) {
         for ((key, typed) in listOf("\$set" to userProperties, "\$set_once" to userPropertiesSetOnce, "\$groups" to groups)) {
             val caller = properties?.get(key) as? Map<*, *> ?: continue
-            if (typed == null) continue
-            props[key] = LinkedHashMap<Any?, Any?>(caller).apply { putAll(typed) }
+            val merged = LinkedHashMap<Any?, Any?>()
+            if (key == "\$groups") currentGroups?.let { merged.putAll(it) }
+            if (typed == null && merged.isEmpty()) continue
+            merged.putAll(caller)
+            typed?.let { merged.putAll(it) }
+            props[key] = merged
         }
     }
 

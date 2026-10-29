@@ -2131,6 +2131,28 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `a caller groups map adds to stored groups, and typed groups win per key`() {
+        val http = mockHttp()
+        val prefs = PostHogMemoryPreferences()
+        prefs.setValue(GROUPS, mapOf("org" to "stored", "company" to "stored"))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, cachePreferences = prefs, reloadFeatureFlags = false)
+
+        sut.capture(
+            EVENT,
+            DISTINCT_ID,
+            properties = mapOf("\$groups" to mapOf("company" to "caller", "team" to "t1")),
+            groups = mapOf("team" to "typed"),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val properties = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader()).batch.first().properties!!
+        assertEquals(mapOf("org" to "stored", "company" to "caller", "team" to "typed"), properties["\$groups"])
+
+        sut.close()
+    }
+
+    @Test
     fun `typed per-call values win key by key over the same maps in properties`() {
         val http = mockHttp()
         val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)

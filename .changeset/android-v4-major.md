@@ -32,6 +32,6 @@
 - stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
 - debug logs for capture requests name the event count and the response status instead of printing the request and response bodies, and count the events PostHog drops, the duplicate copies it drops and the events it asks to retry, in one line per batch
 - **Breaking:** drop an event whose name is empty before sending it, including one `beforeSend` renames to `""`
-- **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps passed in the same call's properties, instead of being replaced by them
+- **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps passed in the same call's properties, instead of being replaced by them, and merge a `$groups` map in properties into the groups set with `group()`
 - add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB + 64 KiB per serialized event
 - cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own

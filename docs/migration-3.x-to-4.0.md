@@ -100,7 +100,7 @@ An event's properties are merged in this order, and later values win:
 
 1. properties the SDK sets itself, such as `$os_name`, `$app_version`, `$screen_name`, `$is_identified`, `$session_id` and the session replay debug properties (`$recording_status`, `$sdk_debug_*`)
 2. registered super properties (`register`)
-3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here, and when you also pass that key in properties they win key by key
+3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here, and when you also pass that key in properties they win key by key; a `$groups` map in properties adds to the groups set with `group()` instead of replacing them
 4. `beforeSend`
 
 In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$process_person_profile` and the session replay debug properties also won over the properties you pass.

@@ -865,11 +865,19 @@ public class PostHog private constructor(
         }
 
         // Caller-supplied properties win over registered super properties and SDK-set values.
+        val currentGroups = props["\$groups"] as? Map<*, *>
         properties?.let {
             props.putAll(it)
         }
         if (appendSharedProps) {
-            putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups })
+            putTypedValuesOverCaller(
+                props,
+                properties,
+                userProperties,
+                userPropertiesSetOnce,
+                groups.takeIf { appendGroups },
+                currentGroups,
+            )
         }
 
         // only Session replay needs distinct_id also in the props
