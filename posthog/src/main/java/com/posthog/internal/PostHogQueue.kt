@@ -258,45 +258,45 @@ public class PostHogQueue<Record>(
         val maxRecords = spec.maxQueueSize(config).coerceAtLeast(1)
         val entry = record to bytes
         var dropped = 0
-        val schedule: Boolean
-        synchronized(pendingLock) {
-            pending.addLast(entry)
-            pendingBytes += bytes
-            while (pending.size > 1 && (pending.size > maxRecords || pendingBytes > maxQueueBytes)) {
-                pendingBytes -= pending.removeFirst().second
-                dropped++
+        val accepted =
+            synchronized(pendingLock) {
+                pending.addLast(entry)
+                pendingBytes += bytes
+                while (pending.size > 1 && (pending.size > maxRecords || pendingBytes > maxQueueBytes)) {
+                    pendingBytes -= pending.removeFirst().second
+                    dropped++
+                }
+                // A dropped record's task writes a newer one instead, so tasks never outnumber records.
+                if (pendingTasks >= pending.size) return@synchronized true
+                pendingTasks++
+                // Submitted under the lock so tasks queue in the order their records were added, and a
+                // flush queued after this call returns runs after this record is written.
+                try {
+                    // Each task writes the oldest waiting record.
+                    executor.execute {
+                        val next =
+                            synchronized(pendingLock) {
+                                pendingTasks--
+                                pending.removeFirstOrNull()?.also { pendingBytes -= it.second }
+                            }
+                        if (next != null) {
+                            flushRecordSync(next.first)
+                        }
+                    }
+                    true
+                } catch (e: Throwable) {
+                    // RejectedExecutionException once the queue is shut down
+                    pendingTasks--
+                    if (pending.remove(entry)) {
+                        pendingBytes -= bytes
+                    }
+                    false
+                }
             }
-            // A dropped record's task writes a newer one instead, so tasks never outnumber records.
-            schedule = pendingTasks < pending.size
-            if (schedule) pendingTasks++
-        }
         if (dropped > 0) {
             config.logger.log("Too many ${spec.recordsLabel} are waiting to be written, the oldest $dropped are dropped.")
         }
-        if (!schedule) return true
-        try {
-            // Each task writes the oldest waiting record.
-            executor.execute {
-                val next =
-                    synchronized(pendingLock) {
-                        pendingTasks--
-                        pending.removeFirstOrNull()?.also { pendingBytes -= it.second }
-                    }
-                if (next != null) {
-                    flushRecordSync(next.first)
-                }
-            }
-        } catch (e: Throwable) {
-            // RejectedExecutionException once the queue is shut down
-            synchronized(pendingLock) {
-                pendingTasks--
-                if (pending.remove(entry)) {
-                    pendingBytes -= bytes
-                }
-            }
-            return false
-        }
-        return true
+        return accepted
     }
 
     private fun flushIfOverThreshold(isFatal: Boolean) {
