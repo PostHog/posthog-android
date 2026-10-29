@@ -4244,6 +4244,8 @@ internal class PostHogReplayIntegrationTest {
         h.hookLayout.addView(container)
         container.layout(0, 0, 100, 20)
         h.child.layout(0, 0, 100, 20)
+        h.child.tag = null
+        h.child.text = "secret"
         try {
             DrawSequenceShadowPixelCopy.onRequest = { h.child.setHasTransientState(true) }
 
