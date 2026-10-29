@@ -7,18 +7,24 @@ import android.view.ViewGroup
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.DrawModifier
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -53,6 +59,32 @@ internal class PostHogReplayComposeImageMaskTest {
 
         override fun DrawScope.onDraw() {
             drawRect(Color.Red)
+        }
+    }
+
+    // Shaped like Coil 3's AsyncImage: the element holds no painter, and the node inherits its
+    // painter field from a superclass.
+    private open class PainterHolderNode(private val painter: Painter) : Modifier.Node(), DrawModifierNode {
+        override fun ContentDrawScope.draw() {
+            with(painter) { draw(size) }
+        }
+    }
+
+    private class NodePainterNode(painter: Painter) : PainterHolderNode(painter)
+
+    private class NodePainterElement : ModifierNodeElement<NodePainterNode>() {
+        override fun create() = NodePainterNode(PhotoPainter())
+
+        override fun update(node: NodePainterNode) {}
+
+        override fun hashCode() = 0
+
+        override fun equals(other: Any?) = other is NodePainterElement
+    }
+
+    private class LegacyPainterModifier(val painter: Painter) : DrawModifier {
+        override fun ContentDrawScope.draw() {
+            with(painter) { draw(size) }
         }
     }
 
@@ -120,6 +152,33 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
         assertEquals(setOf(boundsOf("image")), maskRects(maskAllImages = false).toSet())
+    }
+
+    @Test
+    fun `masks an image whose painter is only on its modifier node`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image").size(40.dp).then(NodePainterElement()))
+        }
+
+        assertEquals(listOf(boundsOf("image")), maskRects())
+    }
+
+    @Test
+    fun `masks an image whose painter is on an old-style draw modifier`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image").size(40.dp).then(LegacyPainterModifier(PhotoPainter())))
+        }
+
+        assertEquals(listOf(boundsOf("image")), maskRects())
+    }
+
+    @Test
+    fun `masks the whole painted area when padding follows the painter`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image").size(100.dp).paint(PhotoPainter()).padding(30.dp))
+        }
+
+        assertEquals(listOf(boundsOf("image")), maskRects())
     }
 
     @Test

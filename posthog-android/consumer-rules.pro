@@ -113,6 +113,18 @@
     java.util.List getChildren$ui();
     java.util.List getChildren$ui_release();
     java.util.List getChildrenInfo();
+    *** getNodes$ui();
+    *** getNodes$ui_release();
+}
+-keepclassmembers class androidx.compose.ui.node.NodeChain {
+    *** getHead$ui();
+    *** getHead$ui_release();
+}
+-keepnames class androidx.compose.ui.Modifier$Node
+-keepnames class androidx.compose.ui.graphics.painter.BrushPainter
+-keepclassmembers class androidx.compose.ui.Modifier$Node {
+    *** getChild$ui();
+    *** getChild$ui_release();
 }
 
 # Uncomment this to preserve the line number information for
