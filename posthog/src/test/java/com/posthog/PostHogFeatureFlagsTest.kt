@@ -510,6 +510,27 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `closing from an integration's install drops setup's load for listeners`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(total = 2, response = MockResponse().setBody(flags))
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val integration =
+            object : PostHogIntegration {
+                override fun install(postHog: PostHogInterface) {
+                    postHog.onFeatureFlags { updates.add(it) }
+                    postHog.close()
+                }
+            }
+        val sut = getSut(http.url("/").toString(), integration = integration)
+
+        // setup's load runs on the remote config thread; close() cleared the snapshot it would refill
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        sut.onFeatureFlags { updates.add(it) }
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertNull(updates.poll())
+    }
+
+    @Test
     fun `onFeatureFlags listener is not invoked by a reload while disabled`() {
         val sut = getSut(mockHttp().url("/").toString(), preloadFeatureFlags = false)
         val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()

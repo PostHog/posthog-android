@@ -430,6 +430,10 @@ public class PostHog private constructor(
 
                 super.enabled = true
 
+                // Captured before any user callout below (integrations, session hooks, the bootstrap
+                // config callback), any of which may close() and so supersede setup's flags load.
+                val generation = featureFlagsGeneration
+
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
                 // by seeding from the anonymous ID, providing a stable identifier for
                 // device-level feature flag bucketing that survives identify() and reset().
@@ -467,8 +471,6 @@ public class PostHog private constructor(
 
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
-                    // Captured before the config callback below, which may close() and so supersede this load.
-                    val generation = featureFlagsGeneration
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
