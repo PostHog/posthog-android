@@ -76,7 +76,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test comma
 
 ## SDK Type
 
-The Android SDK advertises `capture_v1`, `capture_ai_v1`, `encoding_gzip` and `event_options`:
+The Android SDK advertises `capture_v1`, `capture_ai_v1`, `encoding_gzip`, `event_options`, `generated_payloads`, `log_capture`, `property_layers` and `fail_open`:
 - Endpoints: `POST /i/v1/analytics/events` (`/capture`) and `POST /i/v1/ai/events` (`/capture_ai`)
 - Format: `{created_at: "...", batch: [{event}, {event}]}` with the project token in an `Authorization: Bearer` header
 

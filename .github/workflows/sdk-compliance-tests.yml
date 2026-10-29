@@ -26,5 +26,5 @@ jobs:
     with:
       adapter-dockerfile: sdk_compliance_adapter/Dockerfile
       adapter-context: .
-      test-harness-version: "1.20.0"
+      test-harness-version: "1.26.0"
       report-name: android-sdk-compliance-report
