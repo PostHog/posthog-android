@@ -372,7 +372,7 @@ public class PostHogReplayIntegration(
                             }
                         }
 
-                        window.touchEventInterceptors += onTouchEventListener
+                        window.touchEventInterceptors += touchInterceptor(window)
                         // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
                         // window.keyEventInterceptors
                     } else {
@@ -447,6 +447,23 @@ public class PostHogReplayIntegration(
 
         return Pair(imeVisible, event)
     }
+
+    // Main thread only, like the window callbacks that add and remove these interceptors.
+    private val touchInterceptors = WeakHashMap<Window, TouchEventInterceptor>()
+
+    // A FLAG_SECURE window is recorded fully masked in screenshot mode, so its touches aren't
+    // recorded either. The flag is read per touch because apps toggle it at runtime.
+    internal fun touchInterceptor(window: Window): TouchEventInterceptor =
+        touchInterceptors.getOrPut(window) {
+            val windowRef = WeakReference(window)
+            TouchEventInterceptor { motionEvent, dispatch ->
+                if (isScreenshotCapable && windowRef.get()?.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
+                    dispatch(motionEvent)
+                } else {
+                    onTouchEventListener.intercept(motionEvent, dispatch)
+                }
+            }
+        }
 
     internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
@@ -556,7 +573,7 @@ public class PostHogReplayIntegration(
         }
 
         view.phoneWindow?.let { window ->
-            window.touchEventInterceptors -= onTouchEventListener
+            touchInterceptors.remove(window)?.let { window.touchEventInterceptors -= it }
         }
 
         decorViews.remove(view)
@@ -1193,6 +1210,7 @@ public class PostHogReplayIntegration(
 
     // Whether this subtree holds anything the walk would mask, judged without geometry, so a
     // legacy walk can tell an unplaceable sensitive view from a harmless animation.
+    // Keep in sync with findMaskableWidgets.
     private fun View.hasMaskableContent(walk: MaskWalk): Boolean {
         if (!walk.visitedViews.add(System.identityHashCode(this))) {
             return false
@@ -1730,8 +1748,12 @@ public class PostHogReplayIntegration(
                     findMaskableWidgets(this, it)
                 }
             } ?: return false
-        if (walk.aborted || walk.poisoned || unsafeRedraw()) {
+        if (walk.aborted || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
+            return false
+        }
+        if (walk.poisoned) {
+            config.logger.log("Session Replay screenshot discarded: a view with content to mask is animating or in a transient state.")
             return false
         }
 
