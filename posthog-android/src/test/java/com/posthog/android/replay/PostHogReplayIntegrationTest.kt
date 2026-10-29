@@ -52,6 +52,7 @@ import com.posthog.internal.replay.RREventType
 import com.posthog.internal.replay.RRFullSnapshotEvent
 import com.posthog.internal.replay.RRIncrementalMouseInteractionData
 import com.posthog.internal.replay.RRIncrementalMouseInteractionEvent
+import com.posthog.internal.replay.RRIncrementalMutationData
 import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRWireframe
@@ -3019,7 +3020,17 @@ internal class PostHogReplayIntegrationTest {
             val events = fake.properties?.get("\$snapshot_data") as List<RREvent>
             val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
             val wireframes = (fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>
-            val wireframe = wireframes.single() as RRWireframe
+            return decodeScreenshot(wireframes.single() as RRWireframe)
+        }
+
+        private fun updatedScreenshotBitmap(fake: PostHogFake): Bitmap {
+            @Suppress("UNCHECKED_CAST")
+            val events = fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val mutation = events.first { it.type == RREventType.IncrementalSnapshot }.data as RRIncrementalMutationData
+            return decodeScreenshot(assertNotNull(mutation.updates).single().wireframe)
+        }
+
+        private fun decodeScreenshot(wireframe: RRWireframe): Bitmap {
             val bytes = Base64.decode(assertNotNull(wireframe.base64).substringAfter(','), Base64.DEFAULT)
             return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         }
@@ -3090,12 +3101,16 @@ internal class PostHogReplayIntegrationTest {
         @GraphicsMode(GraphicsMode.Mode.NATIVE)
         fun `a secure window is recorded fully masked without copying its pixels`() {
             val h = captureHarness()
-            h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.WHITE) }
             try {
                 assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
-                assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
-                val bitmap = screenshotBitmap(h.fake)
+                h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+
+                assertEquals(1, RecordingShadowPixelCopy.requests.size)
+                val bitmap = updatedScreenshotBitmap(h.fake)
                 try {
                     assertEquals(ceil(100 * scale).toInt(), bitmap.width)
                     for (x in 0 until bitmap.width) {
@@ -4223,6 +4238,12 @@ internal class PostHogReplayIntegrationTest {
     @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
     fun `legacy capture discards a frame with a masked view in transient state`() {
         val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        val container = FrameLayout(h.hookLayout.context)
+        h.hookLayout.removeView(h.child)
+        container.addView(h.child)
+        h.hookLayout.addView(container)
+        container.layout(0, 0, 100, 20)
+        h.child.layout(0, 0, 100, 20)
         try {
             DrawSequenceShadowPixelCopy.onRequest = { h.child.setHasTransientState(true) }
 

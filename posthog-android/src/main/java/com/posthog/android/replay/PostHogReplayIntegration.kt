@@ -1117,6 +1117,7 @@ public class PostHogReplayIntegration(
 
         var walkChildren = false
 
+        // Keep in sync with hasMaskableContent.
         when {
             view.isComposeView() -> {
                 findMaskableComposeWidgets(view, walk)
@@ -1844,7 +1845,7 @@ public class PostHogReplayIntegration(
                     view.width,
                     view.height,
                     shouldVerifyMaskAlignment(view, drawState),
-                    window.attributes.flags and FLAG_SECURE != 0,
+                    window.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE,
                 )
             } ?: return null
         val viewId = System.identityHashCode(view)
