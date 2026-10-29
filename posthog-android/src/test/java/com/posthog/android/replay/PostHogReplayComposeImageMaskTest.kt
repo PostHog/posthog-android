@@ -1,5 +1,6 @@
 package com.posthog.android.replay
 
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
@@ -12,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,6 +28,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.InteractionActivity
 import com.posthog.android.internal.InteractionTestApplication
 import com.posthog.android.internal.MainHandler
+import com.posthog.android.replay.PostHogMaskModifier.postHogMask
 import com.posthog.android.replay.PostHogMaskModifier.postHogUnmask
 import com.posthog.internal.PostHogLogger
 import org.junit.Rule
@@ -74,6 +77,51 @@ internal class PostHogReplayComposeImageMaskTest {
         )
     }
 
+    @Composable
+    @Suppress("ktlint:standard:function-naming")
+    private fun BitmapImage(contentDescription: String?) {
+        Image(
+            bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap(),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(40.dp),
+        )
+    }
+
+    @Test
+    fun `masks a bitmap image without a content description`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image")) { BitmapImage(contentDescription = null) }
+        }
+
+        assertEquals(listOf(boundsOf("image")), maskRects())
+    }
+
+    @Test
+    fun `masks a bitmap image with a content description`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image")) { BitmapImage(contentDescription = "photo") }
+        }
+
+        // Both the semantics pass and the layout pass find it.
+        assertEquals(setOf(boundsOf("image")), maskRects().toSet())
+    }
+
+    @Test
+    fun `does not mask a bitmap image with a content description when maskAllImages is off`() {
+        compose.activity.setContent { BitmapImage(contentDescription = "photo") }
+
+        assertTrue(maskRects(maskAllImages = false).isEmpty())
+    }
+
+    @Test
+    fun `masks an image without a content description inside postHogMask when maskAllImages is off`() {
+        compose.activity.setContent {
+            Box(Modifier.testTag("image").postHogMask()) { BitmapImage(contentDescription = null) }
+        }
+
+        assertEquals(setOf(boundsOf("image")), maskRects(maskAllImages = false).toSet())
+    }
+
     @Test
     fun `does not mask a vector image without a content description`() {
         val vector =
@@ -106,6 +154,11 @@ internal class PostHogReplayComposeImageMaskTest {
         compose.activity.setContent { PhotoImage() }
 
         assertTrue(maskRects(maskAllImages = false).isEmpty())
+    }
+
+    private fun boundsOf(tag: String): Rect {
+        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow
+        return Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt())
     }
 
     private fun maskRects(maskAllImages: Boolean = true): List<Rect> {
