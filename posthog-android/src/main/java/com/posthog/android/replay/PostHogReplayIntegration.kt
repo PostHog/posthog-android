@@ -137,7 +137,7 @@ public class PostHogReplayIntegration(
     private val sceneImages = WeakHashMap<View, SceneImage>()
     private val sceneDirtyViews = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
     private val sceneIds = WeakHashMap<View, Int>()
-    private var nextSceneId = 10_000_001
+    private var nextSceneId = FIRST_SCENE_IMAGE_ID
     private var lastScene: List<RRWireframe>? = null
     private var sceneViewport: Pair<Int, Int>? = null
 
@@ -471,29 +471,33 @@ public class PostHogReplayIntegration(
         changedView: View? = null,
         drawState: WindowDrawState? = null,
     ) {
-        if (!isNativeSdk || !config.sessionReplayConfig.screenshot) return
-        val generation =
-            synchronized(decorViews) {
-                if (!isActive()) return
-                if (changedView != null) {
-                    val status = decorViews[changedView] ?: return
-                    if (drawState != null && status.drawState !== drawState) return
-                    sceneDirtyViews.add(changedView)
+        try {
+            if (!isNativeSdk || !config.sessionReplayConfig.screenshot) return
+            val generation =
+                synchronized(decorViews) {
+                    if (!isActive()) return
+                    if (changedView != null) {
+                        val status = decorViews[changedView] ?: return
+                        if (drawState != null && status.drawState !== drawState) return
+                        sceneDirtyViews.add(changedView)
+                    }
+                    snapshotGeneration
                 }
-                snapshotGeneration
+            // Pin the lease when selecting the topology, before any work can queue behind it.
+            val layers = selectSceneLayers() ?: return
+            val base = layers.first()
+            submitCapture(
+                base.status.drawState,
+                onAvailable = { mainHandler.handler.post { requestSceneCapture() } },
+            ) {
+                try {
+                    generateSceneSnapshot(layers, generation)
+                } catch (e: Throwable) {
+                    config.logger.log("Session Replay scene capture failed: $e.")
+                }
             }
-        // Pin the lease when selecting the topology, before any work can queue behind it.
-        val layers = selectSceneLayers() ?: return
-        val base = layers.first()
-        submitCapture(
-            base.status.drawState,
-            onAvailable = { mainHandler.handler.post { requestSceneCapture() } },
-        ) {
-            try {
-                generateSceneSnapshot(layers, generation)
-            } catch (e: Throwable) {
-                config.logger.log("Session Replay scene capture failed: $e.")
-            }
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay scene capture request failed: $e.")
         }
     }
 
@@ -681,7 +685,7 @@ public class PostHogReplayIntegration(
             scene.add(
                 dimIndex,
                 RRWireframe(
-                    id = 10_000_000,
+                    id = DIM_LAYER_ID,
                     x = base.x,
                     y = base.y,
                     width = base.width,
@@ -2957,7 +2961,7 @@ public class PostHogReplayIntegration(
             sceneImages.clear()
             sceneDirtyViews.clear()
             sceneIds.clear()
-            nextSceneId = 10_000_001
+            nextSceneId = FIRST_SCENE_IMAGE_ID
             lastScene = null
             sceneViewport = null
             decorViews.entries.forEach {
@@ -3487,6 +3491,9 @@ public class PostHogReplayIntegration(
     }
 
     internal companion object {
+        private const val DIM_LAYER_ID: Int = 10_000_000
+        private const val FIRST_SCENE_IMAGE_ID: Int = 10_000_001
+
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
         const val PH_NO_MASK_LABEL: String = "ph-no-mask"
 
