@@ -3084,6 +3084,34 @@ internal class PostHogReplayIntegrationTest {
                 RecordingShadowPixelCopy.reset()
             }
         }
+
+        @Test
+        @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+        @GraphicsMode(GraphicsMode.Mode.NATIVE)
+        fun `a secure window is recorded fully masked without copying its pixels`() {
+            val h = captureHarness()
+            h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            RecordingShadowPixelCopy.reset()
+            try {
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
+                val bitmap = screenshotBitmap(h.fake)
+                try {
+                    assertEquals(ceil(100 * scale).toInt(), bitmap.width)
+                    for (x in 0 until bitmap.width) {
+                        for (y in 0 until bitmap.height) {
+                            val pixel = bitmap.getPixel(x, y)
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        }
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
     }
 
     @RunWith(ParameterizedRobolectricTestRunner::class)

@@ -36,6 +36,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.CheckBox
@@ -1783,6 +1784,30 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun maskedScreenshotBase64(
+        width: Int,
+        height: Int,
+        bitmapConfig: Bitmap.Config,
+        compressionQuality: Int,
+    ): String? {
+        val lease =
+            try {
+                pixelCopyBitmapBuffer.acquire(width, height, bitmapConfig)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay screenshot setup failed: $e.")
+                null
+            } ?: return null
+        return try {
+            lease.bitmap.eraseColor(paint.color)
+            lease.bitmap.webpBase64(compressionQuality)
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay screenshot encoding failed: $e.")
+            null
+        } finally {
+            lease.release()
+        }
+    }
+
     private fun scaledScreenshotDimension(
         size: Int,
         scale: Float,
@@ -1794,6 +1819,7 @@ public class PostHogReplayIntegration(
         val width: Int,
         val height: Int,
         val verifyMaskAlignment: Boolean,
+        val secure: Boolean,
     )
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
@@ -1818,6 +1844,7 @@ public class PostHogReplayIntegration(
                     view.width,
                     view.height,
                     shouldVerifyMaskAlignment(view, drawState),
+                    window.attributes.flags and FLAG_SECURE != 0,
                 )
             } ?: return null
         val viewId = System.identityHashCode(view)
@@ -1835,6 +1862,33 @@ public class PostHogReplayIntegration(
                 PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
             }
         var base64: String? = null
+
+        // FLAG_SECURE asks that the window never be captured, so it's recorded as one mask
+        // without copying its pixels.
+        if (geometry.secure) {
+            base64 =
+                maskedScreenshotBase64(
+                    scaledScreenshotDimension(sourceWidth, screenshotScale),
+                    scaledScreenshotDimension(sourceHeight, screenshotScale),
+                    bitmapConfig,
+                    compressionQuality,
+                )
+            if (base64 == null) {
+                recordScreenshotDiscarded(drawState)
+                return null
+            }
+            drawState.resetScreenshotDiscards()
+            return RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                type = "screenshot",
+                base64 = base64,
+                style = RRStyle(),
+            )
+        }
 
         val verifyMaskAlignment = geometry.verifyMaskAlignment
         val armedCapture =
