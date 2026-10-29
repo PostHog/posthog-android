@@ -4333,7 +4333,7 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `the discard check treats as maskable exactly what the mask walk masks`() {
+    fun `the discard check treats everything the mask walk masks as maskable`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
             val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
@@ -4352,6 +4352,15 @@ internal class PostHogReplayIntegrationTest {
                     ImageView(activity).apply { setImageBitmap(Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)) },
                     FrameLayout(activity).apply { addView(TextView(activity).apply { text = "secret" }) },
                     FrameLayout(activity).apply { addView(View(activity)) },
+                    FrameLayout(activity).apply {
+                        addView(
+                            TextView(activity).apply {
+                                text = "secret"
+                                visibility = View.INVISIBLE
+                            },
+                        )
+                    },
+                    FakeAndroidComposeView(activity),
                 )
             views.forEach { root.addView(it) }
             shadowOf(Looper.getMainLooper()).idle()
@@ -4368,8 +4377,9 @@ internal class PostHogReplayIntegrationTest {
                 }
             val maskableForDiscard = views.map { with(fx.sut) { it.hasMaskableContent(PostHogReplayIntegration.MaskWalk()) } }
 
-            assertEquals(listOf(false, true, false, true, false, true, true, false), maskedByWalk)
-            assertEquals(maskedByWalk, maskableForDiscard)
+            assertEquals(listOf(false, true, false, true, false, true, true, false, false, false), maskedByWalk)
+            // Compose content can't be judged without geometry, so the discard check counts it as maskable.
+            assertEquals(listOf(false, true, false, true, false, true, true, false, false, true), maskableForDiscard)
         } finally {
             fx.sut.uninstall()
         }
