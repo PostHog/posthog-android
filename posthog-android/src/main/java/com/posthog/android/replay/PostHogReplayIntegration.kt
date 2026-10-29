@@ -78,7 +78,6 @@ import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRMutatedNode
 import com.posthog.internal.replay.RRRemovedNode
-import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
 import curtains.Curtains
@@ -826,40 +825,21 @@ public class PostHogReplayIntegration(
             events.add(event)
             status.sentFullSnapshot = true
         } else {
+            // Each window sends one screenshot node, so a frame is an update to that node.
             val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems, updatedItems) =
-                findAddedAndRemovedItems(
-                    lastSnapshots.flattenChildren(),
-                    listOf(wireframe).flattenChildren(),
-                )
+            val incrementalMutationData =
+                when {
+                    lastSnapshot == null -> RRIncrementalMutationData(adds = listOf(RRMutatedNode(wireframe)))
+                    lastSnapshot.id != wireframe.id ->
+                        RRIncrementalMutationData(
+                            adds = listOf(RRMutatedNode(wireframe)),
+                            removes = listOf(RRRemovedNode(lastSnapshot.id)),
+                        )
+                    lastSnapshot != wireframe -> RRIncrementalMutationData(updates = listOf(RRMutatedNode(wireframe)))
+                    else -> null
+                }
 
-            val addedNodes = mutableListOf<RRMutatedNode>()
-            addedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
-
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
-
-            val updatedNodes = mutableListOf<RRMutatedNode>()
-            updatedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                updatedNodes.add(item)
-            }
-
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
-                val incrementalMutationData =
-                    RRIncrementalMutationData(
-                        adds = addedNodes.ifEmpty { null },
-                        removes = removedNodes.ifEmpty { null },
-                        updates = updatedNodes.ifEmpty { null },
-                    )
-
+            if (incrementalMutationData != null) {
                 val incrementalSnapshotEvent =
                     RRIncrementalSnapshotEvent(
                         mutationData = incrementalMutationData,
@@ -1929,7 +1909,6 @@ public class PostHogReplayIntegration(
             height = height,
             type = "screenshot",
             base64 = base64,
-            style = RRStyle(),
         )
     }
 
@@ -1940,60 +1919,6 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         return this.isTextInputSensitive(ancestorUnmasked)
-    }
-
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
-
-        // Create HashSet to track unique IDs
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-
-        // Find updated items by finding the intersection of oldItemIds and newItemIds
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            // we have to copy without the childWireframes, otherwise they all would be different
-            // if one of the child is different, but we only wanna compare the parent
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
-            }
-        }
-
-        return Triple(addedItems, removedItems, updatedItems)
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
