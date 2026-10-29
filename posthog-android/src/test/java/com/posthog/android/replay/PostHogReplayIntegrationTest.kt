@@ -692,6 +692,31 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `a window secure when the wireframe walk starts is recorded as one black wireframe`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            h.hookLayout.onWalkTouch = {
+                h.window.attributes.flags = h.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `a window that turns secure during the wireframe walk is recorded as one black wireframe`() {
         val h = screenshotCaptureHarness()
         try {
