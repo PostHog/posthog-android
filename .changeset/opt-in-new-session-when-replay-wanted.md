@@ -3,4 +3,4 @@
 "posthog-android": patch
 ---
 
-Start a new session on `optIn()` whenever session replay was wanted at opt-out, even if a linked flag or unloaded remote config keeps replay from starting yet.
+Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
