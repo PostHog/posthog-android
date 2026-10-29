@@ -133,6 +133,8 @@ internal class PostHogQueueByteLimitsTest {
         assertTrue(sut.addMeasured(record("e", 1), 1))
         // dropped while waiting, before the disk limits ever see them
         assertEquals(2, logger.messages.count { it.contains("blobs are waiting to be written, the oldest 1 are dropped") })
+        // one executor task per waiting record, not per add
+        assertEquals(3, sut.pendingTasksForTesting)
         release.countDown()
         executor.awaitExecution()
 
