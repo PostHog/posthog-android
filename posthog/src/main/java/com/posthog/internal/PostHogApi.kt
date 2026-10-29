@@ -142,11 +142,18 @@ public class PostHogApi(
     // path and uuid set, so a send of other events in between keeps it. Holds the most recent
     // CAPTURE_V1_MAX_PENDING_RETRIES: an entry stays when the queue drops its events instead of
     // retrying them. In memory only: a new request id after an app restart is fine, the server only logs it.
-    private val captureV1PendingRetry =
-        object : LinkedHashMap<Pair<String, Set<String>>, CaptureV1RequestIdentity>() {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Set<String>>, CaptureV1RequestIdentity>?): Boolean =
-                size > CAPTURE_V1_MAX_PENDING_RETRIES
+    // A plain map trimmed by hand: a LinkedHashMap subclass gets bridges to Java 8 Map methods missing on API 23.
+    private val captureV1PendingRetry = LinkedHashMap<Pair<String, Set<String>>, CaptureV1RequestIdentity>()
+
+    private fun putCaptureV1PendingRetry(
+        key: Pair<String, Set<String>>,
+        identity: CaptureV1RequestIdentity,
+    ) {
+        captureV1PendingRetry[key] = identity
+        if (captureV1PendingRetry.size > CAPTURE_V1_MAX_PENDING_RETRIES) {
+            captureV1PendingRetry.remove(captureV1PendingRetry.keys.first())
         }
+    }
 
     private val theHost: String
         get() {
@@ -286,7 +293,7 @@ public class PostHogApi(
                         createdAt = formatISO8601Date(config.dateProvider.currentDate()),
                     )
                 }
-            captureV1PendingRetry[path to uuids] = identity
+            putCaptureV1PendingRetry(path to uuids, identity)
             return identity
         }
     }
@@ -350,7 +357,7 @@ public class PostHogApi(
         synchronized(captureV1Lock) {
             captureV1PendingRetry.remove(path to identity.uuids)
             if (retryUuids.isNotEmpty()) {
-                captureV1PendingRetry[path to retryUuids] = identity.copy(uuids = retryUuids)
+                putCaptureV1PendingRetry(path to retryUuids, identity.copy(uuids = retryUuids))
             }
         }
         return SendResult(retryUuids, parseRetryAfter(response))
