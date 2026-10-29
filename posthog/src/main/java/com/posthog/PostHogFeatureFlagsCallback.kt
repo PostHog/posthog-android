@@ -3,10 +3,15 @@ package com.posthog
 /**
  * Callback invoked when a feature flags load finishes, whether it succeeded or failed.
  *
- * It's used by `PostHogConfig.onFeatureFlags` and `reloadFeatureFlags`. It runs on a background
- * thread, or right away on the calling thread when no load is attempted (for example, the SDK is
- * disabled). With bootstrapped flags, `PostHogConfig.onFeatureFlags` also runs once on the thread
- * calling `setup()`, before the first load finishes. Hop to the main thread before touching UI.
+ * It's used by `PostHogConfig.onFeatureFlags`, `reloadFeatureFlags` and `onFeatureFlags`.
+ *
+ * For `PostHogConfig.onFeatureFlags` and `reloadFeatureFlags`, it runs on a background thread, or right
+ * away on the calling thread when no load is attempted (for example, the SDK is disabled). With
+ * bootstrapped flags, `PostHogConfig.onFeatureFlags` also runs once on the thread calling `setup()`,
+ * before the first load finishes. Hop to the main thread before touching UI.
+ *
+ * For `onFeatureFlags`, it runs on the main thread on Android, and on the SDK's background remote
+ * config thread on the JVM.
  *
  * Example:
  * ```kotlin

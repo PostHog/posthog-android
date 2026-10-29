@@ -1,5 +1,6 @@
 package com.posthog.compliance
 
+import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.posthog.PersonProfiles
 import com.posthog.PostHog
@@ -8,6 +9,7 @@ import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogLogger
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
 import io.ktor.server.application.call
@@ -25,6 +27,7 @@ import okhttp3.Response
 import java.io.File
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
+import java.util.Collections
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -82,6 +85,12 @@ data class InitRequest(
     val flush_interval_ms: Int? = null,
     val max_retries: Int? = null,
     val enable_compression: Boolean? = null,
+    val super_properties: Map<String, Any>? = null,
+    val before_send: BeforeSendSpec? = null,
+)
+
+data class BeforeSendSpec(
+    val set_properties: Map<String, Any>? = null,
 )
 
 data class CaptureRequest(
@@ -90,6 +99,8 @@ data class CaptureRequest(
     val properties: Map<String, Any>? = null,
     val timestamp: String? = null,
     val options: Map<String, Any?>? = null,
+    val pad_properties_to_bytes: Int? = null,
+    val marker: String? = null,
 )
 
 data class CaptureResponse(
@@ -127,6 +138,7 @@ data class StateResponse(
     val total_retries: Int,
     val last_error: String?,
     val requests_made: List<RequestRecord>,
+    val log_lines: List<String>,
 )
 
 data class SuccessResponse(
@@ -146,6 +158,16 @@ class TestPostHogContext(private val sdkName: String, private val sdkVersion: St
         )
 }
 
+// Records every SDK log line for /state, and still prints it.
+class RecordingLogger : PostHogLogger {
+    override fun log(message: String) {
+        println(message)
+        AdapterContext.logLines.add(message)
+    }
+
+    override fun isEnabled(): Boolean = true
+}
+
 // Global state
 object AdapterContext {
     val state = AdapterState()
@@ -156,6 +178,9 @@ object AdapterContext {
     var postHog: com.posthog.PostHogInterface? = null
     var api: PostHogApi? = null
     val capturedEvents = mutableListOf<String>() // Store UUIDs of captured events
+
+    // Own lock: the SDK logs from its threads, which must not wait on [lock].
+    val logLines: MutableList<String> = Collections.synchronizedList(mutableListOf())
 }
 
 // OkHttp Interceptor to track requests
@@ -252,6 +277,21 @@ private fun parseHarnessTimestamp(timestamp: String?): Date? =
         }
     }
 
+// Adds a $test_padding string so [properties], as compact UTF-8 JSON, is exactly [targetBytes] long.
+private fun padProperties(
+    properties: Map<String, Any>?,
+    targetBytes: Int,
+    marker: String?,
+): Map<String, Any> {
+    val padded = properties.orEmpty().toMutableMap()
+    val prefix = marker.orEmpty()
+    padded["\$test_padding"] = prefix
+    // Measure with the marker in place so its serialized (escaped, UTF-8) size is counted.
+    val baseBytes = Gson().toJson(padded).toByteArray(Charsets.UTF_8).size
+    padded["\$test_padding"] = prefix + "x".repeat(maxOf(0, targetBytes - baseBytes))
+    return padded
+}
+
 // Block until [predicate] holds (signalled as each capture response lands) or [timeoutMs] elapses.
 private fun awaitBatch(
     timeoutMs: Long,
@@ -282,7 +322,17 @@ fun main() {
                         adapter_version = "1.0.0",
                         // Opt into the capture suites (android posts /i/v1/analytics/events and
                         // /i/v1/ai/events with gzip).
-                        capabilities = listOf("capture_v1", "capture_ai_v1", "encoding_gzip", "event_options"),
+                        capabilities =
+                            listOf(
+                                "capture_v1",
+                                "capture_ai_v1",
+                                "encoding_gzip",
+                                "event_options",
+                                "generated_payloads",
+                                "log_capture",
+                                "property_layers",
+                                "fail_open",
+                            ),
                     ),
                 )
             }
@@ -303,6 +353,7 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
                     AdapterContext.api = null
+                    AdapterContext.logLines.clear()
 
                     // close() leaves queue files on disk; wipe so they don't replay into this test.
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
@@ -321,6 +372,7 @@ fun main() {
                             debug = true,
                             preloadFeatureFlags = false,
                         )
+                    config.logger = RecordingLogger()
                     // The harness models a server SDK: it never identifies, and expects person
                     // processing on unless an event opts out.
                     config.personProfiles = PersonProfiles.ALWAYS
@@ -359,9 +411,17 @@ fun main() {
                         }
                         event
                     }
+                    req.before_send?.set_properties?.let { setProperties ->
+                        config.addBeforeSend { event ->
+                            event.properties?.putAll(setProperties)
+                            event
+                        }
+                    }
 
                     // Create PostHog instance and direct API helper for per-request flag evaluation.
-                    AdapterContext.postHog = PostHog.with(config)
+                    val postHog = PostHog.with(config)
+                    req.super_properties?.forEach { (key, value) -> postHog.register(key, value) }
+                    AdapterContext.postHog = postHog
                     AdapterContext.api = PostHogApi(config)
                 }
 
@@ -427,11 +487,14 @@ fun main() {
                     return@post
                 }
 
+                val properties =
+                    req.pad_properties_to_bytes?.let { padProperties(req.properties, it, req.marker) }
+                        ?: req.properties
                 val uuid =
                     ph.captureAi(
                         event = req.event,
                         distinctId = req.distinct_id,
-                        properties = req.properties,
+                        properties = properties,
                         timestamp = parseHarnessTimestamp(req.timestamp),
                         options = req.options,
                     )
@@ -536,6 +599,7 @@ fun main() {
                             total_retries = AdapterContext.state.totalRetries,
                             last_error = AdapterContext.state.lastError,
                             requests_made = AdapterContext.state.requestsMade.toList(),
+                            log_lines = synchronized(AdapterContext.logLines) { AdapterContext.logLines.toList() },
                         )
                     }
 
@@ -560,6 +624,7 @@ fun main() {
                     AdapterContext.state.lastError = null
                     AdapterContext.state.requestsMade.clear()
                     AdapterContext.capturedEvents.clear()
+                    AdapterContext.logLines.clear()
                 }
 
                 call.respond(SuccessResponse(success = true))

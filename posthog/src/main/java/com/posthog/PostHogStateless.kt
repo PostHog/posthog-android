@@ -339,16 +339,37 @@ public open class PostHogStateless protected constructor(
         timestamp: Date? = null,
         options: MutableMap<String, Any?>? = null,
         uuid: UUID? = null,
+    ): PostHogEvent? = runBeforeSend(newEvent(event, distinctId, properties, timestamp, options, uuid), uuid)
+
+    /**
+     * Creates the event, without running `beforeSend`. A null [timestamp] means now, and a null
+     * [uuid] gets a new UUID v7.
+     */
+    internal fun newEvent(
+        event: String,
+        distinctId: String,
+        properties: MutableMap<String, Any>,
+        timestamp: Date? = null,
+        options: MutableMap<String, Any?>? = null,
+        uuid: UUID? = null,
+    ): PostHogEvent =
+        PostHogEvent(
+            event,
+            distinctId,
+            properties = properties,
+            timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
+            uuid = uuid ?: TimeBasedEpochGenerator.generate(),
+            options = options,
+        )
+
+    /**
+     * Runs the `beforeSend` chain on [postHogEvent]. Returns null when a hook drops the event or
+     * throws. When [uuid] is given, the result keeps it.
+     */
+    internal fun runBeforeSend(
+        postHogEvent: PostHogEvent,
+        uuid: UUID?,
     ): PostHogEvent? {
-        val postHogEvent =
-            PostHogEvent(
-                event,
-                distinctId,
-                properties = properties,
-                timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
-                uuid = uuid ?: TimeBasedEpochGenerator.generate(),
-                options = options,
-            )
         var eventChecked: PostHogEvent = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()
@@ -357,7 +378,7 @@ public open class PostHogStateless protected constructor(
             try {
                 val result = beforeSend.run(eventChecked)
                 if (result == null) {
-                    config?.logger?.log("Event $event was rejected in beforeSend function")
+                    config?.logger?.log("Event ${postHogEvent.event} was rejected in beforeSend function")
                     return null
                 }
                 eventChecked = result

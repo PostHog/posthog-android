@@ -49,11 +49,14 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         return isActive
     }
 
+    // runs after each debugProperties() read, so a test can change the state between reads
+    public var onDebugProperties: (() -> Unit)? = null
+
     override fun debugProperties(): Map<String, Any> {
         if (throwOnDebugProperties) {
             throw RuntimeException("debugProperties failed")
         }
-        return debugProperties
+        return debugProperties.also { onDebugProperties?.invoke() }
     }
 
     override fun onEvent(
