@@ -3983,11 +3983,20 @@ internal class PostHogReplayIntegrationTest {
     private class WalkHookLayout(context: Context) : FrameLayout(context) {
         var onWalkTouch: (() -> Unit)? = null
         var onVisibilityRead: (() -> Unit)? = null
+        var onGlobalRectRead: (() -> Unit)? = null
         val visitedChildIndexes = mutableListOf<Int>()
 
         override fun isShown(): Boolean {
             onVisibilityRead?.invoke()
             return super.isShown()
+        }
+
+        override fun getGlobalVisibleRect(
+            rect: Rect,
+            offset: Point?,
+        ): Boolean {
+            onGlobalRectRead?.invoke()
+            return super.getGlobalVisibleRect(rect, offset)
         }
 
         override fun getChildAt(index: Int): View? {
@@ -4111,6 +4120,38 @@ internal class PostHogReplayIntegrationTest {
         } finally {
             h.fx.sut.uninstall()
             RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `scene cache baseline follows painted masks when markers change and return`() {
+        for (verified in listOf(false, true)) {
+            val h = screenshotCaptureHarness(verified)
+            val layers = listOf(sceneLayer(h.hookLayout, h.window, h.status))
+            var unmaskedForCapture = false
+            h.hookLayout.onGlobalRectRead = {
+                if (!unmaskedForCapture) {
+                    // Scene discovery saw the masked child; screenshot setup sees it unmasked.
+                    unmaskedForCapture = true
+                    h.child.tag = "ph-no-mask"
+                }
+            }
+            SnapshotBoundaryShadowPixelCopy.afterMasking = { h.child.tag = "ph-no-capture" }
+            try {
+                assertFalse(captureScene(h.fx.sut, layers), "verified=$verified")
+                assertTrue(unmaskedForCapture)
+                assertEquals(0, h.fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(h.fx.sut, "lastScene"))
+                assertTrue((ReflectionHelpers.getField<Map<*, *>>(h.fx.sut, "sceneImages")).isEmpty())
+                h.hookLayout.onGlobalRectRead = null
+                SnapshotBoundaryShadowPixelCopy.afterMasking = null
+                assertTrue(captureScene(h.fx.sut, layers), "verified=$verified")
+                assertEquals(1, h.fake.captures)
+            } finally {
+                SnapshotBoundaryShadowPixelCopy.afterMasking = null
+                h.fx.sut.uninstall()
+            }
         }
     }
 
@@ -4305,84 +4346,180 @@ internal class PostHogReplayIntegrationTest {
         @Test
         fun `enabling image masking invalidates cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = true)
 
-        private fun assertMaskingSettingInvalidatesCache(maskImages: Boolean) =
+        @Test
+        fun `unverifiable masks withhold cached pixels until geometry is safe`() =
             withDialog { h, fx, fake, status ->
-                val source = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-
-                fun sensitiveView(): View =
-                    if (maskImages) {
-                        ImageView(h.activity).apply { setImageBitmap(source) }
-                    } else {
-                        TextView(h.activity).apply { text = "sensitive content" }
-                    }
-                val activityView = sensitiveView()
-                val activityContent = FrameLayout(h.activity).apply { addView(activityView) }
-                h.activity.setContentView(activityContent)
-                val dialogView = sensitiveView()
-                h.content.removeAllViews()
-                h.content.addView(dialogView)
-                shadowOf(Looper.getMainLooper()).idle()
-                for (root in listOf(h.activity.window.decorView, h.root)) {
-                    root.measure(
-                        View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
-                    )
-                    root.layout(0, 0, 600, 1000)
-                }
-                activityContent.layout(0, 0, 600, 1000)
-                h.content.layout(0, 0, 600, 1000)
-                activityView.layout(40, 50, 240, 100)
-                dialogView.layout(40, 50, 240, 100)
-                fx.config.sessionReplayConfig.maskAllTextInputs = false
-                fx.config.sessionReplayConfig.maskAllImages = false
+                h.masked.tag = "ph-no-mask"
                 RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                val captures = fake.captures
 
-                fun assertPixels(masked: Boolean) {
-                    val scene = images(fake)
-                    for ((view, root, frame) in listOf(
-                        Triple(activityView, h.activity.window.decorView, scene.first()),
-                        Triple(dialogView, h.root, scene.last()),
-                    )) {
-                        val rect =
-                            Rect().also {
-                                assertTrue(view.getGlobalVisibleRect(it), "Mask target must be visible (activity=${view === activityView})")
-                            }
-                        val origin = IntArray(2).also { root.getLocationOnScreen(it) }
-                        val image = bitmap(frame)
-                        try {
-                            val pixel = image.getPixel((rect.centerX() - origin[0]) / 2, (rect.centerY() - origin[1]) / 2)
-                            if (masked) {
-                                assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
-                            } else {
-                                assertTrue(Color.red(pixel) > 200)
-                            }
-                        } finally {
-                            image.recycle()
-                        }
+                h.masked.tag = "ph-no-capture"
+                h.masked.setHasTransientState(true)
+                assertFalse(capture(h, fx, status))
+                assertEquals(captures, fake.captures)
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                h.masked.setHasTransientState(false)
+                assertTrue(capture(h, fx, status))
+                assertEquals(captures + 1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+            }
+
+        @Test
+        fun `unstable masked root cannot reuse an unmasked cached image`() =
+            withDialog { h, fx, fake, status ->
+                h.root.tag = "ph-no-mask"
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                val captures = fake.captures
+
+                h.root.tag = "ph-no-capture"
+                h.root.setHasTransientState(true)
+                assertFalse(capture(h, fx, status))
+                assertEquals(captures, fake.captures)
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                h.root.setHasTransientState(false)
+                assertTrue(capture(h, fx, status))
+                assertEquals(captures + 1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+            }
+
+        @Test
+        fun `marker changes in an earlier layer during a later copy withhold the scene`() =
+            withDialog { h, fx, fake, status ->
+                val base = h.activity.window.decorView
+                base.tag = "ph-no-mask"
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    if (RecordingShadowPixelCopy.requests.last().window === h.dialog.window) {
+                        base.tag = "ph-no-capture"
                     }
                 }
-                try {
-                    assertTrue(capture(h, fx, status))
-                    assertPixels(masked = false)
-                    val copies = RecordingShadowPixelCopy.requests.size
-                    assertTrue(capture(h, fx, status))
-                    assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(fx.sut, "lastScene"))
 
-                    if (maskImages) {
-                        fx.config.sessionReplayConfig.maskAllImages = true
-                    } else {
-                        fx.config.sessionReplayConfig.maskAllTextInputs = true
-                    }
-                    // No draw/layout notification: a later scene must not reuse unmasked pixels.
-                    assertTrue(capture(h, fx, status))
-                    assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
-                    assertPixels(masked = true)
-                    assertTrue(capture(h, fx, status))
-                    assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                val image = bitmap(images(fake).first())
+                try {
+                    val pixel = image.getPixel(image.width / 2, image.height / 2)
+                    assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
                 } finally {
-                    source.recycle()
+                    image.recycle()
                 }
             }
+
+        @Test
+        fun `tag masking changes invalidate cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = false, marker = true)
+
+        @Test
+        fun `content description masking changes invalidate cached scene layers`() =
+            assertMaskingSettingInvalidatesCache(maskImages = true, marker = true)
+
+        private fun assertMaskingSettingInvalidatesCache(
+            maskImages: Boolean,
+            marker: Boolean = false,
+        ) = withDialog { h, fx, fake, status ->
+            val source = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+
+            fun sensitiveView(): View =
+                if (maskImages) {
+                    ImageView(h.activity).apply { setImageBitmap(source) }
+                } else {
+                    TextView(h.activity).apply { text = "sensitive content" }
+                }
+            val activityView = sensitiveView()
+            val activityContent = FrameLayout(h.activity).apply { addView(activityView) }
+            h.activity.setContentView(activityContent)
+            val dialogView = sensitiveView()
+            if (marker) {
+                if (maskImages) {
+                    activityView.contentDescription = "ph-no-mask"
+                    dialogView.contentDescription = "ph-no-mask"
+                } else {
+                    activityView.tag = "ph-no-mask"
+                    dialogView.tag = "ph-no-mask"
+                }
+            }
+            h.content.removeAllViews()
+            h.content.addView(dialogView)
+            shadowOf(Looper.getMainLooper()).idle()
+            for (root in listOf(h.activity.window.decorView, h.root)) {
+                root.measure(
+                    View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+                )
+                root.layout(0, 0, 600, 1000)
+            }
+            activityContent.layout(0, 0, 600, 1000)
+            h.content.layout(0, 0, 600, 1000)
+            activityView.layout(40, 50, 240, 100)
+            dialogView.layout(40, 50, 240, 100)
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            fx.config.sessionReplayConfig.maskAllImages = false
+            RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+
+            fun assertPixels(masked: Boolean) {
+                val scene = images(fake)
+                for ((view, root, frame) in listOf(
+                    Triple(activityView, h.activity.window.decorView, scene.first()),
+                    Triple(dialogView, h.root, scene.last()),
+                )) {
+                    val rect =
+                        Rect().also {
+                            assertTrue(view.getGlobalVisibleRect(it), "Mask target must be visible (activity=${view === activityView})")
+                        }
+                    val origin = IntArray(2).also { root.getLocationOnScreen(it) }
+                    val image = bitmap(frame)
+                    try {
+                        val pixel = image.getPixel((rect.centerX() - origin[0]) / 2, (rect.centerY() - origin[1]) / 2)
+                        if (masked) {
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        } else {
+                            assertTrue(Color.red(pixel) > 200)
+                        }
+                    } finally {
+                        image.recycle()
+                    }
+                }
+            }
+            try {
+                assertTrue(capture(h, fx, status))
+                assertPixels(masked = false)
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                if (marker) {
+                    if (maskImages) {
+                        activityView.contentDescription = "ph-no-capture"
+                        dialogView.contentDescription = "ph-no-capture"
+                    } else {
+                        activityView.tag = "ph-no-capture"
+                        dialogView.tag = "ph-no-capture"
+                    }
+                } else if (maskImages) {
+                    fx.config.sessionReplayConfig.maskAllImages = true
+                } else {
+                    fx.config.sessionReplayConfig.maskAllTextInputs = true
+                }
+                // No draw/layout notification: a later scene must not reuse unmasked pixels.
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                assertPixels(masked = true)
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+            } finally {
+                source.recycle()
+            }
+        }
 
         @Test
         fun `scene reads configured color mode once before capturing its layers`() =
