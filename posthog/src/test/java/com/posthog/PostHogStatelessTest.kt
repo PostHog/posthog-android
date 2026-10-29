@@ -277,7 +277,7 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is required") })
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is required") })
     }
 
     @Test
@@ -289,7 +289,7 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
     }
 
     @Test

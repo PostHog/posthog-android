@@ -62,14 +62,14 @@ public open class PostHogStateless protected constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.projectToken.isEmpty()) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
                     )
                     return
                 }
 
                 if (config.projectToken.startsWith("phx_")) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
                             "use your project token (phc_...).",
                     )

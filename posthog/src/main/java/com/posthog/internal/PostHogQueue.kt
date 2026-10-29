@@ -751,5 +751,6 @@ internal fun deleteFilesIfAPIError(
 
         return false
     }
+    logger.log("Flushing failed with ${e.statusCode}, dropping $actualBatchSize records.")
     return true
 }
