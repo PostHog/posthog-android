@@ -12,4 +12,4 @@
 - **Breaking:** make SDK-internal helpers in the `com.posthog.internal` and `com.posthog.android.replay.internal` packages non-public
 - **Breaking:** remove the deprecated `remoteConfig` config option; the SDK now always loads remote config at setup
 - **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `PostHogConfig.onFeatureFlags` and `reloadFeatureFlags()`; it receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values, and `errorsLoading`
-- Add `onFeatureFlags()` to get notified on the main thread after every feature flags load, returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
+- Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
