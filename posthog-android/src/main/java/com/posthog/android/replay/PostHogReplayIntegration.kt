@@ -457,7 +457,7 @@ public class PostHogReplayIntegration(
         touchInterceptors.getOrPut(window) {
             val windowRef = WeakReference(window)
             TouchEventInterceptor { motionEvent, dispatch ->
-                if (windowRef.get()?.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
+                if (windowRef.get()?.isSecure() == true) {
                     dispatch(motionEvent)
                 } else {
                     onTouchEventListener.intercept(motionEvent, dispatch)
@@ -811,7 +811,7 @@ public class PostHogReplayIntegration(
                     window,
                     status.drawState,
                 ) ?: return false
-            } else if (window.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE) {
+            } else if (window.isSecure()) {
                 view.toSecureWireframe() ?: return false
             } else {
                 view.toWireframe() ?: return false
@@ -1809,6 +1809,8 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun Window.isSecure(): Boolean = attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE
+
     private fun maskedScreenshotBase64(
         width: Int,
         height: Int,
@@ -1869,7 +1871,7 @@ public class PostHogReplayIntegration(
                     view.width,
                     view.height,
                     shouldVerifyMaskAlignment(view, drawState),
-                    window.attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE,
+                    window.isSecure(),
                 )
             } ?: return null
         val viewId = System.identityHashCode(view)
@@ -2038,6 +2040,10 @@ public class PostHogReplayIntegration(
                     releaseFromWaiter = true
                     if (requestState.succeeded()) {
                         try {
+                            // The window can turn secure while the copy runs.
+                            if (window.isSecure()) {
+                                bitmap.eraseColor(paint.color)
+                            }
                             base64 = bitmap.webpBase64(compressionQuality)
                         } catch (e: Throwable) {
                             config.logger.log("Session Replay screenshot encoding failed: $e.")
