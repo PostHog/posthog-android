@@ -1296,6 +1296,46 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
+    fun `delivered refresh followed by identify registers the new identity`() {
+        val http = mockHttp(total = 2)
+        distinctId = "anonymous-A"
+        val (first, _, storagePrefix) = getSut(http)
+        first.register("firebase-fid", "firebase-project")
+        flush()
+        assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        first.close()
+
+        val (restarted, config, _) = getSut(http, storagePrefix = storagePrefix)
+        restarted.identityTokenMintTimeoutMillis = 60_000L
+        var heldCompletion: ((String?) -> Unit)? = null
+        config.pushIdentityProvider = { id, _, completion ->
+            if (id == "anonymous-A") {
+                heldCompletion = completion
+            } else {
+                completion("jwt-B")
+            }
+        }
+
+        restarted.register("firebase-fid", "firebase-project", refresh = true)
+        flush()
+        assertNotNull(heldCompletion)
+
+        distinctId = "identified-B"
+        restarted.resendIfDistinctIdChanged()
+        flush()
+        heldCompletion?.invoke("jwt-A")
+        // The stale completion can enqueue the new identity's completion behind the first barrier.
+        flush()
+        flush()
+
+        val request = assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+        val body = request.body.unGzip()
+        assertTrue(body.contains("\"distinct_id\":\"identified-B\""))
+        assertTrue(body.contains("\"identity_token\":\"jwt-B\""))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
     fun `register and unregisterCurrent attach the provider token to POST and DELETE bodies`() {
         // Vector 9: provider set completing "jwt-abc" -> both legs carry identity_token alongside the 5 fields.
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))

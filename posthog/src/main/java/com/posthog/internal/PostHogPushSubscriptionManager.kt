@@ -529,6 +529,8 @@ internal class PostHogPushSubscriptionManager(
             // a stale identity's token must not be sent under a new user's distinctId.
             if (distinctIdProvider() != distinctId) {
                 config.logger.log("Push subscription send skipped: distinctId changed during identity token mint.")
+                // Retain the registration intent while discarding the old identity's credential.
+                pendingResend = true
                 return
             }
             // Eligibility can also flip during the async mint: remote config may resolve and drop this
