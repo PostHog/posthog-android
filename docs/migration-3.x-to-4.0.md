@@ -57,7 +57,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 
 PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
 
-The SDK doesn't fall back to `/batch`. A 404 is retried, so the events stay queued until the path is served. Any other error status that isn't retried, such as 403 or 405, drops the events.
+The SDK doesn't fall back to `/batch`. A 404 is retried, so the events stay queued until the path is served, and the SDK prints one warning, even with `debug` off. Any other error status that isn't retried, such as 403 or 405, drops the events.
 
 ### Redirects
 
@@ -71,6 +71,7 @@ If a proxy redirects capture requests to another host, point `host` at the final
 Capture v1 checks each event on its own and drops only the invalid ones, so the rest of the batch is delivered.
 The SDK doesn't check these before sending. PostHog drops the event, and the SDK removes it from the queue.
 With `debug` on, the SDK logs the name and uuid of each dropped event and the reason PostHog gives, such as `misrouted_event`, never its properties.
+Debug logs for capture requests name the event count and the response status, and no longer print the request and response bodies.
 
 - An event with an empty event name is dropped, for example `capture("")`.
 - An event with an empty or whitespace-only distinct ID is dropped, for example one `beforeSend` sets to `""`.
@@ -148,6 +149,7 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
+- There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$process_person_profile", false)`.
 - An empty or whitespace-only `distinctId` argument to `capture` now uses the current distinct ID, like `null`. In 3.x, the event was dropped.
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
@@ -169,15 +171,16 @@ PostHog.captureAi(
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
+- `flush()` and `close()` also send the AI queue, and AI events left on disk are sent at the next launch.
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
 - The SDK sends AI events unchanged. It doesn't redact or truncate prompts, outputs or media, so use `beforeSend` to remove anything you don't want to send.
 
 ## Retries
 
-- The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx. 3.x also retried 3xx responses, and didn't retry 404.
+- The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
-- A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. OkHttp doesn't retry capture requests on its own.
+- A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. The request ID and attempt number reset after an app restart. OkHttp doesn't retry capture requests on its own.
 - A `Retry-After` header pauses sending for at most 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
 - After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter at millisecond precision. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
 - Event, session replay and log retries have no limit, as in 3.x: queued records stay until they're delivered or a full queue evicts them (`maxQueueSize`, or `logs.maxBufferSize` for logs).
