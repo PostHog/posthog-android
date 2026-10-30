@@ -21,6 +21,7 @@ SDK usage examples and code snippets live in the official documentation so they 
 
 - [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
+- [Migrating from 3.x to 4.0](docs/migration-3.x-to-4.0.md)
 
 ## Required dependencies
 
