@@ -1,5 +1,12 @@
 ## Next
 
+## 3.74.1
+
+### Patch Changes
+
+- 3280f6c: Session replay now masks the children of a `ph-no-capture` view, so content that draws outside an unclipped container is no longer recorded. While one of those children is animating, the snapshot may be skipped.
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
 ## 3.74.0
 
 ### Minor Changes

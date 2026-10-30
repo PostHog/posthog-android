@@ -1,5 +1,11 @@
 ## Next
 
+## 6.47.8
+
+### Patch Changes
+
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
 ## 6.47.7
 
 ### Patch Changes
