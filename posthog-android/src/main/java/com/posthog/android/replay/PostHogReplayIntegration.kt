@@ -1176,7 +1176,7 @@ public class PostHogReplayIntegration(
                 if (!viewChild.isVisible(walk)) {
                     // A skipped-but-rendered view could be a masked widget we cannot place.
                     if (viewChild.isRenderedButUnplaceable() &&
-                        (walk.failClosed || viewChild.hasMaskableContent(walk))
+                        (walk.failClosed || viewChild.hasMaskableContent(walk, childrenInsideNoCapture))
                     ) {
                         walk.poisoned = true
                         return
@@ -1215,11 +1215,14 @@ public class PostHogReplayIntegration(
 
     // Whether this subtree holds anything the walk would mask, judged without geometry, so a
     // legacy walk can tell an unplaceable sensitive view from a harmless animation.
-    internal fun View.hasMaskableContent(walk: MaskWalk): Boolean {
+    internal fun View.hasMaskableContent(
+        walk: MaskWalk,
+        insideNoCapture: Boolean = false,
+    ): Boolean {
         if (!walk.visitedViews.add(System.identityHashCode(this))) {
             return false
         }
-        return when (maskRule()) {
+        return when (maskRule(insideNoCapture)) {
             MaskRule.COMPOSE, MaskRule.NO_CAPTURE, MaskRule.MASK_VIEW, MaskRule.MASK_TEXT -> true
             MaskRule.CHILDREN ->
                 (0 until (this as ViewGroup).childCount).any { i ->

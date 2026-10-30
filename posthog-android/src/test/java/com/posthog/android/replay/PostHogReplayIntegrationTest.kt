@@ -4696,6 +4696,38 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // An animating view can't be placed, so the walk would otherwise ship its overflow unmasked.
+    @Test
+    fun `legacy mask walk is poisoned by an animating no-capture descendant only`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity).apply { clipChildren = false }
+        val wrapper =
+            FrameLayout(activity).apply {
+                tag = "ph-no-capture"
+                clipChildren = false
+                clipToPadding = false
+            }
+        val plain = View(activity)
+        wrapper.addView(plain)
+        root.addView(wrapper)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        wrapper.layout(0, 0, 100, 20)
+        plain.layout(0, 60, 100, 80)
+        plain.animation = runningAnimation()
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        fun legacyWalk() = PostHogReplayIntegration.MaskWalk(failClosed = false).also { sut.findMaskableWidgets(root, it) }
+
+        assertTrue(legacyWalk().poisoned)
+
+        // ph-no-mask has precedence, so the walk would not have masked it anyway.
+        plain.tag = "ph-no-mask"
+        assertFalse(legacyWalk().poisoned)
+    }
+
     private fun runningAnimation(): Animation =
         mock<Animation>().also {
             whenever(it.hasStarted()).thenReturn(true)
