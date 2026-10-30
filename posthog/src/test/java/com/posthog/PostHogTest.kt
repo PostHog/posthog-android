@@ -1763,6 +1763,35 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `drops the crash report when registered properties push a crash event over the limit`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        // each fits on its own, but not together once capture merges the registered property in
+        sut.register("bigSuperProperty", "x".repeat(500_000))
+
+        sut.capture(
+            "\$exception",
+            DISTINCT_ID,
+            mapOf(
+                "\$exception_list" to listOf(mapOf("type" to "SIGSEGV")),
+                "\$exception_crash_report" to "y".repeat(500_000),
+            ),
+        )
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val request = http.takeRequest()
+        val batch = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+        val theEvent = batch.batch.first()
+        assertEquals("\$exception", theEvent.event)
+        assertNull(theEvent.properties!!["\$exception_crash_report"])
+        assertNotNull(theEvent.properties!!["\$exception_list"])
+        assertNotNull(theEvent.properties!!["bigSuperProperty"])
+    }
+
+    @Test
     fun `captures an event`() {
         val http = mockHttp()
         val url = http.url("/")

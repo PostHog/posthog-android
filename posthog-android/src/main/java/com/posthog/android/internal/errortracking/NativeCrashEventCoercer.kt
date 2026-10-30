@@ -87,6 +87,8 @@ internal class NativeCrashEventCoercer(
         if (debugImages.isNotEmpty()) {
             properties["\$debug_images"] = debugImages.values.toList()
         }
+        // The report is optional, so a formatting failure must not cost the crash event.
+        runCatching { NativeCrashReportFormatter.format(tombstone) }.getOrNull()?.let { properties[CRASH_REPORT_PROPERTY] = it }
         return properties
     }
 
@@ -107,6 +109,8 @@ internal class NativeCrashEventCoercer(
     private fun hex(value: Long): String = "0x${java.lang.Long.toUnsignedString(value, 16)}"
 
     internal companion object {
+        internal const val CRASH_REPORT_PROPERTY = "\$exception_crash_report"
+
         /**
          * Derives the debug id matching an uploaded symbol set from a GNU
          * build id hex string: the first 16 bytes (zero-padded) read as a

@@ -14,6 +14,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.internal.errortracking.removeOversizedCrashReport
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -323,6 +324,12 @@ public open class PostHogStateless protected constructor(
             } catch (e: Throwable) {
                 config?.logger?.log("Error in beforeSend function: $e")
                 return null
+            }
+        }
+
+        config?.let { config ->
+            if (removeOversizedCrashReport(eventChecked, config.serializer::serializeObject)) {
+                config.logger.log("Dropped \$exception_crash_report to keep the $event event under the size limit.")
             }
         }
 
