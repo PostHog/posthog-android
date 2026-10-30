@@ -4,6 +4,7 @@ import com.posthog.android.replay.PostHogScreenshotColorMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogAndroidConfigTest {
@@ -51,7 +52,7 @@ internal class PostHogAndroidConfigTest {
     @Test
     fun `screenshot settings preserve the default capture fidelity`() {
         assertEquals(30, config.sessionReplayConfig.screenshotCompressionQuality)
-        assertEquals(1f, config.sessionReplayConfig.screenshotScale)
+        assertNull(config.sessionReplayConfig.screenshotScale)
         assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.sessionReplayConfig.screenshotColorMode)
         assertFalse(config.sessionReplayConfig.screenshot)
     }

@@ -5,6 +5,7 @@ import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 internal class PostHogSessionReplayConfigTest {
     @Test
@@ -16,11 +17,11 @@ internal class PostHogSessionReplayConfigTest {
     }
 
     @RunWith(Parameterized::class)
-    class ScreenshotScaleTest(private val input: Float, private val expected: Float) {
+    class ScreenshotScaleTest(private val input: Float, private val expected: Float?) {
         companion object {
             @JvmStatic
             @Parameters(name = "scale={0}, effective={1}")
-            fun scales(): List<Array<Float>> =
+            fun scales(): List<Array<Float?>> =
                 listOf(
                     arrayOf(-Float.MAX_VALUE, 0.1f),
                     arrayOf(-1f, 0.1f),
@@ -33,9 +34,9 @@ internal class PostHogSessionReplayConfigTest {
                     arrayOf(1f, 1f),
                     arrayOf(2f, 1f),
                     arrayOf(Float.MAX_VALUE, 1f),
-                    arrayOf(Float.NaN, 1f),
-                    arrayOf(Float.NEGATIVE_INFINITY, 1f),
-                    arrayOf(Float.POSITIVE_INFINITY, 1f),
+                    arrayOf(Float.NaN, null),
+                    arrayOf(Float.NEGATIVE_INFINITY, null),
+                    arrayOf(Float.POSITIVE_INFINITY, null),
                 )
         }
 
@@ -48,6 +49,22 @@ internal class PostHogSessionReplayConfigTest {
             assertEquals(expected, config.screenshotScale)
             assertEquals(30, config.screenshotCompressionQuality)
             assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.screenshotColorMode)
+        }
+    }
+
+    class ScreenshotScaleDefaultTest {
+        @Test
+        fun `scale defaults to null`() {
+            assertNull(PostHogSessionReplayConfig().screenshotScale)
+        }
+
+        @Test
+        fun `scale accepts null after an explicit value`() {
+            val config = PostHogSessionReplayConfig()
+            config.screenshotScale = 0.5f
+            config.screenshotScale = null
+
+            assertNull(config.screenshotScale)
         }
     }
 
@@ -74,7 +91,7 @@ internal class PostHogSessionReplayConfigTest {
             config.screenshotCompressionQuality = input
 
             assertEquals(expected, config.screenshotCompressionQuality)
-            assertEquals(1f, config.screenshotScale)
+            assertNull(config.screenshotScale)
             assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.screenshotColorMode)
         }
     }
