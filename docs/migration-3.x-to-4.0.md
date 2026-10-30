@@ -108,8 +108,8 @@ A caller `$screen_name` or `$session_id` still replaces the SDK's value even whe
 Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, not as properties.
 The SDK moves them out of `properties` for you.
 A string value, including an empty string, is sent unchanged.
-Any other value is removed and not sent, and the SDK logs a warning that names the key and the value's JSON type, never the value.
-A null value counts as unset and is removed without a warning.
+Any other value is removed and not sent. With `debug` on, the SDK logs the key and the value's JSON type, never the value.
+A null value counts as unset and is removed without a log.
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters and session replay work as before.
 
 ## Event options
@@ -165,7 +165,7 @@ PostHog.captureAi(
 ```
 
 - `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, `beforeSend` dropped it, or it's over the size limit. Once 100 AI events (`captureAiMaxQueueSize`) or 50 MiB are queued, including events still waiting to be written to disk during a slow upload, the oldest are dropped.
-- An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`, and logs the event name and size, never its content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB and logs a warning.
+- An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`. With `debug` on, it logs the event name and the limit, never the content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB, and with `debug` on the SDK logs that it did.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.

@@ -19,7 +19,7 @@
 - **Breaking:** send the `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` properties as capture options (`PostHogEvent.options`, a new trailing constructor parameter that Java callers of the full constructor and `copy` must pass), where PostHog drops an event whose option value it can't read
 - **Breaking:** rename `PostHogConfig.maxRetries` to `pushNotificationSubscriptionMaxRetries`, because it only limits push-notification subscription retries
 - **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header; a value set in properties, super properties or `beforeSend` is removed before sending
-- **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped with a warning
+- **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped, with a log when `debug` is on
 - **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token
 - **Breaking:** add an `options` argument to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException` for per-event capture options such as `cookieless_mode`, sent apart from the properties and editable in `beforeSend` through `PostHogEvent.options`; Java callers pass the trailing argument or `null`, and classes that implement `PostHogInterface` add the parameter
 - **Breaking:** move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; `PostHogInterface` declares `identify` with the trailing `options` parameter
