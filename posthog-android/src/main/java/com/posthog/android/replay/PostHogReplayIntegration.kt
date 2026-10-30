@@ -76,8 +76,12 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
+import com.posthog.android.replay.internal.downscaledWebpBase64
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.android.replay.internal.resolveScreenshotScale
+import com.posthog.android.replay.internal.scaledScreenshotDimension
+import com.posthog.android.replay.internal.twoStageCopySize
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -1122,6 +1126,7 @@ public class PostHogReplayIntegration(
     internal fun findMaskableWidgets(
         view: View,
         walk: MaskWalk,
+        insideNoCapture: Boolean = false,
     ) {
         if (walk.shouldStop) {
             return
@@ -1133,13 +1138,19 @@ public class PostHogReplayIntegration(
         }
 
         var walkChildren = false
+        var childrenInsideNoCapture = false
 
         // Keep in sync with hasMaskableContent.
         when {
             view.isComposeView() -> {
-                findMaskableComposeWidgets(view, walk)
-                if (walk.shouldStop) {
-                    return
+                if (insideNoCapture || view.isNoCapture()) {
+                    view.addGlobalVisibleRect(walk)
+                    childrenInsideNoCapture = true
+                } else {
+                    findMaskableComposeWidgets(view, walk)
+                    if (walk.shouldStop) {
+                        return
+                    }
                 }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
@@ -1149,8 +1160,11 @@ public class PostHogReplayIntegration(
                 // ph-no-mask has precedence, skip masking
             }
 
-            view.isNoCapture() -> {
+            // Children of an unclipped container can draw outside its rect, so they are masked too.
+            insideNoCapture || view.isNoCapture() -> {
                 view.addGlobalVisibleRect(walk)
+                walkChildren = true
+                childrenInsideNoCapture = true
             }
 
             view is TextView -> {
@@ -1203,7 +1217,7 @@ public class PostHogReplayIntegration(
                     continue
                 }
 
-                findMaskableWidgets(viewChild, walk)
+                findMaskableWidgets(viewChild, walk, childrenInsideNoCapture)
             }
         }
     }
@@ -1833,11 +1847,6 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun scaledScreenshotDimension(
-        size: Int,
-        scale: Float,
-    ): Int = maxOf(1, ceil(size * scale).toInt())
-
     private class ScreenshotGeometry(
         val x: Int,
         val y: Int,
@@ -1879,7 +1888,11 @@ public class PostHogReplayIntegration(
         val sourceHeight = geometry.height
         val width = sourceWidth.densityValue(screenDensity)
         val height = sourceHeight.densityValue(screenDensity)
-        val screenshotScale = config.sessionReplayConfig.screenshotScale
+        val screenshotScale = resolveScreenshotScale(config.sessionReplayConfig.screenshotScale, screenDensity)
+        val targetWidth = scaledScreenshotDimension(sourceWidth, screenshotScale)
+        val targetHeight = scaledScreenshotDimension(sourceHeight, screenshotScale)
+        val copySize = twoStageCopySize(sourceWidth, sourceHeight, targetWidth, targetHeight)
+        val (copyWidth, copyHeight) = copySize ?: (targetWidth to targetHeight)
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         val bitmapConfig =
             when (config.sessionReplayConfig.screenshotColorMode) {
@@ -1893,8 +1906,8 @@ public class PostHogReplayIntegration(
         if (geometry.secure) {
             base64 =
                 maskedScreenshotBase64(
-                    scaledScreenshotDimension(sourceWidth, screenshotScale),
-                    scaledScreenshotDimension(sourceHeight, screenshotScale),
+                    targetWidth,
+                    targetHeight,
                     bitmapConfig,
                     compressionQuality,
                 )
@@ -1943,8 +1956,8 @@ public class PostHogReplayIntegration(
             handler = ensurePixelCopyHandler()
             bitmapLease =
                 pixelCopyBitmapBuffer.acquire(
-                    scaledScreenshotDimension(sourceWidth, screenshotScale),
-                    scaledScreenshotDimension(sourceHeight, screenshotScale),
+                    copyWidth,
+                    copyHeight,
                     bitmapConfig,
                 ) ?: run {
                     finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
@@ -2042,7 +2055,12 @@ public class PostHogReplayIntegration(
                             if (window.isSecure()) {
                                 bitmap.eraseColor(paint.color)
                             }
-                            base64 = bitmap.webpBase64(compressionQuality)
+                            base64 =
+                                if (copySize != null) {
+                                    bitmap.downscaledWebpBase64(targetWidth, targetHeight, compressionQuality)
+                                } else {
+                                    bitmap.webpBase64(compressionQuality)
+                                }
                         } catch (e: Throwable) {
                             config.logger.log("Session Replay screenshot encoding failed: $e.")
                         }
