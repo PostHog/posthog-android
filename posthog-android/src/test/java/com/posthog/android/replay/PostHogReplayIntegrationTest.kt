@@ -15,10 +15,12 @@ import android.util.Base64
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -52,6 +54,7 @@ import com.posthog.internal.replay.RREventType
 import com.posthog.internal.replay.RRFullSnapshotEvent
 import com.posthog.internal.replay.RRIncrementalMouseInteractionData
 import com.posthog.internal.replay.RRIncrementalMouseInteractionEvent
+import com.posthog.internal.replay.RRIncrementalMutationData
 import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRWireframe
@@ -104,6 +107,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -691,6 +695,116 @@ internal class PostHogReplayIntegrationTest {
             assertTrue(dateCalls.get() >= 1)
         } finally {
             sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a touch on a secure window is not recorded`() {
+        val submits = AtomicInteger(0)
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        val window = controller.get().window
+        val curtains = mockCurtainsRoot(window.decorView)
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+            val touch = {
+                val event = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+                window.callback.dispatchTouchEvent(event)
+                event.recycle()
+                awaitReplayExecutors()
+            }
+
+            touch()
+            val submitsBeforeSecure = submits.get()
+            assertTrue(submitsBeforeSecure >= 1)
+
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+            touch()
+            assertEquals(submitsBeforeSecure, submits.get())
+        } finally {
+            sut.uninstall()
+            curtains.close()
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `a secure window is recorded as one black wireframe in wireframe mode`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+            assertNull(wireframe.text)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a window secure when the wireframe walk starts is recorded as one black wireframe`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            h.hookLayout.onWalkTouch = {
+                h.window.attributes.flags = h.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a window that turns secure during the wireframe walk is recorded as one black wireframe`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.hookLayout.onWalkTouch = {
+                h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+        } finally {
+            h.fx.sut.uninstall()
         }
     }
 
@@ -3085,7 +3199,17 @@ internal class PostHogReplayIntegrationTest {
             val events = fake.properties?.get("\$snapshot_data") as List<RREvent>
             val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
             val wireframes = (fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>
-            val wireframe = wireframes.single() as RRWireframe
+            return decodeScreenshot(wireframes.single() as RRWireframe)
+        }
+
+        private fun updatedScreenshotBitmap(fake: PostHogFake): Bitmap {
+            @Suppress("UNCHECKED_CAST")
+            val events = fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val mutation = events.first { it.type == RREventType.IncrementalSnapshot }.data as RRIncrementalMutationData
+            return decodeScreenshot(assertNotNull(mutation.updates).single().wireframe)
+        }
+
+        private fun decodeScreenshot(wireframe: RRWireframe): Bitmap {
             val bytes = Base64.decode(assertNotNull(wireframe.base64).substringAfter(','), Base64.DEFAULT)
             return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         }
@@ -3142,6 +3266,70 @@ internal class PostHogReplayIntegrationTest {
                     assertTrue(Color.red(maskedPixel) < 10 && Color.green(maskedPixel) < 10 && Color.blue(maskedPixel) < 10)
                     assertTrue(Color.red(bitmap.getPixel(((mask.left - 20) * scaleX).toInt(), y)) > 200)
                     assertTrue(Color.red(bitmap.getPixel(((mask.right + 20) * scaleX).toInt(), y)) > 200)
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+
+        @Test
+        @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+        @GraphicsMode(GraphicsMode.Mode.NATIVE)
+        fun `a secure window is recorded fully masked without copying its pixels`() {
+            val h = captureHarness()
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.WHITE) }
+            try {
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+
+                assertEquals(1, RecordingShadowPixelCopy.requests.size)
+                val bitmap = updatedScreenshotBitmap(h.fake)
+                try {
+                    assertEquals(ceil(100 * scale).toInt(), bitmap.width)
+                    for (x in 0 until bitmap.width) {
+                        for (y in 0 until bitmap.height) {
+                            val pixel = bitmap.getPixel(x, y)
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        }
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+
+        @Test
+        @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+        @GraphicsMode(GraphicsMode.Mode.NATIVE)
+        fun `a window that turns secure during the copy is recorded fully masked`() {
+            val h = captureHarness()
+            RecordingShadowPixelCopy.reset()
+            RecordingShadowPixelCopy.onRequest = {
+                it.eraseColor(Color.WHITE)
+                // Without a relayout, so the copy isn't discarded as a redraw.
+                h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            }
+            try {
+                assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+
+                assertEquals(1, RecordingShadowPixelCopy.requests.size)
+                val bitmap = screenshotBitmap(h.fake)
+                try {
+                    for (x in 0 until bitmap.width) {
+                        for (y in 0 until bitmap.height) {
+                            val pixel = bitmap.getPixel(x, y)
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        }
+                    }
                 } finally {
                     bitmap.recycle()
                 }
@@ -4405,6 +4593,146 @@ internal class PostHogReplayIntegrationTest {
             h.fx.sut.uninstall()
         }
     }
+
+    @Test
+    @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
+    fun `legacy capture discards a frame with a masked view in transient state`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        val container = FrameLayout(h.hookLayout.context)
+        h.hookLayout.removeView(h.child)
+        container.addView(h.child)
+        h.hookLayout.addView(container)
+        container.layout(0, 0, 100, 20)
+        h.child.layout(0, 0, 100, 20)
+        h.child.tag = null
+        h.child.text = "secret"
+        try {
+            DrawSequenceShadowPixelCopy.onRequest = { h.child.setHasTransientState(true) }
+
+            h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            assertEquals(0, h.fake.captures)
+        } finally {
+            DrawSequenceShadowPixelCopy.onRequest = null
+            h.child.setHasTransientState(false)
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `the discard check treats everything the mask walk masks as maskable`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val root = FrameLayout(activity)
+            activity.setContentView(root)
+            val views =
+                listOf(
+                    View(activity),
+                    View(activity).apply { tag = "ph-no-capture" },
+                    TextView(activity),
+                    TextView(activity).apply { text = "secret" },
+                    TextView(activity).apply {
+                        text = "secret"
+                        tag = "ph-no-mask"
+                    },
+                    ImageView(activity).apply { setImageBitmap(Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888)) },
+                    FrameLayout(activity).apply { addView(TextView(activity).apply { text = "secret" }) },
+                    FrameLayout(activity).apply { addView(View(activity)) },
+                    FrameLayout(activity).apply {
+                        addView(
+                            TextView(activity).apply {
+                                text = "secret"
+                                visibility = View.INVISIBLE
+                            },
+                        )
+                    },
+                    FakeAndroidComposeView(activity),
+                )
+            views.forEach { root.addView(it) }
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activity.window.decorView)
+            root.layout(0, 0, 100, 100)
+            views.forEach { view ->
+                view.layout(0, 0, 100, 20)
+                (view as? ViewGroup)?.getChildAt(0)?.layout(0, 0, 100, 20)
+            }
+
+            val maskedByWalk =
+                views.map { view ->
+                    PostHogReplayIntegration.MaskWalk(failClosed = false).also { fx.sut.findMaskableWidgets(view, it) }.rects.isNotEmpty()
+                }
+            val maskableForDiscard = views.map { with(fx.sut) { it.hasMaskableContent(PostHogReplayIntegration.MaskWalk()) } }
+
+            assertEquals(listOf(false, true, false, true, false, true, true, false, false, false), maskedByWalk)
+            // Compose content can't be judged without geometry, so the discard check counts it as maskable.
+            assertEquals(listOf(false, true, false, true, false, true, true, false, false, true), maskableForDiscard)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `legacy mask walk is not poisoned by an animating view with nothing to mask`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val root = FrameLayout(activity)
+            val animated = View(activity)
+            root.addView(animated)
+            activity.setContentView(root)
+            shadowOf(Looper.getMainLooper()).idle()
+            makeWindowVisible(activity.window.decorView)
+            root.layout(0, 0, 100, 100)
+            animated.layout(0, 0, 100, 20)
+            animated.animation = runningAnimation()
+
+            val walk = PostHogReplayIntegration.MaskWalk(failClosed = false)
+            fx.sut.findMaskableWidgets(root, walk)
+
+            assertFalse(walk.poisoned)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    // An animating view can't be placed, so the walk would otherwise ship its overflow unmasked.
+    @Test
+    fun `legacy mask walk is poisoned by an animating no-capture descendant only`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity).apply { clipChildren = false }
+        val wrapper =
+            FrameLayout(activity).apply {
+                tag = "ph-no-capture"
+                clipChildren = false
+                clipToPadding = false
+            }
+        val plain = View(activity)
+        wrapper.addView(plain)
+        root.addView(wrapper)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        wrapper.layout(0, 0, 100, 20)
+        plain.layout(0, 60, 100, 80)
+        plain.animation = runningAnimation()
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        fun legacyWalk() = PostHogReplayIntegration.MaskWalk(failClosed = false).also { sut.findMaskableWidgets(root, it) }
+
+        assertTrue(legacyWalk().poisoned)
+
+        // ph-no-mask has precedence, so the walk would not have masked it anyway.
+        plain.tag = "ph-no-mask"
+        assertFalse(legacyWalk().poisoned)
+    }
+
+    private fun runningAnimation(): Animation =
+        mock<Animation>().also {
+            whenever(it.hasStarted()).thenReturn(true)
+            whenever(it.hasEnded()).thenReturn(false)
+        }
 
     @Test
     @Config(sdk = [26], shadows = [DrawSequenceShadowPixelCopy::class])
