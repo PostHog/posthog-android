@@ -966,6 +966,17 @@ internal class PostHogQueueTest {
     }
 
     @Test
+    fun `the drop log names the records it drops`() {
+        val e = PostHogApiError(400, "", null)
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val logger = TestLogger()
+
+        deleteFilesIfAPIError(e, initialBatchLimits(config), actualBatchSize = 3, logger = logger, recordsLabel = "AI events")
+
+        assertEquals(listOf("Flushing failed with 400, dropping 3 AI events."), logger.messages)
+    }
+
+    @Test
     fun `retries on 408`() {
         val e = PostHogApiError(408, "", null)
         val config = PostHogConfig(PROJECT_TOKEN)
