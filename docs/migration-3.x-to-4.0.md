@@ -52,7 +52,7 @@ PostHog Cloud (`us.i.posthog.com`, `eu.i.posthog.com`) serves it.
 If you send events through your own reverse proxy, update it before you upgrade:
 
 - Forward `/i/v1/analytics/events` and `/i/v1/ai/events` to PostHog.
-- Pass `Authorization` (the project token, sent as `Bearer <token>`), every `PostHog-*` header, `Content-Type`, `Content-Encoding` and `User-Agent` through unchanged. PostHog answers `401` without `Authorization` and `400` without the others, and the events are dropped.
+- Pass `Authorization` (the project token, sent as `Bearer <token>`), every `PostHog-*` header, `Content-Type`, `Content-Encoding` and `User-Agent` through unchanged. PostHog answers `401` without `Authorization` and `400` without the others, and the events are dropped. If your proxy strips other credentials, keep `Authorization` values that start with `Bearer phc_`, or the exact `Bearer <token>` if your project token doesn't start with `phc_`.
 - Accept request bodies up to 20 MB. AI requests are often larger than 1 MB, the default limit in nginx and ingress-nginx. A `413` from the proxy makes the SDK halve the batch until it fits, and drops an event that doesn't fit on its own.
 
 PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
