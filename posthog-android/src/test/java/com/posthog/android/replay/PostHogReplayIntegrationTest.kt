@@ -258,6 +258,72 @@ internal class PostHogReplayIntegrationTest {
         assertEquals(listOf(Rect(unpanned[0]).apply { offset(0, -150) }), panned)
     }
 
+    // An unclipped no-capture container lets its children draw outside its own rect.
+    @Test
+    fun `no-capture container masks descendants that overflow its bounds`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        // getGlobalVisibleRect clips a child to its parent unless the grandparent is unclipped.
+        val root = FrameLayout(activity).apply { clipChildren = false }
+        val wrapper =
+            FrameLayout(activity).apply {
+                tag = "ph-no-capture"
+                clipChildren = false
+                clipToPadding = false
+            }
+        val text = TextView(activity).apply { text = "secret" }
+        val plain = View(activity)
+        val compose = FakeAndroidComposeView(activity)
+        val unmasked = View(activity).apply { tag = "ph-no-mask" }
+        listOf(text, plain, compose, unmasked).forEach { wrapper.addView(it) }
+        root.addView(wrapper)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        wrapper.layout(0, 0, 100, 20)
+        text.layout(0, 30, 100, 50)
+        plain.layout(0, 60, 100, 80)
+        compose.layout(0, 90, 100, 110)
+        unmasked.layout(0, 120, 100, 140)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        fun rectOf(view: View) = Rect().also { view.getGlobalVisibleRect(it) }
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+        assertFalse(walk.poisoned)
+        assertEquals(listOf(wrapper, text, plain, compose).map(::rectOf), walk.rects)
+
+        // The verified path re-walks at draw time and compares against the capture's rects.
+        val verify = PostHogReplayIntegration.MaskWalk().apply { resetForCompareAgainst(walk.rects) }
+        sut.findMaskableWidgets(root, verify)
+        assertFalse(verify.isMisaligned())
+
+        // Without the tag only the text keeps its own mask. The fake Compose view is removed
+        // because an untagged walk would run a real semantics traversal on it.
+        wrapper.removeView(compose)
+        wrapper.tag = null
+        val untagged = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+        assertEquals(listOf(rectOf(text)), untagged.rects)
+    }
+
+    @Test
+    fun `no-capture tag on a Compose view masks it whole`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val compose = FakeAndroidComposeView(activity).apply { tag = "ph-no-capture" }
+        val root = FrameLayout(activity).apply { addView(compose) }
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 100)
+        compose.layout(0, 0, 100, 20)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+
+        assertFalse(walk.poisoned)
+        assertEquals(listOf(Rect().also { compose.getGlobalVisibleRect(it) }), walk.rects)
+    }
+
     @Test
     fun `timed out view collection does not run later or emit a snapshot`() {
         val h = screenshotCaptureHarness()

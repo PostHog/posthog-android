@@ -1108,6 +1108,7 @@ public class PostHogReplayIntegration(
     internal fun findMaskableWidgets(
         view: View,
         walk: MaskWalk,
+        insideNoCapture: Boolean = false,
     ) {
         if (walk.shouldStop) {
             return
@@ -1119,12 +1120,18 @@ public class PostHogReplayIntegration(
         }
 
         var walkChildren = false
+        var childrenInsideNoCapture = false
 
         when {
             view.isComposeView() -> {
-                findMaskableComposeWidgets(view, walk)
-                if (walk.shouldStop) {
-                    return
+                if (insideNoCapture || view.isNoCapture()) {
+                    view.addGlobalVisibleRect(walk)
+                    childrenInsideNoCapture = true
+                } else {
+                    findMaskableComposeWidgets(view, walk)
+                    if (walk.shouldStop) {
+                        return
+                    }
                 }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
@@ -1134,8 +1141,11 @@ public class PostHogReplayIntegration(
                 // ph-no-mask has precedence, skip masking
             }
 
-            view.isNoCapture() -> {
+            // Children of an unclipped container can draw outside its rect, so they are masked too.
+            insideNoCapture || view.isNoCapture() -> {
                 view.addGlobalVisibleRect(walk)
+                walkChildren = true
+                childrenInsideNoCapture = true
             }
 
             view is TextView -> {
@@ -1186,7 +1196,7 @@ public class PostHogReplayIntegration(
                     continue
                 }
 
-                findMaskableWidgets(viewChild, walk)
+                findMaskableWidgets(viewChild, walk, childrenInsideNoCapture)
             }
         }
     }
