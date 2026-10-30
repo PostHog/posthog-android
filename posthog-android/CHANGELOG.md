@@ -1,5 +1,13 @@
 ## Next
 
+## 3.74.2
+
+### Patch Changes
+
+- c09b501: Discard a session replay screenshot in screenshot mode when a view with content to mask is animating or in a transient state, instead of recording that view unmasked
+- c09b501: Record windows that set `FLAG_SECURE` as a fully masked session replay screenshot in screenshot mode, without their pixels or touches
+- c09b501: Record windows that set `FLAG_SECURE` as a solid black session replay frame in wireframe mode, without their views, text or touches
+
 ## 3.74.1
 
 ### Patch Changes
