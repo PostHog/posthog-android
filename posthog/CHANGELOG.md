@@ -1,5 +1,23 @@
 ## Next
 
+## 6.47.8
+
+### Patch Changes
+
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
+## 6.47.7
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 6.47.6
+
+### Patch Changes
+
+- cb6fe68: Fix `beforeSend` running twice for each captured event, which discarded the hook's changes to `distinctId`, `timestamp` and `uuid` and compounded random sampling
+
 ## 6.47.5
 
 ### Patch Changes

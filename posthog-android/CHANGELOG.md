@@ -1,5 +1,46 @@
 ## Next
 
+## 3.74.2
+
+### Patch Changes
+
+- c09b501: Discard a session replay screenshot in screenshot mode when a view with content to mask is animating or in a transient state, instead of recording that view unmasked
+- c09b501: Record windows that set `FLAG_SECURE` as a fully masked session replay screenshot in screenshot mode, without their pixels or touches
+- c09b501: Record windows that set `FLAG_SECURE` as a solid black session replay frame in wireframe mode, without their views, text or touches
+
+## 3.74.1
+
+### Patch Changes
+
+- 3280f6c: Session replay now masks the children of a `ph-no-capture` view, so content that draws outside an unclipped container is no longer recorded. While one of those children is animating, the snapshot may be skipped.
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
+## 3.74.0
+
+### Minor Changes
+
+- 5f5cee2: Session replay screenshots now default to one pixel per dp (about 1/9 of the pixels on a 3x screen, so smaller uploads), using a filtered downscale that keeps small text readable. Set `screenshotScale = 1f` to keep native resolution.
+  
+  **Breaking change to the experimental `screenshotScale`:** its type changes from `Float` to `Float?`, and `null` (the new default) means one pixel per dp. Explicit values keep their meaning, and assigning one (`screenshotScale = 0.5f`) still compiles. Code compiled against 3.63.x must be rebuilt. Kotlin code that reads it into a `Float` no longer compiles, and Java code that reads it into a `float` throws `NullPointerException` while it is unset.
+
+## 3.73.1
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 3.73.0
+
+### Minor Changes
+
+- 5809b4f: Add `$is_sideloaded` to the static context, reporting whether the app was installed outside a known app store
+
+## 3.72.10
+
+### Patch Changes
+
+- cb6fe68: Fix `beforeSend` running twice for each captured event, which discarded the hook's changes to `distinctId`, `timestamp` and `uuid` and compounded random sampling
+
 ## 3.72.9
 
 ### Patch Changes

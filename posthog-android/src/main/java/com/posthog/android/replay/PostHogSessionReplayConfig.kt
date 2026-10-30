@@ -1,6 +1,8 @@
 package com.posthog.android.replay
 
 import com.posthog.PostHogExperimental
+import com.posthog.android.replay.internal.MAX_SCREENSHOT_SCALE
+import com.posthog.android.replay.internal.MIN_SCREENSHOT_SCALE
 
 /**
  * Android session replay capture options.
@@ -36,6 +38,7 @@ public class PostHogSessionReplayConfig
          * By default Session replay will capture all the views on the screen as a wireframe,
          * By enabling this option, PostHog will capture the screenshot of the screen.
          * The screenshot may contain sensitive information, use with caution.
+         * In both modes, windows that set `FLAG_SECURE` are recorded as a solid black frame, and their touches are not recorded.
          */
         public var screenshot: Boolean = false,
         /**
@@ -87,16 +90,17 @@ public class PostHogSessionReplayConfig
 
         /**
          * Multiplier for the physical width and height of screenshot captures, clamped to 0.1..1.0.
-         * For example, 0.5 captures half the width and height, or one quarter of the pixels.
+         * `null` (default) captures one pixel per dp (1/density), so screens with a density of 1 or
+         * less capture at full resolution. For example, 0.5 captures half the width and height.
          * Dimensions are rounded up to at least one pixel; the logical replay viewport is unchanged.
-         * Defaults to 1.0 (full resolution). NaN and infinite values reset the scale to 1.0.
+         * NaN and infinite values reset the scale to `null`.
          * Does not change compression quality, color mode, or enable screenshot capture.
          */
         @PostHogExperimental
         @Volatile
-        public var screenshotScale: Float = 1f
+        public var screenshotScale: Float? = null
             set(value) {
-                field = if (value.isFinite()) value.coerceIn(0.1f, 1f) else 1f
+                field = value?.takeIf { it.isFinite() }?.coerceIn(MIN_SCREENSHOT_SCALE, MAX_SCREENSHOT_SCALE)
             }
 
         /**
