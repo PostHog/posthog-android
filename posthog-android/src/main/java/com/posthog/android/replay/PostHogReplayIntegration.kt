@@ -455,13 +455,13 @@ public class PostHogReplayIntegration(
     // Window callbacks add these on the main thread; install() and uninstall() remove them on the caller's.
     private val touchInterceptors = Collections.synchronizedMap(WeakHashMap<Window, TouchEventInterceptor>())
 
-    // A FLAG_SECURE window is recorded fully masked in screenshot mode, so its touches aren't
-    // recorded either. The flag is read per touch because apps toggle it at runtime.
+    // A FLAG_SECURE window is recorded fully masked, so its touches aren't recorded either.
+    // The flag is read per touch because apps toggle it at runtime.
     internal fun touchInterceptor(window: Window): TouchEventInterceptor =
         touchInterceptors.getOrPut(window) {
             val windowRef = WeakReference(window)
             TouchEventInterceptor { motionEvent, dispatch ->
-                if (isScreenshotCapable && windowRef.get()?.isSecure() == true) {
+                if (windowRef.get()?.isSecure() == true) {
                     dispatch(motionEvent)
                 } else {
                     onTouchEventListener.intercept(motionEvent, dispatch)
@@ -815,8 +815,12 @@ public class PostHogReplayIntegration(
                     window,
                     status.drawState,
                 ) ?: return false
+            } else if (window.isSecure()) {
+                view.toSecureWireframe() ?: return false
             } else {
-                view.toWireframe() ?: return false
+                val tree = view.toWireframe() ?: return false
+                // The window can turn secure while the tree is walked.
+                if (window.isSecure()) view.toSecureWireframe() ?: return false else tree
             }
 
         // if the decorView has no backgroundColor, we use the theme color
@@ -2088,6 +2092,25 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         return this.isTextInputSensitive(ancestorUnmasked)
+    }
+
+    // A FLAG_SECURE window is recorded as one black rectangle, with nothing from its view tree.
+    private fun View.toSecureWireframe(): RRWireframe? {
+        if (!isVisible()) {
+            return null
+        }
+        val coordinates = IntArray(2)
+        if (isViewStateStableForMatrixOperations()) {
+            getLocationOnScreen(coordinates)
+        }
+        return RRWireframe(
+            id = System.identityHashCode(this),
+            x = coordinates[0].densityValue(screenDensity),
+            y = coordinates[1].densityValue(screenDensity),
+            width = width.densityValue(screenDensity),
+            height = height.densityValue(screenDensity),
+            style = RRStyle().apply { backgroundColor = "#000000" },
+        )
     }
 
     private fun View.toWireframe(

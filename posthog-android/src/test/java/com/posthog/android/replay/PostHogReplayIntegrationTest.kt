@@ -107,6 +107,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -698,10 +699,9 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `a touch on a secure window is not recorded in screenshot mode`() {
+    fun `a touch on a secure window is not recorded`() {
         val submits = AtomicInteger(0)
         val config = configWithSampling(flagActive = true, samplingPasses = true)
-        config.sessionReplayConfig.screenshot = true
         val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
         val fake = createPostHogFake()
         fake.sessionReplayActive = false
@@ -733,6 +733,78 @@ internal class PostHogReplayIntegrationTest {
             sut.uninstall()
             curtains.close()
             controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `a secure window is recorded as one black wireframe in wireframe mode`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+            assertNull(wireframe.text)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a window secure when the wireframe walk starts is recorded as one black wireframe`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            h.hookLayout.onWalkTouch = {
+                h.window.attributes.flags = h.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+        } finally {
+            h.fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a window that turns secure during the wireframe walk is recorded as one black wireframe`() {
+        val h = screenshotCaptureHarness()
+        try {
+            h.fx.config.sessionReplayConfig.screenshot = false
+            h.child.tag = null
+            h.child.text = "secret"
+            h.hookLayout.onWalkTouch = {
+                h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+            }
+
+            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
+
+            @Suppress("UNCHECKED_CAST")
+            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
+            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+            assertEquals("#000000", wireframe.style?.backgroundColor)
+            assertNull(wireframe.childWireframes)
+        } finally {
+            h.fx.sut.uninstall()
         }
     }
 
