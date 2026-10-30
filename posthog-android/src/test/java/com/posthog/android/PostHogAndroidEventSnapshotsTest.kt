@@ -24,6 +24,7 @@ import java.util.Date
 import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 import kotlin.test.AfterTest
@@ -67,8 +68,10 @@ internal class PostHogAndroidEventSnapshotsTest {
     fun `batch request and enriched event shapes match snapshot`() {
         val fixture = createFixture()
         val flagsLoaded = CountDownLatch(1)
-        fixture.config.onFeatureFlags = PostHogFeatureFlagsCallback { flagsLoaded.countDown() }
         val sut = fixture.client
+        // this test blocks the main thread, where listeners otherwise run
+        fixture.config.featureFlagsListenerExecutor = Executor { it.run() }
+        sut.onFeatureFlags { flagsLoaded.countDown() }
 
         sut.capture(
             event = "checkout completed",

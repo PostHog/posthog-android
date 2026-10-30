@@ -158,8 +158,8 @@ public class com/posthog/PostHogConfig {
 	public static final field DEFAULT_MAX_QUEUE_SIZE I
 	public static final field DEFAULT_US_ASSETS_HOST Ljava/lang/String;
 	public static final field DEFAULT_US_HOST Ljava/lang/String;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogFeatureFlagsCallback;ZLkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIIIILcom/posthog/PostHogEncryption;Lcom/posthog/PostHogFeatureFlagsCallback;ZLkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIIIILcom/posthog/PostHogEncryption;ZLkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZZZIZLjava/util/List;ZIIIIIILcom/posthog/PostHogEncryption;ZLkotlin/jvm/functions/Function1;ZLcom/posthog/PersonProfiles;ZLjava/net/Proxy;Lcom/posthog/surveys/PostHogSurveysConfig;Lcom/posthog/logs/PostHogLogsConfig;Lkotlin/jvm/functions/Function6;Lkotlin/jvm/functions/Function5;Lcom/posthog/errortracking/PostHogErrorTrackingConfig;Ljava/lang/String;Lcom/posthog/PostHogBootstrapConfig;Lkotlin/jvm/functions/Function3;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun addBeforeSend (Lcom/posthog/PostHogBeforeSend;)V
 	public final fun addIntegration (Lcom/posthog/PostHogIntegration;)V
 	public final fun getBeforeSendList ()Ljava/util/List;
@@ -189,7 +189,6 @@ public class com/posthog/PostHogConfig {
 	public final fun getMaxQueueSize ()I
 	public final fun getMaxRetries ()I
 	public final fun getNetworkStatus ()Lcom/posthog/internal/PostHogNetworkStatus;
-	public final fun getOnFeatureFlags ()Lcom/posthog/PostHogFeatureFlagsCallback;
 	public final fun getOptOut ()Z
 	public final fun getPersistOptOut ()Z
 	public final fun getPersonProfiles ()Lcom/posthog/PersonProfiles;
@@ -241,7 +240,6 @@ public class com/posthog/PostHogConfig {
 	public final fun setMaxQueueSize (I)V
 	public final fun setMaxRetries (I)V
 	public final fun setNetworkStatus (Lcom/posthog/internal/PostHogNetworkStatus;)V
-	public final fun setOnFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)V
 	public final fun setOptOut (Z)V
 	public final fun setPersistOptOut (Z)V
 	public final fun setPersonProfiles (Lcom/posthog/PersonProfiles;)V
