@@ -1140,62 +1140,25 @@ public class PostHogReplayIntegration(
         var walkChildren = false
         var childrenInsideNoCapture = false
 
-        // Keep in sync with hasMaskableContent.
-        when {
-            view.isComposeView() -> {
-                if (insideNoCapture || view.isNoCapture()) {
-                    view.addGlobalVisibleRect(walk)
-                    childrenInsideNoCapture = true
-                } else {
-                    findMaskableComposeWidgets(view, walk)
-                    if (walk.shouldStop) {
-                        return
-                    }
+        when (view.maskRule(insideNoCapture)) {
+            MaskRule.COMPOSE -> {
+                findMaskableComposeWidgets(view, walk)
+                if (walk.shouldStop) {
+                    return
                 }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
             }
-
-            view.isUnmasked() -> {
-                // ph-no-mask has precedence, skip masking
-            }
-
             // Children of an unclipped container can draw outside its rect, so they are masked too.
-            insideNoCapture || view.isNoCapture() -> {
+            MaskRule.NO_CAPTURE -> {
                 view.addGlobalVisibleRect(walk)
                 walkChildren = true
                 childrenInsideNoCapture = true
             }
-
-            view is TextView -> {
-                // Only emptiness matters here; toString() would copy the text on every walk.
-                val hasContent = view.text?.isNotEmpty() == true || view.hint?.isNotEmpty() == true
-                if (hasContent && view.shouldMaskTextView()) {
-                    view.addTextAreaGlobalVisibleRect(walk)
-                }
-            }
-
-            view is Spinner -> {
-                if (view.shouldMaskSpinner()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is ImageView -> {
-                if (view.shouldMaskImage()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is WebView -> {
-                if (view.isAnyInputSensitive()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is ViewGroup && view.childCount > 0 -> {
-                walkChildren = true
-            }
+            MaskRule.MASK_VIEW -> view.addGlobalVisibleRect(walk)
+            MaskRule.MASK_TEXT -> (view as TextView).addTextAreaGlobalVisibleRect(walk)
+            MaskRule.CHILDREN -> walkChildren = true
+            MaskRule.NONE -> Unit
         }
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
@@ -1222,27 +1185,43 @@ public class PostHogReplayIntegration(
         }
     }
 
+    internal enum class MaskRule { COMPOSE, NO_CAPTURE, MASK_VIEW, MASK_TEXT, CHILDREN, NONE }
+
+    // The one place that decides how a view is masked, shared by the mask walk and
+    // hasMaskableContent so the two can't disagree.
+    internal fun View.maskRule(insideNoCapture: Boolean = false): MaskRule =
+        when {
+            isComposeView() -> if (insideNoCapture || isNoCapture()) MaskRule.NO_CAPTURE else MaskRule.COMPOSE
+            // ph-no-mask has precedence, skip masking
+            isUnmasked() -> MaskRule.NONE
+            insideNoCapture || isNoCapture() -> MaskRule.NO_CAPTURE
+            // Only emptiness matters here; toString() would copy the text on every walk.
+            this is TextView ->
+                if ((text?.isNotEmpty() == true || hint?.isNotEmpty() == true) && shouldMaskTextView()) {
+                    MaskRule.MASK_TEXT
+                } else {
+                    MaskRule.NONE
+                }
+            this is Spinner -> if (shouldMaskSpinner()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is ImageView -> if (shouldMaskImage()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is WebView -> if (isAnyInputSensitive()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is ViewGroup && childCount > 0 -> MaskRule.CHILDREN
+            else -> MaskRule.NONE
+        }
+
     // Whether this subtree holds anything the walk would mask, judged without geometry, so a
     // legacy walk can tell an unplaceable sensitive view from a harmless animation.
-    // Keep in sync with findMaskableWidgets.
-    private fun View.hasMaskableContent(walk: MaskWalk): Boolean {
+    internal fun View.hasMaskableContent(walk: MaskWalk): Boolean {
         if (!walk.visitedViews.add(System.identityHashCode(this))) {
             return false
         }
-        return when {
-            isComposeView() -> true
-            isUnmasked() -> false
-            isNoCapture() -> true
-            this is TextView ->
-                (text?.isNotEmpty() == true || hint?.isNotEmpty() == true) && shouldMaskTextView()
-            this is Spinner -> shouldMaskSpinner()
-            this is ImageView -> shouldMaskImage()
-            this is WebView -> isAnyInputSensitive()
-            this is ViewGroup ->
-                (0 until childCount).any { i ->
+        return when (maskRule()) {
+            MaskRule.COMPOSE, MaskRule.NO_CAPTURE, MaskRule.MASK_VIEW, MaskRule.MASK_TEXT -> true
+            MaskRule.CHILDREN ->
+                (0 until (this as ViewGroup).childCount).any { i ->
                     getChildAt(i)?.let { it.visibility == View.VISIBLE && it.hasMaskableContent(walk) } == true
                 }
-            else -> false
+            MaskRule.NONE -> false
         }
     }
 
