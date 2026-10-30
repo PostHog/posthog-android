@@ -30,6 +30,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
+import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
@@ -62,8 +63,12 @@ import com.posthog.android.replay.internal.NextDrawListener.Companion.onNextDraw
 import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
 import com.posthog.android.replay.internal.WindowDrawState
+import com.posthog.android.replay.internal.downscaledWebpBase64
 import com.posthog.android.replay.internal.isAlive
 import com.posthog.android.replay.internal.isAliveAndAttachedToWindow
+import com.posthog.android.replay.internal.resolveScreenshotScale
+import com.posthog.android.replay.internal.scaledScreenshotDimension
+import com.posthog.android.replay.internal.twoStageCopySize
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -358,7 +363,7 @@ public class PostHogReplayIntegration(
                             }
                         }
 
-                        window.touchEventInterceptors += onTouchEventListener
+                        window.touchEventInterceptors += touchInterceptor(window)
                         // TODO: can check if user pressed hardware back button (KEYCODE_BACK)
                         // window.keyEventInterceptors
                     } else {
@@ -433,6 +438,23 @@ public class PostHogReplayIntegration(
 
         return Pair(imeVisible, event)
     }
+
+    // Window callbacks add these on the main thread; install() and uninstall() remove them on the caller's.
+    private val touchInterceptors = Collections.synchronizedMap(WeakHashMap<Window, TouchEventInterceptor>())
+
+    // A FLAG_SECURE window is recorded fully masked, so its touches aren't recorded either.
+    // The flag is read per touch because apps toggle it at runtime.
+    internal fun touchInterceptor(window: Window): TouchEventInterceptor =
+        touchInterceptors.getOrPut(window) {
+            val windowRef = WeakReference(window)
+            TouchEventInterceptor { motionEvent, dispatch ->
+                if (windowRef.get()?.isSecure() == true) {
+                    dispatch(motionEvent)
+                } else {
+                    onTouchEventListener.intercept(motionEvent, dispatch)
+                }
+            }
+        }
 
     internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
@@ -542,7 +564,7 @@ public class PostHogReplayIntegration(
         }
 
         view.phoneWindow?.let { window ->
-            window.touchEventInterceptors -= onTouchEventListener
+            touchInterceptors.remove(window)?.let { window.touchEventInterceptors -= it }
         }
 
         decorViews.remove(view)
@@ -1046,6 +1068,7 @@ public class PostHogReplayIntegration(
     internal fun findMaskableWidgets(
         view: View,
         walk: MaskWalk,
+        insideNoCapture: Boolean = false,
     ) {
         if (walk.shouldStop) {
             return
@@ -1057,9 +1080,10 @@ public class PostHogReplayIntegration(
         }
 
         var walkChildren = false
+        var childrenInsideNoCapture = false
 
-        when {
-            view.isComposeView() -> {
+        when (view.maskRule(insideNoCapture)) {
+            MaskRule.COMPOSE -> {
                 findMaskableComposeWidgets(view, walk)
                 if (walk.shouldStop) {
                     return
@@ -1067,44 +1091,16 @@ public class PostHogReplayIntegration(
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
             }
-
-            view.isUnmasked() -> {
-                // ph-no-mask has precedence, skip masking
-            }
-
-            view.isNoCapture() -> {
+            // Children of an unclipped container can draw outside its rect, so they are masked too.
+            MaskRule.NO_CAPTURE -> {
                 view.addGlobalVisibleRect(walk)
-            }
-
-            view is TextView -> {
-                // Only emptiness matters here; toString() would copy the text on every walk.
-                val hasContent = view.text?.isNotEmpty() == true || view.hint?.isNotEmpty() == true
-                if (hasContent && view.shouldMaskTextView()) {
-                    view.addTextAreaGlobalVisibleRect(walk)
-                }
-            }
-
-            view is Spinner -> {
-                if (view.shouldMaskSpinner()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is ImageView -> {
-                if (view.shouldMaskImage()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is WebView -> {
-                if (view.isAnyInputSensitive()) {
-                    view.addGlobalVisibleRect(walk)
-                }
-            }
-
-            view is ViewGroup && view.childCount > 0 -> {
                 walkChildren = true
+                childrenInsideNoCapture = true
             }
+            MaskRule.MASK_VIEW -> view.addGlobalVisibleRect(walk)
+            MaskRule.MASK_TEXT -> (view as TextView).addTextAreaGlobalVisibleRect(walk)
+            MaskRule.CHILDREN -> walkChildren = true
+            MaskRule.NONE -> Unit
         }
 
         if (walkChildren && view is ViewGroup && view.childCount > 0) {
@@ -1118,7 +1114,7 @@ public class PostHogReplayIntegration(
                 if (!viewChild.isVisible(walk)) {
                     // A skipped-but-rendered view could be a masked widget we cannot place.
                     if (viewChild.isRenderedButUnplaceable() &&
-                        (walk.failClosed || viewChild.hasMaskableContent(walk))
+                        (walk.failClosed || viewChild.hasMaskableContent(walk, childrenInsideNoCapture))
                     ) {
                         walk.poisoned = true
                         return
@@ -1126,31 +1122,51 @@ public class PostHogReplayIntegration(
                     continue
                 }
 
-                findMaskableWidgets(viewChild, walk)
+                findMaskableWidgets(viewChild, walk, childrenInsideNoCapture)
             }
         }
     }
 
+    internal enum class MaskRule { COMPOSE, NO_CAPTURE, MASK_VIEW, MASK_TEXT, CHILDREN, NONE }
+
+    // The one place that decides how a view is masked, shared by the mask walk and
+    // hasMaskableContent so the two can't disagree.
+    internal fun View.maskRule(insideNoCapture: Boolean = false): MaskRule =
+        when {
+            isComposeView() -> if (insideNoCapture || isNoCapture()) MaskRule.NO_CAPTURE else MaskRule.COMPOSE
+            // ph-no-mask has precedence, skip masking
+            isUnmasked() -> MaskRule.NONE
+            insideNoCapture || isNoCapture() -> MaskRule.NO_CAPTURE
+            // Only emptiness matters here; toString() would copy the text on every walk.
+            this is TextView ->
+                if ((text?.isNotEmpty() == true || hint?.isNotEmpty() == true) && shouldMaskTextView()) {
+                    MaskRule.MASK_TEXT
+                } else {
+                    MaskRule.NONE
+                }
+            this is Spinner -> if (shouldMaskSpinner()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is ImageView -> if (shouldMaskImage()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is WebView -> if (isAnyInputSensitive()) MaskRule.MASK_VIEW else MaskRule.NONE
+            this is ViewGroup && childCount > 0 -> MaskRule.CHILDREN
+            else -> MaskRule.NONE
+        }
+
     // Whether this subtree holds anything the walk would mask, judged without geometry, so a
     // legacy walk can tell an unplaceable sensitive view from a harmless animation.
-    private fun View.hasMaskableContent(walk: MaskWalk): Boolean {
+    internal fun View.hasMaskableContent(
+        walk: MaskWalk,
+        insideNoCapture: Boolean = false,
+    ): Boolean {
         if (!walk.visitedViews.add(System.identityHashCode(this))) {
             return false
         }
-        return when {
-            isComposeView() -> true
-            isUnmasked() -> false
-            isNoCapture() -> true
-            this is TextView ->
-                (text?.isNotEmpty() == true || hint?.isNotEmpty() == true) && shouldMaskTextView()
-            this is Spinner -> shouldMaskSpinner()
-            this is ImageView -> shouldMaskImage()
-            this is WebView -> isAnyInputSensitive()
-            this is ViewGroup ->
-                (0 until childCount).any { i ->
+        return when (maskRule(insideNoCapture)) {
+            MaskRule.COMPOSE, MaskRule.NO_CAPTURE, MaskRule.MASK_VIEW, MaskRule.MASK_TEXT -> true
+            MaskRule.CHILDREN ->
+                (0 until (this as ViewGroup).childCount).any { i ->
                     getChildAt(i)?.let { it.visibility == View.VISIBLE && it.hasMaskableContent(walk) } == true
                 }
-            else -> false
+            MaskRule.NONE -> false
         }
     }
 
@@ -1674,6 +1690,10 @@ public class PostHogReplayIntegration(
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
+        if (walk.poisoned) {
+            config.logger.log("Session Replay screenshot discarded: a view with content to mask is animating or in a transient state.")
+            return false
+        }
 
         return bitmap.paintScreenshotMasks(walk.rects, sourceWidth, sourceHeight) {
             val safe = !unsafeRedraw()
@@ -1725,10 +1745,31 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun scaledScreenshotDimension(
-        size: Int,
-        scale: Float,
-    ): Int = maxOf(1, ceil(size * scale).toInt())
+    private fun Window.isSecure(): Boolean = attributes?.flags?.and(FLAG_SECURE) == FLAG_SECURE
+
+    private fun maskedScreenshotBase64(
+        width: Int,
+        height: Int,
+        bitmapConfig: Bitmap.Config,
+        compressionQuality: Int,
+    ): String? {
+        val lease =
+            try {
+                pixelCopyBitmapBuffer.acquire(width, height, bitmapConfig)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay screenshot setup failed: $e.")
+                null
+            } ?: return null
+        return try {
+            lease.bitmap.eraseColor(paint.color)
+            lease.bitmap.webpBase64(compressionQuality)
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay screenshot encoding failed: $e.")
+            null
+        } finally {
+            lease.release()
+        }
+    }
 
     private class ScreenshotGeometry(
         val x: Int,
@@ -1736,6 +1777,7 @@ public class PostHogReplayIntegration(
         val width: Int,
         val height: Int,
         val verifyMaskAlignment: Boolean,
+        val secure: Boolean,
     )
 
     // PixelCopy is only API >= 24 but this is already protected by the isSupported method
@@ -1760,6 +1802,7 @@ public class PostHogReplayIntegration(
                     view.width,
                     view.height,
                     shouldVerifyMaskAlignment(view, drawState),
+                    window.isSecure(),
                 )
             } ?: return null
         val viewId = System.identityHashCode(view)
@@ -1769,7 +1812,11 @@ public class PostHogReplayIntegration(
         val sourceHeight = geometry.height
         val width = sourceWidth.densityValue(screenDensity)
         val height = sourceHeight.densityValue(screenDensity)
-        val screenshotScale = config.sessionReplayConfig.screenshotScale
+        val screenshotScale = resolveScreenshotScale(config.sessionReplayConfig.screenshotScale, screenDensity)
+        val targetWidth = scaledScreenshotDimension(sourceWidth, screenshotScale)
+        val targetHeight = scaledScreenshotDimension(sourceHeight, screenshotScale)
+        val copySize = twoStageCopySize(sourceWidth, sourceHeight, targetWidth, targetHeight)
+        val (copyWidth, copyHeight) = copySize ?: (targetWidth to targetHeight)
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         val bitmapConfig =
             when (config.sessionReplayConfig.screenshotColorMode) {
@@ -1777,6 +1824,32 @@ public class PostHogReplayIntegration(
                 PostHogScreenshotColorMode.RGB_565 -> Bitmap.Config.RGB_565
             }
         var base64: String? = null
+
+        // FLAG_SECURE asks that the window never be captured, so it's recorded as one mask
+        // without copying its pixels.
+        if (geometry.secure) {
+            base64 =
+                maskedScreenshotBase64(
+                    targetWidth,
+                    targetHeight,
+                    bitmapConfig,
+                    compressionQuality,
+                )
+            if (base64 == null) {
+                recordScreenshotDiscarded(drawState)
+                return null
+            }
+            drawState.resetScreenshotDiscards()
+            return RRWireframe(
+                id = viewId,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                type = "screenshot",
+                base64 = base64,
+            )
+        }
 
         val verifyMaskAlignment = geometry.verifyMaskAlignment
         val armedCapture =
@@ -1806,8 +1879,8 @@ public class PostHogReplayIntegration(
             handler = ensurePixelCopyHandler()
             bitmapLease =
                 pixelCopyBitmapBuffer.acquire(
-                    scaledScreenshotDimension(sourceWidth, screenshotScale),
-                    scaledScreenshotDimension(sourceHeight, screenshotScale),
+                    copyWidth,
+                    copyHeight,
                     bitmapConfig,
                 ) ?: run {
                     finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
@@ -1901,7 +1974,16 @@ public class PostHogReplayIntegration(
                     releaseFromWaiter = true
                     if (requestState.succeeded()) {
                         try {
-                            base64 = bitmap.webpBase64(compressionQuality)
+                            // The window can turn secure while the copy runs.
+                            if (window.isSecure()) {
+                                bitmap.eraseColor(paint.color)
+                            }
+                            base64 =
+                                if (copySize != null) {
+                                    bitmap.downscaledWebpBase64(targetWidth, targetHeight, compressionQuality)
+                                } else {
+                                    bitmap.webpBase64(compressionQuality)
+                                }
                         } catch (e: Throwable) {
                             config.logger.log("Session Replay screenshot encoding failed: $e.")
                         }

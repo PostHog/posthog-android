@@ -124,7 +124,7 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun getSampleRate ()Ljava/lang/Double;
 	public final fun getScreenshotColorMode ()Lcom/posthog/android/replay/PostHogScreenshotColorMode;
 	public final fun getScreenshotCompressionQuality ()I
-	public final fun getScreenshotScale ()F
+	public final fun getScreenshotScale ()Ljava/lang/Float;
 	public final fun getThrottleDelayMs ()J
 	public final fun getVerifyScreenshotMaskAlignment ()Z
 	public final fun setCaptureLogcat (Z)V
@@ -134,7 +134,7 @@ public final class com/posthog/android/replay/PostHogSessionReplayConfig {
 	public final fun setSampleRate (Ljava/lang/Double;)V
 	public final fun setScreenshotColorMode (Lcom/posthog/android/replay/PostHogScreenshotColorMode;)V
 	public final fun setScreenshotCompressionQuality (I)V
-	public final fun setScreenshotScale (F)V
+	public final fun setScreenshotScale (Ljava/lang/Float;)V
 	public final fun setThrottleDelayMs (J)V
 	public final fun setVerifyScreenshotMaskAlignment (Z)V
 }

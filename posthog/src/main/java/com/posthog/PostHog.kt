@@ -539,7 +539,8 @@ public class PostHog private constructor(
                     sessionReplayHandler = it
 
                     if (startSessionReplay) {
-                        startSessionReplayInternal(resumeCurrent = resumeSessionReplay)
+                        // setup() resumes the current session and optIn() has already started a new one
+                        startSessionReplayInternal(resumeCurrent = resumeSessionReplay, rotateSession = false)
                     }
                 } else if (it is PostHogSurveysHandler) {
                     surveysHandler = it
@@ -1446,6 +1447,12 @@ public class PostHog private constructor(
             }
 
             if (wasOptedOut) {
+                // rotate even if the linked flag or remote config then holds replay off, so a later start
+                // doesn't resume the session that was active while opted out
+                if (sessionReplayWanted) {
+                    PostHogSessionManager.endSession()
+                    PostHogSessionManager.startSession()
+                }
                 installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
                 // install re-arms each integration from local config; re-apply the cached remote
                 // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
@@ -2619,7 +2626,10 @@ public class PostHog private constructor(
         }
     }
 
-    private fun startSessionReplayInternal(resumeCurrent: Boolean) {
+    private fun startSessionReplayInternal(
+        resumeCurrent: Boolean,
+        rotateSession: Boolean = !resumeCurrent,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -2644,8 +2654,10 @@ public class PostHog private constructor(
 
                 it.start(true)
             } else {
-                endSession()
-                startSession()
+                if (rotateSession) {
+                    endSession()
+                    startSession()
+                }
 
                 if (!shouldRecordSession()) {
                     return
