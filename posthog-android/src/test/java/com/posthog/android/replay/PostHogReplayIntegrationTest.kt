@@ -261,6 +261,72 @@ internal class PostHogReplayIntegrationTest {
         assertEquals(listOf(Rect(unpanned[0]).apply { offset(0, -150) }), panned)
     }
 
+    // An unclipped no-capture container lets its children draw outside its own rect.
+    @Test
+    fun `no-capture container masks descendants that overflow its bounds`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        // getGlobalVisibleRect clips a child to its parent unless the grandparent is unclipped.
+        val root = FrameLayout(activity).apply { clipChildren = false }
+        val wrapper =
+            FrameLayout(activity).apply {
+                tag = "ph-no-capture"
+                clipChildren = false
+                clipToPadding = false
+            }
+        val text = TextView(activity).apply { text = "secret" }
+        val plain = View(activity)
+        val compose = FakeAndroidComposeView(activity)
+        val unmasked = View(activity).apply { tag = "ph-no-mask" }
+        listOf(text, plain, compose, unmasked).forEach { wrapper.addView(it) }
+        root.addView(wrapper)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        wrapper.layout(0, 0, 100, 20)
+        text.layout(0, 30, 100, 50)
+        plain.layout(0, 60, 100, 80)
+        compose.layout(0, 90, 100, 110)
+        unmasked.layout(0, 120, 100, 140)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        fun rectOf(view: View) = Rect().also { view.getGlobalVisibleRect(it) }
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+        assertFalse(walk.poisoned)
+        assertEquals(listOf(wrapper, text, plain, compose).map(::rectOf), walk.rects)
+
+        // The verified path re-walks at draw time and compares against the capture's rects.
+        val verify = PostHogReplayIntegration.MaskWalk().apply { resetForCompareAgainst(walk.rects) }
+        sut.findMaskableWidgets(root, verify)
+        assertFalse(verify.isMisaligned())
+
+        // Without the tag only the text keeps its own mask. The fake Compose view is removed
+        // because an untagged walk would run a real semantics traversal on it.
+        wrapper.removeView(compose)
+        wrapper.tag = null
+        val untagged = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+        assertEquals(listOf(rectOf(text)), untagged.rects)
+    }
+
+    @Test
+    fun `no-capture tag on a Compose view masks it whole`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val compose = FakeAndroidComposeView(activity).apply { tag = "ph-no-capture" }
+        val root = FrameLayout(activity).apply { addView(compose) }
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 100)
+        compose.layout(0, 0, 100, 20)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+
+        assertFalse(walk.poisoned)
+        assertEquals(listOf(Rect().also { compose.getGlobalVisibleRect(it) }), walk.rects)
+    }
+
     @Test
     fun `timed out view collection does not run later or emit a snapshot`() {
         val h = screenshotCaptureHarness()
@@ -3298,6 +3364,155 @@ internal class PostHogReplayIntegrationTest {
         }
 
         assertEquals(RectF(0f, 1f, 2f, 3f), scaled)
+    }
+
+    private fun captureAndDecode(h: ScreenshotCaptureHarness): Bitmap {
+        assertTrue(h.fx.sut.captureSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+        @Suppress("UNCHECKED_CAST")
+        val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
+        val full = events.first { it.type == RREventType.FullSnapshot }
+        val wireframe = ((full.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
+        val bytes = Base64.decode(assertNotNull(wireframe.base64).substringAfter(','), Base64.DEFAULT)
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "xxhdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `default scale captures one pixel per dp through a 2x intermediate on a density 3 screen`() {
+        val h = screenshotCaptureHarness()
+        h.hookLayout.layout(0, 0, 301, 299)
+        RecordingShadowPixelCopy.reset()
+        try {
+            val frame = captureAndDecode(h)
+            try {
+                val request = RecordingShadowPixelCopy.requests.single()
+                assertEquals(202, request.width)
+                assertEquals(200, request.height)
+                assertEquals(ceil(301 / 3f).toInt(), frame.width)
+                assertEquals(ceil(299 / 3f).toInt(), frame.height)
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "xxhdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `explicit scale keeps its meaning and copies straight into the target at a 2 to 1 ratio`() {
+        val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.screenshotScale = 0.5f
+        h.hookLayout.layout(0, 0, 301, 299)
+        RecordingShadowPixelCopy.reset()
+        try {
+            val frame = captureAndDecode(h)
+            try {
+                val request = RecordingShadowPixelCopy.requests.single()
+                assertEquals(151, request.width)
+                assertEquals(150, request.height)
+                assertEquals(151, frame.width)
+                assertEquals(150, frame.height)
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "xhdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `default scale on a density 2 screen copies straight into the target`() {
+        val h = screenshotCaptureHarness()
+        h.hookLayout.layout(0, 0, 101, 99)
+        RecordingShadowPixelCopy.reset()
+        try {
+            val frame = captureAndDecode(h)
+            try {
+                val request = RecordingShadowPixelCopy.requests.single()
+                assertEquals(51, request.width)
+                assertEquals(50, request.height)
+                assertEquals(51, frame.width)
+                assertEquals(50, frame.height)
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "mdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `default scale captures full resolution at density 1`() {
+        val h = screenshotCaptureHarness()
+        h.hookLayout.layout(0, 0, 101, 99)
+        RecordingShadowPixelCopy.reset()
+        try {
+            val frame = captureAndDecode(h)
+            try {
+                val request = RecordingShadowPixelCopy.requests.single()
+                assertEquals(101, request.width)
+                assertEquals(99, request.height)
+                assertEquals(101, frame.width)
+                assertEquals(99, frame.height)
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], qualifiers = "xxhdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `masks still cover the masked view after the filtered downscale`() {
+        val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.screenshotCompressionQuality = 100
+        h.hookLayout.layout(0, 0, 300, 300)
+        // Edges off the 3 px grid: the 2x copy maps x to 40.67 and 119.33, rounded out to 40 and 120,
+        // so frame columns 20 until 60 must be fully masked.
+        h.child.layout(61, 61, 179, 179)
+        val mask = Rect()
+        assertTrue(h.child.getGlobalVisibleRect(mask))
+        assertEquals(61, mask.left)
+        assertEquals(179, mask.right)
+        RecordingShadowPixelCopy.reset()
+        // White, not a colour: WebP stores chroma at half resolution, which would tint the mask edge.
+        RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.WHITE) }
+        try {
+            val frame = captureAndDecode(h)
+            try {
+                assertEquals(100, frame.width)
+                assertEquals(200, RecordingShadowPixelCopy.requests.single().width)
+                // Masks have 10 px rounded corners, so skip rows that reach them.
+                val rows = ceil(mask.top / 3f).toInt() + 4 until minOf(mask.bottom / 3 - 4, frame.height)
+                for (y in rows) {
+                    for (x in 20 until 60) {
+                        val pixel = frame.getPixel(x, y)
+                        assertTrue(Color.green(pixel) < 32, "pixel ($x, $y) shows the masked view: ${Integer.toHexString(pixel)}")
+                    }
+                }
+                for (column in listOf(19, 60)) {
+                    assertTrue(Color.green(frame.getPixel(column, mask.centerY() / 3)) > 200, "column $column should stay unmasked")
+                }
+            } finally {
+                frame.recycle()
+            }
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
     }
 
     @RunWith(ParameterizedRobolectricTestRunner::class)

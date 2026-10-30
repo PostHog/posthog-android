@@ -1509,6 +1509,46 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `optIn starts a new session when replay is wanted but its flag holds it off`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val sut = getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, integration = integration)
+        val sessionAtOptOut = sut.getSessionId()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.startCalled)
+        assertNotEquals(sessionAtOptOut, sut.getSessionId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn keeps the session when the app stopped replay before opting out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut =
+            getSut(url.toString(), sessionReplay = true, cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        sut.stopSessionReplay()
+        val sessionAtOptOut = sut.getSessionId()
+
+        sut.optOut()
+        sut.optIn()
+
+        assertEquals(sessionAtOptOut, sut.getSessionId())
+
+        sut.close()
+    }
+
+    @Test
     fun `flags-loaded replay start can't land after a concurrent optOut`() {
         val http = mockHttp()
         val url = http.url("/")
