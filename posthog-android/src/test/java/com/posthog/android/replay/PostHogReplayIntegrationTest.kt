@@ -307,6 +307,24 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `no-capture tag on a Compose view masks it whole`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val compose = FakeAndroidComposeView(activity).apply { tag = "ph-no-capture" }
+        val root = FrameLayout(activity).apply { addView(compose) }
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 100)
+        compose.layout(0, 0, 100, 20)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+
+        assertFalse(walk.poisoned)
+        assertEquals(listOf(Rect().also { compose.getGlobalVisibleRect(it) }), walk.rects)
+    }
+
+    @Test
     fun `timed out view collection does not run later or emit a snapshot`() {
         val h = screenshotCaptureHarness()
         var reads = 0

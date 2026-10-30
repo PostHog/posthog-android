@@ -1120,8 +1120,9 @@ public class PostHogReplayIntegration(
 
         when {
             view.isComposeView() -> {
-                if (insideNoCapture) {
+                if (insideNoCapture || view.isNoCapture()) {
                     view.addGlobalVisibleRect(walk)
+                    childrenInsideNoCapture = true
                 } else {
                     findMaskableComposeWidgets(view, walk)
                     if (walk.shouldStop) {
@@ -1130,7 +1131,6 @@ public class PostHogReplayIntegration(
                 }
                 // Also walk View children for interop scenarios (AndroidView, FragmentContainerView, etc.)
                 walkChildren = true
-                childrenInsideNoCapture = insideNoCapture
             }
 
             view.isUnmasked() -> {
