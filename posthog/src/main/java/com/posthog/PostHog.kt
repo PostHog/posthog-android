@@ -26,6 +26,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
 import com.posthog.internal.PostHogPrintLogger
 import com.posthog.internal.PostHogPushSubscriptionManager
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogRemoteConfig
@@ -107,7 +108,7 @@ public class PostHog private constructor(
             PostHogThreadFactory("PostHogPushSubscriptionThread"),
         ),
     private val reloadFeatureFlags: Boolean = true,
-) : PostHogInterface, PostHogStateless() {
+) : PostHogInterface, PostHogStateless(), PostHogPushSubscriptionReceiver {
     private val anonymousLock = Any()
     private val deviceIdLock = Any()
     private val identifiedLock = Any()
@@ -2363,6 +2364,22 @@ public class PostHog private constructor(
         deviceToken: String,
         appId: String,
     ) {
+        registerPushNotificationToken(deviceToken, appId, refresh = true)
+    }
+
+    @PostHogInternal
+    override fun registerPushNotificationTokenIfNeeded(
+        deviceToken: String,
+        appId: String,
+    ) {
+        registerPushNotificationToken(deviceToken, appId, refresh = false)
+    }
+
+    private fun registerPushNotificationToken(
+        deviceToken: String,
+        appId: String,
+        refresh: Boolean,
+    ) {
         if (!isEnabled()) {
             return
         }
@@ -2382,6 +2399,7 @@ public class PostHog private constructor(
         pushSubscriptionManager?.register(
             deviceToken = deviceToken,
             appId = appId,
+            refresh = refresh,
         )
     }
 
