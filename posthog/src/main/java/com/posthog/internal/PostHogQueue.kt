@@ -42,6 +42,15 @@ public class PostHogQueue<Record>(
 
     // The size each file was counted with, so a file deleted from the cache dir is still subtracted in full.
     private val fileBytes = HashMap<File, Long>()
+
+    // Records added by addMeasured and not yet taken by the executor to be written to disk, oldest
+    // first, with their sizes. Guarded by pendingLock.
+    private val pendingLock = Any()
+    private val pending: ArrayDeque<Pair<Record, Long>> = ArrayDeque()
+    private var pendingBytes = 0L
+
+    // Executor tasks queued to write pending records, never more than pending holds. Guarded by pendingLock.
+    private var pendingTasks = 0
     private val timerLock = Any()
 
     @PostHogVisibleForTesting
@@ -229,6 +238,65 @@ public class PostHogQueue<Record>(
                 flushRecordSync(record)
             }
         }
+    }
+
+    /**
+     * Adds [record], [bytes] long. While a slow send holds the executor, records wait in memory before
+     * they're written; once more than [EndpointSpec.maxQueueSize] records or [EndpointSpec.maxQueueBytes]
+     * wait, the oldest waiting ones are dropped, as the disk queue drops its oldest. The newest record
+     * is always kept. Returns false only when the executor no longer accepts work.
+     */
+    internal fun addMeasured(
+        record: Record,
+        bytes: Long,
+    ): Boolean {
+        val maxQueueBytes = spec.maxQueueBytes
+        if (maxQueueBytes == null) {
+            add(record)
+            return true
+        }
+        val maxRecords = spec.maxQueueSize(config).coerceAtLeast(1)
+        val entry = record to bytes
+        var dropped = 0
+        val accepted =
+            synchronized(pendingLock) {
+                pending.addLast(entry)
+                pendingBytes += bytes
+                while (pending.size > 1 && (pending.size > maxRecords || pendingBytes > maxQueueBytes)) {
+                    pendingBytes -= pending.removeFirst().second
+                    dropped++
+                }
+                // A dropped record's task writes a newer one instead, so tasks never outnumber records.
+                if (pendingTasks >= pending.size) return@synchronized true
+                pendingTasks++
+                // Submitted under the lock so tasks queue in the order their records were added, and a
+                // flush queued after this call returns runs after this record is written.
+                try {
+                    // Each task writes the oldest waiting record.
+                    executor.execute {
+                        val next =
+                            synchronized(pendingLock) {
+                                pendingTasks--
+                                pending.removeFirstOrNull()?.also { pendingBytes -= it.second }
+                            }
+                        if (next != null) {
+                            flushRecordSync(next.first)
+                        }
+                    }
+                    true
+                } catch (e: Throwable) {
+                    // RejectedExecutionException once the queue is shut down
+                    pendingTasks--
+                    if (pending.remove(entry)) {
+                        pendingBytes -= bytes
+                    }
+                    false
+                }
+            }
+        if (dropped > 0) {
+            config.logger.log("Too many ${spec.recordsLabel} are waiting to be written, the oldest $dropped are dropped.")
+        }
+        return accepted
     }
 
     private fun flushIfOverThreshold(isFatal: Boolean) {
@@ -702,6 +770,10 @@ public class PostHogQueue<Record>(
     internal val queuedBytesForTesting: Long
         @PostHogVisibleForTesting
         get() = synchronized(dequeLock) { queuedBytes }
+
+    internal val pendingTasksForTesting: Int
+        @PostHogVisibleForTesting
+        get() = synchronized(pendingLock) { pendingTasks }
 }
 
 internal class BatchLimits(

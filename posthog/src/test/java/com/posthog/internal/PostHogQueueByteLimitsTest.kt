@@ -9,6 +9,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -115,6 +116,29 @@ internal class PostHogQueueByteLimitsTest {
 
         assertEquals(listOf(listOf("b")), sent)
         assertEquals(0L, sut.queuedBytesForTesting)
+    }
+
+    @Test
+    fun `addMeasured drops the oldest waiting records once those waiting to be written are over the limits`() {
+        val sut = queue(maxQueueBytes = 100, maxQueueSize = 3)
+        val release = CountDownLatch(1)
+        executor.execute { release.await() }
+
+        assertTrue(sut.addMeasured(record("a", 40), 40))
+        assertTrue(sut.addMeasured(record("b", 40), 40))
+        // 120 bytes waiting: a is dropped
+        assertTrue(sut.addMeasured(record("c", 40), 40))
+        assertTrue(sut.addMeasured(record("d", 20), 20))
+        // 4 records waiting: b is dropped
+        assertTrue(sut.addMeasured(record("e", 1), 1))
+        // dropped while waiting, before the disk limits ever see them
+        assertEquals(2, logger.messages.count { it.contains("blobs are waiting to be written, the oldest 1 are dropped") })
+        // one executor task per waiting record, not per add
+        assertEquals(3, sut.pendingTasksForTesting)
+        release.countDown()
+        executor.awaitExecution()
+
+        assertEquals(listOf("c", "d", "e"), queuedIds(sut))
     }
 
     @Test
