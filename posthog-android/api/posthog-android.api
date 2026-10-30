@@ -58,6 +58,20 @@ public final class com/posthog/android/errortracking/PostHogNativeCrashIntegrati
 	public fun uninstall ()V
 }
 
+public final class com/posthog/android/internal/MainHandler {
+	public fun <init> ()V
+	public fun <init> (Landroid/os/Looper;)V
+	public synthetic fun <init> (Landroid/os/Looper;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getHandler ()Landroid/os/Handler;
+	public final fun getMainLooper ()Landroid/os/Looper;
+}
+
+public final class com/posthog/android/internal/PostHogAndroidUtilsKt {
+	public static final fun base64 (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;I)Ljava/lang/String;
+	public static synthetic fun base64$default (Landroid/graphics/Bitmap;Landroid/graphics/Bitmap$CompressFormat;IILjava/lang/Object;)Ljava/lang/String;
+	public static final fun getApplicationInfo (Landroid/content/Context;)Landroid/content/pm/ApplicationInfo;
+}
+
 public abstract interface class com/posthog/android/replay/PostHogDrawableConverter {
 	public abstract fun convert (Landroid/graphics/drawable/Drawable;)Landroid/graphics/Bitmap;
 }
