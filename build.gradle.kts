@@ -66,8 +66,6 @@ apiValidation {
     ignoredProjects.add("posthog-android-sample")
     // Pre-1.0 (0.x) module — public surface may change between minor versions until 1.0.0.
     ignoredProjects.add("posthog-android-surveys-compose")
-    // APIs only wrapper SDKs and the SDK's own modules may call; not part of the public API.
-    nonPublicMarkers.add("com.posthog.PostHogInternal")
 }
 
 nexusPublishing.postHogConfig()
