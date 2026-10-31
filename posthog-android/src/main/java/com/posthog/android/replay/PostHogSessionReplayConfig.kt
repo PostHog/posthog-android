@@ -9,6 +9,8 @@ import com.posthog.android.replay.internal.MIN_SCREENSHOT_SCALE
  *
  * Use this as `PostHogAndroidConfig.sessionReplayConfig` when enabling session replay through
  * `PostHogConfig.sessionReplay`.
+ *
+ * Windows that set `FLAG_SECURE` are recorded as a solid black frame, and their touches are not recorded.
  */
 public class PostHogSessionReplayConfig
     @JvmOverloads
@@ -29,21 +31,7 @@ public class PostHogSessionReplayConfig
          */
         public var captureLogcat: Boolean = true,
         /**
-         * Converts custom Drawable to Bitmap
-         * By default PostHog tries to convert the Drawable to Bitmap, the supported types are
-         * BitmapDrawable, ColorDrawable, GradientDrawable, InsetDrawable, LayerDrawable, RippleDrawable
-         */
-        public var drawableConverter: PostHogDrawableConverter? = null,
-        /**
-         * By default Session replay will capture all the views on the screen as a wireframe,
-         * By enabling this option, PostHog will capture the screenshot of the screen.
-         * The screenshot may contain sensitive information, use with caution.
-         * In both modes, windows that set `FLAG_SECURE` are recorded as a solid black frame, and their touches are not recorded.
-         */
-        public var screenshot: Boolean = false,
-        /**
          * Throttling delay used to reduce the number of snapshots captured and reduce performance impact.
-         * This is used for capturing the view as a wireframe or screenshot.
          * The lower the number, the more snapshots are captured and the higher the performance impact.
          * Defaults to 1000ms = 1s.
          */
@@ -79,7 +67,7 @@ public class PostHogSessionReplayConfig
          * Higher values generally retain more detail and produce larger payloads.
          * Compression is lossy, except on Android 10 (API 29), where the platform's legacy
          * WebP encoder uses lossless compression at quality 100.
-         * Does not change screenshot resolution or enable screenshot capture.
+         * Does not change screenshot resolution.
          */
         @PostHogExperimental
         @Volatile
@@ -94,7 +82,7 @@ public class PostHogSessionReplayConfig
          * less capture at full resolution. For example, 0.5 captures half the width and height.
          * Dimensions are rounded up to at least one pixel; the logical replay viewport is unchanged.
          * NaN and infinite values reset the scale to `null`.
-         * Does not change compression quality, color mode, or enable screenshot capture.
+         * Does not change compression quality or color mode.
          */
         @PostHogExperimental
         @Volatile
@@ -108,7 +96,7 @@ public class PostHogSessionReplayConfig
          * to preserve alpha and color precision before lossy WebP compression.
          * [PostHogScreenshotColorMode.RGB_565] uses less bitmap memory but reduces color precision
          * and removes alpha, making transparent window regions appear black. Devices that reject
-         * RGB_565 fall back to ARGB_8888. Does not enable screenshot capture.
+         * RGB_565 fall back to ARGB_8888.
          */
         @PostHogExperimental
         @Volatile

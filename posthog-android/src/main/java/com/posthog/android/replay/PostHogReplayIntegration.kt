@@ -2,31 +2,25 @@ package com.posthog.android.replay
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Point
-import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
-import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.text.InputType
-import android.util.TypedValue
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -39,16 +33,9 @@ import android.view.WindowManager
 import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.webkit.WebView
 import android.widget.Button
-import android.widget.CheckBox
-import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.ProgressBar
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.RatingBar
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsNode
@@ -96,7 +83,6 @@ import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRMutatedNode
 import com.posthog.internal.replay.RRRemovedNode
-import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
 import curtains.Curtains
@@ -210,9 +196,6 @@ public class PostHogReplayIntegration(
     private val isNativeSdk: Boolean
         get() = (config.sdkName != "posthog-flutter")
 
-    private val isScreenshotCapable: Boolean
-        get() = config.sessionReplayConfig.screenshot || !isNativeSdk
-
     @Volatile
     private var postHog: PostHogInterface? = null
 
@@ -273,9 +256,13 @@ public class PostHogReplayIntegration(
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
             val isOnlyAnimationRedraw =
-                isScreenshotCapable &&
-                    !drawState.didLayoutSinceReset &&
-                    (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
+                !drawState.didLayoutSinceReset &&
+                    // The surface scan walks the whole tree, so it runs only while a legacy
+                    // capture can read the verdict; beginLegacyCapture resets it anyway.
+                    (
+                        view.hasTransientState() ||
+                            (drawState.isLegacyCaptureActive && view.hasActiveSurfaceRendering())
+                    ) &&
                     !view.isAnimationRunning()
             drawState.recordLegacyAnimationRedraw(isOnlyAnimationRedraw)
         }
@@ -755,7 +742,7 @@ public class PostHogReplayIntegration(
                             }
                         }
                     }
-                    val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window), forceScreenshot = true)
+                    val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window))
                     if (!delivered) {
                         config.logger.log("Session Replay bridge capture produced no frame (will retry next tick).")
                     }
@@ -771,25 +758,12 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Resources.Theme.toRGBColor(): String? {
-        val value = TypedValue()
-        resolveAttribute(android.R.attr.windowBackground, value, true)
-        return if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
-            value.type <= TypedValue.TYPE_LAST_COLOR_INT
-        ) {
-            value.data
-        } else {
-            null
-        }?.toRGBColor()
-    }
-
     // internal (not private) so tests can drive a snapshot pass directly.
     // Returns whether a frame was actually produced (false on every early bail),
     // so the bridge caller can tell "captured" from "silently skipped".
     internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
-        forceScreenshot: Boolean = false,
     ): Boolean {
         if (!isActive()) return false
         val postHog = postHog ?: return false
@@ -808,28 +782,11 @@ public class PostHogReplayIntegration(
 
         val timestamp = config.dateProvider.currentTimeMillis()
 
-        val useScreenshot = config.sessionReplayConfig.screenshot || forceScreenshot
         val wireframe =
-            if (useScreenshot) {
-                view.toScreenshotWireframe(
-                    window,
-                    status.drawState,
-                ) ?: return false
-            } else if (window.isSecure()) {
-                view.toSecureWireframe() ?: return false
-            } else {
-                val tree = view.toWireframe() ?: return false
-                // The window can turn secure while the tree is walked.
-                if (window.isSecure()) view.toSecureWireframe() ?: return false else tree
-            }
-
-        // if the decorView has no backgroundColor, we use the theme color
-        // no need to do this if we are capturing a screenshot
-        if (wireframe.style?.backgroundColor == null && !useScreenshot) {
-            context.theme?.toRGBColor()?.let {
-                wireframe.style?.backgroundColor = it
-            }
-        }
+            view.toScreenshotWireframe(
+                window,
+                status.drawState,
+            ) ?: return false
 
         val events =
             synchronized(decorViews) {
@@ -895,40 +852,21 @@ public class PostHogReplayIntegration(
             events.add(event)
             status.sentFullSnapshot = true
         } else {
+            // Each window sends one screenshot node, so a frame is an update to that node.
             val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems, updatedItems) =
-                findAddedAndRemovedItems(
-                    lastSnapshots.flattenChildren(),
-                    listOf(wireframe).flattenChildren(),
-                )
+            val incrementalMutationData =
+                when {
+                    lastSnapshot == null -> RRIncrementalMutationData(adds = listOf(RRMutatedNode(wireframe)))
+                    lastSnapshot.id != wireframe.id ->
+                        RRIncrementalMutationData(
+                            adds = listOf(RRMutatedNode(wireframe)),
+                            removes = listOf(RRRemovedNode(lastSnapshot.id)),
+                        )
+                    lastSnapshot != wireframe -> RRIncrementalMutationData(updates = listOf(RRMutatedNode(wireframe)))
+                    else -> null
+                }
 
-            val addedNodes = mutableListOf<RRMutatedNode>()
-            addedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
-
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
-
-            val updatedNodes = mutableListOf<RRMutatedNode>()
-            updatedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                updatedNodes.add(item)
-            }
-
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
-                val incrementalMutationData =
-                    RRIncrementalMutationData(
-                        adds = addedNodes.ifEmpty { null },
-                        removes = removedNodes.ifEmpty { null },
-                        updates = updatedNodes.ifEmpty { null },
-                    )
-
+            if (incrementalMutationData != null) {
                 val incrementalSnapshotEvent =
                     RRIncrementalSnapshotEvent(
                         mutationData = incrementalMutationData,
@@ -1003,8 +941,8 @@ public class PostHogReplayIntegration(
 
     /**
      * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
-     * its scratch objects are reused; other callers allocate per call (see the wireframe
-     * vs delayed-screenshot-walk race test).
+     * its scratch objects are reused; other callers allocate per call (see the concurrent
+     * capture vs delayed-screenshot-walk race test).
      */
     private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
@@ -1748,7 +1686,7 @@ public class PostHogReplayIntegration(
                     findMaskableWidgets(this, it)
                 }
             } ?: return false
-        if (walk.aborted || unsafeRedraw()) {
+        if (walk.aborted || walk.poisoned || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
@@ -1910,7 +1848,6 @@ public class PostHogReplayIntegration(
                 height = height,
                 type = "screenshot",
                 base64 = base64,
-                style = RRStyle(),
             )
         }
 
@@ -2084,7 +2021,6 @@ public class PostHogReplayIntegration(
             height = height,
             type = "screenshot",
             base64 = base64,
-            style = RRStyle(),
         )
     }
 
@@ -2095,503 +2031,6 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         return this.isTextInputSensitive(ancestorUnmasked)
-    }
-
-    // A FLAG_SECURE window is recorded as one black rectangle, with nothing from its view tree.
-    private fun View.toSecureWireframe(): RRWireframe? {
-        if (!isVisible()) {
-            return null
-        }
-        val coordinates = IntArray(2)
-        if (isViewStateStableForMatrixOperations()) {
-            getLocationOnScreen(coordinates)
-        }
-        return RRWireframe(
-            id = System.identityHashCode(this),
-            x = coordinates[0].densityValue(screenDensity),
-            y = coordinates[1].densityValue(screenDensity),
-            width = width.densityValue(screenDensity),
-            height = height.densityValue(screenDensity),
-            style = RRStyle().apply { backgroundColor = "#000000" },
-        )
-    }
-
-    private fun View.toWireframe(
-        parentId: Int? = null,
-        ancestorUnmasked: Boolean = false,
-    ): RRWireframe? {
-        val view = this
-        if (!view.isVisible()) {
-            return null
-        }
-
-        val isUnmasked = ancestorUnmasked || view.isUnmasked()
-
-        val viewId = System.identityHashCode(view)
-
-        val coordinates = IntArray(2)
-        if (view.isViewStateStableForMatrixOperations()) {
-            view.getLocationOnScreen(coordinates)
-        } else {
-            // Use zero coordinates as fallback when view state is unstable
-            coordinates[0] = 0
-            coordinates[1] = 0
-        }
-        val x = coordinates[0].densityValue(screenDensity)
-        val y = coordinates[1].densityValue(screenDensity)
-        val width = view.width.densityValue(screenDensity)
-        val height = view.height.densityValue(screenDensity)
-        var base64: String? = null
-
-        var type: String? = null
-        if (view.id == android.R.id.statusBarBackground) {
-            type = "status_bar"
-        }
-        if (view.id == android.R.id.navigationBarBackground) {
-            type = "navigation_bar"
-        }
-
-        val style = RRStyle()
-        view.background?.let { background ->
-            background.toRGBColor()?.let { color ->
-                style.backgroundColor = color
-            } ?: run {
-                style.backgroundImage = background.base64(view.width, view.height)
-            }
-        }
-
-        var checked: Boolean? = null
-
-        var text: String? = null
-        var inputType: String? = null
-        var value: Any? = null
-        // button inherits from textview
-        if (view is TextView) {
-            val viewText = view.text?.toString()
-            if (!viewText.isNullOrEmpty()) {
-                text =
-                    if (!view.shouldMaskTextView(isUnmasked)) {
-                        viewText
-                    } else {
-                        viewText.mask()
-                    }
-            }
-
-            val hint = view.hint?.toString()
-            if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
-                text =
-                    if (!view.shouldMaskTextView(isUnmasked)) {
-                        hint
-                    } else {
-                        hint.mask()
-                    }
-            }
-
-            type = "text"
-            style.color = view.currentTextColor.toRGBColor()
-
-            // CompoundButton is a subclass of CheckBox, RadioButton, Switch, etc
-            if (view is Button && view !is CompoundButton) {
-                style.borderWidth = 1
-                style.borderColor = "#000000"
-                type = "input"
-                inputType = "button"
-                value = text
-                text = null
-            }
-//            TODO: do this when we upgrade API to 34
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-//                style.fontFamily = view.typeface?.systemFontFamilyName
-//            } else {
-            view.typeface?.let {
-                when (it) {
-                    Typeface.DEFAULT -> style.fontFamily = "sans-serif"
-                    Typeface.DEFAULT_BOLD -> style.fontFamily = "sans-serif-bold"
-                    Typeface.MONOSPACE -> style.fontFamily = "monospace"
-                    Typeface.SERIF -> style.fontFamily = "serif"
-                }
-            }
-//            }
-            style.fontSize = view.textSize.toInt().densityValue(screenDensity)
-            when (view.textAlignment) {
-                View.TEXT_ALIGNMENT_CENTER -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "center"
-                }
-                View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "right"
-                }
-                View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "left"
-                }
-                View.TEXT_ALIGNMENT_GRAVITY -> {
-                    val horizontalAlignment =
-                        when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
-                            Gravity.START, Gravity.LEFT -> "left"
-                            Gravity.END, Gravity.RIGHT -> "right"
-                            Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
-                            else -> "left"
-                        }
-                    style.horizontalAlign = horizontalAlignment
-
-                    val verticalAlignment =
-                        when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
-                            Gravity.TOP -> "top"
-                            Gravity.BOTTOM -> "bottom"
-                            Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
-                            else -> "center"
-                        }
-                    style.verticalAlign = verticalAlignment
-                }
-                else -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "left"
-                }
-            }
-
-            // left, top, right, bottom
-            view.compoundDrawables.forEachIndexed { index, drawable ->
-                drawable?.let {
-                    val drawableBase64 = it.base64(view.width, view.height)
-                    // TODO: the 2 other possible drawables (top and bottom are not common)
-                    when (index) {
-                        0 -> style.iconLeft = drawableBase64
-//                        1 -> style.iconTop = drawableBase64
-                        2 -> style.iconRight = drawableBase64
-//                        3 -> style.iconBottom = drawableBase64
-                    }
-                }
-            }
-
-            // Do not set padding if the text is centered, otherwise the padding will be off
-            if (style.verticalAlign != "center") {
-                style.paddingTop = view.totalPaddingTop.densityValue(screenDensity)
-                style.paddingBottom = view.totalPaddingBottom.densityValue(screenDensity)
-            }
-            if (style.horizontalAlign != "center") {
-                style.paddingLeft = view.totalPaddingLeft.densityValue(screenDensity)
-                style.paddingRight = view.totalPaddingRight.densityValue(screenDensity)
-            }
-        }
-
-        var label: String? = null
-        if (view is CheckBox) {
-            type = "input"
-            inputType = "checkbox"
-            label = text
-            text = null
-            checked = view.isChecked
-        }
-        if (view is RadioGroup) {
-            type = "radio_group"
-        }
-        if (view is RadioButton) {
-            type = "input"
-            inputType = "radio"
-            label = text
-            text = null
-            checked = view.isChecked
-        }
-
-        if (view is EditText) {
-            type = "input"
-            inputType = "text_area"
-            value = text
-            text = null
-        }
-        var options: List<String>? = null
-        if (view is Spinner) {
-            type = "input"
-            inputType = "select"
-            val mask = view.shouldMaskSpinner(isUnmasked)
-            view.selectedItem?.let {
-                val theValue =
-                    if (!mask) {
-                        it.toString()
-                    } else {
-                        it.toString().mask()
-                    }
-                value = theValue
-            }
-
-            view.adapter?.let {
-                val items = mutableListOf<String>()
-                for (i in 0 until it.count) {
-                    val item = it.getItem(i)?.toString() ?: continue
-
-                    val theItem =
-                        if (!mask) {
-                            item
-                        } else {
-                            item.mask()
-                        }
-
-                    items.add(theItem)
-                }
-                options = items.ifEmpty { null }
-            }
-        }
-
-        if (view is ImageView) {
-            type = "image"
-            if (!view.shouldMaskImage(isUnmasked)) {
-                // TODO: we can probably do a LRU caching here for already captured images
-                view.drawable?.let { drawable ->
-                    base64 = drawable.base64(view.width, view.height)
-//                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
-//                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
-//                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
-//                    style.paddingRight = view.paddingRight.densityValue(screenDensity)
-                }
-            }
-        }
-
-        var max: Int? = null // can be a Int or Float
-        if (view is ProgressBar) {
-            inputType = "progress"
-            type = "input"
-            val bar =
-                if (view.isIndeterminate) {
-                    "circular"
-                } else {
-                    max = view.max
-                    value = view.progress
-                    "horizontal"
-                }
-            style.bar = bar
-        }
-        if (view is RatingBar) {
-            style.bar = "rating"
-
-            // since stars allow half stars, we need to divide the max by 2, because
-            // 5 stars is 10
-            max = (view.max / 2)
-            value = view.rating
-        }
-
-        if (view is Switch) {
-            type = "input"
-            inputType = "toggle"
-            checked = view.isChecked
-            label = text
-            text = null
-        }
-
-        // TODO: people might be used androidx.webkit:webkit though
-        if (view is WebView) {
-            type = "web_view"
-        }
-
-        val children = mutableListOf<RRWireframe>()
-        if (view is ViewGroup && view.childCount > 0) {
-            for (i in 0 until view.childCount) {
-                val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
-                    children.add(it)
-                }
-            }
-        }
-
-        return RRWireframe(
-            id = viewId,
-            x = x,
-            y = y,
-            width = width,
-            height = height,
-            text = text,
-            type = type,
-            style = style,
-            childWireframes = children.ifEmpty { null },
-            base64 = base64,
-            parentId = parentId,
-            disabled = !view.isEnabled,
-            checked = checked,
-            inputType = inputType,
-            value = value,
-            label = label,
-            options = options,
-            max = max,
-        )
-    }
-
-    private fun runDrawableConverter(drawable: Drawable): Bitmap? {
-        return config.sessionReplayConfig.drawableConverter?.convert(drawable)
-    }
-
-    @SuppressLint("NewApi")
-    private fun Drawable.toRGBColor(): String? {
-        when (this) {
-            is ColorDrawable -> {
-                return color.toRGBColor()
-            }
-
-            is RippleDrawable -> {
-                try {
-                    return getFirstDrawable()?.toRGBColor()
-                } catch (e: Throwable) {
-                    // ignore
-                }
-            }
-
-            is InsetDrawable -> {
-                return drawable?.toRGBColor()
-            }
-
-            is GradientDrawable -> {
-                colors?.let { rgcColors ->
-                    if (rgcColors.isNotEmpty()) {
-                        // Get the first color from the array
-                        val color = rgcColors[0]
-
-                        // Extract RGB values
-                        val red = Color.red(color)
-                        val green = Color.green(color)
-                        val blue = Color.blue(color)
-
-                        // Construct the RGB color
-                        val rgb = Color.rgb(red, green, blue)
-                        return rgb.toRGBColor()
-                    }
-                }
-                color?.let {
-                    if (it.defaultColor != -1) {
-                        return it.defaultColor.toRGBColor()
-                    }
-                }
-            }
-        }
-        return null
-    }
-
-    private fun Drawable.base64(
-        width: Int,
-        height: Int,
-        cloned: Boolean = false,
-    ): String? {
-        val convertedBitmap = runDrawableConverter(this)
-        if (convertedBitmap != null) {
-            return convertedBitmap.webpBase64()
-        }
-
-        var clonedDrawable = this
-        if (!cloned) {
-            clonedDrawable = copy() ?: return null
-        }
-
-        when (clonedDrawable) {
-            is BitmapDrawable -> {
-                try {
-                    return clonedDrawable.bitmap.webpBase64()
-                } catch (_: Throwable) {
-                    // ignore
-                }
-            }
-
-            is LayerDrawable -> {
-                clonedDrawable.getFirstDrawable()?.let {
-                    return it.base64(width, height)
-                }
-            }
-
-            is InsetDrawable -> {
-                clonedDrawable.drawable?.let {
-                    return it.base64(width, height)
-                }
-            }
-        }
-
-        try {
-            val bitmap = clonedDrawable.toBitmap(width, height)
-            val base64 = bitmap.webpBase64()
-            bitmap.recycle()
-            return base64
-        } catch (_: Throwable) {
-            // ignore
-        }
-        return null
-    }
-
-    private fun LayerDrawable.getFirstDrawable(): Drawable? {
-        for (i in 0 until numberOfLayers) {
-            getDrawable(i)?.let {
-                return it
-            }
-        }
-
-        return null
-    }
-
-    private fun Int.toRGBColor(): String {
-        // TODO: missing alpha
-        return String.format("#%06X", (0xFFFFFF and this))
-    }
-
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
-
-        // Create HashSet to track unique IDs
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-
-        // Find updated items by finding the intersection of oldItemIds and newItemIds
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            // we have to copy without the childWireframes, otherwise they all would be different
-            // if one of the child is different, but we only wanna compare the parent
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
-            }
-        }
-
-        return Triple(addedItems, removedItems, updatedItems)
-    }
-
-    private fun Drawable.toBitmap(
-        width: Int,
-        height: Int,
-    ): Bitmap {
-        val bitmap = Bitmap.createBitmap(displayMetrics, width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.MULTIPLY)
-        setBounds(0, 0, canvas.width, canvas.height)
-        draw(canvas)
-        return bitmap
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
@@ -2626,14 +2065,6 @@ public class PostHogReplayIntegration(
     private fun View.isUnmasked(): Boolean {
         return (tag as? String)?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true ||
             contentDescription?.toString()?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true
-    }
-
-    private fun Drawable.copy(): Drawable? {
-        return constantState?.newDrawable()
-    }
-
-    private fun String.mask(): String {
-        return "*".repeat(length)
     }
 
     @SuppressLint("AnnotateVersionCheck")
@@ -2776,8 +2207,7 @@ public class PostHogReplayIntegration(
             props["\$sdk_debug_replay_pending_trigger_conditions"] = pendingConditions
         }
 
-        val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
-        props["\$sdk_debug_replay_capture_mode"] = captureMode
+        props["\$sdk_debug_replay_capture_mode"] = "screenshot"
         props["\$sdk_debug_replay_internal_buffer_length"] =
             if (buffering) replayQueue?.bufferDepth ?: 0 else replayQueue?.size ?: 0
 
