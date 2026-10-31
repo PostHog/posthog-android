@@ -106,11 +106,6 @@ internal class PostHogConfigTest {
     }
 
     @Test
-    fun `onFeatureFlags is not set by default`() {
-        assertNull(config.onFeatureFlags)
-    }
-
-    @Test
     fun `logger uses NoOp by default`() {
         assertTrue(config.logger is PostHogNoOpLogger)
     }

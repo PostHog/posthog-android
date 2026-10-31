@@ -889,9 +889,9 @@ public class PostHogRemoteConfig(
                         distinctId = distinctId,
                         anonymousId = anonymousId,
                         groups = groups,
-                        // distinct(): the SDK's own listeners and config.onFeatureFlags are singleton
-                        // instances reused across reloads, so appending each queued reload would fire
-                        // them once per coalesced reload instead of once per response.
+                        // distinct(): the SDK's own listeners are singleton instances reused across reloads,
+                        // so appending each queued reload would fire them once per coalesced reload
+                        // instead of once per response.
                         internalOnFeatureFlags =
                             (displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags))
                                 .distinct(),
