@@ -1,7 +1,6 @@
 ---
 'posthog': major
 'posthog-android': major
-'posthog-android-surveys-compose': minor
 ---
 
 - **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories; use `projectToken` instead
