@@ -19,6 +19,7 @@ import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
@@ -35,6 +36,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
+    private val warnedEmptyEventName = AtomicBoolean(false)
     private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     // Read on the capture path from any caller thread without setupLock.
@@ -60,14 +62,14 @@ public open class PostHogStateless protected constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.projectToken.isEmpty()) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
                     )
                     return
                 }
 
                 if (config.projectToken.startsWith("phx_")) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
                             "use your project token (phc_...).",
                     )
@@ -216,11 +218,37 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
+        val currentGroups = props["\$groups"] as? Map<*, *>
         properties?.let {
             props.putAll(it)
         }
+        putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups }, currentGroups)
 
         return props
+    }
+
+    /**
+     * A typed per-call value wins key by key over the same map in the caller's [properties]:
+     * `userProperties` over `$set`, `userPropertiesSetOnce` over `$set_once` and `groups` over `$groups`.
+     * A caller `$groups` adds to [currentGroups] (the stored and per-call groups) instead of replacing them.
+     */
+    internal fun putTypedValuesOverCaller(
+        props: MutableMap<String, Any>,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        currentGroups: Map<*, *>? = null,
+    ) {
+        for ((key, typed) in listOf("\$set" to userProperties, "\$set_once" to userPropertiesSetOnce, "\$groups" to groups)) {
+            val caller = properties?.get(key) as? Map<*, *> ?: continue
+            val merged = LinkedHashMap<Any?, Any?>()
+            if (key == "\$groups") currentGroups?.let { merged.putAll(it) }
+            if (typed == null && merged.isEmpty()) continue
+            merged.putAll(caller)
+            typed?.let { merged.putAll(it) }
+            props[key] = merged
+        }
     }
 
     protected fun mergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
@@ -294,6 +322,9 @@ public open class PostHogStateless protected constructor(
                 config?.logger?.log(message)
                 return
             }
+            if (isEmptyNameDropped(postHogEvent)) {
+                return
+            }
 
             queue?.add(postHogEvent)
         } catch (e: Throwable) {
@@ -364,6 +395,20 @@ public open class PostHogStateless protected constructor(
         }
 
         return eventChecked
+    }
+
+    /**
+     * Capture drops an event with an empty name, so the SDK drops it before queueing, after
+     * beforeSend too. Logs only the first drop, with no event name.
+     */
+    internal fun isEmptyNameDropped(event: PostHogEvent): Boolean {
+        if (event.event.isNotEmpty()) {
+            return false
+        }
+        if (warnedEmptyEventName.compareAndSet(false, true)) {
+            config?.logger?.log("Dropping an event with an empty name.")
+        }
+        return true
     }
 
     public override fun optIn() {

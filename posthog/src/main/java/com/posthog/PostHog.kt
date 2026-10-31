@@ -320,14 +320,14 @@ public class PostHog private constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.projectToken.isEmpty()) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
                     )
                     return
                 }
 
                 if (config.projectToken.startsWith("phx_")) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
                             "use your project token (phc_...).",
                     )
@@ -977,8 +977,19 @@ public class PostHog private constructor(
         }
 
         // Caller-supplied properties win over registered super properties and SDK-set values.
+        val currentGroups = props["\$groups"] as? Map<*, *>
         properties?.let {
             props.putAll(it)
+        }
+        if (appendSharedProps) {
+            putTypedValuesOverCaller(
+                props,
+                properties,
+                userProperties,
+                userPropertiesSetOnce,
+                groups.takeIf { appendGroups },
+                currentGroups,
+            )
         }
 
         // only Session replay needs distinct_id also in the props
@@ -1426,6 +1437,9 @@ public class PostHog private constructor(
         aiLane: Boolean,
         onQueued: () -> Unit = {},
     ): UUID? {
+        if (isEmptyNameDropped(postHogEvent)) {
+            return null
+        }
         // Reevaluate if this is a snapshot event because the event might have been updated by the beforeSend hook
         val isSnapshotEvent = !aiLane && postHogEvent.event == PostHogEventName.SNAPSHOT.event
         // if this is a $snapshot event and $session_id is missing, don't process then event

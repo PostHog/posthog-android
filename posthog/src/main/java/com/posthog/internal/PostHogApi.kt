@@ -51,6 +51,7 @@ public class PostHogApi(
         private const val CAPTURE_V1_ANALYTICS_PATH = "/i/v1/analytics/events"
         private const val CAPTURE_V1_AI_PATH = "/i/v1/ai/events"
         private const val CAPTURE_V1_MAX_REDIRECTS = 5
+        private const val CAPTURE_V1_MAX_PENDING_RETRIES = 16
         private const val CAPTURE_V1_MAX_RESULTS_BYTES = 1024L * 1024L
     }
 
@@ -137,9 +138,22 @@ public class PostHogApi(
 
     private val captureV1Lock = Any()
 
-    // The identity of the last capture v1 request per endpoint path whose events are still to be
-    // retried. In memory only: a new request id after an app restart is fine, the server only logs it.
-    private val captureV1PendingRetry = mutableMapOf<String, CaptureV1RequestIdentity>()
+    // The identity of each capture v1 request whose events are still to be retried, keyed by endpoint
+    // path and uuid set, so a send of other events in between keeps it. Holds the most recent
+    // CAPTURE_V1_MAX_PENDING_RETRIES: an entry stays when the queue drops its events instead of
+    // retrying them. In memory only: a new request id after an app restart is fine, the server only logs it.
+    // A plain map trimmed by hand: a LinkedHashMap subclass gets bridges to Java 8 Map methods missing on API 23.
+    private val captureV1PendingRetry = LinkedHashMap<Pair<String, Set<String>>, CaptureV1RequestIdentity>()
+
+    private fun putCaptureV1PendingRetry(
+        key: Pair<String, Set<String>>,
+        identity: CaptureV1RequestIdentity,
+    ) {
+        captureV1PendingRetry[key] = identity
+        if (captureV1PendingRetry.size > CAPTURE_V1_MAX_PENDING_RETRIES) {
+            captureV1PendingRetry.remove(captureV1PendingRetry.keys.first())
+        }
+    }
 
     private val theHost: String
         get() {
@@ -167,15 +181,17 @@ public class PostHogApi(
      * Sends analytics events to capture v1 (`POST /i/v1/analytics/events`).
      *
      * Returns the uuids of the events the 2xx response asked to retry, with the `Retry-After` it
-     * sent; every other event in [events] was delivered or dropped and must not be sent again. A 2xx
-     * whose per-event results can't be read, including a transfer that failed after the status
-     * arrived, counts as delivered: the server already stored its events and a resend would store
-     * them again.
+     * sent; every other event in [events] was delivered or dropped and must not be sent again.
+     *
+     * A 2xx whose body can't be read as `{"results": {...}}`, including a transfer that failed after
+     * the status arrived, is a terminal failure of the whole batch: it throws a [PostHogApiError]
+     * with that 2xx status, which the queue doesn't retry.
      *
      * Only a 307 or 308 to the origin of [PostHogConfig.host] is followed, at most 5 times, with
      * the same body and headers; any other redirect is a terminal [PostHogApiError].
      *
-     * Throws [PostHogApiError] for a non-2xx status and [IOException] for a transport failure.
+     * Throws [PostHogApiError] for a non-2xx status or unreadable results, and [IOException] for a
+     * transport failure before the status.
      */
     @Throws(PostHogApiError::class, IOException::class)
     internal fun captureV1(events: List<PostHogEvent>): SendResult = postCaptureV1(CAPTURE_V1_ANALYTICS_PATH, events, captureClient)
@@ -246,7 +262,7 @@ public class PostHogApi(
                 val target = response.header("Location")?.let { location -> request.url.resolve(location) }
                 if (redirects >= CAPTURE_V1_MAX_REDIRECTS || target == null || !isConfiguredOrigin(target)) {
                     config.logger.log("Capture did not follow a ${response.code} redirect.")
-                    clearCaptureV1Retry(path)
+                    clearCaptureV1Retry(path, identity)
                     throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
                 }
                 // Same origin, so the body and every header are safe to resend.
@@ -267,9 +283,9 @@ public class PostHogApi(
         uuids: Set<String>,
     ): CaptureV1RequestIdentity {
         synchronized(captureV1Lock) {
-            val pending = captureV1PendingRetry[path]
+            val pending = captureV1PendingRetry[path to uuids]
             val identity =
-                if (pending != null && pending.uuids == uuids) {
+                if (pending != null) {
                     pending.copy(attempt = pending.attempt + 1)
                 } else {
                     CaptureV1RequestIdentity(
@@ -279,20 +295,24 @@ public class PostHogApi(
                         createdAt = formatISO8601Date(config.dateProvider.currentDate()),
                     )
                 }
-            captureV1PendingRetry[path] = identity
+            putCaptureV1PendingRetry(path to uuids, identity)
             return identity
         }
     }
 
-    private fun clearCaptureV1Retry(path: String) {
+    private fun clearCaptureV1Retry(
+        path: String,
+        identity: CaptureV1RequestIdentity,
+    ) {
         synchronized(captureV1Lock) {
-            captureV1PendingRetry.remove(path)
+            captureV1PendingRetry.remove(path to identity.uuids)
         }
     }
 
     /**
      * Reads the per-event results of a 2xx and records which events, if any, the next request
-     * retries under the same identity. A non-2xx is thrown; a terminal one also drops the identity.
+     * retries under the same identity. A non-2xx is thrown; a terminal one also drops the identity,
+     * as does a 2xx without readable results, which is thrown as a terminal failure.
      */
     @Throws(PostHogApiError::class)
     private fun captureV1Result(
@@ -303,44 +323,52 @@ public class PostHogApi(
     ): SendResult {
         if (!response.isSuccessful) {
             if (!isCaptureV1RetriableStatusCode(response.code)) {
-                clearCaptureV1Retry(path)
+                clearCaptureV1Retry(path, identity)
             }
             throw PostHogApiError(response.code, response.message, response.body, parseRetryAfter(response))
         }
 
+        // Counts only: the body may name event uuids.
         val results = readCaptureV1Results(response)
         if (results == null) {
-            config.logger.log(
-                "Capture returned ${response.code} without readable per-event results, treating ${events.size} events as delivered.",
-            )
+            clearCaptureV1Retry(path, identity)
+            val message = "Capture returned ${response.code} without readable per-event results, dropping ${events.size} events."
+            config.logger.log(message)
+            throw PostHogApiError(response.code, message, null)
         }
 
         val retryUuids = mutableSetOf<String>()
-        var dropped = 0
-        // Events missing from the results count as delivered.
-        for (event in events) {
-            val uuid = event.uuid?.toString() ?: continue
-            val entry = results?.get(uuid) as? Map<*, *> ?: continue
+        // Drop counts by the server's `details` tag, an opaque string.
+        val droppedByDetails = sortedMapOf<String, Int>()
+        var duplicatesDropped = 0
+        // Events missing from the results count as delivered. The uuids are read once, so a repeated
+        // uuid's later copies (`duplicates_dropped`) are counted, not given the kept copy's verdict.
+        for (uuid in events.mapNotNullTo(LinkedHashSet()) { it.uuid?.toString() }) {
+            val entry = results[uuid] as? Map<*, *> ?: continue
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
                 "drop" -> {
-                    dropped++
-                    // The event name, uuid and the server's reason (such as misrouted_event or
-                    // ai_event_too_big), never the properties.
-                    config.logger.log("Capture dropped event ${event.event} ($uuid): ${entry["details"] ?: "no details"}.")
+                    val details = entry["details"] as? String ?: "no details"
+                    droppedByDetails[details] = (droppedByDetails[details] ?: 0) + 1
                 }
             }
+            // Clamped to the batch size, so a malformed count can't overflow the sum.
+            duplicatesDropped += (entry["duplicates_dropped"] as? Number)?.toLong()?.coerceIn(0L, events.size.toLong())?.toInt() ?: 0
         }
 
-        if (dropped > 0 || retryUuids.isNotEmpty()) {
-            config.logger.log("Capture: $dropped dropped, ${retryUuids.size} to retry.")
+        // Counts and reasons only: one line per batch, never per event.
+        val dropped = droppedByDetails.values.sum()
+        if (dropped > 0 || duplicatesDropped > 0 || retryUuids.isNotEmpty()) {
+            val reasons = if (dropped > 0) droppedByDetails.entries.joinToString(", ", " (", ")") { "${it.key}: ${it.value}" } else ""
+            config.logger.log(
+                "Capture $path: $dropped dropped$reasons, $duplicatesDropped duplicate copies dropped, ${retryUuids.size} to retry.",
+            )
         }
 
         synchronized(captureV1Lock) {
-            if (retryUuids.isEmpty()) {
-                captureV1PendingRetry.remove(path)
-            } else {
-                captureV1PendingRetry[path] = identity.copy(uuids = retryUuids)
+            captureV1PendingRetry.remove(path to identity.uuids)
+            if (retryUuids.isNotEmpty()) {
+                putCaptureV1PendingRetry(path to retryUuids, identity.copy(uuids = retryUuids))
             }
         }
         return SendResult(retryUuids, parseRetryAfter(response))

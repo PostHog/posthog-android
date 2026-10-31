@@ -163,7 +163,7 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     @Test
     fun `sends events from the legacy queue in batches`() {
         val prefix = writeLegacyFile(listOf(event, event))
-        val http = servers.mockHttp(2)
+        val http = servers.mockHttp(2, MockResponse().setBody("{\"results\":{}}"))
         getSut(prefix, http.url("/").toString(), maxBatchSize = 1).install(mock())
         executor.shutdownAndAwaitTermination()
         assertEquals(emptyList(), retained(prefix))
@@ -171,9 +171,25 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     }
 
     @Test
+    fun `closes a batch before it would pass 5 MiB and sends an oversized event alone, in order`() {
+        fun sized(
+            name: String,
+            bytes: Int,
+        ) = event.replace("testEvent", name).replace("testValue", "a".repeat(bytes))
+        val mib = 1024 * 1024
+        val prefix = writeLegacyFile(listOf(sized("one", 2 * mib), sized("two", 2 * mib), sized("big", 6 * mib), sized("small", 1)))
+        val http = servers.mockHttp(3, MockResponse().setBody("{\"results\":{}}"))
+        getSut(prefix, http.url("/").toString()).install(mock())
+        executor.shutdownAndAwaitTermination()
+        assertEquals(emptyList(), retained(prefix))
+        val batches = (1..http.requestCount).map { sentEvents(assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))).map { it["event"] } }
+        assertEquals(listOf(listOf("one", "two"), listOf("big"), listOf("small")), batches)
+    }
+
+    @Test
     fun `send a valid event and discard a broken event`() {
         val prefix = writeLegacyFile(listOf("invalid event", event))
-        val http = servers.mockHttp(2)
+        val http = servers.mockHttp(2, MockResponse().setBody("{\"results\":{}}"))
         getSut(prefix, http.url("/").toString(), maxBatchSize = 1).install(mock())
         executor.shutdownAndAwaitTermination()
         assertEquals(emptyList(), retained(prefix))

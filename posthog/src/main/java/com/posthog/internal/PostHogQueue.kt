@@ -510,7 +510,7 @@ public class PostHogQueue<Record>(
                 }
             }
         } catch (e: PostHogApiError) {
-            deleteFiles = deleteFilesIfAPIError(e, batchLimits, records.size, config.logger, spec.isRetriableStatusCode)
+            deleteFiles = deleteFilesIfAPIError(e, batchLimits, records.size, config.logger, spec.isRetriableStatusCode, spec.recordsLabel)
 
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
@@ -806,6 +806,7 @@ internal fun deleteFilesIfAPIError(
     actualBatchSize: Int,
     logger: PostHogLogger,
     isRetriableStatusCode: (Int) -> Boolean = ::isCaptureV1RetriableStatusCode,
+    recordsLabel: String = "records",
 ): Boolean {
     // workaround due to png images exceed our max. limit in kafka
     if (e.statusCode == 413 && actualBatchSize > 1 && batchLimits.cap > 1) {
@@ -823,5 +824,6 @@ internal fun deleteFilesIfAPIError(
 
         return false
     }
+    logger.log("Flushing failed with ${e.statusCode}, dropping $actualBatchSize $recordsLabel.")
     return true
 }

@@ -256,7 +256,7 @@ Capture v1 requests send the project token in an `Authorization: Bearer <project
 This header replaces any `Authorization` header you set in `PostHogConfig.requestHeaders`, so authenticate your proxy with a different header, such as `X-Proxy-Token`.
 Other requests still send your `Authorization` header.
 
-A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty token does, and logs why when `debug` is on.
+A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty token does. Both print why, even when `debug` is off.
 In 3.x, the SDK started and PostHog rejected every event with a 401. Use your project token (`phc_...`).
 
 ### Hosts without capture v1
@@ -269,6 +269,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 - Forward `/i/v1/analytics/events` and `/i/v1/ai/events` to PostHog.
 - Pass `Authorization` (the project token, sent as `Bearer <token>`), every `PostHog-*` header, `Content-Type`, `Content-Encoding` and `User-Agent` through unchanged. PostHog answers `401` without `Authorization` and `400` without the others, and the events are dropped. If your proxy strips other credentials, keep `Authorization` values that start with `Bearer phc_`, or the exact `Bearer <token>` if your project token doesn't start with `phc_`.
 - Accept request bodies up to 20 MB. AI requests are often larger than 1 MB, the default limit in nginx and ingress-nginx. A `413` from the proxy makes the SDK halve the batch until it fits, and drops an event that doesn't fit on its own.
+- Pass PostHog's response body through unchanged. A 2xx response whose body isn't PostHog's `{"results": {...}}` drops the events instead of retrying them.
 
 PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
 
@@ -284,16 +285,21 @@ If a proxy redirects capture requests to another host, point `host` at the final
 ## Event validation
 
 Capture v1 checks each event on its own and drops only the invalid ones, so the rest of the batch is delivered.
-The SDK doesn't check these before sending. PostHog drops the event, and the SDK removes it from the queue.
-With `debug` on, the SDK logs the name and uuid of each dropped event and the reason PostHog gives, such as `misrouted_event`, never its properties.
+
+The SDK drops an event whose name is empty before sending it, for example `capture("")` or one `beforeSend` renames to `""`.
+With `debug` on, it logs this once.
+
+The SDK doesn't check the rest before sending. PostHog drops the event, and the SDK removes it from the queue.
+With `debug` on, the SDK logs one line per batch with how many events PostHog dropped, how many duplicate copies it dropped and how many it asked to retry, never the event names or properties.
 Debug logs for capture requests name the event count and the response status, and no longer print the request and response bodies.
 
-- An event with an empty event name is dropped, for example `capture("")`.
 - An event with an empty or whitespace-only distinct ID is dropped, for example one `beforeSend` sets to `""`.
 - An event whose name is over 200 UTF-8 bytes is dropped. Legacy capture had no limit on event name length.
 - An event whose distinct ID is over 200 UTF-8 bytes is dropped. Legacy capture shortened the ID to 200 characters and kept the event.
 
 In 3.x, an empty event name or distinct ID made legacy capture reject the whole batch it was in.
+
+A `NaN` or infinite number in the properties is dropped from the event, and the event is sent without it.
 
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
@@ -311,7 +317,7 @@ An event's properties are merged in this order, and later values win:
 
 1. properties the SDK sets itself, such as `$os_name`, `$app_version`, `$screen_name`, `$is_identified`, `$session_id` and the session replay debug properties (`$recording_status`, `$sdk_debug_*`)
 2. registered super properties (`register`)
-3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here
+3. the properties you pass to `capture` or another event-sending method; `userProperties`, `userPropertiesSetOnce` and `groups` are placed as `$set`, `$set_once` and `$groups` here, and when you also pass that key in properties they win key by key; a `$groups` map in properties adds to the groups set with `group()` instead of replacing them
 4. `beforeSend`
 
 In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$process_person_profile` and the session replay debug properties also won over the properties you pass.
@@ -424,6 +430,8 @@ On Android, listeners run on the main thread. On the JVM, they run on a backgrou
 
 `posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it.
 
-A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does.
+A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
+
+Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`.
 
 Its next release depends on core 7.0, so update it if your project also uses core 7.0 or `posthog-android` 4.0. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.

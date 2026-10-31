@@ -277,7 +277,7 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is required") })
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is required") })
     }
 
     @Test
@@ -289,7 +289,7 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
     }
 
     @Test
@@ -474,6 +474,49 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("name" to "John"), event.properties!!["\$set"])
         assertEquals(mapOf("signup_date" to "2024-01-01"), event.properties!!["\$set_once"])
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
+    }
+
+    @Test
+    fun `captureStateless drops an event with an empty name`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureStateless(event = "", distinctId = "user123")
+
+        assertTrue(mockQueue.events.isEmpty())
+    }
+
+    @Test
+    fun `captureStateless merges typed values over the same maps in properties per key`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureStateless(
+            event = "test_event",
+            distinctId = "user123",
+            properties =
+                mapOf(
+                    "\$set" to mapOf("name" to "caller", "plan" to "free"),
+                    "\$set_once" to mapOf("first" to "caller", "source" to "ad"),
+                    "\$groups" to mapOf("company" to "caller", "team" to "core"),
+                ),
+            userProperties = mapOf("name" to "typed"),
+            userPropertiesSetOnce = mapOf("first" to "typed"),
+            groups = mapOf("company" to "typed"),
+        )
+
+        val properties = mockQueue.events.single().properties!!
+        assertEquals(mapOf("name" to "typed", "plan" to "free"), properties["\$set"])
+        assertEquals(mapOf("first" to "typed", "source" to "ad"), properties["\$set_once"])
+        assertEquals(mapOf("company" to "typed", "team" to "core"), properties["\$groups"])
     }
 
     private class IgnoredExceptionStub(message: String) : RuntimeException(message)
