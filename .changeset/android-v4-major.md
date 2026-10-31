@@ -2,10 +2,7 @@
 'posthog': major
 'posthog-android': major
 'posthog-android-surveys-compose': minor
-'posthog-server': minor
 ---
-
-Entries apply to `posthog`, `posthog-android` and `posthog-android-surveys-compose`, which re-exports them. Only entries prefixed `posthog-server:` apply to `posthog-server`, which keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`.
 
 - **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories; use `projectToken` instead
 - **Breaking:** remove the deprecated `propertiesSanitizer` config option and the `PostHogPropertiesSanitizer` interface; use `addBeforeSend` instead
@@ -19,5 +16,3 @@ Entries apply to `posthog`, `posthog-android` and `posthog-android-surveys-compo
 - **Breaking:** add the abstract `onFeatureFlags()` method to `PostHogInterface`; classes that implement it must add the method
 - Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
 - See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/docs/migration-3.x-to-4.0.md) for upgrade steps
-- `posthog-server`: Move `PostHogOnFeatureFlags` into `posthog-server`; its API is unchanged
-- `posthog-server`: Bump the `posthog` core dependency to 7.0
