@@ -186,16 +186,21 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Boolean
 
     /**
-     * Returns the feature flag
+     * Returns the feature flag value, or null if the flag has no value or the SDK is disabled.
+     * Use `?:` for a fallback; it is never reported in the $feature_flag_called event.
+     *
+     * ```kotlin
+     * val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
+     * ```
+     *
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
-     * @param defaultValue the default value if not found
      * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
-     * @return The feature flag value, or [defaultValue] if not found.
+     * Defaults to [PostHogConfig.sendFeatureFlagEvent].
+     * @return The feature flag value, or null if not found.
      */
     public fun getFeatureFlag(
         key: String,
-        defaultValue: Any? = null,
         sendFeatureFlagEvent: Boolean? = null,
     ): Any?
 

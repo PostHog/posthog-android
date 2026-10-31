@@ -2110,7 +2110,7 @@ public class PostHog private constructor(
         defaultValue: Boolean,
         sendFeatureFlagEvent: Boolean?,
     ): Boolean {
-        val value = getFeatureFlag(key, defaultValue, sendFeatureFlagEvent)
+        val value = getFeatureFlag(key, sendFeatureFlagEvent) ?: defaultValue
 
         if (value is Boolean) {
             return value
@@ -2191,11 +2191,10 @@ public class PostHog private constructor(
 
     public override fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
-        if (!isEnabled()) return defaultValue
-        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value ?: defaultValue
+        if (!isEnabled()) return null
+        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value
         sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
         return flagValue
     }
@@ -2865,9 +2864,8 @@ public class PostHog private constructor(
 
         public override fun getFeatureFlag(
             key: String,
-            defaultValue: Any?,
             sendFeatureFlagEvent: Boolean?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, sendFeatureFlagEvent)
+        ): Any? = shared.getFeatureFlag(key, sendFeatureFlagEvent)
 
         override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
             return shared.getAllFeatureFlags()
