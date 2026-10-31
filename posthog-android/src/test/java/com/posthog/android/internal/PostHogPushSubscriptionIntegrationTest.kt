@@ -1,10 +1,14 @@
 package com.posthog.android.internal
 
+import android.content.Context
+import android.os.Bundle
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHog
 import com.posthog.android.PROJECT_TOKEN
@@ -15,7 +19,10 @@ import org.junit.runner.RunWith
 import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.robolectric.Shadows.shadowOf
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.test.BeforeTest
@@ -69,8 +76,23 @@ internal class PostHogPushSubscriptionIntegrationTest {
         sut.install(fake)
 
         assertEquals(1, fake.pushRegistrations)
+        assertEquals(1, fake.automaticPushRegistrations)
         assertEquals("fcm-token", fake.pushDeviceToken)
         assertEquals("firebase-project", fake.pushAppId)
+
+        sut.uninstall()
+    }
+
+    @Test
+    fun `install registers a Firebase Installation ID`() {
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
+        val fetcher = PushTokenFetcher { onToken -> onToken("firebase-fid", "firebase-project") }
+        val sut = PostHogPushSubscriptionIntegration(config, fetcher, SameThreadExecutorService())
+        val fake = createPostHogFake()
+
+        sut.install(fake)
+
+        assertEquals("firebase-fid", fake.pushDeviceToken)
 
         sut.uninstall()
     }
@@ -110,6 +132,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         sut.install(fake)
         assertEquals(1, fetchCount)
         assertEquals(1, fake.pushRegistrations)
+        assertEquals(1, fake.automaticPushRegistrations)
 
         // A logout unregister would have cleared the token; opt-in must refetch and re-register.
         sut.onOptIn()
@@ -157,6 +180,7 @@ internal class PostHogPushSubscriptionIntegrationTest {
         whenever(options.projectId).thenReturn("firebase-project")
         val firebaseApp = mock<FirebaseApp>()
         whenever(firebaseApp.options).thenReturn(options)
+        whenever(firebaseApp.applicationContext).thenReturn(ApplicationProvider.getApplicationContext<Context>())
 
         val task = mock<Task<String>>()
         whenever(task.isSuccessful).thenReturn(true)
@@ -183,6 +207,53 @@ internal class PostHogPushSubscriptionIntegrationTest {
 
                 assertEquals("fcm-token", receivedToken)
                 assertEquals("firebase-project", receivedAppId)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `FirebasePushTokenFetcher fetches the Firebase Installation ID when installation id registration is enabled`() {
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).applicationInfo!!.metaData =
+            Bundle().apply { putBoolean("firebase_messaging_installation_id_enabled", true) }
+
+        val options = mock<FirebaseOptions>()
+        whenever(options.projectId).thenReturn("firebase-project")
+        val firebaseApp = mock<FirebaseApp>()
+        whenever(firebaseApp.options).thenReturn(options)
+        whenever(firebaseApp.applicationContext).thenReturn(context)
+
+        val task = mock<Task<String>>()
+        whenever(task.isSuccessful).thenReturn(true)
+        whenever(task.result).thenReturn("firebase-fid")
+        whenever(task.addOnCompleteListener(any<OnCompleteListener<String>>())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            (invocation.arguments[0] as OnCompleteListener<String>).onComplete(task)
+            task
+        }
+        val installations = mock<FirebaseInstallations>()
+        whenever(installations.id).thenReturn(task)
+        val messaging = mock<FirebaseMessaging>()
+
+        mockStatic(FirebaseApp::class.java).use { staticApp ->
+            staticApp.`when`<FirebaseApp> { FirebaseApp.getInstance() }.thenReturn(firebaseApp)
+            mockStatic(FirebaseInstallations::class.java).use { staticInstallations ->
+                staticInstallations.`when`<FirebaseInstallations> { FirebaseInstallations.getInstance(firebaseApp) }
+                    .thenReturn(installations)
+                mockStatic(FirebaseMessaging::class.java).use { staticMessaging ->
+                    staticMessaging.`when`<FirebaseMessaging> { FirebaseMessaging.getInstance() }.thenReturn(messaging)
+
+                    var receivedToken: String? = null
+                    FirebasePushTokenFetcher(config).fetchToken { token, _ ->
+                        receivedToken = token
+                    }
+
+                    assertEquals("firebase-fid", receivedToken)
+                    // getToken() fails in this mode, so it must not be called.
+                    verify(messaging, never()).token
+                }
             }
         }
     }
