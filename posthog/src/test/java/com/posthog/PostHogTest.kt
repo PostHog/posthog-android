@@ -23,6 +23,7 @@ import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJEC
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPrintLogger
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogSendCachedEventsIntegration
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
@@ -5963,6 +5964,123 @@ internal class PostHogTest {
         assertEquals(sut.distinctId(), parsed["distinct_id"])
 
         sut.close()
+    }
+
+    @Test
+    fun `explicit FID registration refreshes a delivered subscription while automatic registration skips it`() {
+        val http = mockHttp(total = 2)
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.registerPushNotificationToken(
+            deviceToken = "firebase-fid",
+            appId = "firebase-project",
+        )
+
+        queueExecutor.awaitExecution()
+
+        val request = http.takeRequest()
+        val parsed = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        assertEquals("firebase-fid", parsed["device_token"])
+        assertEquals("firebase-project", parsed["app_id"])
+
+        (sut as PostHogPushSubscriptionReceiver)
+            .registerPushNotificationTokenIfNeeded("firebase-fid", "firebase-project")
+        queueExecutor.awaitExecution()
+        assertEquals(1, http.requestCount)
+
+        // Firebase may report a successful registration with the same FID after a delivery failure.
+        sut.registerPushNotificationToken("firebase-fid", "firebase-project")
+        queueExecutor.awaitExecution()
+        val refreshed = http.takeRequest(2, TimeUnit.SECONDS)
+        assertNotNull(refreshed)
+        assertEquals("POST", refreshed.method)
+        assertEquals(
+            parsed,
+            serializer.deserialize<Map<String, Any>>(refreshed.body.unGzip().reader()),
+        )
+        assertEquals(2, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `delivered refresh followed by identify registers an unlinked user`() {
+        val http = mockHttp(total = 10)
+        val storagePrefix = tmpDir.newFolder().absolutePath
+        val preferences = PostHogMemoryPreferences()
+        val pushExecutors = mutableListOf<java.util.concurrent.ExecutorService>()
+
+        fun pushExecutorOf(client: PostHogInterface): java.util.concurrent.ExecutorService {
+            val field = PostHog::class.java.getDeclaredField("pushExecutor")
+            field.isAccessible = true
+            return (field.get(client) as java.util.concurrent.ExecutorService).also { pushExecutors.add(it) }
+        }
+
+        fun fencePush(executor: java.util.concurrent.ExecutorService) {
+            executor.submit {}.get(5, TimeUnit.SECONDS)
+        }
+
+        try {
+            val first =
+                getSut(
+                    http.url("/").toString(),
+                    flushAt = 100,
+                    storagePrefix = storagePrefix,
+                    preloadFeatureFlags = false,
+                    reloadFeatureFlags = false,
+                    reuseAnonymousId = true,
+                    cachePreferences = preferences,
+                )
+            val firstPush = pushExecutorOf(first)
+            val guestId = first.distinctId()
+            first.registerPushNotificationToken("firebase-fid", "firebase-project")
+            fencePush(firstPush)
+            assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+            first.close()
+            fencePush(firstPush)
+
+            val restarted =
+                getSut(
+                    http.url("/").toString(),
+                    flushAt = 100,
+                    storagePrefix = storagePrefix,
+                    preloadFeatureFlags = false,
+                    reloadFeatureFlags = false,
+                    reuseAnonymousId = true,
+                    cachePreferences = preferences,
+                )
+            val push = pushExecutorOf(restarted)
+            fencePush(push)
+            assertEquals(guestId, restarted.distinctId())
+            val heldCompletion = java.util.concurrent.atomic.AtomicReference<((String?) -> Unit)?>(null)
+            config.pushIdentityProvider = { id, _, completion ->
+                if (id == guestId) {
+                    heldCompletion.set(completion)
+                } else {
+                    completion("jwt-B")
+                }
+            }
+
+            restarted.registerPushNotificationToken("firebase-fid", "firebase-project")
+            fencePush(push)
+            assertNotNull(heldCompletion.get())
+            restarted.identify("identified-B")
+            fencePush(push)
+            heldCompletion.get()?.invoke("jwt-A")
+            fencePush(push)
+            fencePush(push)
+
+            val request = assertNotNull(http.takeRequest(2, TimeUnit.SECONDS))
+            assertEquals("/api/push_subscriptions/", request.path)
+            val body = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+            assertEquals("identified-B", body["distinct_id"])
+            assertEquals("jwt-B", body["identity_token"])
+        } finally {
+            clients.forEach { it.close() }
+            pushExecutors.forEach { it.shutdownAndAwaitTermination() }
+        }
     }
 
     @Test
