@@ -11,7 +11,7 @@ For the full list of changes, see the [changelog](../posthog-android/CHANGELOG.m
 | --- | --- |
 | `com.posthog:posthog-android` | 3.x to 4.0 |
 | `com.posthog:posthog` (core) | 6.x to 7.0 |
-| `com.posthog:posthog-android-surveys-compose` | the release that depends on `posthog-android` 4.0 |
+| `com.posthog:posthog-android-surveys-compose` | keep your version, and declare `com.posthog:posthog-android:4.+` in your build so Gradle resolves 4.0 instead of the 3.x version it pulls in |
 | `com.posthog:posthog-server` | see [`posthog-server`](#posthog-server) |
 
 These are unchanged, so you don't need to change your build for them:
@@ -257,7 +257,7 @@ Its next release depends on core 7.0, so update it if your project also uses cor
 
 ## Checklist
 
-- [ ] Update `posthog-android` to 4.0, and `posthog-android-surveys-compose` and `posthog-server` if you use them.
+- [ ] Update `posthog-android` to 4.0 and declare it in your build if you only depend on `posthog-android-surveys-compose`, and update `posthog-server` if you use it.
 - [ ] Replace `apiKey` with `projectToken`.
 - [ ] Replace `propertiesSanitizer` with `addBeforeSend`.
 - [ ] Replace `evaluationEnvironments` with `evaluationContexts`.
