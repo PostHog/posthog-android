@@ -5,13 +5,15 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogVisibleForTesting
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The integration that sends all the cached legacy events, triggered once the SDK is setup
+ * The integration that sends all the cached legacy events through capture v1, triggered once the
+ * SDK is setup
  * @property config the Config
  * @property api the API class
  * @property executor the Executor
@@ -70,6 +72,8 @@ internal class PostHogSendCachedEventsIntegration(
 
                 while (!legacy.isEmpty) {
                     val events = mutableListOf<PostHogEvent>()
+                    // The stored bytes of each event in `events`, to re-queue the ones capture asks to retry.
+                    val eventsBytes = mutableListOf<ByteArray>()
 
                     val iterator = legacy.iterator()
                     var eventsCount = 0
@@ -81,7 +85,8 @@ internal class PostHogSendCachedEventsIntegration(
                             inputStream.use { theInputStream ->
                                 val event = config.serializer.deserialize<PostHogEvent?>(theInputStream.reader().buffered())
                                 event?.let {
-                                    events.add(event)
+                                    events.add(normalizeLegacyEvent(event))
+                                    eventsBytes.add(eventBytes)
                                     eventsCount++
                                 } ?: run {
                                     removeFileSafely(iterator)
@@ -98,10 +103,14 @@ internal class PostHogSendCachedEventsIntegration(
 
                     if (events.isNotEmpty()) {
                         var deleteFiles = true
+                        var retryBytes = emptyList<ByteArray>()
                         try {
-                            api.batch(events)
+                            val retryUuids = api.captureV1(events).retryIds
+                            if (retryUuids.isNotEmpty()) {
+                                retryBytes = eventsBytes.filterIndexed { index, _ -> events[index].uuid?.toString() in retryUuids }
+                            }
                         } catch (e: PostHogApiError) {
-                            if (e.statusCode < 400) {
+                            if (isCaptureV1RetriableStatusCode(e.statusCode)) {
                                 deleteFiles = false
                             }
                             throw e
@@ -112,6 +121,17 @@ internal class PostHogSendCachedEventsIntegration(
                             }
                             throw e
                         } finally {
+                            if (deleteFiles && retryBytes.isNotEmpty()) {
+                                // The legacy file is FIFO: re-queue the events capture asked to retry
+                                // at its tail first, so they stay durable while the delivered ones are
+                                // removed from the head below. They're sent on the next launch.
+                                try {
+                                    retryBytes.forEach { legacy.add(it) }
+                                } catch (e: Throwable) {
+                                    config.logger.log("Error re-queuing legacy events: $e.")
+                                    deleteFiles = false
+                                }
+                            }
                             if (deleteFiles && eventsCount > 0) {
                                 for (i in 1..eventsCount) {
                                     try {
@@ -127,6 +147,10 @@ internal class PostHogSendCachedEventsIntegration(
                                 }
                             }
                         }
+                        if (retryBytes.isNotEmpty()) {
+                            config.logger.log("Kept ${retryBytes.size} legacy events for retry.")
+                            return
+                        }
                     }
                 }
             } catch (e: Throwable) {
@@ -138,6 +162,25 @@ internal class PostHogSendCachedEventsIntegration(
                 }
             }
         }
+    }
+
+    /**
+     * Events cached by 2.x carry their uuid as `message_id` and person properties as a root `$set`,
+     * which capture v1 doesn't read: a missing uuid fails the whole request, and the properties
+     * would be lost. Moves both where capture v1 expects them.
+     */
+    @Suppress("DEPRECATION")
+    private fun normalizeLegacyEvent(event: PostHogEvent): PostHogEvent {
+        val uuid = event.uuid ?: event.messageId ?: TimeBasedEpochGenerator.generate()
+        val set = event.set
+        if (uuid == event.uuid && set == null) {
+            return event
+        }
+        val properties = event.properties ?: mutableMapOf()
+        if (set != null && !properties.containsKey("\$set")) {
+            properties["\$set"] = set
+        }
+        return event.copy(uuid = uuid, properties = properties, messageId = null, set = null)
     }
 
     private fun removeFileSafely(

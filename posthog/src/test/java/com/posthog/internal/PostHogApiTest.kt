@@ -60,7 +60,7 @@ internal class PostHogApiTest {
         debug: Boolean = false,
         logger: PostHogLogger? = null,
         httpClient: OkHttpClient? = null,
-        maxRetries: Int? = null,
+        pushNotificationSubscriptionMaxRetries: Int? = null,
         featureFlagRequestMaxRetries: Int? = null,
         requestHeaders: Map<String, String>? = null,
         compression: PostHogCompression = PostHogCompression.GZIP,
@@ -78,8 +78,8 @@ internal class PostHogApiTest {
         if (httpClient != null) {
             config.httpClient = httpClient
         }
-        if (maxRetries != null) {
-            config.maxRetries = maxRetries
+        if (pushNotificationSubscriptionMaxRetries != null) {
+            config.pushNotificationSubscriptionMaxRetries = pushNotificationSubscriptionMaxRetries
         }
         if (featureFlagRequestMaxRetries != null) {
             config.featureFlagRequestMaxRetries = featureFlagRequestMaxRetries

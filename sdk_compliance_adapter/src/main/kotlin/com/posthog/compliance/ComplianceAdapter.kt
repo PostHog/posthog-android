@@ -1,11 +1,15 @@
 package com.posthog.compliance
 
+import com.google.gson.Gson
+import com.google.gson.JsonParser
+import com.posthog.PersonProfiles
 import com.posthog.PostHog
 import com.posthog.PostHogCompression
 import com.posthog.PostHogConfig
 import com.posthog.internal.GzipRequestInterceptor
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogLogger
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
 import io.ktor.server.application.call
@@ -21,6 +25,10 @@ import io.ktor.server.routing.routing
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.File
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
+import java.util.Collections
+import java.util.Date
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.Condition
@@ -32,6 +40,12 @@ private const val QUEUE_STORAGE_PREFIX = "/tmp/posthog-queue"
 
 // Upper bound on the wait for a flush()'d batch to reach the mock (generous for Docker).
 private const val FLUSH_SETTLE_MS = 2000L
+
+// The capture v1 endpoints the SDK posts analytics and AI events to.
+private const val CAPTURE_PATH = "/i/v1/analytics/events"
+private const val CAPTURE_AI_PATH = "/i/v1/ai/events"
+
+private fun isCaptureUrl(url: String): Boolean = url.contains(CAPTURE_PATH) || url.contains(CAPTURE_AI_PATH)
 
 /**
  * PostHog Android SDK Compliance Adapter
@@ -71,6 +85,12 @@ data class InitRequest(
     val flush_interval_ms: Int? = null,
     val max_retries: Int? = null,
     val enable_compression: Boolean? = null,
+    val super_properties: Map<String, Any>? = null,
+    val before_send: BeforeSendSpec? = null,
+)
+
+data class BeforeSendSpec(
+    val set_properties: Map<String, Any>? = null,
 )
 
 data class CaptureRequest(
@@ -78,11 +98,15 @@ data class CaptureRequest(
     val event: String,
     val properties: Map<String, Any>? = null,
     val timestamp: String? = null,
+    val options: Map<String, Any?>? = null,
+    val pad_properties_to_bytes: Int? = null,
+    val marker: String? = null,
 )
 
 data class CaptureResponse(
     val success: Boolean,
-    val uuid: String,
+    // Null (omitted from the JSON) when the SDK didn't queue the event.
+    val uuid: String? = null,
 )
 
 data class FlagRequest(
@@ -114,6 +138,7 @@ data class StateResponse(
     val total_retries: Int,
     val last_error: String?,
     val requests_made: List<RequestRecord>,
+    val log_lines: List<String>,
 )
 
 data class SuccessResponse(
@@ -133,16 +158,29 @@ class TestPostHogContext(private val sdkName: String, private val sdkVersion: St
         )
 }
 
+// Records every SDK log line for /state, and still prints it.
+class RecordingLogger : PostHogLogger {
+    override fun log(message: String) {
+        println(message)
+        AdapterContext.logLines.add(message)
+    }
+
+    override fun isEnabled(): Boolean = true
+}
+
 // Global state
 object AdapterContext {
     val state = AdapterState()
     val lock = ReentrantLock()
 
-    // Signalled by the tracking interceptor when a /batch response lands (see awaitBatch).
+    // Signalled by the tracking interceptor when a capture response lands (see awaitBatch).
     val batchObserved: Condition = lock.newCondition()
     var postHog: com.posthog.PostHogInterface? = null
     var api: PostHogApi? = null
     val capturedEvents = mutableListOf<String>() // Store UUIDs of captured events
+
+    // Own lock: the SDK logs from its threads, which must not wait on [lock].
+    val logLines: MutableList<String> = Collections.synchronizedList(mutableListOf())
 }
 
 // OkHttp Interceptor to track requests
@@ -157,14 +195,14 @@ class TrackingInterceptor : Interceptor {
         val uuidList = mutableListOf<String>()
 
         // Parse request body before sending
-        if (url.contains("/batch") && !url.contains("/flags") && requestBody != null) {
+        if (isCaptureUrl(url) && requestBody != null) {
             try {
                 val buffer = okio.Buffer()
                 requestBody.writeTo(buffer)
                 val bodyString = buffer.readUtf8()
 
                 // Parse JSON to extract UUIDs
-                // The body format is: {"api_key": "...", "batch": [{event}, {event}], "sent_at": "..."}
+                // The body format is: {"created_at": "...", "batch": [{event}, {event}]}
                 val uuidRegex = """"uuid"\s*:\s*"([^"]+)"""".toRegex()
                 uuidRegex.findAll(bodyString).forEach { match ->
                     uuidList.add(match.groupValues[1])
@@ -178,10 +216,12 @@ class TrackingInterceptor : Interceptor {
         val response = chain.proceed(request)
 
         // Track the response
-        if (url.contains("/batch") && !url.contains("/flags")) {
+        if (isCaptureUrl(url)) {
             try {
-                // Extract retry count from URL if present
-                val retryCount = request.url.queryParameter("retry_count")?.toIntOrNull() ?: 0
+                // PostHog-Attempt starts at 1; the harness counts retries from 0.
+                val retryCount = (request.header("PostHog-Attempt")?.toIntOrNull() ?: 1) - 1
+                // Read before taking the lock, so a slow body can't stall /state, /reset or the other lane.
+                val retried = if (response.isSuccessful) retriedCount(response, uuidList) else 0
 
                 AdapterContext.lock.withLock {
                     val record =
@@ -196,8 +236,10 @@ class TrackingInterceptor : Interceptor {
                     AdapterContext.state.requestsMade.add(record)
 
                     if (response.isSuccessful) {
-                        AdapterContext.state.totalEventsSent += eventCount
-                        AdapterContext.state.pendingEvents = maxOf(0, AdapterContext.state.pendingEvents - eventCount)
+                        // Events the server asks to retry stay queued and count once a later request delivers them.
+                        val delivered = eventCount - retried
+                        AdapterContext.state.totalEventsSent += delivered
+                        AdapterContext.state.pendingEvents = maxOf(0, AdapterContext.state.pendingEvents - delivered)
                     }
 
                     if (retryCount > 0) {
@@ -214,7 +256,53 @@ class TrackingInterceptor : Interceptor {
     }
 }
 
-// Block until [predicate] holds (signalled as each /batch response lands) or [timeoutMs] elapses.
+// How many of [uuids] the capture v1 per-event results ask to retry. Peeks so the SDK still reads the
+// body, within a deadline so a body that trickles in can't hold the request.
+private fun retriedCount(
+    response: Response,
+    uuids: List<String>,
+): Int {
+    val timeout = response.body?.source()?.timeout()
+    timeout?.deadline(RESPONSE_PEEK_DEADLINE_SECONDS, TimeUnit.SECONDS)
+    return try {
+        val body = response.peekBody(1024 * 1024).string()
+        val results = JsonParser.parseString(body).asJsonObject.getAsJsonObject("results")
+        uuids.count { uuid -> results?.getAsJsonObject(uuid)?.get("result")?.asString == "retry" }
+    } catch (_: Exception) {
+        0
+    } finally {
+        timeout?.clearDeadline()
+    }
+}
+
+private const val RESPONSE_PEEK_DEADLINE_SECONDS = 5L
+
+// The harness sends RFC 3339 timestamps, with any offset; the SDK serializes the instant in UTC.
+private fun parseHarnessTimestamp(timestamp: String?): Date? =
+    timestamp?.let {
+        try {
+            Date.from(OffsetDateTime.parse(it).toInstant())
+        } catch (_: DateTimeParseException) {
+            null
+        }
+    }
+
+// Adds a $test_padding string so [properties], as compact UTF-8 JSON, is exactly [targetBytes] long.
+private fun padProperties(
+    properties: Map<String, Any>?,
+    targetBytes: Int,
+    marker: String?,
+): Map<String, Any> {
+    val padded = properties.orEmpty().toMutableMap()
+    val prefix = marker.orEmpty()
+    padded["\$test_padding"] = prefix
+    // Measure with the marker in place so its serialized (escaped, UTF-8) size is counted.
+    val baseBytes = Gson().toJson(padded).toByteArray(Charsets.UTF_8).size
+    padded["\$test_padding"] = prefix + "x".repeat(maxOf(0, targetBytes - baseBytes))
+    return padded
+}
+
+// Block until [predicate] holds (signalled as each capture response lands) or [timeoutMs] elapses.
 private fun awaitBatch(
     timeoutMs: Long,
     predicate: () -> Boolean,
@@ -242,8 +330,19 @@ fun main() {
                         sdk_name = "posthog-android",
                         sdk_version = PostHogConfig(projectToken = "").sdkVersion,
                         adapter_version = "1.0.0",
-                        // Opt into the capture suites (android posts /batch with gzip).
-                        capabilities = listOf("capture_v0", "encoding_gzip"),
+                        // Opt into the capture suites (android posts /i/v1/analytics/events and
+                        // /i/v1/ai/events with gzip).
+                        capabilities =
+                            listOf(
+                                "capture_v1",
+                                "capture_ai_v1",
+                                "encoding_gzip",
+                                "event_options",
+                                "generated_payloads",
+                                "log_capture",
+                                "property_layers",
+                                "fail_open",
+                            ),
                     ),
                 )
             }
@@ -264,9 +363,11 @@ fun main() {
                     // Close existing instance if any
                     AdapterContext.postHog?.close()
                     AdapterContext.api = null
+                    AdapterContext.logLines.clear()
 
                     // close() leaves queue files on disk; wipe so they don't replay into this test.
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
+                    File("$QUEUE_STORAGE_PREFIX-ai").deleteRecursively()
 
                     // Create new config
                     val flushIntervalMs = req.flush_interval_ms ?: 100
@@ -281,6 +382,10 @@ fun main() {
                             debug = true,
                             preloadFeatureFlags = false,
                         )
+                    config.logger = RecordingLogger()
+                    // The harness models a server SDK: it never identifies, and expects person
+                    // processing on unless an event opts out.
+                    config.personProfiles = PersonProfiles.ALWAYS
 
                     // Create OkHttpClient with tracking and gzip interceptors
                     val httpClient =
@@ -291,13 +396,18 @@ fun main() {
 
                     config.httpClient = httpClient
 
-                    req.max_retries?.let { config.maxRetries = it }
+                    req.max_retries?.let { config.pushNotificationSubscriptionMaxRetries = it }
+                    // The harness sends one enable_compression flag and no AI-lane setting, so it sets
+                    // both lanes. With it unset, the AI lane keeps its documented default (gzip).
                     req.enable_compression?.let {
-                        config.compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
+                        val compression = if (it) PostHogCompression.GZIP else PostHogCompression.NONE
+                        config.compression = compression
+                        config.captureAiCompression = compression
                     }
 
-                    // Set storage prefix for file-backed queue
+                    // Set storage prefixes for the file-backed queues (both wiped on /init and /reset)
                     config.storagePrefix = QUEUE_STORAGE_PREFIX
+                    config.aiStoragePrefix = "$QUEUE_STORAGE_PREFIX-ai"
 
                     // Set minimal context to provide $lib and $lib_version
                     config.context = TestPostHogContext("posthog-android", config.sdkVersion)
@@ -311,9 +421,17 @@ fun main() {
                         }
                         event
                     }
+                    req.before_send?.set_properties?.let { setProperties ->
+                        config.addBeforeSend { event ->
+                            event.properties?.putAll(setProperties)
+                            event
+                        }
+                    }
 
                     // Create PostHog instance and direct API helper for per-request flag evaluation.
-                    AdapterContext.postHog = PostHog.with(config)
+                    val postHog = PostHog.with(config)
+                    req.super_properties?.forEach { (key, value) -> postHog.register(key, value) }
+                    AdapterContext.postHog = postHog
                     AdapterContext.api = PostHogApi(config)
                 }
 
@@ -342,6 +460,8 @@ fun main() {
                     event = req.event,
                     distinctId = req.distinct_id,
                     properties = properties,
+                    timestamp = parseHarnessTimestamp(req.timestamp),
+                    options = req.options,
                 )
 
                 // Get the UUID that was just captured (via beforeSend hook)
@@ -360,6 +480,45 @@ fun main() {
                     }
 
                 call.respond(CaptureResponse(success = true, uuid = uuid))
+            }
+
+            // Same request as /capture, sent with captureAi to /i/v1/ai/events. Ktor's Netty engine
+            // streams request bodies without a size limit, so an 8 MiB AI event is received whole.
+            post("/capture_ai") {
+                val req = call.receive<CaptureRequest>()
+
+                val ph =
+                    AdapterContext.lock.withLock {
+                        AdapterContext.postHog
+                    }
+
+                if (ph == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "SDK not initialized"))
+                    return@post
+                }
+
+                val properties =
+                    req.pad_properties_to_bytes?.let { padProperties(req.properties, it, req.marker) }
+                        ?: req.properties
+                val uuid =
+                    ph.captureAi(
+                        event = req.event,
+                        distinctId = req.distinct_id,
+                        properties = properties,
+                        timestamp = parseHarnessTimestamp(req.timestamp),
+                        options = req.options,
+                    )
+
+                // A null uuid means the SDK didn't queue the event (for example it's over the size
+                // limit), so no request will carry it and no uuid is reported.
+                if (uuid != null) {
+                    AdapterContext.lock.withLock {
+                        AdapterContext.state.totalEventsCaptured++
+                        AdapterContext.state.pendingEvents++
+                    }
+                }
+
+                call.respond(CaptureResponse(success = true, uuid = uuid?.toString()))
             }
 
             post("/get_feature_flag") {
@@ -450,6 +609,7 @@ fun main() {
                             total_retries = AdapterContext.state.totalRetries,
                             last_error = AdapterContext.state.lastError,
                             requests_made = AdapterContext.state.requestsMade.toList(),
+                            log_lines = synchronized(AdapterContext.logLines) { AdapterContext.logLines.toList() },
                         )
                     }
 
@@ -465,6 +625,7 @@ fun main() {
 
                     // close() leaves queue files on disk; wipe so they don't replay next test (matches iOS).
                     File(QUEUE_STORAGE_PREFIX).deleteRecursively()
+                    File("$QUEUE_STORAGE_PREFIX-ai").deleteRecursively()
 
                     AdapterContext.state.pendingEvents = 0
                     AdapterContext.state.totalEventsCaptured = 0
@@ -473,6 +634,7 @@ fun main() {
                     AdapterContext.state.lastError = null
                     AdapterContext.state.requestsMade.clear()
                     AdapterContext.capturedEvents.clear()
+                    AdapterContext.logLines.clear()
                 }
 
                 call.respond(SuccessResponse(success = true))

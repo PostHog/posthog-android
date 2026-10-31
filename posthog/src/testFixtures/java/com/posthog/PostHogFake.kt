@@ -46,10 +46,27 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
         userPropertiesSetOnce: Map<String, Any>?,
         groups: Map<String, String>?,
         timestamp: Date?,
+        options: Map<String, Any?>?,
     ) {
         this.event = event
         this.properties = properties
         captures++
+    }
+
+    override fun captureAi(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        options: Map<String, Any?>?,
+    ): UUID? {
+        this.event = event
+        this.properties = properties
+        captures++
+        return UUID.randomUUID()
     }
 
     override fun captureLog(
@@ -65,6 +82,7 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
     override fun captureException(
         throwable: Throwable,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -78,6 +96,7 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
         distinctId: String,
         userProperties: Map<String, Any>?,
         userPropertiesSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -120,6 +139,7 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
     override fun setPersonProperties(
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
@@ -174,17 +194,22 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
         type: String,
         key: String,
         groupProperties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
     }
 
     override fun screen(
         screenTitle: String,
         properties: Map<String, Any>?,
+        options: Map<String, Any?>?,
     ) {
         this.screenTitle = screenTitle
     }
 
-    override fun alias(alias: String) {
+    override fun alias(
+        alias: String,
+        options: Map<String, Any?>?,
+    ) {
     }
 
     override fun isOptOut(): Boolean {

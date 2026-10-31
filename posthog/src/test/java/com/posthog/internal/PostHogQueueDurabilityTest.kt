@@ -47,7 +47,7 @@ internal class PostHogQueueDurabilityTest {
                 maxQueueSize = capacity
                 maxBatchSize = batchSize
                 flushAt = 100
-                maxRetries = 2
+                pushNotificationSubscriptionMaxRetries = 2
                 dateProvider = clock
                 this.networkStatus = networkStatus
             }
@@ -66,10 +66,17 @@ internal class PostHogQueueDurabilityTest {
                     }
                 },
                 describe = { it },
-                send = send,
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                send = {
+                    send(it)
+                    SendResult()
+                },
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
             )
-        return PostHogQueue(config, spec, executor).also { queues.add(it) }
+        return PostHogQueue(config, spec, executor).also {
+            // the midpoint of the jitter range keeps the unjittered delays
+            it.jitterUnit = { 0.5 }
+            queues.add(it)
+        }
     }
 
     @Test
@@ -111,7 +118,7 @@ internal class PostHogQueueDurabilityTest {
 
     @Test
     fun `retryable failures retain exact entries with capped backoff then reset after success`() {
-        val failures = listOf(408, 429, 500, 502, 503, 504)
+        val failures = listOf(408, 500, 502, 503, 504)
         var status = failures.first()
         var attempts = 0
         val sut =

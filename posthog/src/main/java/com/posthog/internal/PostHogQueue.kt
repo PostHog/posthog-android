@@ -10,10 +10,13 @@ import java.util.Timer
 import java.util.TimerTask
 import java.util.UUID
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.schedule
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToLong
 
 /**
  * Generic file-backed queue. One implementation, multiple instances —
@@ -28,13 +31,49 @@ public class PostHogQueue<Record>(
 ) : PostHogQueueInterface<Record> {
     private val deque: ArrayDeque<File> = ArrayDeque()
     private val dequeLock = Any()
+
+    // The files of the last request that failed or came back with records to retry. The next flush
+    // resends exactly these, so the request keeps its id and counts the attempt. Guarded by dequeLock.
+    private var retryFiles: List<File> = emptyList()
+
+    // Total size of the files in the deque, kept only for byte-limited endpoints. Guarded by dequeLock.
+    private val trackBytes = spec.maxBatchBytes != null || spec.maxQueueBytes != null
+    private var queuedBytes = 0L
+
+    // The size each file was counted with, so a file deleted from the cache dir is still subtracted in full.
+    private val fileBytes = HashMap<File, Long>()
+
+    // Records added by addMeasured and not yet taken by the executor to be written to disk, oldest
+    // first, with their sizes. Guarded by pendingLock.
+    private val pendingLock = Any()
+    private val pending: ArrayDeque<Pair<Record, Long>> = ArrayDeque()
+    private var pendingBytes = 0L
+
+    // Executor tasks queued to write pending records, never more than pending holds. Guarded by pendingLock.
+    private var pendingTasks = 0
     private val timerLock = Any()
-    private var pausedUntil: Date? = null
+
+    @PostHogVisibleForTesting
+    internal var pausedUntil: Date? = null
+        private set
     private var retryCount = 0
+
+    // The Retry-After of the last 2xx that kept some records for retry; read by executeWithRetry.
+    private var partialRetryAfterSeconds: Int? = null
     private val batchLimits =
         BatchLimits(cap = spec.initialCap(config).coerceAtLeast(1), flushAt = spec.initialFlushAt(config).coerceAtLeast(1))
     private val initialRetryDelaySeconds = 1
     private val maxRetryDelaySeconds = 30
+
+    // Largest fraction a retry wait moves either way, so devices refused together don't all come back
+    // at the same moment.
+    private val retryJitter = 0.25
+
+    /**
+     * Source of the backoff jitter: a uniform value in `[0, 1)`. Tests replace it for fixed delays.
+     */
+    @Volatile
+    internal var jitterUnit: () -> Double = { ThreadLocalRandom.current().nextDouble() }
 
     @Volatile
     private var timer: Timer? = null
@@ -76,6 +115,12 @@ public class PostHogQueue<Record>(
                 os.use { theOutputStream ->
                     spec.encode(record, theOutputStream)
                 }
+                if (trackBytes) {
+                    val size = file.length()
+                    synchronized(dequeLock) {
+                        countBytes(file, size)
+                    }
+                }
                 config.logger.log("Queued ${spec.describe(record)}: ${file.name}.")
 
                 return true
@@ -96,17 +141,61 @@ public class PostHogQueue<Record>(
         return true
     }
 
+    /** Removes [files] from the deque and subtracts the size they were counted with. */
+    private fun removeFromDeque(files: Collection<File>) {
+        synchronized(dequeLock) {
+            deque.removeAll(files)
+            files.forEach { uncountBytes(it) }
+        }
+    }
+
+    // Must hold dequeLock.
+    private fun countBytes(
+        file: File,
+        size: Long,
+    ) {
+        if (!trackBytes) return
+        fileBytes[file] = size
+        queuedBytes += size
+    }
+
+    // Must hold dequeLock.
+    private fun uncountBytes(file: File) {
+        queuedBytes -= fileBytes.remove(file) ?: 0L
+    }
+
+    // Must hold dequeLock.
+    private fun resetBytes() {
+        fileBytes.clear()
+        queuedBytes = 0
+    }
+
     private fun removeRecordSync() {
         if (deque.size > spec.maxQueueSize(config).coerceAtLeast(1)) {
             try {
                 val first: File
                 synchronized(dequeLock) {
                     first = deque.removeFirst()
+                    uncountBytes(first)
                 }
                 first.deleteSafely(config)
                 config.logger.log("Queue is full, the oldest ${spec.recordsLabel} ${first.name} is dropped.")
             } catch (ignored: NoSuchElementException) {
             }
+        }
+        val maxQueueBytes = spec.maxQueueBytes ?: return
+        val evicted = mutableListOf<File>()
+        synchronized(dequeLock) {
+            // The newest record is always kept, even when it's over the limit on its own.
+            while (queuedBytes > maxQueueBytes && deque.size > 1) {
+                val first = deque.removeFirst()
+                uncountBytes(first)
+                evicted.add(first)
+            }
+        }
+        if (evicted.isNotEmpty()) {
+            evicted.forEach { it.deleteSafely(config) }
+            config.logger.log("Queue is over $maxQueueBytes bytes, the oldest ${evicted.size} ${spec.recordsLabel} are dropped.")
         }
     }
 
@@ -151,6 +240,65 @@ public class PostHogQueue<Record>(
         }
     }
 
+    /**
+     * Adds [record], [bytes] long. While a slow send holds the executor, records wait in memory before
+     * they're written; once more than [EndpointSpec.maxQueueSize] records or [EndpointSpec.maxQueueBytes]
+     * wait, the oldest waiting ones are dropped, as the disk queue drops its oldest. The newest record
+     * is always kept. Returns false only when the executor no longer accepts work.
+     */
+    internal fun addMeasured(
+        record: Record,
+        bytes: Long,
+    ): Boolean {
+        val maxQueueBytes = spec.maxQueueBytes
+        if (maxQueueBytes == null) {
+            add(record)
+            return true
+        }
+        val maxRecords = spec.maxQueueSize(config).coerceAtLeast(1)
+        val entry = record to bytes
+        var dropped = 0
+        val accepted =
+            synchronized(pendingLock) {
+                pending.addLast(entry)
+                pendingBytes += bytes
+                while (pending.size > 1 && (pending.size > maxRecords || pendingBytes > maxQueueBytes)) {
+                    pendingBytes -= pending.removeFirst().second
+                    dropped++
+                }
+                // A dropped record's task writes a newer one instead, so tasks never outnumber records.
+                if (pendingTasks >= pending.size) return@synchronized true
+                pendingTasks++
+                // Submitted under the lock so tasks queue in the order their records were added, and a
+                // flush queued after this call returns runs after this record is written.
+                try {
+                    // Each task writes the oldest waiting record.
+                    executor.execute {
+                        val next =
+                            synchronized(pendingLock) {
+                                pendingTasks--
+                                pending.removeFirstOrNull()?.also { pendingBytes -= it.second }
+                            }
+                        if (next != null) {
+                            flushRecordSync(next.first)
+                        }
+                    }
+                    true
+                } catch (e: Throwable) {
+                    // RejectedExecutionException once the queue is shut down
+                    pendingTasks--
+                    if (pending.remove(entry)) {
+                        pendingBytes -= bytes
+                    }
+                    false
+                }
+            }
+        if (dropped > 0) {
+            config.logger.log("Too many ${spec.recordsLabel} are waiting to be written, the oldest $dropped are dropped.")
+        }
+        return accepted
+    }
+
     private fun flushIfOverThreshold(isFatal: Boolean) {
         if (isAboveThreshold(batchLimits.flushAt)) {
             flushBatch(isFatal)
@@ -158,7 +306,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun isAboveThreshold(flushAt: Int): Boolean {
-        if (deque.size >= flushAt) {
+        if (deque.size >= flushAt || isAboveByteThreshold()) {
             return true
         } else if (deque.size > 0) {
             // only log if there are records in the queue
@@ -176,12 +324,38 @@ public class PostHogQueue<Record>(
         return true
     }
 
+    /** A full request's worth of queued bytes flushes like [BatchLimits.flushAt] does. */
+    private fun isAboveByteThreshold(): Boolean {
+        val maxBatchBytes = spec.maxBatchBytes ?: return false
+        return synchronized(dequeLock) { queuedBytes } >= maxBatchBytes
+    }
+
+    /**
+     * The next FIFO window: at most [BatchLimits.cap] files and, for a byte-limited endpoint, about
+     * [EndpointSpec.maxBatchBytes]. The check runs before each file is added, so a file that doesn't
+     * fit starts the next window and a file over the limit goes alone. The files of a request to
+     * retry go again on their own first.
+     */
     private fun takeFiles(): List<File> {
-        val events: List<File>
         synchronized(dequeLock) {
-            events = deque.take(batchLimits.cap)
+            val retry = retryFiles
+            retryFiles = emptyList()
+            // A file dropped since (queue full, clear) changes the request, so it starts over.
+            if (retry.isNotEmpty() && deque.containsAll(retry)) {
+                return retry
+            }
+            val maxBatchBytes = spec.maxBatchBytes ?: return deque.take(batchLimits.cap)
+            val files = mutableListOf<File>()
+            var bytes = 0L
+            for (file in deque) {
+                if (files.size >= batchLimits.cap) break
+                val size = file.length()
+                if (files.isNotEmpty() && bytes + size > maxBatchBytes) break
+                files.add(file)
+                bytes += size
+            }
+            return files
         }
-        return events
     }
 
     private fun flushBatch(isFatal: Boolean) {
@@ -195,16 +369,32 @@ public class PostHogQueue<Record>(
             return
         }
 
+        if (isFatal) {
+            // The process may exit after this send, so it takes a FIFO window that can include the
+            // fatal record instead of resending only the request waiting to be retried.
+            keepForRetry(emptyList())
+        }
+
         executeBatch()
     }
 
-    private fun executeWithRetry(block: () -> Unit) {
+    /**
+     * Runs [block], which reports whether the server kept some records for retry, and applies the
+     * retry state: a failure or a partial retry counts as one more consecutive failure and pauses
+     * the queue with backoff; a full success resets both.
+     */
+    private fun executeWithRetry(block: () -> Boolean) {
         var retry = false
         var retryAfterSeconds: Int? = null
         try {
-            block()
-            retryCount = 0
-            pausedUntil = null
+            retry = block()
+            if (retry) {
+                retryCount = (retryCount + 1).coerceAtMost(maxRetryDelaySeconds)
+                retryAfterSeconds = partialRetryAfterSeconds
+            } else {
+                retryCount = 0
+                pausedUntil = null
+            }
         } catch (e: Throwable) {
             config.logger.log("Flushing failed: $e.")
 
@@ -215,6 +405,7 @@ public class PostHogQueue<Record>(
                 retryAfterSeconds = e.retryAfterSeconds
             }
         } finally {
+            partialRetryAfterSeconds = null
             calculateDelay(retry, retryAfterSeconds)
 
             isFlushing.set(false)
@@ -236,15 +427,17 @@ public class PostHogQueue<Record>(
         file: File,
         throwable: Throwable? = null,
     ) {
-        synchronized(dequeLock) {
-            deque.remove(file)
-        }
+        removeFromDeque(listOf(file))
         file.deleteSafely(config)
         config.logger.log("File: ${file.name} failed to parse: $throwable.")
     }
 
+    /**
+     * Sends one FIFO window of the queue. Returns true when a group was partially retried, so the
+     * caller stops this flush and the kept records wait for the backoff.
+     */
     @Throws(PostHogApiError::class, IOException::class)
-    private fun batchRecords() {
+    private fun batchRecords(): Boolean {
         val files = takeFiles()
 
         val records = mutableListOf<Pair<File, Record>>()
@@ -271,23 +464,50 @@ public class PostHogQueue<Record>(
             while (end < records.size && spec.canBatchTogether?.invoke(records[start].second, records[end].second) != false) {
                 end++
             }
-            sendRecords(records.subList(start, end))
+            if (sendRecords(records.subList(start, end))) {
+                return true
+            }
             start = end
         }
+        return false
     }
 
+    /**
+     * Sends [batch] and removes the delivered records. Returns true when the server asked to retry
+     * some of them: those files stay queued and the rest are deleted.
+     */
     @Throws(PostHogApiError::class, IOException::class)
-    private fun sendRecords(batch: List<Pair<File, Record>>) {
+    private fun sendRecords(batch: List<Pair<File, Record>>): Boolean {
         val files = batch.map { it.first }
         val records = batch.map { it.second }
         var deleteFiles = true
+        var retained = emptyList<File>()
         try {
             if (records.isNotEmpty()) {
                 config.logger.log("Flushing ${records.size} ${spec.recordsLabel}.")
 
-                spec.send(records)
+                val result = spec.send(records)
 
-                config.logger.log("Flushed ${records.size} ${spec.recordsLabel} successfully.")
+                val recordId = spec.recordId
+                if (result.retryIds.isNotEmpty() && recordId != null) {
+                    retained =
+                        batch.mapNotNull { (file, record) ->
+                            val id = recordId(record)
+                            if (id != null && id in result.retryIds) file else null
+                        }
+                    if (retained.isNotEmpty()) {
+                        partialRetryAfterSeconds = result.retryAfterSeconds
+                        keepForRetry(retained)
+                    }
+                }
+                if (retained.isEmpty()) {
+                    config.logger.log("Flushed ${records.size} ${spec.recordsLabel} successfully.")
+                } else {
+                    config.logger.log(
+                        "Flushed ${records.size - retained.size} of ${records.size} ${spec.recordsLabel}, " +
+                            "keeping ${retained.size} for retry.",
+                    )
+                }
             }
         } catch (e: PostHogApiError) {
             deleteFiles = deleteFilesIfAPIError(e, batchLimits, records.size, config.logger, spec.isRetriableStatusCode)
@@ -295,22 +515,33 @@ public class PostHogQueue<Record>(
             // only re-throw if retriable (files kept), so executeWithRetry
             // can track retryCount and apply backoff
             if (!deleteFiles) {
+                // A 413 halves the batch instead, so the next request carries fewer records.
+                if (spec.isRetriableStatusCode(e.statusCode)) {
+                    keepForRetry(files)
+                }
                 throw e
             }
         } catch (e: IOException) {
             deleteFiles = false
+            keepForRetry(files)
             config.logger.log("Flushing failed because of a network error, let's try again soon.")
             throw e
         } finally {
             if (deleteFiles) {
-                synchronized(dequeLock) {
-                    deque.removeAll(files)
-                }
+                val delivered = files - retained.toSet()
+                removeFromDeque(delivered)
 
-                files.forEach {
+                delivered.forEach {
                     it.deleteSafely(config)
                 }
             }
+        }
+        return retained.isNotEmpty()
+    }
+
+    private fun keepForRetry(files: List<File>) {
+        synchronized(dequeLock) {
+            retryFiles = files
         }
     }
 
@@ -342,9 +573,11 @@ public class PostHogQueue<Record>(
             }
 
             executeWithRetry {
-                while (deque.isNotEmpty()) {
-                    batchRecords()
+                var retryPending = false
+                while (deque.isNotEmpty() && !retryPending) {
+                    retryPending = batchRecords()
                 }
+                retryPending
             }
         }
     }
@@ -362,24 +595,36 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             tempFiles = deque.toList()
             deque.clear()
+            resetBytes()
         }
         tempFiles.forEach {
             it.deleteSafely(config)
         }
     }
 
+    /**
+     * Pauses the queue after the [retryCount]-th consecutive failure. The delay doubles from
+     * [initialRetryDelaySeconds] to [maxRetryDelaySeconds], scaled by a jitter factor in
+     * `[1 - retryJitter, 1 + retryJitter)` and capped again, in milliseconds. A server `Retry-After`,
+     * capped at [maxRetryDelaySeconds], is a floor applied after jitter, so jitter never retries
+     * earlier than the server asked.
+     */
     private fun calculateDelay(
         retry: Boolean,
         retryAfterSeconds: Int? = null,
     ) {
         if (retry) {
-            val delay =
-                if (retryAfterSeconds != null && retryAfterSeconds > 0) {
-                    retryAfterSeconds
-                } else {
-                    min(initialRetryDelaySeconds * 2.0.pow((retryCount - 1).toDouble()).toInt(), maxRetryDelaySeconds)
-                }
-            pausedUntil = config.dateProvider.addSecondsToCurrentDate(delay)
+            val maxDelay = maxRetryDelaySeconds.toDouble()
+            val computed = min(initialRetryDelaySeconds * 2.0.pow((retryCount - 1).toDouble()), maxDelay)
+            val unit = jitterUnit()
+            val factor = if (unit >= 0.0 && unit < 1.0) 1 - retryJitter + 2 * retryJitter * unit else 1.0
+            val jitteredMillis = (min(computed * factor, maxDelay) * 1000).roundToLong()
+            val retryAfterFloorMillis = (retryAfterSeconds ?: 0).coerceIn(0, maxRetryDelaySeconds) * 1000L
+            val delayMillis = max(jitteredMillis, retryAfterFloorMillis)
+            // Whole seconds through the date provider, the rest in milliseconds, so the short early
+            // waits keep their jitter instead of rounding to the same second on every device.
+            val wholeSeconds = config.dateProvider.addSecondsToCurrentDate((delayMillis / 1000).toInt())
+            pausedUntil = Date(wholeSeconds.time + delayMillis % 1000)
         }
     }
 
@@ -422,6 +667,7 @@ public class PostHogQueue<Record>(
             deque.clear()
             deque.addAll(files)
             deque.addAll(existingFiles)
+            files.forEach { countBytes(it, it.length()) }
         }
         config.logger.log("Loaded ${files.size} cached ${spec.recordsLabel} from disk.")
     }
@@ -442,7 +688,16 @@ public class PostHogQueue<Record>(
         files.sortBy { file -> file.lastModified() }
 
         val maxQueueSize = spec.maxQueueSize(config).coerceAtLeast(1)
-        val overflow = (files.size - maxQueueSize).coerceAtLeast(0)
+        var overflow = (files.size - maxQueueSize).coerceAtLeast(0)
+        val maxQueueBytes = spec.maxQueueBytes
+        if (maxQueueBytes != null) {
+            // Oldest first, keeping at least the newest file, as when a record is added.
+            var bytes = files.drop(overflow).sumOf { it.length() }
+            while (bytes > maxQueueBytes && overflow < files.size - 1) {
+                bytes -= files[overflow].length()
+                overflow++
+            }
+        }
         if (overflow > 0) {
             files.take(overflow).forEach { it.deleteSafely(config) }
             config.logger.log("Dropped $overflow oldest cached ${spec.recordsLabel} to enforce queue capacity.")
@@ -455,6 +710,8 @@ public class PostHogQueue<Record>(
         synchronized(dequeLock) {
             deque.clear()
             deque.addAll(files)
+            resetBytes()
+            files.forEach { countBytes(it, it.length()) }
         }
         cachedRecordsLoaded = true
     }
@@ -509,6 +766,14 @@ public class PostHogQueue<Record>(
     internal val currentRetryCountForTesting: Int
         @PostHogVisibleForTesting
         get() = retryCount
+
+    internal val queuedBytesForTesting: Long
+        @PostHogVisibleForTesting
+        get() = synchronized(dequeLock) { queuedBytes }
+
+    internal val pendingTasksForTesting: Int
+        @PostHogVisibleForTesting
+        get() = synchronized(pendingLock) { pendingTasks }
 }
 
 internal class BatchLimits(
@@ -540,13 +805,8 @@ internal fun deleteFilesIfAPIError(
     batchLimits: BatchLimits,
     actualBatchSize: Int,
     logger: PostHogLogger,
-    isRetriableStatusCode: (Int) -> Boolean = ::isEventsRetriableStatusCode,
+    isRetriableStatusCode: (Int) -> Boolean = ::isCaptureV1RetriableStatusCode,
 ): Boolean {
-    if (e.statusCode < 400) {
-        logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
-
-        return false
-    }
     // workaround due to png images exceed our max. limit in kafka
     if (e.statusCode == 413 && actualBatchSize > 1 && batchLimits.cap > 1) {
         // try to reduce multi-event batches and flushAt until the cap is 1.
@@ -557,7 +817,7 @@ internal fun deleteFilesIfAPIError(
 
         return false
     }
-    // Transient server errors and rate limiting, retry
+    // Transient server errors, and whatever else the endpoint's policy retries
     if (isRetriableStatusCode(e.statusCode)) {
         logger.log("Flushing failed with ${e.statusCode}, let's try again soon.")
 

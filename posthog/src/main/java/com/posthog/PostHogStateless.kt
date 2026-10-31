@@ -14,6 +14,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ExecutorService
@@ -61,6 +62,14 @@ public open class PostHogStateless protected constructor(
                 if (config.projectToken.isEmpty()) {
                     config.logger.log(
                         "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
+                    )
+                    return
+                }
+
+                if (config.projectToken.startsWith("phx_")) {
+                    config.logger.log(
+                        "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
+                            "use your project token (phc_...).",
                     )
                     return
                 }
@@ -297,14 +306,39 @@ public open class PostHogStateless protected constructor(
         distinctId: String,
         properties: MutableMap<String, Any>,
         timestamp: Date? = null,
+        options: MutableMap<String, Any?>? = null,
+        uuid: UUID? = null,
+    ): PostHogEvent? = runBeforeSend(newEvent(event, distinctId, properties, timestamp, options, uuid), uuid)
+
+    /**
+     * Creates the event, without running `beforeSend`. A null [timestamp] means now, and a null
+     * [uuid] gets a new UUID v7.
+     */
+    internal fun newEvent(
+        event: String,
+        distinctId: String,
+        properties: MutableMap<String, Any>,
+        timestamp: Date? = null,
+        options: MutableMap<String, Any?>? = null,
+        uuid: UUID? = null,
+    ): PostHogEvent =
+        PostHogEvent(
+            event,
+            distinctId,
+            properties = properties,
+            timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
+            uuid = uuid ?: TimeBasedEpochGenerator.generate(),
+            options = options,
+        )
+
+    /**
+     * Runs the `beforeSend` chain on [postHogEvent]. Returns null when a hook drops the event or
+     * throws. When [uuid] is given, the result keeps it.
+     */
+    internal fun runBeforeSend(
+        postHogEvent: PostHogEvent,
+        uuid: UUID?,
     ): PostHogEvent? {
-        val postHogEvent =
-            PostHogEvent(
-                event,
-                distinctId,
-                properties = properties,
-                timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
-            )
         var eventChecked: PostHogEvent = postHogEvent
 
         val beforeSendList = config?.beforeSendList ?: emptyList()
@@ -313,7 +347,7 @@ public open class PostHogStateless protected constructor(
             try {
                 val result = beforeSend.run(eventChecked)
                 if (result == null) {
-                    config?.logger?.log("Event $event was rejected in beforeSend function")
+                    config?.logger?.log("Event ${postHogEvent.event} was rejected in beforeSend function")
                     return null
                 }
                 eventChecked = result
@@ -321,6 +355,12 @@ public open class PostHogStateless protected constructor(
                 config?.logger?.log("Error in beforeSend function: $e")
                 return null
             }
+        }
+
+        // A given uuid is this capture's identity: beforeSend can return an event kept from an
+        // earlier call, and a batch must never repeat a uuid.
+        if (uuid != null && eventChecked.uuid != uuid) {
+            eventChecked = eventChecked.copy(uuid = uuid)
         }
 
         return eventChecked
@@ -787,6 +827,10 @@ public open class PostHogStateless protected constructor(
                 "locally_evaluated",
                 "\$groups",
                 "\$process_person_profile",
+                // Legacy option properties, e.g. registered as super properties, so they still become options.
+                "\$cookieless_mode",
+                "\$ignore_sent_at",
+                "\$product_tour_id",
                 "\$session_id",
                 "\$window_id",
                 "\$lib",

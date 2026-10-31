@@ -2754,10 +2754,11 @@ internal class PostHogReplayIntegrationTest {
                     userPropertiesSetOnce: Map<String, Any>?,
                     groups: Map<String, String>?,
                     timestamp: Date?,
+                    options: Map<String, Any?>?,
                 ) {
                     PostHogSessionManager.setSessionId(UUID.randomUUID())
                     fx.sut.onSessionIdChanged()
-                    core.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+                    core.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp, options)
                 }
             }
         fx.sut.install(client)

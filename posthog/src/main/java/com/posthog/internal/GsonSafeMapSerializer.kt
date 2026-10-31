@@ -59,9 +59,10 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
                 try {
                     config.serializer.gson.toJsonTree(targetValue)
                 } catch (e: Throwable) {
+                    // the value's type only: properties can hold prompts and other user content
                     config.logger.log(
-                        "Property '$key' with value '$targetValue' cannot be serialized to JSON: $e. " +
-                            "This property will be ignored.",
+                        "Property '$key' of type ${targetValue.javaClass.name} cannot be serialized to JSON " +
+                            "(${e.javaClass.simpleName}). This property will be ignored.",
                     )
                     null
                 }

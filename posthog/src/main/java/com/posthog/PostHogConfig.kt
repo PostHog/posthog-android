@@ -134,7 +134,7 @@ public open class PostHogConfig(
      *
      * Defaults to 3
      */
-    public var maxRetries: Int = 3,
+    public var pushNotificationSubscriptionMaxRetries: Int = 3,
     /**
      * Maximum number of retries for feature flag requests after transient network errors.
      * Defaults to 1. Set to 0 to disable feature flag request retries.
@@ -398,7 +398,10 @@ public open class PostHogConfig(
     /**
      * Custom headers to send with every request to the PostHog API.
      *
-     * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
+     * Useful for reverse-proxy setups that require authentication. Capture requests
+     * (`/i/v1/analytics/events`) send the project token in an `Authorization: Bearer` header, which
+     * replaces an `Authorization` header set here, so authenticate your proxy with a different
+     * header, such as `X-Proxy-Token`. Other requests still send your `Authorization` header.
      *
      * Read once when the SDK is set up; changes after setup are ignored.
      *
@@ -419,6 +422,52 @@ public open class PostHogConfig(
      * Default: [PostHogCompression.GZIP].
      */
     public var compression: PostHogCompression = PostHogCompression.GZIP
+
+    /**
+     * How the SDK compresses [PostHog.captureAi] request bodies, separately from [compression].
+     *
+     * When [httpClient] is set, it applies only if that client installs a [com.posthog.internal.GzipRequestInterceptor],
+     * which the SDK then reads this setting through for AI requests.
+     *
+     * Default: [PostHogCompression.GZIP].
+     */
+    public var captureAiCompression: PostHogCompression = PostHogCompression.GZIP
+
+    /**
+     * Maximum number of [PostHog.captureAi] events kept in their on-disk queue before the oldest
+     * are dropped.
+     *
+     * AI events can be megabytes, so this is lower than [maxQueueSize]. The queue also keeps at most
+     * 50 MiB of AI events, whatever this is set to. The same limits apply to AI events still waiting
+     * to be written to disk, for example during a slow upload: over them, the oldest waiting events
+     * are dropped. A value of 0 or less uses the default.
+     *
+     * Default: 100.
+     */
+    public var captureAiMaxQueueSize: Int = DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
+
+    /**
+     * How long, in seconds, a [PostHog.captureAi] request can go without network activity before it
+     * times out: its HTTP client's read and write timeouts.
+     *
+     * AI requests can carry several MB, so this is longer than for other requests, which keep
+     * OkHttp's 10 second defaults. A value of 0 or less uses the default.
+     *
+     * Default: 60.
+     */
+    public var captureAiTimeout: Int = DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
+
+    /**
+     * Maximum size, in bytes, of a serialized [PostHog.captureAi] event, measured before [encryption].
+     * The SDK drops a larger event; then `captureAi` returns null and logs only the event name and size.
+     *
+     * Use it to lower the limit. PostHog drops AI events whose properties are over 8 MiB, so the default
+     * allows 8 MiB plus 64 KiB for the rest of the event. A larger value uses the default and logs a
+     * warning. A value of 0 or less uses the default.
+     *
+     * Default: 8454144 (8 MiB + 64 KiB).
+     */
+    public var captureAiMaxEventBytes: Int = DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
 
     /**
      * Your PostHog project token, trimmed of leading and trailing whitespace.
@@ -473,6 +522,9 @@ public open class PostHogConfig(
 
     @PostHogInternal
     public var logsStoragePrefix: String? = null
+
+    @PostHogInternal
+    public var aiStoragePrefix: String? = null
 
     @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
@@ -594,6 +646,15 @@ public open class PostHogConfig(
 
         /** Shared default for [flushIntervalSeconds] and [PostHogLogsConfig.flushIntervalSeconds]. */
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
+
+        /** Default for [captureAiMaxQueueSize]. */
+        public const val DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE: Int = 100
+
+        /** Default for [captureAiTimeout]. */
+        public const val DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS: Int = 60
+
+        /** Default for [captureAiMaxEventBytes]: PostHog's 8 MiB limit on an AI event's properties, plus 64 KiB for the rest of the event. */
+        public const val DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES: Int = 8 * 1024 * 1024 + 64 * 1024
 
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
