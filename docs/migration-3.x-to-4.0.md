@@ -435,19 +435,3 @@ A personal API key (`phx_...`) in `projectToken` now disables the client at setu
 Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`.
 
 Its next release depends on core 7.0, so update it if your project also uses core 7.0 or `posthog-android` 4.0. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
-<<<<<<< HEAD
-=======
-
-## Checklist
-
-- [ ] Update `posthog-android` to 4.0 and declare it in your build if you only depend on `posthog-android-surveys-compose`, and update `posthog-server` if you use it.
-- [ ] Replace `apiKey` with `projectToken`.
-- [ ] Replace `propertiesSanitizer` with `addBeforeSend`.
-- [ ] Replace `evaluationEnvironments` with `evaluationContexts`.
-- [ ] Replace `getFeatureFlagPayload()` with `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`.
-- [ ] Replace `debouncerDelayMs` with `throttleDelayMs`.
-- [ ] Remove `remoteConfig`. If it was `false`, expect `/config` requests and its settings to apply.
-- [ ] Replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback`, and check existing callbacks for `errorsLoading`.
-- [ ] Update any class that implements `PostHogInterface`.
-- [ ] Make sure every feature flag payload you read is valid JSON.
->>>>>>> origin/chore/v4-remove-deprecated
