@@ -20,7 +20,7 @@ public final class com/posthog/PersonProfiles : java/lang/Enum {
 	public static fun values ()[Lcom/posthog/PersonProfiles;
 }
 
-public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posthog/PostHogInterface {
+public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posthog/PostHogInterface, com/posthog/internal/PostHogPushSubscriptionReceiver {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
 	public fun addExceptionStep (Ljava/lang/String;Ljava/util/Map;)V
 	public fun alias (Ljava/lang/String;)V
@@ -53,6 +53,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
+	public fun registerPushNotificationTokenIfNeeded (Ljava/lang/String;Ljava/lang/String;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogFeatureFlagsCallback;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -1000,6 +1001,10 @@ public final class com/posthog/internal/PostHogPreferences$DefaultImpls {
 	public static synthetic fun clear$default (Lcom/posthog/internal/PostHogPreferences;Ljava/util/List;ILjava/lang/Object;)V
 	public static synthetic fun getValue$default (Lcom/posthog/internal/PostHogPreferences;Ljava/lang/String;Ljava/lang/Object;ILjava/lang/Object;)Ljava/lang/Object;
 	public static fun isAvailable (Lcom/posthog/internal/PostHogPreferences;)Z
+}
+
+public abstract interface class com/posthog/internal/PostHogPushSubscriptionReceiver {
+	public abstract fun registerPushNotificationTokenIfNeeded (Ljava/lang/String;Ljava/lang/String;)V
 }
 
 public final class com/posthog/internal/PostHogQueue : com/posthog/internal/PostHogQueueInterface {
