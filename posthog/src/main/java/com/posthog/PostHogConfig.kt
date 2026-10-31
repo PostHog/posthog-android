@@ -24,6 +24,7 @@ import com.posthog.surveys.PostHogSurveysConfig
 import okhttp3.OkHttpClient
 import java.net.Proxy
 import java.util.UUID
+import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
 /**
@@ -109,15 +110,6 @@ public open class PostHogConfig(
      */
     public var setDefaultPersonProperties: Boolean = true,
     /**
-     * Preload PostHog remote config automatically
-     * Defaults to true
-     */
-    @Deprecated(
-        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
-        level = DeprecationLevel.WARNING,
-    )
-    public var remoteConfig: Boolean = true,
-    /**
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
@@ -163,22 +155,17 @@ public open class PostHogConfig(
      */
     public var encryption: PostHogEncryption? = null,
     /**
-     * Hook that is called when feature flags are loaded
+     * Hook that is called when feature flags are loaded, or loading them failed
+     * It receives a [PostHogFeatureFlagsLoaded]; see [PostHogFeatureFlagsCallback] for the thread it runs on
      * Defaults to no callback
      */
-    public var onFeatureFlags: PostHogOnFeatureFlags? = null,
+    public var onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     /**
      * Enable Recording of Session Replays for Android
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      */
     public var sessionReplay: Boolean = false,
-    /**
-     * Hook that allows to sanitize the event properties
-     * The hook is called before the event is cached or sent over the wire
-     */
-    @Deprecated("Use beforeSendList instead")
-    public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
      * generating anonymous id (which as of now is just random UUID v7)
@@ -447,20 +434,6 @@ public open class PostHogConfig(
     public val projectToken: String = projectToken.trim()
 
     /**
-     * Deprecated alias for [projectToken]; returns the same trimmed value.
-     *
-     * ```kotlin
-     * val token = config.projectToken // instead of config.apiKey
-     * ```
-     */
-    @Deprecated(
-        "Deprecated in favor of projectToken. This will be removed in the next major version.",
-        ReplaceWith("projectToken"),
-    )
-    public val apiKey: String
-        get() = projectToken
-
-    /**
      * The PostHog Host
      * Defaults to https://us.i.posthog.com
      * EU Host: https://eu.i.posthog.com
@@ -517,6 +490,13 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var sampleRateProvider: (() -> Double?)? = null
+
+    /**
+     * Runs the [PostHog.onFeatureFlags] listeners. Set by platform-specific modules (e.g., Android)
+     * to deliver them on the main thread. When null, they run on the SDK's remote config thread.
+     */
+    @PostHogInternal
+    public var featureFlagsListenerExecutor: Executor? = null
 
     /**
      * Reference to the PostHogRemoteConfig instance, set during setup.
@@ -602,20 +582,6 @@ public open class PostHogConfig(
         }
     }
 
-    /**
-     * Optional list of evaluation environment tags for feature flag evaluation
-     * @deprecated Use evaluationContexts instead. This property will be removed in a future version.
-     */
-    @Deprecated(
-        message = "Use evaluationContexts instead. This property will be removed in a future version.",
-        replaceWith = ReplaceWith("evaluationContexts"),
-    )
-    public var evaluationEnvironments: List<String>?
-        get() = evaluationContexts
-        set(value) {
-            evaluationContexts = value
-        }
-
     public companion object {
         /** Shared default for [flushAt] and [PostHogLogsConfig.flushAt]. */
         public const val DEFAULT_FLUSH_AT: Int = 20
@@ -639,104 +605,6 @@ public open class PostHogConfig(
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
-
-        /**
-         * Deprecated form of the [PostHogConfig] constructor that takes `apiKey` instead of
-         * `projectToken`, kept so Kotlin calls such as `PostHogConfig(apiKey = "phc_...")` still
-         * compile. Every other parameter and default matches the constructor.
-         *
-         * ```kotlin
-         * val config = PostHogConfig(projectToken = "phc_your_project_token") // instead of apiKey =
-         * ```
-         */
-        @Deprecated(
-            "Deprecated in favor of projectToken. This will be removed in the next major version.",
-        )
-        @Suppress("DEPRECATION")
-        @JvmSynthetic
-        public operator fun invoke(
-            apiKey: String,
-            host: String = DEFAULT_HOST,
-            debug: Boolean = false,
-            optOut: Boolean = false,
-            sendFeatureFlagEvent: Boolean = true,
-            featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
-            preloadFeatureFlags: Boolean = true,
-            evaluationContexts: List<String>? = null,
-            setDefaultPersonProperties: Boolean = true,
-            remoteConfig: Boolean = true,
-            flushAt: Int = DEFAULT_FLUSH_AT,
-            maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
-            maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
-            maxRetries: Int = 3,
-            featureFlagRequestMaxRetries: Int = 1,
-            flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
-            encryption: PostHogEncryption? = null,
-            onFeatureFlags: PostHogOnFeatureFlags? = null,
-            sessionReplay: Boolean = false,
-            propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-            getAnonymousId: ((UUID) -> UUID) = { it },
-            reuseAnonymousId: Boolean = false,
-            personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
-            surveys: Boolean = false,
-            proxy: Proxy? = null,
-            surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
-            logs: PostHogLogsConfig = PostHogLogsConfig(),
-            remoteConfigProvider: (
-                PostHogConfig,
-                PostHogApi,
-                ExecutorService,
-                PostHogDefaultPersonPropertiesProvider?,
-                PostHogOnRemoteConfigLoaded?,
-                PostHogFeatureFlagCalledProvider?,
-            ) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER,
-            queueProvider: (
-                PostHogConfig,
-                PostHogApi,
-                PostHogApiEndpoint,
-                String?,
-                ExecutorService,
-            ) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER,
-            errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(),
-            releaseIdentifier: String? = null,
-            bootstrap: PostHogBootstrapConfig? = null,
-            pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,
-        ): PostHogConfig =
-            PostHogConfig(
-                projectToken = apiKey,
-                host = host,
-                debug = debug,
-                optOut = optOut,
-                sendFeatureFlagEvent = sendFeatureFlagEvent,
-                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
-                preloadFeatureFlags = preloadFeatureFlags,
-                evaluationContexts = evaluationContexts,
-                setDefaultPersonProperties = setDefaultPersonProperties,
-                remoteConfig = remoteConfig,
-                flushAt = flushAt,
-                maxQueueSize = maxQueueSize,
-                maxBatchSize = maxBatchSize,
-                maxRetries = maxRetries,
-                featureFlagRequestMaxRetries = featureFlagRequestMaxRetries,
-                flushIntervalSeconds = flushIntervalSeconds,
-                encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
-                sessionReplay = sessionReplay,
-                propertiesSanitizer = propertiesSanitizer,
-                getAnonymousId = getAnonymousId,
-                reuseAnonymousId = reuseAnonymousId,
-                personProfiles = personProfiles,
-                surveys = surveys,
-                proxy = proxy,
-                surveysConfig = surveysConfig,
-                logs = logs,
-                remoteConfigProvider = remoteConfigProvider,
-                queueProvider = queueProvider,
-                errorTrackingConfig = errorTrackingConfig,
-                releaseIdentifier = releaseIdentifier,
-                bootstrap = bootstrap,
-                pushIdentityProvider = pushIdentityProvider,
-            )
     }
 }
 

@@ -175,13 +175,12 @@ internal class PostHogConfigTest {
         assertEquals(true, coreConfig.debug)
         assertEquals(false, coreConfig.sendFeatureFlagEvent)
         assertEquals(false, coreConfig.preloadFeatureFlags)
-        assertEquals(false, coreConfig.remoteConfig)
         assertEquals(15, coreConfig.flushAt)
         assertEquals(750, coreConfig.maxQueueSize)
         assertEquals(30, coreConfig.maxBatchSize)
         assertEquals(45, coreConfig.flushIntervalSeconds)
         assertEquals(mockEncryption, coreConfig.encryption)
-        assertEquals(mockOnFeatureFlags, coreConfig.onFeatureFlags)
+        assertNull(coreConfig.onFeatureFlags)
     }
 
     @Test

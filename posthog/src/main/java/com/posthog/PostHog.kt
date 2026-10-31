@@ -35,6 +35,7 @@ import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
+import com.posthog.internal.executeSafely
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -47,6 +48,7 @@ import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -188,19 +190,90 @@ public class PostHog private constructor(
     private var isIdentifiedLoaded: Boolean = false
     private var isPersonProcessingLoaded: Boolean = false
 
+    // Public onFeatureFlags listeners. Owned by this instance rather than the remote config, so
+    // listeners registered before setup() (or across close()/setup()) keep receiving updates.
+    private val featureFlagsListeners = CopyOnWriteArrayList<FeatureFlagsListener>()
+
+    // The last update delivered to listeners, replayed to late subscribers. Null until flags load,
+    // and cleared by reset() and close() so an update they superseded is dropped.
+    @Volatile
+    private var lastFeatureFlagsLoaded: PostHogFeatureFlagsLoaded? = null
+
+    // Bumped by reset() and close(), so a flags load that started before them can't reach listeners.
+    @Volatile
+    private var featureFlagsGeneration = 0
+    private val featureFlagsGenerationLock = Any()
+
+    private class FeatureFlagsListener(val callback: PostHogFeatureFlagsCallback) {
+        @Volatile
+        var active = true
+
+        // Only touched on the listener thread (see runFeatureFlagsListener), where every delivery and replay runs.
+        var lastDelivered: PostHogFeatureFlagsLoaded? = null
+    }
+
+    // Runs on the remote config thread after every flags load, whether it succeeded or failed.
+    // Create it when the load starts, so listeners skip a load that reset() or close() superseded.
+    private fun internalOnFeatureFlagsLoaded(generation: Int = featureFlagsGeneration): (errorsLoading: Boolean) -> Unit {
+        return { errorsLoading ->
+            startSessionReplayOnFeatureFlagsLoaded()
+            notifyFeatureFlagsListeners(errorsLoading, generation)
+        }
+    }
+
+    private fun clearFeatureFlagsLoaded() {
+        synchronized(featureFlagsGenerationLock) {
+            featureFlagsGeneration++
+            lastFeatureFlagsLoaded = null
+        }
+    }
+
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
-    private val internalOnFeatureFlagsLoaded =
-        PostHogOnFeatureFlags {
-            // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
-            synchronized(setupLock) {
-                sessionReplayHandler?.let {
-                    if (isSessionReplayConfigEnabled()) {
-                        // start will bail if session replay is already active anyway
-                        startSessionReplayInternal(resumeCurrent = true)
-                    }
+    private fun startSessionReplayOnFeatureFlagsLoaded() {
+        // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
+        synchronized(setupLock) {
+            sessionReplayHandler?.let {
+                if (isSessionReplayConfigEnabled()) {
+                    // start will bail if session replay is already active anyway
+                    startSessionReplayInternal(resumeCurrent = true)
                 }
             }
         }
+    }
+
+    private fun notifyFeatureFlagsListeners(
+        errorsLoading: Boolean,
+        generation: Int,
+    ) {
+        val loaded = PostHogFeatureFlagsLoaded(remoteConfig?.getFeatureFlags() ?: emptyMap(), errorsLoading)
+        synchronized(featureFlagsGenerationLock) {
+            if (featureFlagsGeneration != generation) return
+            lastFeatureFlagsLoaded = loaded
+        }
+        featureFlagsListeners.forEach { listener -> runFeatureFlagsListener { deliverFeatureFlags(listener, loaded) } }
+    }
+
+    // Called on the remote config thread. Hands the block to the platform's listener executor (the main
+    // thread on Android), or runs it right away when there's none.
+    private fun runFeatureFlagsListener(block: () -> Unit) {
+        val executor = config?.featureFlagsListenerExecutor ?: return block()
+        executor.executeSafely(block)
+    }
+
+    private fun deliverFeatureFlags(
+        listener: FeatureFlagsListener,
+        loaded: PostHogFeatureFlagsLoaded,
+    ) {
+        // An earlier callback may have unsubscribed this one, or reset()/close() or a newer load
+        // may have superseded this update. A replay queued next to the same update is skipped too.
+        if (!listener.active || lastFeatureFlagsLoaded !== loaded || listener.lastDelivered === loaded) return
+        listener.lastDelivered = loaded
+        try {
+            listener.callback.loaded(loaded)
+        } catch (e: Throwable) {
+            config?.logger?.log("Executing the feature flags listener failed: $e")
+        }
+    }
 
     public override fun <T : PostHogConfig> setup(config: T) {
         synchronized(setupLock) {
@@ -358,6 +431,16 @@ public class PostHog private constructor(
 
                 super.enabled = true
 
+                // Captured before any user callout below (integrations, session hooks, the bootstrap
+                // config callback), any of which may close() and so supersede setup's flags load.
+                val generation = featureFlagsGeneration
+
+                // Queued before integrations install, so a reload one starts there can't hold the
+                // bootstrapped flags behind its network response. Listeners run on the remote config thread.
+                if (reloadFeatureFlags && remoteConfig?.hasBootstrapFlags() == true) {
+                    remoteConfigExecutor.executeSafely { notifyFeatureFlagsListeners(errorsLoading = false, generation) }
+                }
+
                 // Initialize device_id if not already set. getDeviceId() handles lazy init
                 // by seeding from the anonymous ID, providing a stable identifier for
                 // device-level feature flag bucketing that survives identify() and reset().
@@ -394,23 +477,21 @@ public class PostHog private constructor(
                 }
 
                 // only because of testing in isolation, this flag is always enabled
-                @Suppress("DEPRECATION")
                 if (reloadFeatureFlags) {
                     // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
                     // callbacks now so listeners aren't blocked on the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
-                        notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
-                        notifyFeatureFlagsCallback(config.onFeatureFlags)
+                        try {
+                            startSessionReplayOnFeatureFlagsLoaded()
+                        } catch (e: Throwable) {
+                            config.logger.log("Executing the internal feature flags callback failed: $e")
+                        }
+                        notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
-                    when {
-                        config.remoteConfig ->
-                            loadRemoteConfigRequest(
-                                internalOnFeatureFlagsLoaded,
-                                config.onFeatureFlags,
-                            )
-
-                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
-                    }
+                    loadRemoteConfigRequest(
+                        internalOnFeatureFlagsLoaded(generation),
+                        config.onFeatureFlags,
+                    )
                 }
 
                 // Reconcile a differing identified bootstrap after the setup reload is dispatched.
@@ -635,6 +716,7 @@ public class PostHog private constructor(
                 pushSubscriptionManager = null
 
                 featureFlagsCalled.clear()
+                clearFeatureFlagsLoaded()
                 lastScreenName = null
                 synchronized(replayDebugPropertiesLock) {
                     lastReplayDebugPropertiesAt = null
@@ -1929,29 +2011,50 @@ public class PostHog private constructor(
     }
 
     // Invokes the feature flags callback, swallowing exceptions like runOnFeatureFlagsCallbacks.
-    private fun notifyFeatureFlagsCallback(onFeatureFlags: PostHogOnFeatureFlags?) {
+    private fun notifyFeatureFlagsCallback(
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
+        featureFlags: Map<String, Any>?,
+        errorsLoading: Boolean,
+    ) {
         try {
-            onFeatureFlags?.loaded()
+            onFeatureFlags?.loaded(PostHogFeatureFlagsLoaded(featureFlags ?: emptyMap(), errorsLoading))
         } catch (e: Throwable) {
             config?.logger?.log("Executing the feature flags callback failed: $e")
         }
     }
 
-    public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+    public override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
         if (!isEnabled()) {
             // Still invoke the callback so awaiting callers aren't left hanging.
-            notifyFeatureFlagsCallback(onFeatureFlags)
+            notifyFeatureFlagsCallback(onFeatureFlags, featureFlags = null, errorsLoading = true)
             return
         }
         loadFeatureFlagsRequest(
-            internalOnFeatureFlags = internalOnFeatureFlagsLoaded,
+            internalOnFeatureFlags = internalOnFeatureFlagsLoaded(),
             onFeatureFlags = onFeatureFlags,
         )
     }
 
+    public override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription {
+        val listener = FeatureFlagsListener(callback)
+        featureFlagsListeners.add(listener)
+
+        remoteConfigExecutor.executeSafely {
+            runFeatureFlagsListener {
+                // Read at delivery time so a delivery already queued can't be followed by an older value.
+                lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) }
+            }
+        }
+
+        return PostHogFeatureFlagsSubscription {
+            listener.active = false
+            featureFlagsListeners.remove(listener)
+        }
+    }
+
     private fun loadFeatureFlagsRequest(
-        internalOnFeatureFlags: PostHogOnFeatureFlags,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: (errorsLoading: Boolean) -> Unit,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
@@ -1966,7 +2069,7 @@ public class PostHog private constructor(
         if (distinctId.isBlank()) {
             config?.logger?.log("Feature flags not loaded, distinctId is invalid: $distinctId")
             // Still invoke the callback so awaiting callers aren't left hanging.
-            notifyFeatureFlagsCallback(onFeatureFlags)
+            notifyFeatureFlagsCallback(onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = true)
             return
         }
 
@@ -1980,8 +2083,8 @@ public class PostHog private constructor(
     }
 
     private fun loadRemoteConfigRequest(
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
     ) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
@@ -2106,18 +2209,6 @@ public class PostHog private constructor(
                 featureFlagResult
             }
         return results
-    }
-
-    @Deprecated(
-        message = "Use getFeatureFlagResult() instead; note it sends the \$feature_flag_called event by default.",
-        replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
-    )
-    public override fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any?,
-    ): Any? {
-        if (!isEnabled()) return defaultValue
-        return getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload ?: defaultValue
     }
 
     public override fun getFeatureFlagResult(
@@ -2249,6 +2340,7 @@ public class PostHog private constructor(
             getPreferences().clear(except = except.toList())
         }
         remoteConfig?.clear()
+        clearFeatureFlagsLoaded()
         featureFlagsCalled.clear()
         lastScreenName = null
         synchronized(cachedPersonPropertiesLock) {
@@ -2753,9 +2845,12 @@ public class PostHog private constructor(
             )
         }
 
-        public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+        public override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
             shared.reloadFeatureFlags(onFeatureFlags)
         }
+
+        public override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription =
+            shared.onFeatureFlags(callback)
 
         public override fun isFeatureEnabled(
             key: String,
@@ -2777,16 +2872,6 @@ public class PostHog private constructor(
         override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
             return shared.getAllFeatureFlags()
         }
-
-        @Deprecated(
-            message = "Use getFeatureFlagResult() instead; note it sends the \$feature_flag_called event by default.",
-            replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
-        )
-        @Suppress("DEPRECATION")
-        public override fun getFeatureFlagPayload(
-            key: String,
-            defaultValue: Any?,
-        ): Any? = shared.getFeatureFlagPayload(key, defaultValue = defaultValue)
 
         public override fun getFeatureFlagResult(
             key: String,

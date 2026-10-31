@@ -91,14 +91,13 @@ internal class PostHogTest {
         optOut: Boolean = false,
         persistOptOut: Boolean = true,
         preloadFeatureFlags: Boolean = true,
-        reloadFeatureFlags: Boolean = true,
+        // setup always requests /config; skip it when the test doesn't preload flags
+        reloadFeatureFlags: Boolean = preloadFeatureFlags,
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         surveys: Boolean = false,
         cachePreferences: PostHogPreferences? = PostHogMemoryPreferences(),
-        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
@@ -122,9 +121,7 @@ internal class PostHogTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
-                this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
-                this.remoteConfig = remoteConfig
                 this.surveys = surveys
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
@@ -372,22 +369,6 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `preload feature flags if enabled`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val sut = getSut(url.toString())
-
-        remoteConfigExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
-        assertEquals("/flags/?v=2", request.path)
-
-        sut.close()
-    }
-
-    @Test
     fun `reload feature flags and call the callback`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -412,7 +393,7 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true, preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = true)
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -440,7 +421,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true)
+        val sut = getSut(url.toString())
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -472,7 +453,7 @@ internal class PostHogTest {
         )
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), remoteConfig = true)
+        val sut = getSut(url.toString())
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
@@ -1010,8 +991,7 @@ internal class PostHogTest {
     }
 
     @Test
-    @Suppress("DEPRECATION")
-    fun `getFeatureFlagPayload returns the value after reloaded`() {
+    fun `getFeatureFlagResult returns the payload after reloaded`() {
         val http =
             mockHttp(
                 response =
@@ -1026,7 +1006,7 @@ internal class PostHogTest {
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
-        assertTrue(sut.getFeatureFlagPayload("4535-funnel-bar-viz") as Boolean)
+        assertTrue(sut.getFeatureFlagResult("4535-funnel-bar-viz", sendFeatureFlagEvent = false)?.payload as Boolean)
 
         sut.close()
     }
@@ -1559,10 +1539,11 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
         config.sessionReplay = true
+        @Suppress("UNCHECKED_CAST")
         val onFlagsLoaded =
-            PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
+            PostHog::class.java.getDeclaredMethod("internalOnFeatureFlagsLoaded", Int::class.javaPrimitiveType)
                 .apply { isAccessible = true }
-                .get(sut) as PostHogOnFeatureFlags
+                .invoke(sut, 0) as (Boolean) -> Unit
 
         // optOut runs while the flags-loaded callback is between reading the handler and starting it
         var optOut: Thread? = null
@@ -1576,7 +1557,7 @@ internal class PostHogTest {
                 }
             }
         }
-        onFlagsLoaded.loaded()
+        onFlagsLoaded(false)
         optOut!!.join()
 
         assertTrue(sut.isOptOut())
@@ -1709,7 +1690,7 @@ internal class PostHogTest {
                 override fun onSurveysLoaded(surveys: List<Survey>) {}
             }
 
-        val sut = getSut(url.toString(), remoteConfig = true, integration = surveysIntegration)
+        val sut = getSut(url.toString(), integration = surveysIntegration)
         http.takeRequest()
         http.takeRequest()
 
@@ -1734,7 +1715,7 @@ internal class PostHogTest {
         val url = http.url("/")
         val integration = FakePostHogIntegration()
 
-        val sut = getSut(url.toString(), remoteConfig = true, integration = integration)
+        val sut = getSut(url.toString(), integration = integration)
         remoteConfigExecutor.shutdownAndAwaitTermination()
         assertEquals(1, integration.remoteConfigCount)
 
@@ -3109,48 +3090,6 @@ internal class PostHogTest {
         assertFalse(config.debug)
     }
 
-    @Suppress("DEPRECATION")
-    @Test
-    fun `sanitize properties`() {
-        val http = mockHttp()
-        val url = http.url("/")
-
-        val propertiesSanitizer =
-            PostHogPropertiesSanitizer { properties ->
-                properties.apply {
-                    remove("prop")
-                }
-            }
-
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, propertiesSanitizer = propertiesSanitizer)
-
-        sut.capture(
-            EVENT,
-            DISTINCT_ID,
-            // contains "prop"
-            props,
-            userProperties = userProps,
-            userPropertiesSetOnce = userPropsOnce,
-            groups = groups,
-        )
-
-        queueExecutor.shutdownAndAwaitTermination()
-
-        val request = http.takeRequest()
-
-        assertEquals(1, http.requestCount)
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        assertEquals(PROJECT_TOKEN, batch.projectToken)
-        assertNotNull(batch.sentAt)
-
-        val theEvent = batch.batch.first()
-        assertNull(theEvent.properties!!["prop"])
-
-        sut.close()
-    }
-
     @Test
     fun `reset preserves the push dedupe id`() {
         val http = mockHttp()
@@ -3293,17 +3232,25 @@ internal class PostHogTest {
 
     @Test
     fun `reset reloads flags as anon user`() {
-        val http = mockHttp()
+        // setup's /config reports no flags, so the only /flags request comes from reset
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(File("src/test/resources/json/basic-remote-config-no-flags.json").readText()),
+            )
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
         val url = http.url("/")
 
-        val sut = getSut(url.toString(), preloadFeatureFlags = false)
+        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = true)
 
         sut.reset()
 
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
+        assertEquals("/array/${PROJECT_TOKEN}/config", http.takeRequest().path)
         val request = http.takeRequest()
-        assertEquals(1, http.requestCount)
+        assertEquals(2, http.requestCount)
         assertEquals("/flags/?v=2", request.path)
 
         sut.close()
@@ -4551,8 +4498,9 @@ internal class PostHogTest {
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi),
+                        .setBody(File("src/test/resources/json/basic-remote-config.json").readText()),
             )
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
         val url = http.url("/")
 
         val sut = getSut(url.toString(), preloadFeatureFlags = true, context = TestPostHogContext())

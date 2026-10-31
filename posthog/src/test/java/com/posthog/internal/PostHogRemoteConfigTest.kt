@@ -3,7 +3,8 @@ package com.posthog.internal
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogBootstrapConfig
 import com.posthog.PostHogConfig
-import com.posthog.PostHogOnFeatureFlags
+import com.posthog.PostHogFeatureFlagsCallback
+import com.posthog.PostHogFeatureFlagsLoaded
 import com.posthog.TestHttpServers
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
@@ -20,6 +21,7 @@ import org.junit.Rule
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.AfterTest
@@ -197,7 +199,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { firstLatch.countDown() },
         )
         assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
         assertTrue(sut.isSessionReplayFlagActive())
@@ -211,7 +213,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { secondLatch.countDown() },
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
 
@@ -235,7 +237,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -332,7 +334,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { firstLatch.countDown() },
         )
         assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
         assertTrue(sut.hasRemoteConfigFetched())
@@ -346,7 +348,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { secondLatch.countDown() },
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second (offline) flags load should complete")
 
@@ -397,7 +399,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -430,7 +432,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -463,7 +465,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -488,7 +490,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -602,7 +604,7 @@ internal class PostHogRemoteConfigTest {
             "user-in-rollout",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { firstLatch.countDown() },
         )
         assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
         assertTrue(sut.isSessionReplayFlagActive())
@@ -614,7 +616,7 @@ internal class PostHogRemoteConfigTest {
             "user-outside-rollout",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { secondLatch.countDown() },
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
 
@@ -747,7 +749,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -824,7 +826,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "quota limited remote config load should complete")
 
@@ -917,15 +919,14 @@ internal class PostHogRemoteConfigTest {
         var called = false
         var calledInternal = false
 
-        val onFeatureFlags: PostHogOnFeatureFlags =
-            PostHogOnFeatureFlags {
+        val onFeatureFlags: PostHogFeatureFlagsCallback =
+            PostHogFeatureFlagsCallback {
                 called = true
             }
 
-        val internalOnFeatureFlags: PostHogOnFeatureFlags =
-            PostHogOnFeatureFlags {
-                calledInternal = true
-            }
+        val internalOnFeatureFlags = { _: Boolean ->
+            calledInternal = true
+        }
 
         val sut = getSut(host = url.toString())
 
@@ -1101,12 +1102,12 @@ internal class PostHogRemoteConfigTest {
         val secondCallbackLatch = CountDownLatch(1)
 
         val firstCallback =
-            PostHogOnFeatureFlags {
+            PostHogFeatureFlagsCallback {
                 firstCallbackLatch.countDown()
             }
 
         val secondCallback =
-            PostHogOnFeatureFlags {
+            PostHogFeatureFlagsCallback {
                 secondCallbackLatch.countDown()
             }
 
@@ -1180,7 +1181,7 @@ internal class PostHogRemoteConfigTest {
             anonymousId = "anon_id_for_hash_key",
             groups = mapOf("company" to "posthog"),
             onFeatureFlags =
-                PostHogOnFeatureFlags {
+                PostHogFeatureFlagsCallback {
                     secondCallbackLatch.countDown()
                 },
         )
@@ -1730,7 +1731,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -1764,7 +1765,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2554,7 +2555,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2583,7 +2584,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2620,7 +2621,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2674,7 +2675,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2705,7 +2706,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "remote config load should complete")
 
@@ -2757,7 +2758,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2786,7 +2787,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2829,7 +2830,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
         )
         assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
 
@@ -2867,7 +2868,7 @@ internal class PostHogRemoteConfigTest {
             "user-1",
             anonymousId = "anon-1",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { firstLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { firstLatch.countDown() },
         )
         assertTrue(firstLatch.await(5, TimeUnit.SECONDS), "first flags load should complete")
         // a complete /flags response replaces the served flags, so the bootstrapped-only key is dropped
@@ -2884,7 +2885,7 @@ internal class PostHogRemoteConfigTest {
             "user-2",
             anonymousId = "anon-2",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { secondLatch.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { secondLatch.countDown() },
         )
         assertTrue(secondLatch.await(5, TimeUnit.SECONDS), "second flags load should complete")
 
@@ -2950,7 +2951,7 @@ internal class PostHogRemoteConfigTest {
                 anonymousId = "anonId",
                 emptyMap(),
                 onFeatureFlags =
-                    PostHogOnFeatureFlags {
+                    PostHogFeatureFlagsCallback {
                         counts[index].incrementAndGet()
                         fired.countDown()
                     },
@@ -2985,7 +2986,7 @@ internal class PostHogRemoteConfigTest {
         val invocations = AtomicInteger(0)
         val completed = CountDownLatch(2)
         val shared =
-            PostHogOnFeatureFlags {
+            PostHogFeatureFlagsCallback {
                 invocations.incrementAndGet()
                 completed.countDown()
             }
@@ -3042,7 +3043,7 @@ internal class PostHogRemoteConfigTest {
             anonymousId = "anonId",
             emptyMap(),
             onFeatureFlags =
-                PostHogOnFeatureFlags {
+                PostHogFeatureFlagsCallback {
                     first.countDown()
                     throw IllegalStateException("callback blew up")
                 },
@@ -3055,7 +3056,7 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            onFeatureFlags = PostHogOnFeatureFlags { second.countDown() },
+            onFeatureFlags = PostHogFeatureFlagsCallback { second.countDown() },
         )
 
         assertTrue(second.await(5, TimeUnit.SECONDS), "a later reload never ran - the in-flight claim was stranded")
@@ -3063,6 +3064,176 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
         http.shutdown()
+    }
+
+    @Test
+    fun `the feature flags callback receives the enabled flags and their values`() {
+        val flags = File("src/test/resources/json/flags-v1/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(host = http.url("/").toString())
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(mapOf("4535-funnel-bar-viz" to true, "splashScreenName" to "SplashV2"), loaded.variants)
+        assertEquals(setOf("4535-funnel-bar-viz", "splashScreenName"), loaded.flags.toSet())
+        assertFalse(loaded.errorsLoading)
+    }
+
+    @Test
+    fun `a failed flags load reports errorsLoading with the last known flags`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setResponseCode(500))
+        val sut = getSut(host = http.url("/").toString())
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        assertFalse(results.poll(5, TimeUnit.SECONDS)!!.errorsLoading)
+        val failed = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(failed.errorsLoading)
+        assertEquals(mapOf<String, Any>("4535-funnel-bar-viz" to true), failed.variants)
+    }
+
+    @Test
+    fun `a failed remote config load reports errorsLoading`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(500))
+        val sut = getSut(host = http.url("/").toString())
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(loaded.errorsLoading)
+        assertTrue(loaded.flags.isEmpty())
+    }
+
+    @Test
+    fun `a failed first load reports the persisted flags`() {
+        preferences.setValue(FEATURE_FLAGS, mapOf("cached-flag" to true))
+        val http = mockHttp(response = MockResponse().setResponseCode(500))
+        val sut = getSut(host = http.url("/").toString())
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(loaded.errorsLoading)
+        assertEquals(mapOf<String, Any>("cached-flag" to true), loaded.variants)
+    }
+
+    // Unreadable until [available] is set, like Android preferences before first unlock (Direct Boot).
+    private class LockedPreferences(private val delegate: PostHogPreferences) : PostHogPreferences {
+        @Volatile
+        var available = false
+        val lockedReads = AtomicInteger()
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? {
+            if (!available) {
+                lockedReads.incrementAndGet()
+                return defaultValue
+            }
+            return delegate.getValue(key, defaultValue)
+        }
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) = delegate.setValue(key, value)
+
+        override fun clear(except: List<String>) = delegate.clear(except)
+
+        override fun remove(key: String) = delegate.remove(key)
+
+        override fun getAll(): Map<String, Any> = if (available) delegate.getAll() else emptyMap()
+
+        override fun isAvailable(): Boolean = available
+    }
+
+    @Test
+    fun `a failed load while storage is unreadable still serves the persisted flags once readable`() {
+        val locked = LockedPreferences(PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("cached-flag" to true)) })
+        val offline =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = false
+            }
+        val sut = getSut(host = "http://localhost", networkStatus = offline, cachePreferences = locked)
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+        val loaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(loaded.errorsLoading)
+        assertTrue(loaded.variants.isEmpty())
+
+        locked.available = true
+
+        assertEquals(true, sut.getFeatureFlag("cached-flag"))
+    }
+
+    @Test
+    fun `a reset during cache hydration doesn't restore the previous identity's flags`() {
+        val stored = PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("old-user-flag" to true)) }
+        lateinit var sut: PostHogRemoteConfig
+        var resetMidRead = false
+        // stands in for reset() landing between hydration's cache read and its commit
+        val resetting =
+            object : PostHogPreferences by stored {
+                override fun getValue(
+                    key: String,
+                    defaultValue: Any?,
+                ): Any? {
+                    val value = stored.getValue(key, defaultValue)
+                    if (key == FEATURE_FLAGS && resetMidRead) {
+                        resetMidRead = false
+                        stored.clear()
+                        sut.clear()
+                    }
+                    return value
+                }
+            }
+        sut = getSut(host = "http://localhost", cachePreferences = resetting)
+        resetMidRead = true
+
+        assertNull(sut.getFeatureFlag("old-user-flag"))
+    }
+
+    @Test
+    fun `flag reads while storage is unreadable don't read the flag cache`() {
+        val locked = LockedPreferences(PostHogMemoryPreferences().apply { setValue(FEATURE_FLAGS, mapOf("cached-flag" to true)) })
+        val sut = getSut(host = "http://localhost", cachePreferences = locked)
+        val readsAtStartup = locked.lockedReads.get()
+
+        repeat(3) { assertNull(sut.getFeatureFlag("cached-flag")) }
+
+        assertEquals(readsAtStartup, locked.lockedReads.get())
+    }
+
+    @Test
+    fun `a failed reload after a successful load reports the loaded flags, not bootstrap`() {
+        // fixture returns featureFlags {"4535-funnel-bar-viz": true}
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        http.enqueue(MockResponse().setBody(""))
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("4535-funnel-bar-viz" to "variant-old")),
+            )
+
+        val results = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+        assertEquals(true, results.poll(5, TimeUnit.SECONDS)!!.variants["4535-funnel-bar-viz"])
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap(), onFeatureFlags = { results.add(it) })
+
+        val reloaded = results.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(reloaded.errorsLoading)
+        assertEquals(true, reloaded.variants["4535-funnel-bar-viz"])
+        assertEquals(true, sut.getFeatureFlag("4535-funnel-bar-viz"))
     }
 
     @Test
@@ -3075,13 +3246,114 @@ internal class PostHogRemoteConfigTest {
             "my_identify",
             anonymousId = "anonId",
             emptyMap(),
-            internalOnFeatureFlags = PostHogOnFeatureFlags { throw IllegalStateException("internal blew up") },
-            onFeatureFlags = PostHogOnFeatureFlags { userCallbackRan.countDown() },
+            internalOnFeatureFlags = { throw IllegalStateException("internal blew up") },
+            onFeatureFlags = PostHogFeatureFlagsCallback { userCallbackRan.countDown() },
         )
 
         assertTrue(userCallbackRan.await(5, TimeUnit.SECONDS), "the caller's callback was suppressed by the internal one")
 
         sut.clear()
         http.shutdown()
+    }
+
+    private fun loadFlagsWithPayloads(
+        payloads: Map<String, String>,
+        logs: MutableList<String> = mutableListOf(),
+    ): PostHogRemoteConfig {
+        val serializedPayloads = payloads.entries.joinToString(",") { (key, value) -> "\"$key\":${jsonString(value)}" }
+        val flags = payloads.keys.joinToString(",") { "\"$it\":\"blue\"" }
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """{"errorsWhileComputingFlags":false,"featureFlags":{$flags,"beta-ui":true},""" +
+                            """"featureFlagPayloads":{$serializedPayloads,"beta-ui":"{\"color\":\"green\"}"}}""",
+                    ),
+            )
+        val sut = getSut(host = http.url("/").toString())
+        config!!.logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    logs.add(message)
+                }
+
+                override fun isEnabled(): Boolean = true
+            }
+
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+        http.shutdown()
+        return sut
+    }
+
+    private fun jsonString(value: String): String = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).gson.toJson(value)
+
+    @Test
+    fun `malformed, empty or whitespace payloads are null and keep the flag and sibling payloads`() {
+        for (input in listOf("{broken", "", "   ", "hello", "{\"a\":1} trailing")) {
+            preferences.clear()
+            val logs = mutableListOf<String>()
+            val sut = loadFlagsWithPayloads(mapOf("checkout" to input), logs)
+
+            assertNull(sut.getFeatureFlagPayload("checkout"), "payload for input '$input'")
+            val result = sut.getFeatureFlagResult("checkout")
+            assertNotNull(result)
+            assertTrue(result.enabled)
+            assertEquals("blue", result.variant)
+            assertNull(result.payload)
+            assertEquals(mapOf<String, Any>("checkout" to "blue", "beta-ui" to true), sut.getFeatureFlags())
+            assertEquals(mapOf("color" to "green"), sut.getFeatureFlagPayload("beta-ui"))
+            assertTrue(logs.any { "checkout" in it && "malformed" in it }, "logs for input '$input': $logs")
+
+            // the cache holds no raw string either, so a later launch reads no payload
+            assertNull(getSut(host = "http://127.0.0.1:1/").getFeatureFlagPayload("checkout"))
+        }
+    }
+
+    @Test
+    fun `valid JSON payloads keep their decoded value`() {
+        val sut =
+            loadFlagsWithPayloads(
+                mapOf(
+                    "string" to "\"hello\"",
+                    "empty" to "\"\"",
+                    "false" to "false",
+                    "zero" to "0",
+                    "null" to "null",
+                    "object" to "{\"color\":\"green\"}",
+                    "array" to "[1,false]",
+                ),
+            )
+
+        assertEquals("hello", sut.getFeatureFlagPayload("string"))
+        assertEquals("", sut.getFeatureFlagPayload("empty"))
+        assertEquals(false, sut.getFeatureFlagPayload("false"))
+        assertEquals(0, sut.getFeatureFlagPayload("zero"))
+        assertNull(sut.getFeatureFlagPayload("null"))
+        assertEquals(mapOf("color" to "green"), sut.getFeatureFlagPayload("object"))
+        assertEquals(listOf(1, false), sut.getFeatureFlagPayload("array"))
+    }
+
+    @Test
+    fun `bootstrapped string payloads are not JSON-decoded again`() {
+        for (payload in listOf("hello", "123", "true")) {
+            val sut =
+                getSut(
+                    host = "http://127.0.0.1:1/",
+                    bootstrap =
+                        PostHogBootstrapConfig(
+                            featureFlags = mapOf("beta-ui" to "variant-a"),
+                            featureFlagPayloads = mapOf("beta-ui" to payload),
+                        ),
+                )
+
+            assertEquals(payload, sut.getFeatureFlagResult("beta-ui")?.payload)
+        }
     }
 }

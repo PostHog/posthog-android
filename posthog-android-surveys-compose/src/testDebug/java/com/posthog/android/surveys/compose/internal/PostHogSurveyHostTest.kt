@@ -279,7 +279,6 @@ internal class PostHogSurveyHostTest {
         PostHogConfig("host-reset", "http://127.0.0.1:1").apply {
             cachePreferences = PostHogMemoryPreferences()
             preloadFeatureFlags = false
-            remoteConfig = false
             reuseAnonymousId = true
         }
 }

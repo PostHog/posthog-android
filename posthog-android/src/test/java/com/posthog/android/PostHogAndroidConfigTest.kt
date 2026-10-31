@@ -22,18 +22,6 @@ internal class PostHogAndroidConfigTest {
         assertEquals(PROJECT_TOKEN, config.projectToken)
     }
 
-    @Suppress("DEPRECATION")
-    @Test
-    fun `deprecated apiKey factory and getter alias projectToken`() {
-        val config = PostHogAndroidConfig(apiKey = " $PROJECT_TOKEN ", captureDeepLinks = false, capturePushNotificationOpened = false)
-
-        assertEquals(PROJECT_TOKEN, config.projectToken)
-        assertEquals(PROJECT_TOKEN, config.apiKey)
-        assertFalse(config.captureDeepLinks)
-        assertFalse(config.capturePushNotificationOpened)
-        assertTrue(config.captureScreenViews)
-    }
-
     @Test
     fun `captureApplicationLifecycleEvents should be enabled by default`() {
         assertTrue(config.captureApplicationLifecycleEvents)

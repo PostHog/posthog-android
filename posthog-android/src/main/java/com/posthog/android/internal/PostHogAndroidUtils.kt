@@ -196,8 +196,7 @@ public fun getApplicationInfo(context: Context): ApplicationInfo =
             .getApplicationInfo(context.packageName, GET_META_DATA)
     }
 
-@PostHogInternal
-public fun Bitmap.isValid(): Boolean {
+internal fun Bitmap.isValid(): Boolean {
     return !isRecycled &&
         width > 0 &&
         height > 0
@@ -225,9 +224,8 @@ private fun Bitmap.base64BufferSize(): Int =
         .coerceAtLeast(4L * 1024)
         .toInt()
 
-@PostHogInternal
 @Suppress("DEPRECATION")
-public fun Bitmap.webpBase64(quality: Int = 30): String? {
+internal fun Bitmap.webpBase64(quality: Int = 30): String? {
     if (!isValid()) {
         return null
     }

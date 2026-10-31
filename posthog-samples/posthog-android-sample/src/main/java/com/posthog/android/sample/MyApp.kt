@@ -2,7 +2,7 @@ package com.posthog.android.sample
 
 import android.app.Application
 import android.os.StrictMode
-import com.posthog.PostHogOnFeatureFlags
+import com.posthog.PostHogFeatureFlagsCallback
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 
@@ -39,7 +39,7 @@ class MyApp : Application() {
                 sessionReplay = true
                 preloadFeatureFlags = true
                 sendFeatureFlagEvent = false
-                onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
+                onFeatureFlags = PostHogFeatureFlagsCallback { print("feature flags loaded") }
                 addBeforeSend { event ->
                     if (event.event == "test_event") {
                         null

@@ -124,9 +124,52 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Reloads the feature flags
-     * @param onFeatureFlags the callback to get notified once feature flags is ready to use
+     *
+     * The callback is invoked when the reload finishes, on a background thread. If the request fails,
+     * [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last known flags. If
+     * the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
+     *
+     * ```kotlin
+     * PostHog.reloadFeatureFlags { loaded ->
+     *     if (loaded.errorsLoading) {
+     *         // The reload failed. loaded.variants holds the last known flags.
+     *     }
+     * }
+     * ```
+     *
+     * @param onFeatureFlags the callback to get notified once the reload finishes, defaults to none
      */
-    public fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
+    public fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
+
+    /**
+     * Registers a callback that's invoked whenever feature flags are loaded or updated.
+     *
+     * On Android, the callback runs on the main thread, after the getters already return the new
+     * values. On the JVM, it runs on the SDK's background remote config thread. It's
+     * invoked after the SDK loads flags at startup (including from bootstrap values), after
+     * [reloadFeatureFlags], and after calls that reload flags such as [identify], [group] or [reset].
+     * If a load fails, [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last
+     * known flags. If flags have already loaded when you register, it's also invoked with the current
+     * values shortly afterwards.
+     *
+     * You can register before `setup()`, and the callback stays registered across `close()` and
+     * `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
+     *
+     * ```kotlin
+     * val subscription = PostHog.onFeatureFlags { loaded ->
+     *     if (loaded.variants["new-checkout"] == "test") {
+     *         // Show the test variant
+     *     }
+     * }
+     *
+     * // Later, stop listening
+     * subscription.unsubscribe()
+     * ```
+     *
+     * @param callback receives the enabled flags, their values, and whether loading failed
+     * @return a subscription; call [PostHogFeatureFlagsSubscription.unsubscribe] to stop receiving updates
+     */
+    public fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
 
     /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
@@ -162,22 +205,6 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @return The currently loaded feature flag results, or null when flags are unavailable.
      */
     public fun getAllFeatureFlags(): List<FeatureFlagResult>?
-
-    /**
-     * Returns the feature flag payload
-     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-     * @param key the Key
-     * @param defaultValue the default value if not found
-     * @return The feature flag payload, or [defaultValue] if not found.
-     */
-    @Deprecated(
-        message = "Use getFeatureFlagResult() instead; note it sends the \$feature_flag_called event by default.",
-        replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
-    )
-    public fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any? = null,
-    ): Any?
 
     /**
      * Returns the feature flag result containing both value and payload.

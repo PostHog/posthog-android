@@ -9,11 +9,17 @@ import okhttp3.mockwebserver.MockResponse
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogFeatureFlagsTest {
@@ -48,16 +54,16 @@ internal class PostHogFeatureFlagsTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         optOut: Boolean = false,
         preloadFeatureFlags: Boolean = true,
-        reloadFeatureFlags: Boolean = true,
+        // setup always requests /config; skip it when the test doesn't preload flags
+        reloadFeatureFlags: Boolean = preloadFeatureFlags,
         sendFeatureFlagEvent: Boolean = true,
         reuseAnonymousId: Boolean = false,
         integration: PostHogIntegration? = null,
-        remoteConfig: Boolean = false,
         cachePreferences: PostHogMemoryPreferences = PostHogMemoryPreferences(),
-        propertiesSanitizer: PostHogPropertiesSanitizer? = null,
         beforeSend: PostHogBeforeSend? = null,
         evaluationContexts: List<String>? = null,
         context: PostHogContext? = null,
+        featureFlagsListenerExecutor: Executor? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -73,14 +79,13 @@ internal class PostHogFeatureFlagsTest {
                 this.sendFeatureFlagEvent = sendFeatureFlagEvent
                 this.reuseAnonymousId = reuseAnonymousId
                 this.cachePreferences = cachePreferences
-                this.propertiesSanitizer = propertiesSanitizer
                 this.evaluationContexts = evaluationContexts
-                this.remoteConfig = remoteConfig
                 if (beforeSend != null) {
                     addBeforeSend(beforeSend)
                 }
                 this.errorTrackingConfig.inAppIncludes.add("com.posthog")
                 this.context = context
+                this.featureFlagsListenerExecutor = featureFlagsListenerExecutor
             }
         return PostHog.withInternal(
             config,
@@ -395,11 +400,190 @@ internal class PostHogFeatureFlagsTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false)
         sut.close()
 
-        var called = false
-        sut.reloadFeatureFlags { called = true }
+        var result: PostHogFeatureFlagsLoaded? = null
+        sut.reloadFeatureFlags { result = it }
 
         // isEnabled() is false after close(), so reloadFeatureFlags early-returns. The
         // callback must still fire (synchronously) rather than leave awaiting callers hanging.
-        assertTrue(called)
+        assertTrue(result!!.errorsLoading)
+        assertTrue(result!!.flags.isEmpty())
+        assertTrue(result!!.variants.isEmpty())
+    }
+
+    @Test
+    fun `onFeatureFlags listener receives each load until unsubscribed`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        http.enqueue(MockResponse().setResponseCode(500))
+        http.enqueue(MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val enabled = mapOf("4535-funnel-bar-viz" to true, "splashScreenName" to "SplashV2")
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val subscription = sut.onFeatureFlags { updates.add(it) }
+
+        sut.reloadFeatureFlags()
+        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(enabled, loaded.variants)
+        assertFalse(loaded.errorsLoading)
+
+        sut.reloadFeatureFlags()
+        val failed = updates.poll(5, TimeUnit.SECONDS)!!
+        assertEquals(enabled, failed.variants)
+        assertTrue(failed.errorsLoading)
+
+        subscription.unsubscribe()
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        assertNull(updates.poll())
+    }
+
+    @Test
+    fun `onFeatureFlags reports and replays the persisted flags when the first load fails`() {
+        val persisted = mapOf<String, Any>("beta-ui" to true)
+        val cache = PostHogMemoryPreferences().apply { setValue("featureFlags", persisted) }
+        val http = mockHttp(response = MockResponse().setResponseCode(500))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, cachePreferences = cache)
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        sut.reloadFeatureFlags()
+
+        val failed = updates.poll(5, TimeUnit.SECONDS)!!
+        assertTrue(failed.errorsLoading)
+        assertEquals(persisted, failed.variants)
+
+        val lateUpdates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { lateUpdates.add(it) }
+        assertEquals(persisted, lateUpdates.poll(5, TimeUnit.SECONDS)!!.variants)
+    }
+
+    @Test
+    fun `onFeatureFlags replays loaded flags to a late listener`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+
+        assertEquals(setOf("4535-funnel-bar-viz", "splashScreenName"), updates.poll(5, TimeUnit.SECONDS)!!.flags.toSet())
+    }
+
+    @Test
+    fun `onFeatureFlags listener survives close and setup`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+
+        sut.close()
+        sut.setup(config)
+        sut.reloadFeatureFlags()
+
+        assertFalse(updates.poll(5, TimeUnit.SECONDS)!!.errorsLoading)
+    }
+
+    @Test
+    fun `onFeatureFlags drops a load that finishes after close`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags).setHeadersDelay(500, TimeUnit.MILLISECONDS))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        http.takeRequest(5, TimeUnit.SECONDS)
+
+        sut.close()
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        sut.setup(config)
+        sut.onFeatureFlags { updates.add(it) }
+
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertNull(updates.poll())
+    }
+
+    @Test
+    fun `closing from an integration's install drops setup's load for listeners`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(total = 2, response = MockResponse().setBody(flags))
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val integration =
+            object : PostHogIntegration {
+                override fun install(postHog: PostHogInterface) {
+                    postHog.onFeatureFlags { updates.add(it) }
+                    postHog.close()
+                }
+            }
+        val sut = getSut(http.url("/").toString(), integration = integration)
+
+        // setup's load runs on the remote config thread; close() cleared the snapshot it would refill
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        sut.onFeatureFlags { updates.add(it) }
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertNull(updates.poll())
+    }
+
+    @Test
+    fun `onFeatureFlags listener is not invoked by a reload while disabled`() {
+        val sut = getSut(mockHttp().url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        sut.close()
+
+        var result: PostHogFeatureFlagsLoaded? = null
+        sut.reloadFeatureFlags { result = it }
+
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        assertTrue(result!!.errorsLoading)
+        assertNull(updates.poll())
+    }
+
+    @Test
+    fun `onFeatureFlags listeners run on the listener executor`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val listenerExecutor = Executors.newSingleThreadExecutor { Thread(it, "listener-thread") }
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, featureFlagsListenerExecutor = listenerExecutor)
+
+        val threads = LinkedBlockingQueue<String>()
+        sut.onFeatureFlags { threads.add(Thread.currentThread().name) }
+        sut.reloadFeatureFlags()
+        assertEquals("listener-thread", threads.poll(5, TimeUnit.SECONDS))
+
+        sut.onFeatureFlags { threads.add(Thread.currentThread().name) }
+        assertEquals("listener-thread", threads.poll(5, TimeUnit.SECONDS))
+        listenerExecutor.shutdownAndAwaitTermination()
+    }
+
+    @Test
+    fun `onFeatureFlags delivers a queued update once and drops it after unsubscribe`() {
+        val flags = File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val queued = LinkedBlockingQueue<Runnable>()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, featureFlagsListenerExecutor = Executor { queued.add(it) })
+
+        val kept = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        val dropped = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { kept.add(it) }
+        val subscription = sut.onFeatureFlags { dropped.add(it) }
+        val reloaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { reloaded.countDown() }
+        assertTrue(reloaded.await(5, TimeUnit.SECONDS))
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+
+        // Each listener has its replay and the load's delivery queued, both carrying the loaded flags.
+        subscription.unsubscribe()
+        generateSequence { queued.poll() }.forEach { it.run() }
+
+        assertEquals(1, kept.size)
+        assertFalse(kept.single().errorsLoading)
+        assertTrue(dropped.isEmpty())
     }
 }

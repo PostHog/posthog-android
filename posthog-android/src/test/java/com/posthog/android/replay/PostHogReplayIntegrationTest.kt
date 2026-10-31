@@ -2308,53 +2308,6 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `gate does not arm when neither remoteConfig nor preloadFeatureFlags will fetch`() {
-        // With both remoteConfig and preloadFeatureFlags disabled, setup dispatches no /config or
-        // /flags request, so no onRemoteConfig callback arrives to disarm the gate. Arming it would
-        // buffer every snapshot for the whole session; instead it must stay disarmed and persist.
-        val remoteConfigMock =
-            mock<PostHogRemoteConfig> {
-                on { isSessionReplayFlagActive() } doReturn true
-                on { hasRemoteConfigFetched() } doReturn false
-                on { makeSamplingDecision(any()) } doReturn true
-                on { getEventTriggers() } doReturn emptySet<String>()
-                on { getRecordingMinimumDurationMs() } doReturn null
-            }
-        val config =
-            PostHogAndroidConfig(PROJECT_TOKEN).apply {
-                remoteConfigHolder = remoteConfigMock
-                sessionReplay = true
-                @Suppress("DEPRECATION")
-                remoteConfig = false
-                preloadFeatureFlags = false
-            }
-        val storagePrefix = tmpDir.newFolder().absolutePath
-        val executor = createReplayExecutor()
-        val innerQueue =
-            PostHogQueue(
-                config,
-                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
-                executor,
-            )
-        val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
-        config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
-        val postHog = mock<PostHogInterface>()
-        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
-        sut.install(postHog)
-        sut.start(resumeCurrent = true)
-        try {
-            // No remote-config callback will ever fire, so buffering must not be armed.
-            replayQueue.add(createTestEvent("snapshot_1"))
-            awaitCondition { replayQueue.depth == 1 }
-            assertEquals(0, replayQueue.bufferDepth)
-            assertEquals(1, replayQueue.depth)
-        } finally {
-            sut.uninstall()
-        }
-    }
-
-    @Test
     fun `mid-session resume forces a fresh keyframe by clearing per-view snapshot state`() {
         // A mid-session flag-on resume must emit a fresh full snapshot: while stopped, per-view state
         // is frozen and can reference a full snapshot that was never delivered (e.g. a dropped
@@ -2779,9 +2732,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
     fun `committed snapshot keeps its session when rotation precedes core enrichment`() {
-        val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        @Suppress("DEPRECATION")
-        config.remoteConfig = false
+        val config = PostHogAndroidConfig(PROJECT_TOKEN, "http://127.0.0.1:1")
         config.preloadFeatureFlags = false
         var captured: PostHogEvent? = null
         config.addBeforeSend { event ->

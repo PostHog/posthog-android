@@ -81,8 +81,10 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
     ) {
     }
 
-    override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
+    override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {
     }
+
+    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription = PostHogFeatureFlagsSubscription {}
 
     override fun isFeatureEnabled(
         key: String,
@@ -96,14 +98,6 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
         key: String,
         defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
-    ): Any? {
-        return null
-    }
-
-    @Deprecated("Use getFeatureFlagResult() instead, which returns the flag value and payload from a single evaluation")
-    override fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any?,
     ): Any? {
         return null
     }
