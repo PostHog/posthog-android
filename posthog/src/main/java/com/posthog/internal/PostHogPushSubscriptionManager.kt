@@ -125,9 +125,10 @@ internal class PostHogPushSubscriptionManager(
     fun register(
         deviceToken: String,
         appId: String,
+        refresh: Boolean = false,
     ) {
         executor.executeSafely {
-            performRegister(deviceToken, appId)
+            performRegister(deviceToken, appId, refresh)
         }
     }
 
@@ -135,9 +136,11 @@ internal class PostHogPushSubscriptionManager(
     private fun performRegister(
         deviceToken: String,
         appId: String,
+        refresh: Boolean = false,
+        identityChanged: Boolean = false,
     ) {
         val existing = currentRecord()
-        if (existing != null &&
+        if (!refresh && existing != null &&
             existing.deviceToken == deviceToken &&
             existing.appId == appId &&
             existing.deliveredForDistinctId != null &&
@@ -150,9 +153,13 @@ internal class PostHogPushSubscriptionManager(
         // redelivering onNewToken), not a genuinely new registration. Keep the existing retry state
         // so it can't be used to defeat backoff by re-registering on a loop.
         val isIdenticalUndelivered =
-            existing != null &&
+            !identityChanged && existing != null &&
                 existing.deviceToken == deviceToken &&
-                existing.appId == appId
+                existing.appId == appId &&
+                existing.deliveredForDistinctId == null
+        if (isIdenticalUndelivered && isWithinBackoffWindow()) {
+            return
+        }
         val record = PendingRecord(deviceToken, appId)
         pendingRecord = record
         hydratedFromDisk = true
@@ -390,7 +397,7 @@ internal class PostHogPushSubscriptionManager(
                 writePendingUnregister(pending)
                 performUnregister(pending)
             }
-            performRegister(record.deviceToken, record.appId)
+            performRegister(record.deviceToken, record.appId, identityChanged = oldDistinctId != distinctIdProvider())
         }
     }
 
@@ -522,6 +529,8 @@ internal class PostHogPushSubscriptionManager(
             // a stale identity's token must not be sent under a new user's distinctId.
             if (distinctIdProvider() != distinctId) {
                 config.logger.log("Push subscription send skipped: distinctId changed during identity token mint.")
+                // Retain the registration intent while discarding the old identity's credential.
+                pendingResend = true
                 return
             }
             // Eligibility can also flip during the async mint: remote config may resolve and drop this
@@ -569,7 +578,13 @@ internal class PostHogPushSubscriptionManager(
         pendingResend = false
         val resetState = pendingResendResetsState
         pendingResendResetsState = false
-        if (closed || config.optOut || currentRecord() == null) {
+        val record = currentRecord() ?: return
+        if (closed || config.optOut) {
+            return
+        }
+        // Identical callers share a successful send, but an identity change during the mint
+        // still needs a replay when the stale send was skipped.
+        if (record.deliveredForDistinctId == distinctIdProvider()) {
             return
         }
         // Only reset retry state if a folded-in caller actually wanted a reset (a new token, or an
