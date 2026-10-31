@@ -116,6 +116,7 @@
 
 ##---------------Begin: proguard configuration for Firebase Messaging (compileOnly)  ----------
 -dontwarn com.google.firebase.messaging.**
+-dontwarn com.google.firebase.installations.**
 -dontwarn com.google.firebase.FirebaseApp
 -dontwarn com.google.firebase.FirebaseOptions
 -dontwarn com.google.android.gms.tasks.**

@@ -446,9 +446,12 @@ public interface PostHogInterface : PostHogCoreInterface {
      * The token is persisted and (re)sent with the current [distinctId]; transient failures
      * are retried automatically. On Android, when Firebase Messaging is on the classpath and
      * `capturePushNotificationSubscriptions` is enabled, this is called for you at startup.
-     * Call it manually to forward tokens refreshed via Firebase's `onNewToken`.
+     * Call it manually to forward Firebase's `onNewToken` or `onRegistered` callback. An explicit
+     * call refreshes a previously delivered subscription, even when the identifier is unchanged,
+     * so a subscription removed after a delivery failure can be restored. Pending registrations
+     * retain their retry backoff.
      *
-     * @param deviceToken the device push token (e.g. the FCM registration token)
+     * @param deviceToken the device push token or Firebase Installation ID (FID)
      * @param appId the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
      */
     public fun registerPushNotificationToken(
