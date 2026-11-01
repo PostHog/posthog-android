@@ -225,6 +225,9 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
     override fun unregister(key: String) {
     }
 
+    override fun setAppLanguage(language: String?) {
+    }
+
     override fun distinctId(): String {
         return ""
     }

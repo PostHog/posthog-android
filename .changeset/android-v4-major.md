@@ -36,6 +36,9 @@
 - **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps passed in the same call's properties, instead of being replaced by them, and merge a `$groups` map in properties into the groups set with `group()`
 - add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB + 64 KiB per serialized event
 - cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own
+- **Breaking:** change `$locale` to the first language in the device settings, as a full language tag such as `zh-Hant-TW`, instead of the app-influenced `Locale.getDefault()`
+- **Breaking:** add the abstract `setAppLanguage()` method to `PostHogInterface`; classes that implement it must add the method
+- Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
 - Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
 - add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event before it's sent
 - See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/docs/migration-3.x-to-4.0.md) for upgrade steps

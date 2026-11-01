@@ -872,6 +872,9 @@ public class PostHog private constructor(
             }
         }
 
+    @Volatile
+    private var appLanguage: String? = null
+
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -895,6 +898,10 @@ public class PostHog private constructor(
 
             config?.context?.getDynamicContext()?.let {
                 props.putAll(it)
+            }
+
+            appLanguage?.let {
+                props["\$app_language"] = it
             }
 
             if (config?.sendFeatureFlagEvent == true) {
@@ -2933,6 +2940,10 @@ public class PostHog private constructor(
         getPreferences().remove(key)
     }
 
+    public override fun setAppLanguage(language: String?) {
+        appLanguage = language?.trim()?.replace('_', '-')?.ifEmpty { null }
+    }
+
     override fun distinctId(): String {
         if (!isEnabled()) {
             return ""
@@ -3550,6 +3561,10 @@ public class PostHog private constructor(
 
         public override fun unregister(key: String) {
             shared.unregister(key)
+        }
+
+        public override fun setAppLanguage(language: String?) {
+            shared.setAppLanguage(language)
         }
 
         override fun distinctId(): String = shared.distinctId()
