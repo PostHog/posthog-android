@@ -363,13 +363,14 @@ public class PostHog private constructor(
                 // device-level feature flag bucketing that survives identify() and reset().
                 getDeviceId()
 
+                // Force the persisted OPT_OUT to hydrate before the queues and this passive push
+                // trigger start: both read config.optOut directly, and it is otherwise resolved
+                // lazily on first isOptedOut() call, which they would race ahead of.
+                isOptedOut()
+
                 queue.start()
                 logsQueue.start()
 
-                // Force the persisted OPT_OUT to hydrate before this passive push trigger: the
-                // manager reads config.optOut directly, and it is otherwise resolved lazily on
-                // first isOptedOut() call, which retryPending() here would race ahead of.
-                isOptedOut()
                 pushSubscriptionManager?.retryPending()
 
                 PostHogSessionManager.setOnSessionIdChangedListener {
@@ -401,16 +402,11 @@ public class PostHog private constructor(
                     if (remoteConfig?.hasBootstrapFlags() == true) {
                         notifyFeatureFlagsCallback(internalOnFeatureFlagsLoaded)
                         notifyFeatureFlagsCallback(config.onFeatureFlags)
+                    } else if (isOptedOut()) {
+                        // nothing is requested while opted out; optIn loads them instead
+                        notifyFeatureFlagsCallback(config.onFeatureFlags)
                     }
-                    when {
-                        config.remoteConfig ->
-                            loadRemoteConfigRequest(
-                                internalOnFeatureFlagsLoaded,
-                                config.onFeatureFlags,
-                            )
-
-                        config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
-                    }
+                    loadRemoteDataIfOptedIn(config)
                 }
 
                 // Reconcile a differing identified bootstrap after the setup reload is dispatched.
@@ -422,6 +418,25 @@ public class PostHog private constructor(
             } catch (e: Throwable) {
                 config.logger.log("Setup failed: $e.")
             }
+        }
+    }
+
+    // Loads remote config or feature flags as configured, unless opted out: the requests carry
+    // the distinct and device ids. Called from setup, and from optIn for a load setup skipped.
+    @Suppress("DEPRECATION")
+    private fun loadRemoteDataIfOptedIn(config: PostHogConfig) {
+        if (isOptedOut()) {
+            config.logger.log("Remote config and feature flags not loaded, the SDK is opted out.")
+            return
+        }
+        when {
+            config.remoteConfig ->
+                loadRemoteConfigRequest(
+                    internalOnFeatureFlagsLoaded,
+                    config.onFeatureFlags,
+                )
+
+            config.preloadFeatureFlags -> reloadFeatureFlags(config.onFeatureFlags)
         }
     }
 
@@ -1348,6 +1363,7 @@ public class PostHog private constructor(
         // thread can hold while it waits on setupLock
         val surveys = cachedSurveys()
 
+        var wasOptedOut = false
         // under setupLock so the consent write and its integration transition apply together:
         // a concurrent optOut can't land between them and leave integrations out of step
         synchronized(setupLock) {
@@ -1355,7 +1371,7 @@ public class PostHog private constructor(
             if (!isEnabled()) {
                 return
             }
-            val wasOptedOut = isOptedOut()
+            wasOptedOut = isOptedOut()
             synchronized(optOutLock) {
                 config?.optOut = false
                 if (config?.persistOptOut != false) {
@@ -1390,6 +1406,11 @@ public class PostHog private constructor(
             } catch (e: Throwable) {
                 safeLog("Integration ${receiver.javaClass.name} failed to handle opt-in: $e.")
             }
+        }
+
+        // setup and reloadFeatureFlags skip the network while opted out, so load now
+        if (wasOptedOut && reloadFeatureFlags) {
+            config?.let { loadRemoteDataIfOptedIn(it) }
         }
     }
 
@@ -1940,6 +1961,12 @@ public class PostHog private constructor(
     public override fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags?) {
         if (!isEnabled()) {
             // Still invoke the callback so awaiting callers aren't left hanging.
+            notifyFeatureFlagsCallback(onFeatureFlags)
+            return
+        }
+        // the request carries the distinct and device ids
+        if (isOptedOut()) {
+            config?.logger?.log("Feature flags not loaded, the SDK is opted out.")
             notifyFeatureFlagsCallback(onFeatureFlags)
             return
         }

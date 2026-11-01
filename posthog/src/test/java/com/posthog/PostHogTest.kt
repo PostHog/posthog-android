@@ -1305,6 +1305,74 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `does not load feature flags while opted out`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true)
+
+        sut.identify(DISTINCT_ID)
+        sut.group("company", "posthog")
+        sut.reset()
+        var callbackCalled = false
+        sut.reloadFeatureFlags { callbackCalled = true }
+
+        remoteConfigExecutor.awaitExecution()
+        queueExecutor.awaitExecution()
+
+        assertTrue(callbackCalled)
+        assertEquals(0, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not load remote config while opted out and loads it on optIn`() {
+        val http = mockHttp(total = 2)
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), optOut = true, remoteConfig = true)
+
+        remoteConfigExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.optIn()
+
+        remoteConfigExecutor.awaitExecution()
+
+        assertTrue(http.takeRequest().path!!.contains("/config"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `does not send events queued before optOut until optIn`() {
+        val http = mockHttp()
+        val url = http.url("/")
+
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false)
+
+        sut.capture(EVENT, DISTINCT_ID)
+        queueExecutor.awaitExecution()
+
+        sut.optOut()
+        sut.flush()
+        queueExecutor.awaitExecution()
+
+        assertEquals(0, http.requestCount)
+
+        sut.optIn()
+        sut.flush()
+        queueExecutor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+        assertTrue(http.takeRequest().path!!.contains("/batch"))
+
+        sut.close()
+    }
+
+    @Test
     fun `optIn notifies PostHogOptInReceiver integrations`() {
         val http = mockHttp()
         val url = http.url("/")

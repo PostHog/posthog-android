@@ -222,7 +222,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun executeBatch() {
-        if (!isConnected()) {
+        if (isOptedOut() || !isConnected()) {
             isFlushing.set(false)
             return
         }
@@ -324,7 +324,7 @@ public class PostHogQueue<Record>(
             // load any cached records from disk before checking the threshold
             ensureCachedRecordsLoaded()
 
-            if (!isConnected()) {
+            if (isOptedOut() || !isConnected()) {
                 isFlushing.set(false)
                 return@executeSafely
             }
@@ -347,6 +347,15 @@ public class PostHogQueue<Record>(
                 }
             }
         }
+    }
+
+    // Records stay on disk while opted out and are sent after an opt-in.
+    private fun isOptedOut(): Boolean {
+        if (config.optOut) {
+            config.logger.log("Cannot flush the Queue, the SDK is opted out.")
+            return true
+        }
+        return false
     }
 
     private fun isConnected(): Boolean {
