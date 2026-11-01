@@ -1456,10 +1456,19 @@ public class PostHog private constructor(
                 onQueued()
             }
         }
+        // The event is already queued, so a handler failure can't change the result or skip the other handler.
         // Notify surveys integration about the event
-        surveysHandler?.onEvent(event, mergedProperties)
+        try {
+            surveysHandler?.onEvent(event, mergedProperties)
+        } catch (e: Throwable) {
+            config?.logger?.log("Surveys onEvent failed: $e.")
+        }
         // Notify session replay handler about the event for event triggers
-        sessionReplayHandler?.onEvent(event, mergedProperties)
+        try {
+            sessionReplayHandler?.onEvent(event, mergedProperties)
+        } catch (e: Throwable) {
+            config?.logger?.log("Session replay onEvent failed: $e.")
+        }
         return if (queued) postHogEvent.uuid else null
     }
 

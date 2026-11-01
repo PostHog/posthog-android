@@ -2,6 +2,9 @@ package com.posthog
 
 import com.posthog.internal.PostHogMemoryPreferences
 import com.posthog.internal.PostHogThreadFactory
+import com.posthog.internal.replay.PostHogSessionReplayHandler
+import com.posthog.internal.surveys.PostHogSurveysHandler
+import com.posthog.surveys.Survey
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
@@ -182,6 +185,50 @@ internal class PostHogCaptureAiTest {
         aiExecutor.awaitExecution()
         assertEquals(0, http.requestCount)
         assertTrue(aiQueueFiles().isEmpty())
+    }
+
+    @Test
+    fun `captureAi keeps the uuid and notifies replay when event handlers throw`() {
+        var replayNotified = false
+        val surveys =
+            object : PostHogIntegration, PostHogSurveysHandler {
+                override fun onReset() {}
+
+                override fun onEvent(
+                    event: String,
+                    properties: Map<String, Any>?,
+                ): Unit = throw IllegalStateException("surveys")
+
+                override fun onSurveysLoaded(surveys: List<Survey>) {}
+            }
+        val replay =
+            object : PostHogIntegration, PostHogSessionReplayHandler {
+                override fun start(resumeCurrent: Boolean) {}
+
+                override fun stop() {}
+
+                override fun isActive(): Boolean = false
+
+                override fun debugProperties(): Map<String, Any> = emptyMap()
+
+                override fun onEvent(
+                    event: String,
+                    properties: Map<String, Any>?,
+                ) {
+                    replayNotified = true
+                    throw IllegalStateException("replay")
+                }
+
+                override fun onSessionIdChanged() {}
+            }
+        val sut =
+            getSut(httpServers.mockHttp()) {
+                addIntegration(surveys)
+                addIntegration(replay)
+            }
+
+        assertNotNull(sut.captureAi("\$ai_generation"))
+        assertTrue(replayNotified)
     }
 
     @Test
