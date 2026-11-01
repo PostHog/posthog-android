@@ -1285,7 +1285,8 @@ public class PostHogReplayIntegration(
                             config.logger.log("View is not a RootForTest: $view")
                             return@Runnable
                         }
-                    val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
+                    // Unmerged: a merged node inherits a child's postHogUnmask, exposing its siblings.
+                    val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
