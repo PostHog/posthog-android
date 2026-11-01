@@ -238,7 +238,7 @@ A malformed payload cached by 3.x can still read as the raw string after the upg
 
 ### `$locale` and `$app_language`
 
-`$locale` now means the first language in the device settings, as a full language tag such as `de-CH` or `zh-Hant-TW`. In 3.x it came from `Locale.getDefault()`, which could be a secondary language, a per-app language or a value your app set with `Locale.setDefault()`, and it dropped the script (`zh-TW`). It's left out when the device reports no language. The values mostly stay the same, so only check filters if your users change these settings.
+`$locale` now means the first language in the device settings, as a full language tag such as `de-CH` or `zh-Hant-TW`. In 3.x it came from `Locale.getDefault()`, which could be a secondary language, a per-app language or a value your app set with `Locale.setDefault()`, and it dropped the script (`zh-TW`). It's left out when the device reports no language. On older Android versions, 3.x also sent the legacy codes `iw`, `in` and `ji`, so Hebrew, Indonesian and Yiddish values change, such as `in-ID` to `id-ID`. Update filters that match those. Other values mostly stay the same, so otherwise only check filters if your users change these settings.
 
 The new `$app_language` property is the language your app shows. Android has no API that reports it exactly, so what you get depends on the version:
 
