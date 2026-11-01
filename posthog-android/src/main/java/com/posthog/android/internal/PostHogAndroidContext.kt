@@ -41,7 +41,7 @@ internal class PostHogAndroidContext(
     private val locales = PostHogLocales(context, config)
 
     init {
-        refreshNetworkCarrier()
+        refreshCachedContext()
     }
 
     private val cacheSdkInfo by lazy {
@@ -113,7 +113,7 @@ internal class PostHogAndroidContext(
         networkCarrier?.let {
             dynamicContext["\$network_carrier"] = it
         }
-        refreshNetworkCarrier()
+        refreshCachedContext()
 
         return dynamicContext
     }
@@ -122,7 +122,7 @@ internal class PostHogAndroidContext(
     // TelephonyManager.networkOperatorName can make a Binder call to the phone process when the
     // default subscription cache misses, so it's read on a worker thread and events use the last
     // value. TelephonyCallback isn't an option because it requires location permission.
-    private fun refreshNetworkCarrier() {
+    private fun refreshCachedContext() {
         if (!networkCarrierRefreshing.compareAndSet(false, true)) {
             return
         }
@@ -133,8 +133,17 @@ internal class PostHogAndroidContext(
                 } catch (ignored: Throwable) {
                     // keep the last known value
                 }
-                locales.refresh()
-                networkCarrierRefreshing.set(false)
+                try {
+                    locales.refresh()
+                    // parses the locale config here rather than on the first capture
+                    if (config.detectAppLanguage) {
+                        locales.appLanguage()
+                    }
+                } catch (ignored: Throwable) {
+                    // keep the last known value
+                } finally {
+                    networkCarrierRefreshing.set(false)
+                }
             }
         } catch (ignored: Throwable) {
             // RejectedExecutionException

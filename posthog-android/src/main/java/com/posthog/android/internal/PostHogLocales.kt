@@ -50,7 +50,7 @@ internal class PostHogLocales(
 
     fun deviceLocaleTag(): String? {
         val locale = systemLocales?.takeUnless { it.isEmpty }?.get(0) ?: resourcesLocale()
-        return locale?.toLanguageTag()?.takeUnless { it == "und" }
+        return locale?.withoutExtensions()?.toLanguageTag()?.takeUnless { it == "und" }
     }
 
     /**
@@ -64,7 +64,7 @@ internal class PostHogLocales(
             return null
         }
         val perApp = applicationLocales?.takeUnless { it.isEmpty }?.get(0)
-        val supported = supportedLocales ?: return perApp?.toLanguageTag()
+        val supported = supportedLocales ?: return perApp?.withoutExtensions()?.toLanguageTag()
         val preferred = perApp ?: systemLocales?.takeUnless { it.isEmpty }?.get(0) ?: return null
         return resolveAppLanguage(preferred, supported)
     }
@@ -97,6 +97,9 @@ internal class SupportedLocales(
 
 private fun LocaleList.toList(): List<Locale> = (0 until size()).map { get(it) }
 
+// Android 14+ regional preferences add extensions such as en-US-u-fw-mon.
+private fun Locale.withoutExtensions(): Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) stripExtensions() else this
+
 /**
  * The declared form of the first preferred language: the exact tag, else the bare language, else
  * the first relative. It stops at the first preference because a library's translation of it makes
@@ -108,9 +111,10 @@ internal fun resolveAppLanguage(
     preferred: Locale,
     supported: SupportedLocales,
 ): String? {
-    val candidates = supported.locales.filter { LocaleList.matchesLanguageAndScript(it, preferred) }
+    val language = preferred.withoutExtensions()
+    val candidates = supported.locales.filter { LocaleList.matchesLanguageAndScript(it, language) }
     val match =
-        candidates.find { it == preferred }
+        candidates.find { it == language }
             ?: candidates.find { it.country.isEmpty() }
             ?: candidates.firstOrNull()
             ?: supported.default

@@ -227,6 +227,31 @@ internal class PostHogAndroidContextTest {
 
     @Test
     @Config(sdk = [34])
+    fun `locale leaves out regional preference extensions`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH-u-fw-mon"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+
+        assertEquals("de-CH", getSut().getDynamicContext()["\$locale"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `falls back to resources and no app language when LocaleManager throws`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenThrow(RuntimeException())
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val dynamicContext = getSut().getDynamicContext()
+
+        assertEquals(Resources.getSystem().configuration.locales[0].toLanguageTag(), dynamicContext["\$locale"])
+        assertFalse(dynamicContext.containsKey("\$app_language"))
+    }
+
+    @Test
+    @Config(sdk = [34])
     fun `a per-app language with no declaration is the app language`() {
         context.mockTelephone()
         val localeManager = mock<LocaleManager>()

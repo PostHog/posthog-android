@@ -34,6 +34,11 @@ internal class PostHogAppLanguageTest {
     }
 
     @Test
+    fun `ignores regional preference extensions when matching`() {
+        assertEquals("pt-PT", resolve("pt-PT-u-fw-mon", "pt-BR,pt-PT"))
+    }
+
+    @Test
     fun `does not cross scripts`() {
         assertEquals("zh-Hant", resolve("zh-Hant-TW", "zh-Hans,zh-Hant"))
         assertNull(resolve("zh-Hant-TW", "zh-Hans,en"))

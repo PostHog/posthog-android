@@ -2899,6 +2899,30 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `app language prefers registered, then set, then detected`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val context =
+            object : PostHogContext by TestPostHogContext() {
+                override fun getDynamicContext() = mapOf("\$app_language" to "en")
+            }
+        val sut = getSut(url.toString(), flushAt = 3, preloadFeatureFlags = false, reloadFeatureFlags = false, context = context)
+
+        sut.capture(EVENT, DISTINCT_ID)
+        sut.setAppLanguage("de")
+        sut.capture(EVENT, DISTINCT_ID)
+        sut.register("\$app_language", "fr")
+        sut.capture(EVENT, DISTINCT_ID)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals(listOf<Any?>("en", "de", "fr"), batch.batch.map { it.properties!!["\$app_language"] })
+
+        sut.close()
+    }
+
+    @Test
     fun `registers ignore internal keys`() {
         val http = mockHttp()
         val url = http.url("/")

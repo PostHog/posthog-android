@@ -57,6 +57,7 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 private const val MAX_DEBUG_ERROR_LENGTH = 500
+private const val APP_LANGUAGE = "\$app_language"
 private const val REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS = 30_000L
 
 // Kept on every event because the app reads them per event; the rest of the replay debug bundle is throttled.
@@ -900,8 +901,9 @@ public class PostHog private constructor(
                 props.putAll(it)
             }
 
-            appLanguage?.let {
-                props["\$app_language"] = it
+            // the capture spec has registered properties win over the SDK's
+            (registeredPrefs[APP_LANGUAGE] ?: appLanguage)?.let {
+                props[APP_LANGUAGE] = it
             }
 
             if (config?.sendFeatureFlagEvent == true) {
