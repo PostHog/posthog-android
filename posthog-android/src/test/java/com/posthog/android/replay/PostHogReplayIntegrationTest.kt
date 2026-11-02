@@ -855,6 +855,25 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `a touch on a masked view that removes itself while handling it is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val masked =
+                    object : View(activity) {
+                        override fun onTouchEvent(event: MotionEvent): Boolean {
+                            (parent as? ViewGroup)?.removeView(this)
+                            return true
+                        }
+                    }.apply { tag = "ph-no-capture" }
+                activity.setContentWithTopLeftChild(masked)
+            },
+        ) { h ->
+            assertFalse(h.isRecorded(MotionEvent.ACTION_DOWN, 50f, 50f))
+        }
+    }
+
+    @Test
     fun `a touch on a text input is recorded when maskAllTextInputs is on`() {
         withMaskedTouchHarness(
             Activity::class.java,
