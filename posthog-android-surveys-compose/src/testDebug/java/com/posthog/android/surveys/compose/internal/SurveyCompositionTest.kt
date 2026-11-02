@@ -18,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.CountDownLatch
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -51,6 +52,7 @@ internal class SurveyCompositionTest {
                 compose.runOnIdle { fail.value = true }
             }
             compose.waitForIdle()
+            survey.awaitFailure()
             assertIs<NoSuchMethodError>(survey.failures.single())
             assertFalse(survey.dialog.isShowing)
             compose.onNodeWithText("Survey").assertDoesNotExist()
@@ -66,6 +68,7 @@ internal class SurveyCompositionTest {
             },
         ) { survey ->
             compose.waitForIdle()
+            survey.awaitFailure()
             assertIs<NoClassDefFoundError>(survey.failures.single())
             assertFalse(survey.dialog.isShowing)
         }
@@ -84,6 +87,7 @@ internal class SurveyCompositionTest {
             },
         ) { survey ->
             compose.waitForIdle()
+            survey.awaitFailure()
             assertIs<NoSuchMethodError>(survey.failures.single())
             assertFalse(survey.dialog.isShowing)
         }
@@ -141,17 +145,23 @@ internal class SurveyCompositionTest {
 
     private inner class SurveyFixture(content: @Composable () -> Unit) {
         val failures = mutableListOf<Throwable>()
+        private val failureHandled = CountDownLatch(1)
         val dialog = ComponentDialog(compose.activity)
         val composition =
             SurveyComposition(compose.activity, dialog.lifecycle) { error ->
                 failures.add(error)
                 close()
+                failureHandled.countDown()
             }
 
         init {
             composition.setContent(content)
             dialog.setContentView(composition.view)
             dialog.show()
+        }
+
+        fun awaitFailure() {
+            compose.waitUntil(timeoutMillis = 10_000) { failureHandled.count == 0L }
         }
 
         fun close() {
