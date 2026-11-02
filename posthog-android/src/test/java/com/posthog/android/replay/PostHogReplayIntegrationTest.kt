@@ -870,6 +870,44 @@ internal class PostHogReplayIntegrationTest {
             },
         ) { h ->
             assertFalse(h.isRecorded(MotionEvent.ACTION_DOWN, 50f, 50f))
+            assertFalse(h.isRecorded(MotionEvent.ACTION_UP, 50f, 50f), "TouchEnd must stay dropped once the view is gone")
+            h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
+    fun `a gesture that starts inside a mask is not recorded where it ends`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { it.setContentWithTopLeftChild(View(it).apply { tag = "ph-no-capture" }) },
+        ) { h ->
+            assertFalse(h.isRecorded(MotionEvent.ACTION_DOWN, 50f, 50f))
+            assertFalse(h.isRecorded(MotionEvent.ACTION_UP, 250f, 300f))
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch on a masked child that overflows an unclipped container is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val container =
+                    FrameLayout(activity).apply {
+                        tag = "ph-no-capture"
+                        clipChildren = false
+                        addView(View(activity), FrameLayout.LayoutParams(100, 20).apply { topMargin = 60 })
+                    }
+                activity.setContentView(
+                    FrameLayout(activity).apply {
+                        clipChildren = false
+                        addView(container, FrameLayout.LayoutParams(100, 20))
+                    },
+                )
+            },
+        ) { h ->
+            h.assertDropped(50f, 70f)
+            h.assertRecorded(250f, 300f)
         }
     }
 
