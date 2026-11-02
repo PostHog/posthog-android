@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
@@ -20,8 +23,12 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.getTextLayoutResult
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -188,6 +195,38 @@ internal class PostHogReplayComposeMaskScopeTest {
     }
 
     @Test
+    fun `verification walks reuse the text layout of the first walk`() {
+        var layouts = 0
+        var label by mutableStateOf("secret")
+        compose.activity.setContent {
+            Box(
+                textModifier.semantics {
+                    text = AnnotatedString(label)
+                    getTextLayoutResult {
+                        layouts++
+                        false
+                    }
+                },
+            )
+        }
+
+        val sut = PostHogReplayIntegration(compose.activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+        val verify = { runWalk(sut, PostHogReplayIntegration.MaskWalk(reuseTextLayouts = true)) }
+
+        runWalk(sut, PostHogReplayIntegration.MaskWalk())
+        assertEquals(1, layouts)
+        verify()
+        assertEquals(1, layouts)
+
+        label = "changed"
+        verify()
+        assertEquals(2, layouts)
+
+        runWalk(sut, PostHogReplayIntegration.MaskWalk())
+        assertEquals(3, layouts)
+    }
+
+    @Test
     fun `clipped text is masked to its layout box`() {
         compose.activity.setContent {
             BasicText(
@@ -249,7 +288,13 @@ internal class PostHogReplayComposeMaskScopeTest {
         config.sessionReplayConfig.maskAllTextInputs = maskAllTextInputs
         config.sessionReplayConfig.maskAllImages = maskAllImages
         val sut = PostHogReplayIntegration(compose.activity, config, MainHandler())
-        val walk = PostHogReplayIntegration.MaskWalk()
+        return runWalk(PostHogReplayIntegration(compose.activity, config, MainHandler()), PostHogReplayIntegration.MaskWalk())
+    }
+
+    private fun runWalk(
+        sut: PostHogReplayIntegration,
+        walk: PostHogReplayIntegration.MaskWalk,
+    ): List<Rect> {
         compose.runOnIdle {
             sut.findMaskableWidgets(findComposeView(compose.activity.window.decorView)!!, walk)
         }

@@ -44,8 +44,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogEventName
@@ -248,7 +250,7 @@ public class PostHogReplayIntegration(
     }
 
     // Reused across frames; draw-time walks only ever run on the main thread.
-    private val drawSampleWalk = MaskWalk()
+    private val drawSampleWalk = MaskWalk(reuseTextLayouts = true)
 
     internal fun onDrawCallback(
         view: View,
@@ -1014,6 +1016,8 @@ public class PostHogReplayIntegration(
     internal class MaskWalk(
         val failClosed: Boolean = true,
         private val shouldAbort: (() -> Boolean)? = null,
+        // True for walks re-checking a capture's first walk; false re-measures text.
+        val reuseTextLayouts: Boolean = false,
     ) {
         val rects: MutableList<Rect> = mutableListOf()
         var poisoned: Boolean = false
@@ -1291,6 +1295,9 @@ public class PostHogReplayIntegration(
                             config.logger.log("View is not a RootForTest: $view")
                             return@Runnable
                         }
+                    if (!walk.reuseTextLayouts) {
+                        textPaintedBoundsCache.clear()
+                    }
                     // Unmerged: a merged node inherits a child's postHogUnmask, exposing its siblings.
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
 
@@ -1380,11 +1387,33 @@ public class PostHogReplayIntegration(
         return bounds
     }
 
-    // Local bounds of what the text paints outside its layout box, or null if it stays inside.
+    private class CachedTextPaintedBounds(
+        val text: List<AnnotatedString>?,
+        val size: IntSize,
+        val bounds: androidx.compose.ui.geometry.Rect?,
+    )
+
+    // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so one capture's
+    // repeated walks share the result. Main thread only, like the traversal that reads it.
+    private val textPaintedBoundsCache = HashMap<Int, CachedTextPaintedBounds>()
+
     private fun SemanticsNode.textPaintedBounds(): androidx.compose.ui.geometry.Rect? {
         if (!config.contains(SemanticsProperties.Text) || config.contains(SemanticsProperties.EditableText)) {
             return null
         }
+        val text = config.getOrNull(SemanticsProperties.Text)
+        textPaintedBoundsCache[id]?.let {
+            if (it.text == text && it.size == size) {
+                return it.bounds
+            }
+        }
+        return measureTextPaintedBounds().also {
+            textPaintedBoundsCache[id] = CachedTextPaintedBounds(text, size, it)
+        }
+    }
+
+    // Local bounds of what the text paints outside its layout box, or null if it stays inside.
+    private fun SemanticsNode.measureTextPaintedBounds(): androidx.compose.ui.geometry.Rect? {
         val results = mutableListOf<TextLayoutResult>()
         if (config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
             return null
@@ -1713,7 +1742,7 @@ public class PostHogReplayIntegration(
                 if (width != sourceWidth || height != sourceHeight) {
                     return@runOnMainThreadBlocking null
                 }
-                MaskWalk().also {
+                MaskWalk(reuseTextLayouts = true).also {
                     if (!drawState.isCaptureInvalid(armedCapture.token)) {
                         findMaskableWidgets(this, it)
                     }
