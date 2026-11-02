@@ -33,6 +33,7 @@ All of these are compile errors. Calling them from an already-compiled library t
 | `PostHogConfig.propertiesSanitizer`, `PostHogPropertiesSanitizer` | `addBeforeSend` |
 | `PostHogConfig.evaluationEnvironments` | `evaluationContexts` |
 | `getFeatureFlagPayload()`, on the instance and on `PostHog` | `getFeatureFlagResult()` |
+| `defaultValue` on `getFeatureFlag()` | `getFeatureFlag(key) ?: default` |
 | `PostHogSessionReplayConfig.debouncerDelayMs` | `throttleDelayMs` |
 | `PostHogConfig.remoteConfig` | nothing; remote config always loads |
 | `PostHogOnFeatureFlags` | `PostHogFeatureFlagsCallback` |
@@ -93,6 +94,24 @@ val payload = PostHog.getFeatureFlagPayload("checkout", defaultValue = "fallback
 // 4.0
 val payload = PostHog.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false)?.payload ?: "fallback"
 ```
+
+### `getFeatureFlag()` default value
+
+```kotlin
+// 3.x
+val value = PostHog.getFeatureFlag("checkout", defaultValue = "fallback")
+
+// 4.0
+val value = PostHog.getFeatureFlag("checkout") ?: "fallback"
+```
+
+The second parameter is now `sendFeatureFlagEvent`, which affects code that still compiles:
+
+- `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
+- A disabled SDK now returns `null`, not your default.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event reports an empty response.
+
+Classes that implement `PostHogInterface` update the signature.
 
 ### `debouncerDelayMs`
 

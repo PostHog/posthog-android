@@ -348,49 +348,77 @@ internal class PostHogFeatureFlagsTest {
         sut.close()
     }
 
-    @Test
-    fun `getFeatureFlag with non-existent flag sends defaultValue in event`() {
-        val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
-        val responseFlagsApi = file.readText()
-
+    private fun assertMissingFlagReportsNoValue(read: (PostHogInterface) -> Unit) {
         val http =
             mockHttp(
                 response =
                     MockResponse()
-                        .setBody(responseFlagsApi),
+                        .setBody(File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()),
             )
-        http.enqueue(
-            MockResponse()
-                .setBody(""),
-        )
-        val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+        http.enqueue(MockResponse().setBody(""))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
 
         sut.reloadFeatureFlags()
-
         remoteConfigExecutor.shutdownAndAwaitTermination()
-
-        // remove from the http queue
         http.takeRequest()
 
-        val defaultValue = "my-default"
-        val result = sut.getFeatureFlag("nonExistentFlag", defaultValue)
-
+        read(sut)
         queueExecutor.shutdownAndAwaitTermination()
 
-        // Function should return the defaultValue
-        assertEquals(defaultValue, result)
-
-        val request = http.takeRequest()
-        val content = request.body.unGzip()
-        val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-
-        val theEvent = batch.batch.firstOrNull()
-        assertEquals("\$feature_flag_called", theEvent?.event)
-        // The event's $feature_flag_response should be the defaultValue, not null
-        assertEquals(defaultValue, theEvent?.properties!!["\$feature_flag_response"])
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
         assertEquals("nonExistentFlag", theEvent.properties!!["\$feature_flag"])
+        assertEquals("", theEvent.properties!!["\$feature_flag_response"])
         sut.close()
+    }
+
+    @Test
+    fun `getFeatureFlag returns null and reports no value for a missing flag`() {
+        assertMissingFlagReportsNoValue { sut ->
+            assertNull(sut.getFeatureFlag("nonExistentFlag"))
+        }
+    }
+
+    @Test
+    fun `isFeatureEnabled returns the default but does not report it for a missing flag`() {
+        assertMissingFlagReportsNoValue { sut ->
+            assertTrue(sut.isFeatureEnabled("nonExistentFlag", defaultValue = true))
+        }
+    }
+
+    @Test
+    fun `isFeatureEnabled prefers a false flag value over the default`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()),
+            )
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
+    }
+
+    @Test
+    fun `disabled SDK returns null from getFeatureFlag and the default from isFeatureEnabled`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse()
+                        .setBody(File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()),
+            )
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        sut.close()
+
+        assertNull(sut.getFeatureFlag("4535-funnel-bar-viz"))
+        assertTrue(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
     }
 
     @Test

@@ -96,7 +96,6 @@ public class PostHogFake : PostHogInterface, PostHogPushSubscriptionReceiver {
 
     override fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
         return null
