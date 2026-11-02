@@ -17,6 +17,7 @@ You need to change something if your app does any of these:
 - sends events through a proxy that redirects capture requests, other than with a 307 or 308 to the same origin as `host`
 - captures events with an empty event name, or with an event name or distinct ID over 200 bytes
 - sets an empty distinct ID in `beforeSend`
+- builds a new `PostHogEvent` in `beforeSend` (see [Event options](#event-options))
 - sets `projectToken` to a personal API key (`phx_...`)
 - sets `$lib` or `$lib_version` and expects PostHog to store that value
 - reads `$session_id` or `$window_id` from the raw request body, for example in a proxy
@@ -361,6 +362,7 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - An option you pass to any of these methods or set in `beforeSend` wins over its legacy property. An option set to `null` counts as unset, so the legacy property fills it.
 - To change person processing in `beforeSend`, edit `event.options`. A `$process_person_profile` property the hook adds only fills an option that is still unset, so it doesn't override the `false` the SDK set for an anonymous event.
 - When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither, because PostHog processes person profiles by default. In 3.x, every event carried a `$process_person_profile` property. To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property. A registered `$process_person_profile` changes it for every event.
+- Review your `beforeSend` hooks for the new event shape. In 3.x, the SDK marked person processing with the `$process_person_profile` property. In 4.0, it's the `process_person_profile` option, and the property isn't set. A hook that builds a new `PostHogEvent` without copying `options` turns person processing on for anonymous users, overriding `personProfiles`. `event.copy(…)` keeps them.
 - A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
