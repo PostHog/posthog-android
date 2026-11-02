@@ -95,6 +95,36 @@ internal class PostHogSurveyHostTest {
     }
 
     @Test
+    fun `surveys without a valid initial question close without being shown`() {
+        val provider = ActivityProvider()
+        val host = PostHogSurveyHost(provider)
+        val valid = failureTestSurvey()
+        val invalid = listOf(valid.copy(questions = emptyList()), valid.copy(initialQuestionIndex = 1))
+        var shown = 0
+        var closed = 0
+        try {
+            invalid.forEachIndexed { index, survey ->
+                compose.runOnIdle {
+                    provider.onActivityResumed(compose.activity)
+                    host.show(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
+                }
+                compose.waitForIdle()
+                assertEquals(0, shown)
+                assertEquals(index + 1, closed)
+                compose.onNodeWithText("Failure test question?").assertDoesNotExist()
+            }
+            compose.runOnIdle {
+                host.show(valid, { shown++ }, { _, _, _ -> null }, { closed++ })
+            }
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            assertEquals(1, shown)
+            assertEquals(2, closed)
+        } finally {
+            compose.runOnUiThread { host.cleanup() }
+        }
+    }
+
+    @Test
     fun `old window failure cannot close a survey restored on a new activity`() {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val provider = ActivityProvider()

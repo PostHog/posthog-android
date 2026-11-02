@@ -260,7 +260,12 @@ internal class PostHogSurveyHost(
         currentPresentation === presentation && currentRender == renderCounter.get()
 
     private fun closePresentation(presentation: Any) {
-        if (isCurrentPresentation(presentation)) dismissInternal(notifyClosed = true)
+        if (!isCurrentPresentation(presentation)) return
+        if (shownReported) {
+            dismissInternal(notifyClosed = true)
+        } else {
+            failPresentation(presentation)
+        }
     }
 
     private fun submitResponse(
