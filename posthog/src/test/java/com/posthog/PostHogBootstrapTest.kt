@@ -18,13 +18,11 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -51,7 +49,6 @@ internal class PostHogBootstrapTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         logger: TestLogger? = null,
         optOut: Boolean = false,
-        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -63,7 +60,6 @@ internal class PostHogBootstrapTest {
                 this.cachePreferences = cachePreferences
                 this.bootstrap = bootstrap
                 this.optOut = optOut
-                this.onFeatureFlags = onFeatureFlags
                 if (logger != null) {
                     this.logger = logger
                 }
@@ -373,25 +369,6 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
-    fun `bootstrap flags fire the flags-loaded callback immediately`() {
-        var loaded: PostHogFeatureFlagsLoaded? = null
-        val sut =
-            getSut(
-                host = "http://127.0.0.1:1",
-                // the callback fires from setup's flag loading, before /config answers
-                reloadFeatureFlags = true,
-                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true, "checkout" to "test")),
-                onFeatureFlags = PostHogFeatureFlagsCallback { loaded = it },
-            )
-
-        assertEquals(mapOf("beta-ui" to true, "checkout" to "test"), loaded!!.variants)
-        assertFalse(loaded!!.errorsLoading)
-        assertEquals(true, sut.getFeatureFlag("beta-ui", sendFeatureFlagEvent = false))
-
-        sut.close()
-    }
-
-    @Test
     fun `onFeatureFlags replays bootstrapped flags to a listener registered after setup`() {
         val sut =
             getSut(
@@ -448,6 +425,7 @@ internal class PostHogBootstrapTest {
             // the integration's /flags request is held, so this can only be the bootstrap delivery
             val loaded = updates.poll(5, TimeUnit.SECONDS)
             assertEquals(mapOf<String, Any>("beta-ui" to true), loaded?.variants)
+            assertFalse(loaded!!.errorsLoading)
         } finally {
             subscription.unsubscribe()
             release.countDown()
@@ -457,29 +435,26 @@ internal class PostHogBootstrapTest {
     }
 
     @Test
-    fun `closing from the bootstrap flags callback drops setup's load for listeners`() {
+    fun `closing from an integration drops the bootstrap delivery and setup's load for listeners`() {
         val http = mockHttp(total = 5, response = MockResponse().setBody("""{"hasFeatureFlags":false}"""))
-        val completed = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
-        val first = AtomicBoolean(true)
         val config =
             PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 cachePreferences = PostHogMemoryPreferences()
                 bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true))
-                onFeatureFlags =
-                    PostHogFeatureFlagsCallback {
-                        // the bootstrap delivery closes the SDK; setup's own load completes later
-                        if (first.compareAndSet(true, false)) PostHog.close() else completed.add(it)
-                    }
+                addIntegration(
+                    object : PostHogIntegration {
+                        override fun install(postHog: PostHogInterface) {
+                            PostHog.close()
+                        }
+                    },
+                )
             }
 
         try {
             PostHog.setup(config)
+            http.takeRequest(5, TimeUnit.SECONDS)
 
-            // setup's load notifies listeners just before this completion
-            assertNotNull(completed.poll(5, TimeUnit.SECONDS))
-
-            // close() cleared the snapshot, so only a load it superseded could refill it
             val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
             val subscription = PostHog.onFeatureFlags { updates.add(it) }
             assertNull(updates.poll(500, TimeUnit.MILLISECONDS))

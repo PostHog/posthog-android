@@ -36,6 +36,7 @@ All of these are compile errors. Calling them from an already-compiled library t
 | `defaultValue` on `getFeatureFlag()` | `getFeatureFlag(key) ?: default` |
 | `PostHogSessionReplayConfig.debouncerDelayMs` | `throttleDelayMs` |
 | `PostHogConfig.remoteConfig` | nothing; remote config always loads |
+| `PostHogConfig.onFeatureFlags` | `PostHog.onFeatureFlags()` before `setup()` |
 | `PostHogOnFeatureFlags` | `PostHogFeatureFlagsCallback` |
 
 The constructor parameters of `PostHogConfig` and `PostHogSessionReplayConfig` move up where these were removed. If you pass arguments by position, check them, or switch to named arguments.
@@ -142,7 +143,7 @@ If you set it to `false`, your app's behavior changes:
 
 ## Feature flags callback
 
-`PostHogConfig.onFeatureFlags` and `reloadFeatureFlags()` now take a `PostHogFeatureFlagsCallback`, which receives a `PostHogFeatureFlagsLoaded`:
+`PostHogConfig.onFeatureFlags` is removed. Call `PostHog.onFeatureFlags()` before `setup()` instead, which also covers the first load. `reloadFeatureFlags()` now takes a `PostHogFeatureFlagsCallback`. Both callbacks receive a `PostHogFeatureFlagsLoaded`:
 
 - `flags`: the keys of the enabled flags
 - `variants`: their values, either `true` or the variant string
@@ -154,13 +155,19 @@ config.onFeatureFlags = PostHogOnFeatureFlags {
     refreshUi()
 }
 
-// 4.0
-config.onFeatureFlags = PostHogFeatureFlagsCallback { loaded ->
+// 4.0, before PostHogAndroid.setup()
+PostHog.onFeatureFlags { loaded ->
     if (!loaded.errorsLoading) {
         refreshUi()
     }
 }
 ```
+
+The listener differs from the removed option in three ways:
+
+- It runs on the main thread on Android. The option ran on a background thread.
+- Bootstrapped flags arrive just after `setup()` is called, not synchronously inside it.
+- A reload on a disabled SDK doesn't call listeners. `reloadFeatureFlags(callback)` still gets `errorsLoading = true` in that case.
 
 ```java
 // 3.x
@@ -174,7 +181,7 @@ A Kotlin trailing lambda such as `PostHog.reloadFeatureFlags { refreshUi() }` co
 
 `errorsLoading` is `false` when PostHog answers that the project is over its feature flags quota, and the values are the cached flags. It's `true` when no request was made, such as when the device is offline or the distinct ID is blank, and when the SDK is disabled or isn't set up, with no values in that last case.
 
-These callbacks still run on a background thread, or right away on the calling thread when no load is attempted, so switch to the main thread before touching UI. With bootstrapped flags, `PostHogConfig.onFeatureFlags` also runs once on the thread calling `setup()`.
+The `reloadFeatureFlags()` callback still runs on a background thread, or right away on the calling thread when no load is attempted, so switch to the main thread before touching UI.
 
 ## `PostHogInterface` implementations
 
@@ -235,7 +242,7 @@ The code you end up with after these two migrations compiles, so they're easy to
 
 ## New: `onFeatureFlags()`
 
-If you need flag updates outside of `PostHogConfig`, for example from a screen or a library, register a listener you can remove:
+`onFeatureFlags()` is now the way to listen for flag loads, for example from a screen or a library. You can remove the listener later:
 
 ```kotlin
 val subscription = PostHog.onFeatureFlags { loaded ->
