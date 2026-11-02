@@ -38,10 +38,14 @@ import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogEventName
@@ -102,6 +106,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -1307,7 +1312,7 @@ public class PostHogReplayIntegration(
 
                             // postHogMask forces masking
                             isMaskEnabled -> {
-                                maskableWidgets.add(node.boundsInWindow.toRect())
+                                maskableWidgets.add(node.maskBounds())
                             }
 
                             // no active modifier, apply default config rules
@@ -1315,10 +1320,16 @@ public class PostHogReplayIntegration(
                                 when {
                                     (hasText || hasEditableText) &&
                                         (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
-                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                        maskableWidgets.add(node.maskBounds())
                                     }
 
                                     hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                    }
+
+                                    // clearAndSetSemantics hides what the node draws, so assume it is sensitive.
+                                    node.config.isClearingSemantics &&
+                                        (config.sessionReplayConfig.maskAllTextInputs || config.sessionReplayConfig.maskAllImages) -> {
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
                                 }
@@ -1346,6 +1357,32 @@ public class PostHogReplayIntegration(
             // Compose mask rects are missing or incomplete, so fail closed.
             walk.poisoned = true
         }
+    }
+
+    // Text with TextOverflow.Visible draws past its layout box, so cover the laid-out paragraph too.
+    private fun SemanticsNode.maskBounds(): Rect {
+        val bounds = boundsInWindow.toRect()
+        if (!config.contains(SemanticsProperties.Text) || config.contains(SemanticsProperties.EditableText)) {
+            return bounds
+        }
+        val results = mutableListOf<TextLayoutResult>()
+        if (config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
+            return bounds
+        }
+        val layout = results.firstOrNull() ?: return bounds
+        if (layout.layoutInput.overflow == TextOverflow.Visible) {
+            val paragraph = layout.multiParagraph
+            // This result is re-wrapped to the box, but softWrap = false draws one unwrapped line.
+            val width = if (layout.layoutInput.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
+            val position = positionInWindow
+            bounds.union(
+                position.x.toInt(),
+                position.y.toInt(),
+                ceil(position.x + width).toInt(),
+                ceil(position.y + paragraph.height).toInt(),
+            )
+        }
+        return bounds
     }
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
