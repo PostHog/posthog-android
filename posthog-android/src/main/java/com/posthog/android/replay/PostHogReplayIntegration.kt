@@ -483,16 +483,13 @@ public class PostHogReplayIntegration(
         dispatch: (MotionEvent) -> DispatchState,
         decorView: View?,
     ): DispatchState {
+        val action = motionEvent.action.and(MotionEvent.ACTION_MASK)
+        // Decided before dispatch, while the view tree still shows what was touched.
+        val record = shouldRecordTouch(action, motionEvent, decorView)
         try {
             val state = dispatch(motionEvent)
             try {
-                if (!config.sessionReplayConfig.captureTouches || !isActive()) {
-                    return state
-                }
-                val action = motionEvent.action.and(MotionEvent.ACTION_MASK)
-                if ((action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) &&
-                    decorView?.isTouchInsideExplicitMask(motionEvent) == true
-                ) {
+                if (!record) {
                     return state
                 }
                 val timestamp = config.dateProvider.currentTimeMillis()
@@ -505,7 +502,7 @@ public class PostHogReplayIntegration(
                         if (!isActive()) {
                             return@submit
                         }
-                        when (safeMotionEvent.action.and(MotionEvent.ACTION_MASK)) {
+                        when (action) {
                             MotionEvent.ACTION_DOWN -> {
                                 generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchStart)
                             }
@@ -528,6 +525,21 @@ public class PostHogReplayIntegration(
             throw e
         }
     }
+
+    private fun shouldRecordTouch(
+        action: Int,
+        motionEvent: MotionEvent,
+        decorView: View?,
+    ): Boolean =
+        try {
+            config.sessionReplayConfig.captureTouches && isActive() &&
+                !(
+                    (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) &&
+                        decorView?.isTouchInsideExplicitMask(motionEvent) == true
+                )
+        } catch (e: Throwable) {
+            false
+        }
 
     private fun generateMouseInteractions(
         timestamp: Long,
@@ -1250,15 +1262,11 @@ public class PostHogReplayIntegration(
         }
     }
 
-    // Only explicit masks count: maskAllTextInputs/maskAllImages would drop every tap on a field or
-    // image. Walks only the views under the touch, since this runs on the main thread per touch.
+    // Only explicit masks count: maskAllTextInputs/maskAllImages would drop every tap on a field or image.
     private fun View.isTouchInsideExplicitMask(motionEvent: MotionEvent): Boolean {
-        val rect = Rect()
         val windowOffset = IntArray(2)
         getLocationInWindow(windowOffset)
-        return (0 until motionEvent.pointerCount).any { i ->
-            hasExplicitMaskAt(motionEvent.getX(i).toInt(), motionEvent.getY(i).toInt(), rect, windowOffset)
-        }
+        return hasExplicitMaskAt(motionEvent.x.toInt(), motionEvent.y.toInt(), Rect(), windowOffset)
     }
 
     private fun View.hasExplicitMaskAt(
@@ -1274,7 +1282,9 @@ public class PostHogReplayIntegration(
             MaskRule.NO_CAPTURE -> true
             // Compose bounds are window coordinates, the touch is relative to the decor view.
             MaskRule.COMPOSE ->
-                hasComposeMaskAt(Offset((x + windowOffset[0]).toFloat(), (y + windowOffset[1]).toFloat())) ||
+                (this as? RootForTest)?.semanticsOwner?.rootSemanticsNode?.hasPostHogMaskAt(
+                    Offset((x + windowOffset[0]).toFloat(), (y + windowOffset[1]).toFloat()),
+                ) == true ||
                     hasExplicitMaskInChildrenAt(x, y, rect, windowOffset)
             MaskRule.CHILDREN -> hasExplicitMaskInChildrenAt(x, y, rect, windowOffset)
             MaskRule.MASK_VIEW, MaskRule.MASK_TEXT, MaskRule.NONE -> false
@@ -1293,12 +1303,7 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun View.hasComposeMaskAt(point: Offset): Boolean {
-        val root = (this as? RootForTest)?.semanticsOwner?.rootSemanticsNode ?: return false
-        return root.hasPostHogMaskAt(point)
-    }
-
-    // Same precedence as the mask walk: postHogUnmask on a node or an ancestor beats postHogMask.
+    // postHogUnmask on a node or any ancestor wins over postHogMask.
     private fun SemanticsNode.hasPostHogMaskAt(point: Offset): Boolean {
         if (!boundsInWindow.contains(point) || config.isActive(PostHogReplayUnmask)) {
             return false
