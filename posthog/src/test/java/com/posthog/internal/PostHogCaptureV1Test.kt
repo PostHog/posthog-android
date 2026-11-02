@@ -116,7 +116,7 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `posts to the capture v1 endpoint with the required headers`() {
-        val http = httpServers.mockHttp()
+        val http = httpServers.mockHttp(response = resultsResponse())
         clock.setCurrentDate(parseISO8601Date("2024-05-01T10:20:30.456Z")!!)
 
         api(http.url("/").toString()).captureV1(listOf(event()))
@@ -136,7 +136,7 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `captureAi posts to the AI endpoint with the same headers and body shape`() {
-        val http = httpServers.mockHttp()
+        val http = httpServers.mockHttp(response = resultsResponse())
         clock.setCurrentDate(parseISO8601Date("2024-05-01T10:20:30.456Z")!!)
         val event = event("\$ai_generation")
 
@@ -187,7 +187,7 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `the capture Bearer token replaces a custom Authorization header`() {
-        val http = httpServers.mockHttp()
+        val http = httpServers.mockHttp(response = resultsResponse())
         val config =
             config(http.url("/").toString()).apply {
                 requestHeaders = mapOf("Authorization" to "Bearer proxy", "X-Proxy" to "yes")
@@ -202,7 +202,7 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `body carries created_at and the batch without api_key or sent_at`() {
-        val http = httpServers.mockHttp()
+        val http = httpServers.mockHttp(response = resultsResponse())
         clock.setCurrentDate(parseISO8601Date("2024-05-01T10:20:30.456Z")!!)
         val event = event()
 
@@ -331,13 +331,13 @@ internal class PostHogCaptureV1Test {
 
         assertEquals(setOf(retry.uuid.toString()), result.retryIds)
         assertEquals(7, result.retryAfterSeconds)
-        assertTrue(logger.messages.contains("Capture: 1 dropped, 1 to retry."))
-        assertTrue(logger.messages.contains("Capture dropped event dropped (${dropped.uuid}): no details."))
-        assertTrue(logger.messages.none { it.contains(retry.uuid.toString()) })
+        assertTrue(
+            logger.messages.contains("Capture /i/v1/analytics/events: 1 dropped (no details: 1), 0 duplicate copies dropped, 1 to retry."),
+        )
     }
 
     @Test
-    fun `logs each dropped event with the details capture gives, without its properties`() {
+    fun `logs one line per batch with the endpoint and drop reasons, without event names, uuids or properties`() {
         val misrouted = event("button_clicked", properties = mapOf("prompt" to "secret prompt"))
         val tooBig = event("\$ai_generation", properties = mapOf("prompt" to "secret prompt"))
         val http =
@@ -352,24 +352,66 @@ internal class PostHogCaptureV1Test {
 
         api(http.url("/").toString()).captureAi(listOf(misrouted, tooBig))
 
-        assertTrue(logger.messages.contains("Capture dropped event button_clicked (${misrouted.uuid}): misrouted_event."))
-        assertTrue(logger.messages.contains("Capture dropped event \$ai_generation (${tooBig.uuid}): ai_event_too_big."))
-        assertTrue(logger.messages.contains("Capture: 2 dropped, 0 to retry."))
-        assertTrue(logger.messages.none { it.contains("secret prompt") })
+        assertEquals(
+            listOf("Capture /i/v1/ai/events: 2 dropped (ai_event_too_big: 1, misrouted_event: 1), 0 duplicate copies dropped, 0 to retry."),
+            logger.messages.filter { it.startsWith("Capture /") },
+        )
+        assertTrue(
+            logger.messages.none {
+                it.contains("secret prompt") || it.contains("button_clicked") ||
+                    it.contains(misrouted.uuid.toString()) || it.contains(tooBig.uuid.toString())
+            },
+        )
     }
 
     @Test
-    fun `a 2xx without readable results counts as delivered`() {
-        val http = httpServers.mockHttp(response = MockResponse().setBody("not json"))
+    fun `counts the duplicate copies capture dropped`() {
+        val kept = event()
+        val copy = kept.copy()
+        val http =
+            httpServers.mockHttp(
+                response = MockResponse().setBody("{\"results\":{\"${kept.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":1}}}"),
+            )
 
-        val result = api(http.url("/").toString()).captureV1(listOf(event()))
+        val result = api(http.url("/").toString()).captureV1(listOf(kept, copy))
 
         assertTrue(result.retryIds.isEmpty())
-        assertTrue(logger.messages.any { it.contains("without readable per-event results, treating 1 events as delivered") })
+        assertTrue(logger.messages.contains("Capture /i/v1/analytics/events: 0 dropped, 1 duplicate copies dropped, 0 to retry."))
     }
 
     @Test
-    fun `a 2xx whose transfer fails after the status counts as delivered`() {
+    fun `clamps each duplicate count to the batch size`() {
+        val first = event()
+        val second = event()
+        val http =
+            httpServers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{\"${first.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":99999999999999999999}," +
+                            "\"${second.uuid}\":{\"result\":\"ok\",\"duplicates_dropped\":-5}}}",
+                    ),
+            )
+
+        api(http.url("/").toString()).captureV1(listOf(first, second))
+
+        assertTrue(logger.messages.contains("Capture /i/v1/analytics/events: 0 dropped, 2 duplicate copies dropped, 0 to retry."))
+    }
+
+    @Test
+    fun `a 2xx without readable results is a terminal failure`() {
+        for (body in listOf("not json", "{}", "{\"results\":[]}")) {
+            val http = httpServers.mockHttp(response = MockResponse().setBody(body))
+
+            val error = assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
+
+            assertEquals(200, error.statusCode)
+            assertFalse(isCaptureV1RetriableStatusCode(error.statusCode))
+        }
+        assertTrue(logger.messages.any { it.contains("without readable per-event results, dropping 1 events") })
+    }
+
+    @Test
+    fun `a 2xx whose transfer fails after the status is a terminal failure`() {
         val http =
             httpServers.mockHttp(
                 response =
@@ -378,13 +420,11 @@ internal class PostHogCaptureV1Test {
                         .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY),
             )
 
-        val result = api(http.url("/").toString()).captureV1(listOf(event()))
-
-        assertTrue(result.retryIds.isEmpty())
+        assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
     }
 
     @Test
-    fun `a 2xx with results over 1 MiB counts as delivered`() {
+    fun `a 2xx with results over 1 MiB is a terminal failure`() {
         val event = event()
         val padding = "x".repeat(1024 * 1024)
         val http =
@@ -392,13 +432,11 @@ internal class PostHogCaptureV1Test {
                 response = MockResponse().setBody("{\"results\":{\"${event.uuid}\":{\"result\":\"retry\"}},\"pad\":\"$padding\"}"),
             )
 
-        val result = api(http.url("/").toString()).captureV1(listOf(event))
-
-        assertTrue(result.retryIds.isEmpty())
+        assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event)) }
     }
 
     @Test
-    fun `a 2xx whose results trickle past the read deadline counts as delivered`() {
+    fun `a 2xx whose results trickle past the read deadline is a terminal failure`() {
         val event = event()
         val padding = "x".repeat(16 * 1024)
         // throttles the request read too, so allow a whole small request per period
@@ -411,9 +449,7 @@ internal class PostHogCaptureV1Test {
             )
         val sut = api(http.url("/").toString()).apply { captureV1ResultsReadDeadlineMs = 300 }
 
-        val result = sut.captureV1(listOf(event))
-
-        assertTrue(result.retryIds.isEmpty())
+        assertThrows(PostHogApiError::class.java) { sut.captureV1(listOf(event)) }
     }
 
     @Test
@@ -450,7 +486,7 @@ internal class PostHogCaptureV1Test {
     @Test
     fun `a 503 with Retry-After 0 is not resent by the HTTP client`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
 
         assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
 
@@ -484,7 +520,7 @@ internal class PostHogCaptureV1Test {
     fun `a retriable status and a network error keep the request identity`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503))
         http.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
         val events = listOf(event())
         // a short read timeout turns the unanswered request into an IOException OkHttp doesn't retry itself
         val config =
@@ -504,10 +540,10 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `a dropped connection is not resent by the HTTP client`() {
-        val http = httpServers.mockHttp(response = MockResponse().setBody(""))
+        val http = httpServers.mockHttp(response = resultsResponse())
         // the second request reuses the pooled connection, which OkHttp would otherwise retry on a new one
         http.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
         val sut = api(http.url("/").toString())
 
         sut.captureV1(listOf(event()))
@@ -546,9 +582,30 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `sending other events in between keeps the pending retry identity`() {
+        val retried = event()
+        val other = event("other")
+        val http = httpServers.mockHttp(response = resultsResponse(retried.uuid!! to "retry"))
+        http.enqueue(resultsResponse(other.uuid!! to "ok"))
+        http.enqueue(resultsResponse(retried.uuid!! to "ok"))
+        val sut = api(http.url("/").toString())
+
+        sut.captureV1(listOf(retried))
+        sut.captureV1(listOf(other))
+        sut.captureV1(listOf(retried))
+
+        val (first, between, resent) = List(3) { http.takeRequest() }
+        assertEquals("1", between.headers["PostHog-Attempt"])
+        assertNotEquals(first.headers["PostHog-Request-Id"], between.headers["PostHog-Request-Id"])
+        assertEquals("2", resent.headers["PostHog-Attempt"])
+        assertEquals(first.headers["PostHog-Request-Id"], resent.headers["PostHog-Request-Id"])
+        assertEquals(body(first)["created_at"], body(resent)["created_at"])
+    }
+
+    @Test
     fun `a terminal status starts a new request identity on the next send`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(400))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
         val events = listOf(event())
         val sut = api(http.url("/").toString())
 
@@ -577,7 +634,7 @@ internal class PostHogCaptureV1Test {
     fun `follows a same-origin 307 with the same body and headers`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(307).setHeader("Location", "/proxied/events"))
         http.enqueue(MockResponse().setResponseCode(308).setHeader("Location", "/final/events"))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
 
         api(http.url("/").toString()).captureV1(listOf(event()))
 
@@ -595,7 +652,7 @@ internal class PostHogCaptureV1Test {
     @Test
     fun `does not follow a 302`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(302).setHeader("Location", "/elsewhere"))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
 
         val error = assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
 
@@ -605,7 +662,7 @@ internal class PostHogCaptureV1Test {
 
     @Test
     fun `does not follow a 307 to another origin`() {
-        val other = httpServers.mockHttp()
+        val other = httpServers.mockHttp(response = resultsResponse())
         val http =
             httpServers.mockHttp(
                 response = MockResponse().setResponseCode(307).setHeader("Location", other.url("/events").toString()),
@@ -622,7 +679,7 @@ internal class PostHogCaptureV1Test {
     @Test
     fun `stops after five redirects`() {
         val http = httpServers.mockHttp(total = 6, response = MockResponse().setResponseCode(307).setHeader("Location", "/again"))
-        http.enqueue(MockResponse().setBody(""))
+        http.enqueue(resultsResponse())
 
         val error = assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
 
@@ -749,6 +806,20 @@ internal class PostHogCaptureV1Test {
         sut.add(event())
         executor.awaitExecution()
         assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
+    fun `queue drops a batch whose 2xx results can't be read without resending it`() {
+        val http = httpServers.mockHttp(response = MockResponse().setBody("not json"))
+        http.enqueue(resultsResponse())
+        val sut = queue(http)
+
+        sut.add(event())
+        executor.awaitExecution()
+
+        assertTrue(sut.dequeList.isEmpty())
+        assertEquals(1, http.requestCount)
+        assertFalse(logger.messages.any { it.contains("successfully") })
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogEventName
 import com.posthog.TestHttpServers
+import com.posthog.TestLogger
 import com.posthog.awaitExecution
 import com.posthog.generateEvent
 import com.posthog.internal.errortracking.ThrowableCoercer
@@ -958,8 +959,21 @@ internal class PostHogQueueTest {
         val e = PostHogApiError(400, "", null)
         val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
+        val logger = TestLogger()
 
-        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
+        assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = logger))
+        assertEquals(listOf("Flushing failed with 400, dropping ${limits.cap} records."), logger.messages)
+    }
+
+    @Test
+    fun `the drop log names the records it drops`() {
+        val e = PostHogApiError(400, "", null)
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val logger = TestLogger()
+
+        deleteFilesIfAPIError(e, initialBatchLimits(config), actualBatchSize = 3, logger = logger, recordsLabel = "AI events")
+
+        assertEquals(listOf("Flushing failed with 400, dropping 3 AI events."), logger.messages)
     }
 
     @Test

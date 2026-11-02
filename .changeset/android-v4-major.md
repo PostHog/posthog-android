@@ -21,7 +21,7 @@
 - **Breaking:** rename `PostHogConfig.maxRetries` to `pushNotificationSubscriptionMaxRetries`, because it only limits push-notification subscription retries
 - **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header; a value set in properties, super properties or `beforeSend` is removed before sending
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped, with a log when `debug` is on
-- **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token
+- **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token, and print a warning for both even when `debug` is off
 - **Breaking:** add an `options` argument to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException` for per-event capture options such as `cookieless_mode`, sent apart from the properties and editable in `beforeSend` through `PostHogEvent.options`; Java callers pass the trailing argument or `null`, and classes that implement `PostHogInterface` add the parameter
 - **Breaking:** move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; `PostHogInterface` declares `identify` with the trailing `options` parameter
 - **Breaking:** registered super properties now override the properties the SDK sets itself, such as `$os_name`; super and event properties also override `$is_identified`, `$process_person_profile` and the session replay debug properties, which the SDK no longer re-applies after the caller's values
@@ -31,7 +31,9 @@
 - use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event, so a link can't set a PostHog property such as `$process_person_profile`
 - stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
-- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies, and name each event PostHog drops with the reason it gives
+- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies, and count the events PostHog drops, the duplicate copies it drops and the events it asks to retry, in one line per batch, and log the status when PostHog rejects a whole batch
+- **Breaking:** drop an event whose name is empty before sending it, including one `beforeSend` renames to `""`
+- **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps passed in the same call's properties, instead of being replaced by them, and merge a `$groups` map in properties into the groups set with `group()`
 - add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB + 64 KiB per serialized event
 - cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own
 - Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
