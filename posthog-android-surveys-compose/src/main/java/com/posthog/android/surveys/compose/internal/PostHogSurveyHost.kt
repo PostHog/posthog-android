@@ -10,8 +10,6 @@ import androidx.activity.ComponentDialog
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.drawable.toDrawable
 import com.posthog.PostHog
 import com.posthog.PostHogConfig
@@ -34,7 +32,7 @@ import com.posthog.surveys.PostHogSurveyResponse
  * [android.app.Dialog] owns its own [Window] token and is layered above the
  * activity. We use [ComponentDialog] specifically because it provides a
  * `LifecycleOwner`, `SavedStateRegistryOwner` and `OnBackPressedDispatcher` out
- * of the box — the `ViewTree*Owner`s a [ComposeView] needs to run — so Compose
+ * of the box — the `ViewTree*Owner`s a Compose view needs to run — so Compose
  * works even when the host activity is a plain XML / AppCompat activity that
  * never set up Compose itself.
  *
@@ -63,7 +61,7 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
     private var currentPresentation: Any? = null
 
     private var dialog: ComponentDialog? = null
-    private var composeView: ComposeView? = null
+    private var composeView: SurveyComposeContainer? = null
 
     // The activity hosting the current dialog. Kept so we can react when that
     // specific activity is destroyed (vs. some other activity in the app).
@@ -179,7 +177,8 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
 
         // Everything below links against Compose, supplied by the host at runtime, so an
         // incompatible version can throw a linkage `Error`. Guard it and, on failure, tear
-        // the half-built survey down rather than crash the host.
+        // the half-built survey down rather than crash the host. The first composition runs
+        // later, on the dialog's first frame, so SurveyComposeContainer guards that part.
         val presented =
             guard("presenting the survey") {
                 awaitingForeground = false
@@ -197,9 +196,9 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
                 savedSurveyState = null
 
                 val composeView =
-                    ComposeView(activity).apply {
-                        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-                        setContent {
+                    SurveyComposeContainer(
+                        context = activity,
+                        content = {
                             CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
                                 SurveySheet(
                                     survey = survey,
@@ -217,8 +216,15 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
                                     onClose = { closePresentation(presentation) },
                                 )
                             }
-                        }
-                    }
+                        },
+                        onFailure = { error ->
+                            logFailure("composing the survey", error)
+                            // This runs inside a layout pass, so tear the window down on the next message.
+                            mainHandler.post {
+                                if (isCurrentPresentation(presentation)) abandonPresentation(survey)
+                            }
+                        },
+                    )
 
                 val componentDialog =
                     ComponentDialog(activity).apply {
@@ -234,12 +240,14 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
                 componentDialog.show()
             }
 
-        if (!presented) {
-            // The SDK holds this survey until it hears back, so report the failed show as a close.
-            val onClosed = onClosedCallback
-            dismissInternal(notifyClosed = false)
-            onClosed?.invoke(survey)
-        }
+        if (!presented) abandonPresentation(survey)
+    }
+
+    private fun abandonPresentation(survey: PostHogDisplaySurvey) {
+        // The SDK holds this survey until it hears back, so report the failed show as a close.
+        val onClosed = onClosedCallback
+        dismissInternal(notifyClosed = false)
+        onClosed?.invoke(survey)
     }
 
     /**
@@ -367,12 +375,19 @@ internal class PostHogSurveyHost(private val activityProvider: ActivityProvider)
             block()
             true
         } catch (t: Throwable) {
-            PostHog.getConfig<PostHogConfig>()?.logger?.log(
-                "Surveys: $action failed, skipping the survey. " +
-                    "Likely a Compose version incompatibility in the host app. $t",
-            )
+            logFailure(action, t)
             false
         }
+    }
+
+    private fun logFailure(
+        action: String,
+        t: Throwable,
+    ) {
+        PostHog.getConfig<PostHogConfig>()?.logger?.log(
+            "Surveys: $action failed, skipping the survey. " +
+                "Likely a Compose version incompatibility in the host app. $t",
+        )
     }
 
     private fun runOnMain(block: () -> Unit) {
