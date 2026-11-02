@@ -8,16 +8,26 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
@@ -129,6 +139,52 @@ internal class PostHogReplayComposeMaskScopeTest {
 
         val mask = maskRects(maskAllTextInputs = false).single()
         assertTrue(mask.right > boundsOf("text").right, "expected $mask to extend past the layout box")
+    }
+
+    @Test
+    fun `visible overflow of scaled text is covered in window coordinates`() {
+        val overflowing: @Composable (Modifier) -> Unit = { modifier ->
+            BasicText(
+                "a secret far wider than its layout box",
+                textModifier.then(modifier),
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+        }
+        compose.activity.setContent { overflowing(Modifier) }
+        val unscaled = maskRects().single()
+
+        compose.activity.setContent {
+            overflowing(Modifier.graphicsLayer(scaleX = 2f, transformOrigin = TransformOrigin(0f, 0f)))
+        }
+
+        assertTrue(maskRects().single().width() >= 2 * unscaled.width() - 1)
+    }
+
+    @Test
+    fun `text shadow outside the layout box is covered by its mask`() {
+        val shadow = Shadow(offset = Offset(100f, 50f), blurRadius = 10f)
+        compose.activity.setContent {
+            BasicText("secret", textModifier.testTag("text"), style = TextStyle(shadow = shadow))
+        }
+
+        val bounds = boundsOf("text")
+        val mask = maskRects().single()
+        assertTrue(mask.contains(bounds))
+        assertTrue(mask.right >= bounds.right + 110 && mask.bottom >= bounds.bottom + 60, "$mask misses the shadow of $bounds")
+    }
+
+    @Test
+    fun `span shadow outside the layout box is covered by its mask`() {
+        val shadow = Shadow(offset = Offset(-20f, 0f))
+        compose.activity.setContent {
+            BasicText(
+                buildAnnotatedString { withStyle(SpanStyle(shadow = shadow)) { append("secret") } },
+                Modifier.padding(start = 50.dp).then(textModifier).testTag("text"),
+            )
+        }
+
+        assertTrue(maskRects().single().left <= boundsOf("text").left - 20)
     }
 
     @Test

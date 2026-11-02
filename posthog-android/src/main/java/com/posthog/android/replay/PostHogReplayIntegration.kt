@@ -107,6 +107,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.min
 
 public class PostHogReplayIntegration(
     private val context: Context,
@@ -1359,31 +1360,63 @@ public class PostHogReplayIntegration(
         }
     }
 
-    // Text with TextOverflow.Visible draws past its layout box, so cover the laid-out paragraph too.
+    // Text can draw past its layout box, so cover what it paints, mapped through the node's transforms.
     private fun SemanticsNode.maskBounds(): Rect {
         val bounds = boundsInWindow.toRect()
-        if (!config.contains(SemanticsProperties.Text) || config.contains(SemanticsProperties.EditableText)) {
+        val painted = textPaintedBounds() ?: return bounds
+        val coordinates = layoutInfo.coordinates
+        if (!coordinates.isAttached) {
             return bounds
+        }
+        val corners =
+            listOf(painted.topLeft, painted.topRight, painted.bottomLeft, painted.bottomRight)
+                .map { coordinates.localToWindow(it) }
+        bounds.union(
+            floor(corners.minOf { it.x }).toInt(),
+            floor(corners.minOf { it.y }).toInt(),
+            ceil(corners.maxOf { it.x }).toInt(),
+            ceil(corners.maxOf { it.y }).toInt(),
+        )
+        return bounds
+    }
+
+    // Local bounds of what the text paints outside its layout box, or null if it stays inside.
+    private fun SemanticsNode.textPaintedBounds(): androidx.compose.ui.geometry.Rect? {
+        if (!config.contains(SemanticsProperties.Text) || config.contains(SemanticsProperties.EditableText)) {
+            return null
         }
         val results = mutableListOf<TextLayoutResult>()
         if (config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
-            return bounds
+            return null
         }
-        val layout = results.firstOrNull() ?: return bounds
-        if (layout.layoutInput.overflow == TextOverflow.Visible) {
+        val layout = results.firstOrNull() ?: return null
+        val input = layout.layoutInput
+        var glyphs = androidx.compose.ui.geometry.Rect(0f, 0f, size.width.toFloat(), size.height.toFloat())
+        var overdraws = false
+        if (input.overflow == TextOverflow.Visible) {
             val paragraph = layout.multiParagraph
             // This result is re-wrapped to the box, but softWrap = false draws one unwrapped line.
-            val width = if (layout.layoutInput.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
-            val position = positionInWindow
-            bounds.union(
-                position.x.toInt(),
-                position.y.toInt(),
-                ceil(position.x + width).toInt(),
-                ceil(position.y + paragraph.height).toInt(),
-            )
+            val width = if (input.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
+            glyphs = glyphs.copy(right = max(glyphs.right, width), bottom = max(glyphs.bottom, paragraph.height))
+            overdraws = true
         }
-        return bounds
+        var painted = glyphs
+        val shadows = listOfNotNull(input.style.shadow) + input.text.spanStyles.mapNotNull { it.item.shadow }
+        for (shadow in shadows) {
+            // Skia's Gaussian blur reaches about 1.73x the radius.
+            painted = painted.expandToInclude(glyphs.translate(shadow.offset).inflate(shadow.blurRadius * 2))
+            overdraws = true
+        }
+        return if (overdraws) painted else null
     }
+
+    private fun androidx.compose.ui.geometry.Rect.expandToInclude(other: androidx.compose.ui.geometry.Rect) =
+        androidx.compose.ui.geometry.Rect(
+            min(left, other.left),
+            min(top, other.top),
+            max(right, other.right),
+            max(bottom, other.bottom),
+        )
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
