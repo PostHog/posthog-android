@@ -902,7 +902,7 @@ public class PostHog private constructor(
             }
 
             // the capture spec has registered properties win over the SDK's
-            (registeredPrefs[APP_LANGUAGE] ?: appLanguage)?.let {
+            (getPreferences().getValue(APP_LANGUAGE) ?: appLanguage)?.let {
                 props[APP_LANGUAGE] = it
             }
 
