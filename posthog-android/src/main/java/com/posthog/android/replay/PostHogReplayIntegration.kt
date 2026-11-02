@@ -258,6 +258,8 @@ public class PostHogReplayIntegration(
     ) {
         // Keep this first so a draw that overlaps the verified pre-walk cannot go unnoticed.
         drawState.recordDraw()
+        // A text style change only shows up in a new layout result, and it has to draw to reach pixels.
+        textPaintedBoundsCache.clear()
 
         val classifyLegacyDraw =
             !shouldVerifyMaskAlignment(view, drawState) ||
@@ -1019,6 +1021,8 @@ public class PostHogReplayIntegration(
         // True for walks re-checking a capture's first walk; false re-measures text.
         val reuseTextLayouts: Boolean = false,
     ) {
+        var textLayoutsCleared: Boolean = false
+
         val rects: MutableList<Rect> = mutableListOf()
         var poisoned: Boolean = false
         var aborted: Boolean = false
@@ -1295,8 +1299,10 @@ public class PostHogReplayIntegration(
                             config.logger.log("View is not a RootForTest: $view")
                             return@Runnable
                         }
-                    if (!walk.reuseTextLayouts) {
+                    // Once per walk: a walk visits every ComposeView, all sharing this cache.
+                    if (!walk.reuseTextLayouts && !walk.textLayoutsCleared) {
                         textPaintedBoundsCache.clear()
+                        walk.textLayoutsCleared = true
                     }
                     // Unmerged: a merged node inherits a child's postHogUnmask, exposing its siblings.
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
@@ -1393,8 +1399,8 @@ public class PostHogReplayIntegration(
         val bounds: androidx.compose.ui.geometry.Rect?,
     )
 
-    // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so one capture's
-    // repeated walks share the result. Main thread only, like the traversal that reads it.
+    // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so a capture's walks
+    // share the result until the next draw. Main thread only, like the traversal that reads it.
     private val textPaintedBoundsCache = HashMap<Int, CachedTextPaintedBounds>()
 
     private fun SemanticsNode.textPaintedBounds(): androidx.compose.ui.geometry.Rect? {

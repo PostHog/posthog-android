@@ -3,6 +3,7 @@ package com.posthog.android.replay
 import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.getTextLayoutResult
@@ -43,6 +45,7 @@ import com.posthog.android.internal.InteractionTestApplication
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.replay.PostHogMaskModifier.postHogMask
 import com.posthog.android.replay.PostHogMaskModifier.postHogUnmask
+import com.posthog.android.replay.internal.WindowDrawState
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -195,6 +198,67 @@ internal class PostHogReplayComposeMaskScopeTest {
     }
 
     @Test
+    fun `a draw drops reused text bounds so a new shadow is covered`() {
+        var shadow by mutableStateOf<Shadow?>(null)
+        compose.activity.setContent {
+            BasicText(
+                "secret",
+                Modifier.padding(start = 50.dp).then(textModifier).testTag("text"),
+                style = TextStyle(shadow = shadow),
+            )
+        }
+        val sut = PostHogReplayIntegration(compose.activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+        val verify = { runWalk(sut, PostHogReplayIntegration.MaskWalk(reuseTextLayouts = true)).single() }
+
+        val before = runWalk(sut, PostHogReplayIntegration.MaskWalk()).single()
+        shadow = Shadow(offset = Offset(-20f, 0f))
+        assertEquals(before, verify())
+
+        compose.runOnIdle {
+            val view = findComposeView(compose.activity.window.decorView)!!
+            sut.onDrawCallback(view, WindowDrawState())
+        }
+
+        assertTrue(verify().left <= before.left - 20)
+    }
+
+    @Test
+    fun `a walk over several compose roots keeps the text layouts of each root`() {
+        var layouts = 0
+        val root = {
+            ComposeView(compose.activity).apply {
+                setContent {
+                    Box(
+                        textModifier.semantics {
+                            text = AnnotatedString("secret")
+                            getTextLayoutResult {
+                                layouts++
+                                false
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        compose.activity.setContentView(
+            LinearLayout(compose.activity).apply {
+                addView(root())
+                addView(root())
+            },
+        )
+        val sut = PostHogReplayIntegration(compose.activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+        val walkAll = { walk: PostHogReplayIntegration.MaskWalk ->
+            compose.runOnIdle { sut.findMaskableWidgets(compose.activity.window.decorView, walk) }
+        }
+
+        walkAll(PostHogReplayIntegration.MaskWalk())
+        assertEquals(2, layouts)
+
+        walkAll(PostHogReplayIntegration.MaskWalk(reuseTextLayouts = true))
+        assertEquals(2, layouts)
+    }
+
+    @Test
     fun `verification walks reuse the text layout of the first walk`() {
         var layouts = 0
         var label by mutableStateOf("secret")
@@ -287,7 +351,6 @@ internal class PostHogReplayComposeMaskScopeTest {
         val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.sessionReplayConfig.maskAllTextInputs = maskAllTextInputs
         config.sessionReplayConfig.maskAllImages = maskAllImages
-        val sut = PostHogReplayIntegration(compose.activity, config, MainHandler())
         return runWalk(PostHogReplayIntegration(compose.activity, config, MainHandler()), PostHogReplayIntegration.MaskWalk())
     }
 
