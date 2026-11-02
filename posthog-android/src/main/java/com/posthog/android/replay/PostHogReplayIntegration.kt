@@ -37,6 +37,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -1435,6 +1436,11 @@ public class PostHogReplayIntegration(
             glyphs = glyphs.copy(right = max(glyphs.right, width), bottom = max(glyphs.bottom, paragraph.height))
             overdraws = true
         }
+        val strokes = listOfNotNull(input.style.textStroke()) + input.text.spanStyles.mapNotNull { it.item.textStroke() }
+        strokes.maxOfOrNull { it.width / 2 * max(1f, it.miter) }?.let {
+            glyphs = glyphs.inflate(it)
+            overdraws = true
+        }
         var painted = glyphs
         val shadows = listOfNotNull(input.style.shadow) + input.text.spanStyles.mapNotNull { it.item.shadow }
         for (shadow in shadows) {
@@ -1443,6 +1449,15 @@ public class PostHogReplayIntegration(
             overdraws = true
         }
         return if (overdraws) painted else null
+    }
+
+    // drawStyle arrived in Compose 1.4, after the version the SDK compiles against. Older runtimes can't stroke text.
+    private fun Any.textStroke(): Stroke? {
+        return try {
+            javaClass.getMethod("getDrawStyle").invoke(this) as? Stroke
+        } catch (e: NoSuchMethodException) {
+            null
+        }
     }
 
     private fun androidx.compose.ui.geometry.Rect.expandToInclude(other: androidx.compose.ui.geometry.Rect) =

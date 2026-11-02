@@ -108,6 +108,14 @@
     public androidx.compose.ui.node.LayoutNode getLayoutNode();
 }
 
+# Read in reflection: added in Compose 1.4, after the version the SDK compiles against.
+-keepclassmembers class androidx.compose.ui.text.TextStyle {
+    public androidx.compose.ui.graphics.drawscope.DrawStyle getDrawStyle();
+}
+-keepclassmembers class androidx.compose.ui.text.SpanStyle {
+    public androidx.compose.ui.graphics.drawscope.DrawStyle getDrawStyle();
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable

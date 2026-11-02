@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.testTag
@@ -190,6 +191,31 @@ internal class PostHogReplayComposeMaskScopeTest {
         compose.activity.setContent {
             BasicText(
                 buildAnnotatedString { withStyle(SpanStyle(shadow = shadow)) { append("secret") } },
+                Modifier.padding(start = 50.dp).then(textModifier).testTag("text"),
+            )
+        }
+
+        assertTrue(maskRects().single().left <= boundsOf("text").left - 20)
+    }
+
+    @Test
+    fun `text stroke outside the layout box is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "secret",
+                Modifier.padding(start = 50.dp).then(textModifier).testTag("text"),
+                style = TextStyle(drawStyle = Stroke(width = 40f, miter = 1f)),
+            )
+        }
+
+        assertTrue(maskRects().single().left <= boundsOf("text").left - 20)
+    }
+
+    @Test
+    fun `span stroke outside the layout box is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                buildAnnotatedString { withStyle(SpanStyle(drawStyle = Stroke(width = 40f, miter = 1f))) { append("secret") } },
                 Modifier.padding(start = 50.dp).then(textModifier).testTag("text"),
             )
         }
