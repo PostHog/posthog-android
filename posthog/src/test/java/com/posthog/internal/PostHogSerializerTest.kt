@@ -323,9 +323,11 @@ internal class PostHogSerializerTest {
     }
 
     @Test
-    fun `converts scalar map keys, drops other keys and keeps the event`() {
-        val config = PostHogConfig(PROJECT_TOKEN)
-        val nested = mapOf(1 to "int", 1.5 to "float", true to "bool", null to "null", listOf("k") to "dropped", "text" to "string")
+    fun `converts scalar map keys, drops and logs other keys by type and keeps the event`() {
+        val logger = TestLogger()
+        val config = PostHogConfig(PROJECT_TOKEN).apply { this.logger = logger }
+        val nested =
+            mapOf(1 to "int", 1.5 to "float", true to "bool", null to "null", listOf("SECRET-KEY") to "dropped", "text" to "string")
         val event = generateEvent().copy(properties = mutableMapOf("nested" to nested))
 
         val writer = StringWriter()
@@ -335,6 +337,9 @@ internal class PostHogSerializerTest {
         val sent = properties["nested"].asJsonObject
         assertEquals(setOf("1", "1.5", "true", "null", "text"), sent.keySet())
         assertEquals("int", sent["1"].asString)
+        val message = logger.messages.single { it.contains("cannot be serialized") }
+        assertTrue(message.contains("Property key of type java.util.Collections\$SingletonList"), message)
+        assertTrue(logger.messages.none { it.contains("SECRET-KEY") })
     }
 
     @Test

@@ -30,7 +30,15 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
 
         // A nested map can have any key type at runtime, whatever this signature says.
         (src as Map<*, *>?)?.forEach { (rawKey, srcValue) ->
-            val key = jsonKey(rawKey) ?: return@forEach
+            val key =
+                jsonKey(rawKey) ?: run {
+                    // the key's type only: keys can hold user content
+                    config.logger.log(
+                        "Property key of type ${rawKey?.javaClass?.name} cannot be serialized to JSON. " +
+                            "This property will be ignored.",
+                    )
+                    return@forEach
+                }
             val serialized = safeSerializeValue(srcValue, key, context)
             if (serialized != null) {
                 jsonObject.add(key, serialized)
