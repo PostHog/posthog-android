@@ -106,12 +106,12 @@ dependencies {
     // compatibility
     signature("org.codehaus.mojo.signature:java18:${PosthogBuildConfig.Plugins.SIGNATURE_JAVA18}@signature")
 
-    compileOnly("io.opentelemetry:opentelemetry-api:1.32.0")
-    compileOnly("io.opentelemetry:opentelemetry-sdk-trace:1.32.0")
+    compileOnly("io.opentelemetry:opentelemetry-api:1.67.0")
+    compileOnly("io.opentelemetry:opentelemetry-sdk-trace:1.67.0")
 
     // tests
-    testImplementation("io.opentelemetry:opentelemetry-api:1.32.0")
-    testImplementation("io.opentelemetry:opentelemetry-sdk-trace:1.32.0")
+    testImplementation("io.opentelemetry:opentelemetry-api:1.67.0")
+    testImplementation("io.opentelemetry:opentelemetry-sdk-trace:1.67.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:${PosthogBuildConfig.Dependencies.MOCKITO}")
     testImplementation("org.mockito:mockito-inline:${PosthogBuildConfig.Dependencies.MOCKITO_INLINE}")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:${PosthogBuildConfig.Kotlin.KOTLIN}")
