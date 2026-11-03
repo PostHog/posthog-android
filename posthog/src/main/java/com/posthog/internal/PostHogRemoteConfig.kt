@@ -1216,11 +1216,12 @@ public class PostHogRemoteConfig(
                 ) as? Map<String, Any> ?: mapOf()
 
             @Suppress("UNCHECKED_CAST")
-            val payloads =
+            val cachedPayloads =
                 preferences.getValue(
                     FEATURE_FLAGS_PAYLOAD,
                     mapOf<String, Any?>(),
                 ) as? Map<String, Any?> ?: mapOf()
+            val payloads = withPayloadsFromCachedFlags(cachedPayloads, flags)
 
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
             val cachedEvaluatedAt = preferences.getValue(FEATURE_FLAG_EVALUATED_AT) as? Long
@@ -1242,6 +1243,31 @@ public class PostHogRemoteConfig(
                 isFeatureFlagsLoaded = true
             }
         }
+    }
+
+    // 3.x cached a malformed payload as its raw string, so after an upgrade the payload cache can hold
+    // one. The cached flag details keep each payload as the server serialized it: decode those instead,
+    // the same way a /flags response is decoded. Legacy caches without flag details are kept as they are.
+    private fun withPayloadsFromCachedFlags(
+        cachedPayloads: Map<String, Any?>,
+        flags: Map<String, Any>,
+    ): Map<String, Any?> {
+        val serializedPayloads =
+            flags.mapNotNull { (key, flag) ->
+                when (flag) {
+                    is FeatureFlag -> key to flag.metadata.payload
+                    is Map<*, *> -> (flag["metadata"] as? Map<*, *>)?.let { key to (it["payload"] as? String) }
+                    else -> null
+                }
+            }.toMap()
+        if (serializedPayloads.isEmpty()) {
+            return cachedPayloads
+        }
+        val decoded =
+            serializedPayloads.mapNotNull { (key, serialized) ->
+                serialized?.let { decodePayload(key, it) }?.let { key to it }
+            }.toMap()
+        return cachedPayloads.filterKeys { it !in serializedPayloads } + decoded
     }
 
     private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> =
