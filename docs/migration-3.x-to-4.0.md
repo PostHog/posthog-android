@@ -27,10 +27,11 @@ You need to change code if your app does any of these:
 - sets the event `uuid` in `beforeSend`
 - relies on a `Retry-After` longer than 30 seconds
 - sets `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig`
-- uses `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs` or `remoteConfig`
+- uses `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, `drawableConverter` or `remoteConfig`
 - passes `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position
-- calls `getFeatureFlagPayload()`
-- sets `PostHogOnFeatureFlags` or passes a callback to `reloadFeatureFlags()`
+- calls `getFeatureFlagPayload()`, or passes a default value to `getFeatureFlag()`
+- sets `PostHogConfig.onFeatureFlags` or `PostHogOnFeatureFlags`, or passes a callback to `reloadFeatureFlags()`
+- uses session replay (see [Session replay records screenshots](#session-replay-records-screenshots))
 - reads a feature flag payload that isn't valid JSON, such as plain text saved as `hello`
 - breaks down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6–12)
 - reads event content or request bodies from the SDK's debug log, or matches its log text
@@ -64,8 +65,11 @@ All of these are compile errors. Calling them from an already-compiled library t
 | `PostHogConfig.propertiesSanitizer`, `PostHogPropertiesSanitizer` | `addBeforeSend` |
 | `PostHogConfig.evaluationEnvironments` | `evaluationContexts` |
 | `getFeatureFlagPayload()`, on the instance and on `PostHog` | `getFeatureFlagResult()` |
+| `defaultValue` on `getFeatureFlag()` | `getFeatureFlag(key) ?: default` |
 | `PostHogSessionReplayConfig.debouncerDelayMs` | `throttleDelayMs` |
+| `PostHogSessionReplayConfig.screenshot`, `drawableConverter`, `PostHogDrawableConverter` | nothing; replay always records screenshots |
 | `PostHogConfig.remoteConfig` | nothing; remote config always loads |
+| `PostHogConfig.onFeatureFlags` | `PostHog.onFeatureFlags()` before `setup()` |
 | `PostHogOnFeatureFlags` | `PostHogFeatureFlagsCallback` |
 | `PostHogConfig.maxRetries` | `pushNotificationSubscriptionMaxRetries` (see [Retries](#retries)) |
 
@@ -126,6 +130,24 @@ val payload = PostHog.getFeatureFlagPayload("checkout", defaultValue = "fallback
 val payload = PostHog.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false)?.payload ?: "fallback"
 ```
 
+### `getFeatureFlag()` default value
+
+```kotlin
+// 3.x
+val value = PostHog.getFeatureFlag("checkout", defaultValue = "fallback")
+
+// 4.0
+val value = PostHog.getFeatureFlag("checkout") ?: "fallback"
+```
+
+The second parameter is now `sendFeatureFlagEvent`, which affects code that still compiles:
+
+- `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
+- A disabled SDK now returns `null`, not your default.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event reports an empty response.
+
+Classes that implement `PostHogInterface` update the signature.
+
 ### `debouncerDelayMs`
 
 ```kotlin
@@ -155,7 +177,7 @@ If you set it to `false`, your app's behavior changes:
 
 ## Feature flags callback
 
-`PostHogConfig.onFeatureFlags` and `reloadFeatureFlags()` now take a `PostHogFeatureFlagsCallback`, which receives a `PostHogFeatureFlagsLoaded`:
+`PostHogConfig.onFeatureFlags` is removed. Call `PostHog.onFeatureFlags()` before `setup()` instead, which also covers the first load. `reloadFeatureFlags()` now takes a `PostHogFeatureFlagsCallback`. Both callbacks receive a `PostHogFeatureFlagsLoaded`:
 
 - `flags`: the keys of the enabled flags
 - `variants`: their values, either `true` or the variant string
@@ -167,13 +189,19 @@ config.onFeatureFlags = PostHogOnFeatureFlags {
     refreshUi()
 }
 
-// 4.0
-config.onFeatureFlags = PostHogFeatureFlagsCallback { loaded ->
+// 4.0, before PostHogAndroid.setup()
+PostHog.onFeatureFlags { loaded ->
     if (!loaded.errorsLoading) {
         refreshUi()
     }
 }
 ```
+
+The listener differs from the removed option in three ways:
+
+- It runs on the main thread on Android. The option ran on a background thread.
+- Bootstrapped flags arrive just after `setup()` is called, not synchronously inside it.
+- A reload on a disabled SDK doesn't call listeners. `reloadFeatureFlags(callback)` still gets `errorsLoading = true` in that case.
 
 ```java
 // 3.x
@@ -187,7 +215,7 @@ A Kotlin trailing lambda such as `PostHog.reloadFeatureFlags { refreshUi() }` co
 
 `errorsLoading` is `false` when PostHog answers that the project is over its feature flags quota, and the values are the cached flags. It's `true` when no request was made, such as when the device is offline or the distinct ID is blank, and when the SDK is disabled or isn't set up, with no values in that last case.
 
-These callbacks still run on a background thread, or right away on the calling thread when no load is attempted, so switch to the main thread before touching UI. With bootstrapped flags, `PostHogConfig.onFeatureFlags` also runs once on the thread calling `setup()`.
+The `reloadFeatureFlags()` callback still runs on a background thread, or right away on the calling thread when no load is attempted, so switch to the main thread before touching UI.
 
 ## `PostHogInterface` implementations
 
@@ -252,6 +280,31 @@ The new `$app_language` property is the language your app shows. Android has no 
 | 6–12 | Not sent. |
 
 Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
+
+### Session replay records screenshots
+
+4.0 removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did.
+
+```kotlin
+// 3.x
+config.sessionReplayConfig.screenshot = true
+
+// 4.0: remove the line
+```
+
+Apps that relied on the default now upload screenshots:
+
+- Masking still covers text inputs, images, `WebView`s, Compose semantics, `ph-no-capture` views and `Modifier.postHogMask()`.
+- Custom-drawn views and other content the SDK doesn't recognize, such as maps or video, can now appear in recordings. Mask them, or turn replay off with `sessionReplay = false`.
+- Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded.
+
+Compose masking also changed, including for apps that already set `screenshot = true`:
+
+- `Modifier.postHogMask()` and `Modifier.postHogUnmask()` apply only to the element and its children, not to siblings merged into the same clickable row.
+- Text that draws past its layout box is masked in full.
+- Nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
+
+The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
 
 ### Other changes that don't fail the build
 
@@ -455,7 +508,7 @@ PostHog.captureAi(
 
 ## New: `onFeatureFlags()`
 
-If you need flag updates outside of `PostHogConfig`, for example from a screen or a library, register a listener you can remove:
+`onFeatureFlags()` is now the way to listen for flag loads, for example from a screen or a library. You can remove the listener later:
 
 ```kotlin
 val subscription = PostHog.onFeatureFlags { loaded ->

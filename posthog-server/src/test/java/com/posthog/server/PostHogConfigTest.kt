@@ -180,7 +180,6 @@ internal class PostHogConfigTest {
         assertEquals(30, coreConfig.maxBatchSize)
         assertEquals(45, coreConfig.flushIntervalSeconds)
         assertEquals(mockEncryption, coreConfig.encryption)
-        assertNull(coreConfig.onFeatureFlags)
     }
 
     @Test
