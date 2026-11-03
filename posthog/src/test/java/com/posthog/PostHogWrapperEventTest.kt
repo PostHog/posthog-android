@@ -229,6 +229,24 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `send for another distinct id leaves the current user's person state alone`() {
+        val prefs = PostHogMemoryPreferences()
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { cachePreferences = prefs }
+        val built = assertNotNull(sut.buildEventForWrapper("signup", userProperties = mapOf("plan" to "pro")))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(built.copy(distinctId = "other-user")))
+        queueExecutor.awaitExecution()
+        val next = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        val sent = events(takeRequest(http)).single()
+        assertEquals("other-user", sent["distinct_id"])
+        assertEquals(mapOf("plan" to "pro"), sent.properties()["\$set"])
+        assertNull(prefs.getValue(PERSON_PROPERTIES_FOR_FLAGS))
+        assertEquals(false, next.options?.get("process_person_profile"))
+    }
+
+    @Test
     fun `send caches the screen name and the person properties for flags`() {
         val prefs = PostHogMemoryPreferences()
         val sut = getSut(httpServers.mockHttp()) { cachePreferences = prefs }
