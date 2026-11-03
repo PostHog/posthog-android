@@ -1840,7 +1840,7 @@ public class PostHogReplayIntegration(
                     findMaskableWidgets(this, it)
                 }
             } ?: return false
-        if (walk.aborted || walk.poisoned || unsafeRedraw()) {
+        if (walk.aborted || unsafeRedraw()) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             return false
         }
