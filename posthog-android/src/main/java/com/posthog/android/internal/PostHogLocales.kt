@@ -54,7 +54,9 @@ internal class PostHogLocales(
     }
 
     fun deviceLocaleTag(): String? {
-        val locale = systemLocales?.takeUnless { it.isEmpty }?.get(0) ?: resourcesLocale()
+        val system =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) systemLocales?.takeUnless { it.isEmpty }?.get(0) else null
+        val locale = system ?: resourcesLocale()
         return locale?.withoutExtensions()?.toLanguageTag()?.takeUnless { it == "und" }
     }
 
@@ -118,6 +120,7 @@ private fun LocaleConfig.toSupportedLocales(): SupportedLocales? {
     return SupportedLocales(locales.toList(), default)
 }
 
+@RequiresApi(Build.VERSION_CODES.N)
 private fun LocaleList.toList(): List<Locale> = (0 until size()).map { get(it) }
 
 // Android 14+ regional preferences add extensions such as en-US-u-fw-mon.
