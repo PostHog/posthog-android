@@ -163,6 +163,9 @@ public class PostHog private constructor(
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
+            // under React Native the JS layer drives explicit starts; native automatic starts
+            // still happen via the integration's onRemoteConfig
+            if (PostHogSessionManager.isReactNative) return@PostHogOnFeatureFlags
             sessionReplayHandler?.let {
                 if (isSessionReplayConfigEnabled()) {
                     // start will bail if session replay is already active anyway
@@ -944,19 +947,21 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 replayQueue?.add(postHogEvent)
             } else {
-                super.captureStateless(
-                    postHogEvent.event,
-                    newDistinctId,
-                    postHogEvent.properties ?: emptyMap(),
-                    userProperties,
-                    userPropertiesSetOnce,
-                    groups,
-                    timestamp,
-                )
+                val queuedEvent =
+                    captureStatelessEvent(
+                        postHogEvent.event,
+                        newDistinctId,
+                        postHogEvent.properties ?: emptyMap(),
+                        userProperties,
+                        userPropertiesSetOnce,
+                        groups,
+                        timestamp,
+                    )
                 // Notify surveys integration about the event
                 surveysHandler?.onEvent(event, mergedProperties)
-                // Notify session replay handler about the event for event triggers
-                sessionReplayHandler?.onEvent(event, mergedProperties)
+                // Replay trigger groups match property filters, so like posthog-js they see the event as queued:
+                // after the beforeSend hooks changed it, and not at all if a hook dropped it.
+                queuedEvent?.let { sessionReplayHandler?.onEvent(it.event, it.properties) }
             }
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
@@ -2345,6 +2350,12 @@ public class PostHog private constructor(
     override fun startSessionReplay(resumeCurrent: Boolean) {
         if (!isEnabled()) {
             return
+        }
+
+        // an explicit request must lift the React Native stop latch even if the gates below refuse it,
+        // but not while opted out (as on iOS)
+        if (!isOptOut()) {
+            sessionReplayHandler?.onStartRequested()
         }
 
         if (!isSessionReplayFlagEnabled()) {

@@ -196,6 +196,12 @@ public class PostHogReplayIntegration(
     @Volatile
     private var startedWithAutomaticDisabled: Boolean = false
 
+    // Under React Native the JS layer decides when to record and drives start()/stop(). Set by its explicit
+    // stop so no native callback (remote config, flags, session change) restarts the recorder behind its
+    // back; cleared by its next explicit start.
+    @Volatile
+    private var stoppedByReactNative: Boolean = false
+
     // Event triggers for session recording
     private val eventTriggersLock = Any()
 
@@ -639,6 +645,7 @@ public class PostHogReplayIntegration(
                 synchronized(pixelCopyBitmapBuffer) {
                     synchronized(decorViews) {
                         startedWithAutomaticDisabled = false
+                        stoppedByReactNative = false
                         isSessionReplayActive = false
                         snapshotGeneration++
                         pixelCopyBitmapBuffer.close()
@@ -2477,13 +2484,20 @@ public class PostHogReplayIntegration(
         if (!config.sessionReplay) {
             startedWithAutomaticDisabled = true
         }
+        stoppedByReactNative = false
 
         startRecording(resumeCurrent)
     }
 
+    // The request itself must lift the JS stop even when startSessionReplay is refused by a gate
+    // before it ever reaches start() — otherwise later automatic starts stay blocked.
+    override fun onStartRequested() {
+        stoppedByReactNative = false
+    }
+
     // config.sessionReplay controls automatic starts; a recording the app started explicitly
-    // while it was off must survive them.
-    private fun isAutomaticStartPermitted(): Boolean = config.sessionReplay || startedWithAutomaticDisabled
+    // while it was off must survive them. Under React Native an explicit stop blocks them until the next explicit start.
+    private fun isAutomaticStartPermitted(): Boolean = !stoppedByReactNative && (config.sessionReplay || startedWithAutomaticDisabled)
 
     private fun startRecording(resumeCurrent: Boolean) {
         // Event triggers may change while an automatic start is queued on main.
@@ -2559,6 +2573,7 @@ public class PostHogReplayIntegration(
             synchronized(decorViews) {
                 if (resetManualStart) {
                     startedWithAutomaticDisabled = false
+                    stoppedByReactNative = PostHogSessionManager.isReactNative
                 }
                 isSessionReplayActive = false
                 snapshotGeneration++
@@ -2817,7 +2832,9 @@ public class PostHogReplayIntegration(
         val remoteConfig = config.remoteConfigHolder ?: return true
         if (!remoteConfig.hasSessionRecordingTriggerGroups()) return true
         val currentSessionId = postHog?.getSessionId()?.toString() ?: return true
-        return remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)
+        if (!remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)) return false
+        // The local sample rate still caps what the groups allow.
+        return remoteConfig.makeSamplingDecision(currentSessionId)
     }
 
     private data class EventTriggerState(val configured: Boolean, val activated: Boolean)
@@ -3030,7 +3047,10 @@ public class PostHogReplayIntegration(
         }
         val currentSessionId = postHog?.getSessionId()?.toString() ?: return false
         if (remoteConfig.hasSessionRecordingTriggerGroups()) {
-            return remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)
+            // The groups only gate activation; the local sample rate still caps them.
+            if (!remoteConfig.isSessionRecordingPermittedByTriggerGroups(currentSessionId)) {
+                return false
+            }
         }
         return remoteConfig.makeSamplingDecision(currentSessionId)
     }

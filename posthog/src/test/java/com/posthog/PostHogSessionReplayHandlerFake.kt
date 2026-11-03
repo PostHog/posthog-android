@@ -10,6 +10,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventName: String? = null
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
+    public var onStartRequestedCalled: Boolean = false
     public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
     public var throwOnDebugProperties: Boolean = false
 
@@ -21,12 +22,17 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         lastEventName = null
         lastEventProperties = null
         onSessionIdChangedCalled = false
+        onStartRequestedCalled = false
     }
 
     override fun start(resumeCurrent: Boolean) {
         startCalled = true
         this.resumeCurrent = resumeCurrent
         isActive = true
+    }
+
+    override fun onStartRequested() {
+        onStartRequestedCalled = true
     }
 
     override fun stop() {

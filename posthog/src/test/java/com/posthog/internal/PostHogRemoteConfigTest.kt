@@ -3232,6 +3232,279 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
     }
 
+    private fun cacheFlagGroupConfig(flag: Any = "replay-flag") {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "flag-group",
+                            "name" to "Flagged",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("matchType" to "all", "flag" to flag),
+                        ),
+                    ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a cached flag group reads the cached flags before any flag getter runs`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to true))
+        // offline: the first request fails, so only the cache can decide
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `a cached flag group stays pending when the cached flag is off`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to false))
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `bootstrapped flags still win over cached flags for a flag group`() {
+        // bootstrap only keeps enabled flags, so a differing variant is what can show precedence
+        cacheFlagGroupConfig(flag = mapOf("flag" to "replay-flag", "variant" to "test"))
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to "test"))
+        val sut =
+            getSut(
+                host = "http://localhost:1/",
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("replay-flag" to "control")),
+            )
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    // Stands in for the disk during the race: the cached FEATURE_FLAGS read (which
+    // loadFeatureFlagsFromCache does before taking featureFlagsLock) parks, then serves a stale
+    // snapshot — as if the flags block was read before a /flags response landed — while every
+    // other key and all writes go to the live store.
+    private class ParkingFlagsPreferences(
+        private val live: PostHogPreferences,
+        private val staleFlags: Map<String, Any>,
+    ) : PostHogPreferences {
+        // Armed only after construction, so the init-block preloads completed without parking.
+        @Volatile
+        var armed = false
+        val enteredRead = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? {
+            if (armed && key == FEATURE_FLAGS) {
+                enteredRead.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                return staleFlags
+            }
+            return live.getValue(key, defaultValue)
+        }
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) = live.setValue(key, value)
+
+        override fun clear(except: List<String>) = live.clear(except)
+
+        override fun remove(key: String) = live.remove(key)
+
+        override fun getAll(): Map<String, Any> = live.getAll()
+    }
+
+    @Test
+    fun `a flags response that lands during a cache load keeps its values`() {
+        cacheFlagGroupConfig(flag = "4535-funnel-bar-viz")
+        // the disk (staleFlags below) still has the flag off; the /flags response says it is on
+
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val parking = ParkingFlagsPreferences(preferences, mapOf("4535-funnel-bar-viz" to false))
+        val sut = getSut(host = http.url("/").toString(), cachePreferences = parking)
+        parking.armed = true
+
+        // Park the cache load between the unlocked isFeatureFlagsLoaded check and the lock,
+        // with the stale cached flags already read.
+        val cacheLoader =
+            Thread {
+                sut.isSessionRecordingPermittedByTriggerGroups("session-1")
+            }.apply { isDaemon = true }
+        cacheLoader.start()
+        assertTrue(parking.enteredRead.await(5, TimeUnit.SECONDS), "cache load should reach the cached flags read")
+
+        // The /flags response lands inside that window and writes fresh flags.
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // The parked cache load resumes: it must bail instead of overwriting the fresh flags.
+        parking.release.countDown()
+        cacheLoader.join(5_000)
+
+        assertEquals(true, sut.getFeatureFlagResult("4535-funnel-bar-viz")?.enabled)
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    // Parks the /flags response's FEATURE_FLAGS write: it runs after featureFlagsLock is released, so a cache
+    // load that starts meanwhile must already see the flags as loaded. Reads serve a stale disk snapshot.
+    private class ParkingFlagsWritePreferences(
+        private val live: PostHogPreferences,
+        private val staleFlags: Map<String, Any>,
+    ) : PostHogPreferences {
+        @Volatile
+        var armed = false
+        val enteredWrite = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? = if (armed && key == FEATURE_FLAGS) staleFlags else live.getValue(key, defaultValue)
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) {
+            if (armed && key == FEATURE_FLAGS) {
+                enteredWrite.countDown()
+                release.await(5, TimeUnit.SECONDS)
+            }
+            live.setValue(key, value)
+        }
+
+        override fun clear(except: List<String>) = live.clear(except)
+
+        override fun remove(key: String) = live.remove(key)
+
+        override fun getAll(): Map<String, Any> = live.getAll()
+    }
+
+    @Test
+    fun `a cache load while a flags response is still persisting keeps the fresh values`() {
+        cacheFlagGroupConfig(flag = "4535-funnel-bar-viz")
+
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val parking = ParkingFlagsWritePreferences(preferences, mapOf("4535-funnel-bar-viz" to false))
+        val sut = getSut(host = http.url("/").toString(), cachePreferences = parking)
+        parking.armed = true
+
+        // The /flags response has written the fresh flags in memory and is now persisting them to disk.
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogOnFeatureFlags { latch.countDown() },
+        )
+        assertTrue(parking.enteredWrite.await(5, TimeUnit.SECONDS), "flags load should reach the disk write")
+
+        // A cache load in that window must not replace the fresh in-memory flags with the stale disk copy.
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        parking.release.countDown()
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+        assertEquals(true, sut.getFeatureFlagResult("4535-funnel-bar-viz")?.enabled)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a cached flag group is eligible from the cache before flags answers`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to true))
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.makeSamplingDecision("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `an event-leg group does not care whether the flags are loaded`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "event-group",
+                            "name" to "Event",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("matchType" to "any", "events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        // pending until the event fires, whatever the flags state
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `the local sample rate still caps recording under v2 trigger groups`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 1.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        assertTrue(sut.makeSamplingDecision("session-1"))
+        // an app that turns recording off locally stays off, whatever the groups allow
+        config!!.sampleRateProvider = { 0.0 }
+        assertFalse(sut.makeSamplingDecision("session-1"))
+        config!!.sampleRateProvider = { 1.0 }
+        assertTrue(sut.makeSamplingDecision("session-1"))
+        config!!.sampleRateProvider = null
+
+        sut.clear()
+    }
+
     @Test
     fun `v2 trigger groups are left to the JS layer under react native`() {
         preferences.setValue(

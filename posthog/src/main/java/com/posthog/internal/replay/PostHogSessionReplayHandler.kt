@@ -6,6 +6,11 @@ import com.posthog.PostHogInternal
 public interface PostHogSessionReplayHandler {
     public fun start(resumeCurrent: Boolean)
 
+    /**
+     * Called when the app explicitly asks to start recording, before any gate can refuse it.
+     */
+    public fun onStartRequested() {}
+
     public fun stop()
 
     public fun isActive(): Boolean

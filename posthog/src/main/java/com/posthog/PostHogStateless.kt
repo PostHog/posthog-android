@@ -241,14 +241,29 @@ public open class PostHogStateless protected constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
+        captureStatelessEvent(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+    }
+
+    /**
+     * [captureStateless], returning the event as it was queued (after the beforeSend hooks), or null if it was dropped.
+     */
+    internal fun captureStatelessEvent(
+        event: String,
+        distinctId: String,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+    ): PostHogEvent? {
         try {
             if (!isEnabled()) {
-                return
+                return null
             }
 
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return
+                return null
             }
 
             var groupIdentify = false
@@ -288,12 +303,14 @@ public open class PostHogStateless protected constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return
+                return null
             }
 
             queue?.add(postHogEvent)
+            return postHogEvent
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
+            return null
         }
     }
 

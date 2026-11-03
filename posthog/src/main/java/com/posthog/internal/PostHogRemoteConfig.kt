@@ -1014,6 +1014,10 @@ public class PostHogRemoteConfig(
                     // re-arm from the cached config like session replay above.
                     reevaluateCapturePerformanceFromCachedConfig(cachedCapturePerformance)
                     reevaluateErrorTrackingFromCachedConfig(cachedErrorTracking)
+
+                    // Under the same lock that wrote the flags, so a racing cache load (which
+                    // re-checks this flag under featureFlagsLock) can't overwrite them afterwards.
+                    isFeatureFlagsLoaded = true
                 }
                 config.cachePreferences?.let { preferences ->
                     val flags = this.flags ?: mapOf()
@@ -1051,7 +1055,6 @@ public class PostHogRemoteConfig(
                         preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
                     }
                 }
-                isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
 
                 if (notifyRemoteConfigLoaded) {
@@ -1216,6 +1219,11 @@ public class PostHogRemoteConfig(
             val cachedMinimalFlagCalledEvents = preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS) as? Boolean ?: false
 
             synchronized(featureFlagsLock) {
+                // Re-check under the lock: a /flags response may have landed between the caller's
+                // unlocked check and here, and stale cache values must not overwrite fresh flags.
+                if (isFeatureFlagsLoaded) {
+                    return
+                }
                 this.flags = flags
                 this.featureFlags = featureFlags
                 this.featureFlagPayloads = payloads
@@ -1410,7 +1418,8 @@ public class PostHogRemoteConfig(
      * from remote config and the given session ID.
      *
      * If there is no sample rate configured (null), recording is always allowed.
-     * While v2 trigger groups are in effect, their decision replaces the v1 sample rate.
+     * While v2 trigger groups are in effect, their decision replaces the remote sample rate; the local
+     * sample rate still applies on top of it.
      * The decision is deterministic based on the session ID hash, matching
      * the JS SDK's sampleOnProperty logic.
      *
@@ -1420,11 +1429,13 @@ public class PostHogRemoteConfig(
     public fun makeSamplingDecision(sessionId: String): Boolean {
         // A pending group defers the start in the integration instead.
         if (hasSessionRecordingTriggerGroups()) {
-            return decideTriggerGroups(sessionId).let { it.shouldRecord || it.hasPendingGroups }
+            val decision = decideTriggerGroups(sessionId)
+            if (!decision.shouldRecord && !decision.hasPendingGroups) return false
         }
 
-        // Local config takes precedence over remote config. Under v2 the per-group sampling replaces the
-        // remote rate; React Native samples the groups in JS, so only its local rate still applies here.
+        // Local config takes precedence over remote config, and under v2 caps whatever the groups allow.
+        // The per-group sampling replaces the remote rate; React Native samples the groups in JS, so only
+        // its local rate still applies here.
         val localSampleRate = parseSampleRate(config.sampleRateProvider?.invoke())
         val remoteSampleRate = if (sessionRecordingTriggerGroups != null) null else sessionRecordingSampleRate
         val sampleRate = localSampleRate ?: remoteSampleRate ?: return true
@@ -1522,10 +1533,14 @@ public class PostHogRemoteConfig(
             currentFeatureFlags(),
         )
 
-    private fun currentFeatureFlags(): Map<String, Any?>? =
-        synchronized(featureFlagsLock) {
+    // The flag map is only read from disk by the first flag getter, and a returning install can reach a
+    // group decision before any getter runs (offline first request, no bootstrap), so load it here too.
+    private fun currentFeatureFlags(): Map<String, Any?>? {
+        loadFeatureFlagsFromCacheIfNeeded()
+        return synchronized(featureFlagsLock) {
             featureFlags?.toMap()
         }
+    }
 
     override fun getRequestId(
         distinctId: String?,

@@ -35,6 +35,72 @@ internal class PostHogTriggerPropertyFiltersTest {
     }
 
     @Test
+    fun `exact renders doubles the way js String does`() {
+        // Each pair is a property value and what JS String() gives for it.
+        listOf(
+            0.000001 to "0.000001",
+            0.0000001 to "1e-7",
+            123.456 to "123.456",
+            -0.5 to "-0.5",
+            1.5e20 to "150000000000000000000",
+            1e21 to "1e+21",
+            9.223372036854775807E18 to "9223372036854776000",
+            -0.000001 to "-0.000001",
+            -1e21 to "-1e+21",
+            -100.0 to "-100",
+            0.0 to "0",
+            -0.0 to "0",
+            Double.NaN to "NaN",
+            Double.POSITIVE_INFINITY to "Infinity",
+            Double.NEGATIVE_INFINITY to "-Infinity",
+            1.5e-7 to "1.5e-7",
+            12.5 to "12.5",
+            1.5 to "1.5",
+        ).forEach { (property, expected) ->
+            assertTrue(
+                matchTriggerPropertyFilters(listOf(filter(key = "amount", value = expected)), mapOf("amount" to property), null),
+                "$property should render as $expected",
+            )
+        }
+    }
+
+    @Test
+    fun `large doubles render the shortest js digits above 2^53`() {
+        // Expected values come from `String(x)` in node. JDK < 19's Double.toString (and Android's
+        // ART) is not always the shortest round-trip form, which used to print 2^60 as ...698.
+        // Powers of two and friends: 2^53, 2^53 + 2, 2^60, -(2^60), 2^63.
+        listOf(
+            9007199254740992.0 to "9007199254740992",
+            9007199254740994.0 to "9007199254740994",
+            1152921504606846976.0 to "1152921504606847000",
+            -1152921504606846976.0 to "-1152921504606847000",
+            9223372036854775808.0 to "9223372036854776000",
+            1e20 to "100000000000000000000",
+            1.2345678901234568e20 to "123456789012345680000",
+            1e21 to "1e+21",
+            0.1 to "0.1",
+            1.0 / 3.0 to "0.3333333333333333",
+            123.456 to "123.456",
+            5.0e-7 to "5e-7",
+        ).forEach { (property, expected) ->
+            assertTrue(
+                matchTriggerPropertyFilters(listOf(filter(key = "amount", value = expected)), mapOf("amount" to property), null),
+                "$property should render as $expected",
+            )
+        }
+    }
+
+    @Test
+    fun `object arrays match like lists`() {
+        val tags = mapOf("tags" to arrayOf("premium", "vip"))
+
+        assertTrue(matchTriggerPropertyFilters(listOf(filter(key = "tags", value = "premium")), tags, null))
+        assertFalse(
+            matchTriggerPropertyFilters(listOf(filter(key = "tags", value = "premium", operator = "is_not")), tags, null),
+        )
+    }
+
+    @Test
     fun `exact matches any element of array values`() {
         assertTrue(
             matchTriggerPropertyFilters(
