@@ -250,6 +250,17 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `an event built under another name and sent as a screen doesn't cache its name`() {
+        val sut = getSut(httpServers.mockHttp())
+        val built = assertNotNull(sut.buildEventForWrapper("\$captured_screen", properties = mapOf("\$screen_name" to "Home")))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(built.copy(event = "\$screen")))
+        val next = assertNotNull(sut.buildEventForWrapper("tap"))
+
+        assertNull(next.properties?.get("\$screen_name"))
+    }
+
+    @Test
     fun `send after a reset delivers the screen without restoring its name`() {
         val sut = getSut(httpServers.mockHttp())
         val screen = assertNotNull(sut.buildEventForWrapper("\$screen", properties = mapOf("\$screen_name" to "Home")))
