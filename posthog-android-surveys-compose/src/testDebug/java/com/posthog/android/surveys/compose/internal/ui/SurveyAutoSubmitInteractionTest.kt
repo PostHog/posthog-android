@@ -27,10 +27,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @Config(sdk = [28])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 internal class SurveyAutoSubmitInteractionTest(
     private val kind: String,
     private val enabled: Boolean,
