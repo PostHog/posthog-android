@@ -657,7 +657,7 @@ public interface PostHogInterface : PostHogCoreInterface {
      * the event is sent, as for [capture].
      * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
      * Like [capture], it updates the person properties used for flags from `$set` and `$set_once`,
-     * caches a `$screen` event's `$screen_name` as the current screen, turns person processing on
+     * caches the `$screen_name` of an event built and sent as `$screen` as the current screen, turns person processing on
      * when the build had user properties or groups, and may add the replay debug values snapshotted
      * at build that the event lacks. Keys the wrapper's hook removed aren't added back.
      *

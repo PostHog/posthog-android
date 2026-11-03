@@ -1293,12 +1293,15 @@ public class PostHog private constructor(
      * the wrapper's hook can rename the event, and a build changes no SDK state.
      * [deferredReplayDebug] holds the replay debug values from the build, sent only if the send
      * claims the window; null when the event can't carry them.
+     * [builtAsScreen] is true for a `$screen` build: a plain event the wrapper names `$screen` doesn't
+     * move the current screen.
      */
     private class WrapperBuild(
         val deferredReplayDebug: Map<String, Any>?,
         val requiresPersonProcessing: Boolean,
         val sdkDistinctId: String,
         val resetGeneration: Long,
+        val builtAsScreen: Boolean,
     )
 
     /**
@@ -1503,8 +1506,9 @@ public class PostHog private constructor(
                 return null
             }
             // The wrapper may drop the event after this, so state changes wait for the send.
+            val builtAsScreen = !ai && event == PostHogEventName.SCREEN.event
             val eventProperties =
-                if (!ai && event == PostHogEventName.SCREEN.event) {
+                if (builtAsScreen) {
                     val screenTitle = properties?.get("\$screen_name") as? String ?: return null
                     screenProperties(screenTitle, properties, cacheScreenName = false) ?: return null
                 } else {
@@ -1555,6 +1559,7 @@ public class PostHog private constructor(
                         requiresPersonProcessing = requiresPersonProcessing(userProperties, userPropertiesSetOnce, groups),
                         sdkDistinctId = sdkDistinctId,
                         resetGeneration = buildResetGeneration,
+                        builtAsScreen = builtAsScreen,
                     )
                 synchronized(pendingWrapperBuilds) {
                     pendingWrapperBuilds[uuid] = build
@@ -1614,7 +1619,11 @@ public class PostHog private constructor(
             }
             // Person processing and flag person properties apply only while the SDK still has the
             // identity the event was built for: after a reset() or identify(), it belongs to the previous one.
-            val sameIdentity = build.sdkDistinctId == this.distinctId && build.resetGeneration == resetGeneration
+            // A wrapper that moves the event to another distinct id moves its \$set to that person too.
+            val sameIdentity =
+                build.sdkDistinctId == this.distinctId &&
+                    event.distinctId == build.sdkDistinctId &&
+                    build.resetGeneration == resetGeneration
             if (sameIdentity && build.requiresPersonProcessing) {
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
@@ -1628,7 +1637,7 @@ public class PostHog private constructor(
                 )
             }
             // A reset() since the build cleared the screen name, so the old one isn't restored.
-            if (!ai && build.resetGeneration == resetGeneration && event.event == PostHogEventName.SCREEN.event) {
+            if (!ai && build.builtAsScreen && build.resetGeneration == resetGeneration && event.event == PostHogEventName.SCREEN.event) {
                 (properties["\$screen_name"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.let { cacheScreenName(it) }
             }
             // The build added only the required replay debug keys. The window is claimed here, so a
