@@ -1304,12 +1304,7 @@ public class PostHogReplayIntegration(
         private val inverse = Matrix()
         private val point = FloatArray(2)
 
-        // Compose bounds are window coordinates, the touch is relative to the decor view.
-        private val windowPoint =
-            IntArray(2).let {
-                decorView.getLocationInWindow(it)
-                Offset(decorX + it[0], decorY + it[1])
-            }
+        private val windowOffset = IntArray(2).also { decorView.getLocationInWindow(it) }
 
         fun hasExplicitMaskAt(
             view: View,
@@ -1328,7 +1323,7 @@ public class PostHogReplayIntegration(
                 return true
             }
             if (hit && rule == MaskRule.COMPOSE &&
-                (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode?.hasPostHogMaskAt(windowPoint) == true
+                hasComposeMaskAt(view)
             ) {
                 return true
             }
@@ -1354,14 +1349,29 @@ public class PostHogReplayIntegration(
             }
             return false
         }
+
+        // Only reached for a Compose view, so Compose is on the classpath. Compose bounds are
+        // window coordinates, the touch is relative to the decor view.
+        private fun hasComposeMaskAt(view: View): Boolean {
+            val root = (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode ?: return false
+            return root.hasPostHogMaskAt(Offset(decorX + windowOffset[0], decorY + windowOffset[1]))
+        }
     }
 
-    // postHogUnmask on a node or any ancestor wins over postHogMask.
-    private fun SemanticsNode.hasPostHogMaskAt(point: Offset): Boolean {
-        if (!boundsInWindow.contains(point) || config.isActive(PostHogReplayUnmask)) {
+    // Visits every node: a child can draw outside a parent that doesn't clip, so a parent's
+    // bounds can't rule its children out. postHogUnmask on a node or an ancestor wins.
+    private fun SemanticsNode.hasPostHogMaskAt(
+        point: Offset,
+        insideMask: Boolean = false,
+    ): Boolean {
+        if (config.isActive(PostHogReplayUnmask)) {
             return false
         }
-        return config.isActive(PostHogReplayMask) || children.any { it.hasPostHogMaskAt(point) }
+        val masked = insideMask || config.isActive(PostHogReplayMask)
+        if (masked && boundsInWindow.contains(point)) {
+            return true
+        }
+        return children.any { it.hasPostHogMaskAt(point, masked) }
     }
 
     private fun SemanticsConfiguration.isActive(key: SemanticsPropertyKey<Boolean>): Boolean = contains(key) && this[key]

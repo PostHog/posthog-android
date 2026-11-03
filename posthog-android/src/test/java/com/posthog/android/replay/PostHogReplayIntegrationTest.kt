@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -944,6 +945,26 @@ internal class PostHogReplayIntegrationTest {
         ) { h ->
             h.assertDropped(250f, 50f)
             h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
+    fun `a touch on a postHogMask node drawn outside a smaller parent is not recorded`() {
+        withMaskedTouchHarness(
+            ComponentActivity::class.java,
+            content = { activity ->
+                activity.setContent {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(Modifier.size(20.dp).testTag("parent")) {
+                            Box(Modifier.offset(x = 100.dp).size(20.dp).postHogMask())
+                        }
+                    }
+                }
+            },
+        ) { h ->
+            val density = h.window.context.resources.displayMetrics.density
+            h.assertDropped(110f * density, 10f * density)
+            h.assertRecorded(250f, 300f)
         }
     }
 
