@@ -350,7 +350,11 @@ Any other value is removed and not sent. With `debug` on, the SDK logs the key a
 A null value counts as unset and is removed without a log.
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters and session replay work as before.
 
-<!-- TODO(capture-v1): add a "Timestamps and IDs" section like the iOS guide's: timestamp format and precision, and which IDs are UUID v7. -->
+## Timestamps and IDs
+
+The SDK sends every timestamp in UTC with 3 fractional digits, for example `2026-01-01T00:00:00.000Z`, as 3.x did.
+It doesn't check for future timestamps. PostHog replaces a timestamp more than 23 hours ahead with the time it received the event.
+Event uuids, request IDs and anonymous distinct IDs are UUID v7.
 
 ## Event options
 
@@ -390,6 +394,7 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
 - There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$process_person_profile", false)`.
+- A registered option also reaches `$identify`, `$create_alias` and `$groupidentify`. If it turns person processing off, for example `register("\$process_person_profile", false)`, PostHog accepts those events and then drops them with an ingestion warning, and the SDK doesn't report it.
 - An empty or whitespace-only `distinctId` argument to `capture` now uses the current distinct ID, like `null`. In 3.x, the event was dropped.
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
