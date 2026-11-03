@@ -530,9 +530,14 @@ public class PostHogApi(
         return details.filterNot { it.isISOControl() || it == '\u2028' || it == '\u2029' }.take(64)
     }
 
+    /** `Retry-After` in seconds, from delay-seconds or an HTTP-date. */
     private fun parseRetryAfter(response: Response): Int? {
         return try {
-            response.header("Retry-After")?.toIntOrNull()
+            val value = response.header("Retry-After")?.trim() ?: return null
+            value.toIntOrNull() ?: response.headers.getDate("Retry-After")?.let { date ->
+                val millis = date.time - config.dateProvider.currentTimeMillis()
+                ((millis + 999) / 1000).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+            }
         } catch (e: Throwable) {
             null
         }

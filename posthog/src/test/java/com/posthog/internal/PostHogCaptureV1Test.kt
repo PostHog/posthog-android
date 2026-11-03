@@ -20,6 +20,10 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -651,6 +655,19 @@ internal class PostHogCaptureV1Test {
 
             assertEquals(status, error.statusCode)
             assertEquals(7, error.retryAfterSeconds)
+        }
+    }
+
+    @Test
+    fun `reads an HTTP-date Retry-After as seconds from now`() {
+        val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).apply { timeZone = TimeZone.getTimeZone("GMT") }
+        val now = clock.currentTimeMillis()
+        for ((date, seconds) in listOf(Date(now + 20_000) to 20, Date(now - 60_000) to 0)) {
+            val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", format.format(date)))
+
+            val error = assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
+
+            assertEquals(seconds, error.retryAfterSeconds)
         }
     }
 
