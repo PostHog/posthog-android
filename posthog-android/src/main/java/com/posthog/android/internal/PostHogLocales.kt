@@ -43,11 +43,15 @@ internal class PostHogLocales(
         }
         try {
             val localeManager = context.getSystemService(LocaleManager::class.java) ?: return
-            systemLocales = localeManager.systemLocales
-            applicationLocales = localeManager.applicationLocales
-            if (config.detectAppLanguage) {
+            val system = localeManager.systemLocales
+            val application = localeManager.applicationLocales
+            // Reading the override costs system_server disk I/O, so it's only read when the locales
+            // change. Apps add a language to the override before they select it.
+            if (config.detectAppLanguage && (system != systemLocales || application != applicationLocales)) {
                 supportedLocales = readSupportedLocales(localeManager)
             }
+            systemLocales = system
+            applicationLocales = application
         } catch (e: Throwable) {
             config.logger.log("Error reading the locales: $e.")
         }

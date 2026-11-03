@@ -18,6 +18,8 @@ import com.posthog.android.mockTelephone
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
@@ -285,7 +287,13 @@ internal class PostHogAndroidContextTest {
         runPendingTasks()
         assertEquals("en", sut.getDynamicContext()["\$app_language"])
 
+        sut.getDynamicContext()
+        runPendingTasks()
+        verify(localeManager, times(1)).overrideLocaleConfig
+
         whenever(localeManager.overrideLocaleConfig).thenReturn(LocaleConfig(LocaleList.forLanguageTags("en,de")))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.forLanguageTags("de"))
+        sut.getDynamicContext()
         runPendingTasks()
 
         assertEquals("de", sut.getDynamicContext()["\$app_language"])
