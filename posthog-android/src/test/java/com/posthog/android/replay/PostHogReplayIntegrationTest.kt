@@ -4788,6 +4788,50 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    @Config(sdk = [28, 35], shadows = [RecordingShadowPixelCopy::class])
+    fun `windows requiring capture only walk the capture baseline before PixelCopy`() {
+        val h = screenshotCaptureHarness()
+        var walks = 0
+        val walksAtCopy = mutableListOf<Int>()
+        h.hookLayout.onWalkTouch = { walks++ }
+        RecordingShadowPixelCopy.reset()
+        RecordingShadowPixelCopy.onRequest = { walksAtCopy.add(walks) }
+
+        fun capture() = captureScene(h.fx.sut, listOf(sceneLayer(h.hookLayout, h.window, h.status)))
+
+        fun assertCapture() {
+            walks = 0
+            walksAtCopy.clear()
+            assertTrue(capture())
+            assertEquals(listOf(1), walksAtCopy)
+        }
+        try {
+            assertCapture() // Uncached window.
+            val copies = RecordingShadowPixelCopy.requests.size
+            walks = 0
+            assertTrue(capture())
+            assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+            assertEquals(3, walks) // Reuse, cache commit and scene publication still validate masks.
+
+            ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)
+            assertCapture()
+            h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+            assertCapture()
+            h.fx.config.sessionReplayConfig.maskAllTextInputs = false
+            assertCapture()
+            h.fx.config.sessionReplayConfig.maskAllImages = false
+            assertCapture()
+            h.hookLayout.layout(0, 0, 120, 100)
+            assertCapture()
+            h.hookLayout.layout(0, 0, 120, 140)
+            assertCapture()
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
     @Config(sdk = [28], shadows = [SnapshotBoundaryShadowPixelCopy::class])
     fun `scene cache baseline follows painted masks when markers change and return`() {
         for (verified in listOf(false, true)) {
@@ -4796,7 +4840,7 @@ internal class PostHogReplayIntegrationTest {
             var unmaskedForCapture = false
             h.hookLayout.onGlobalRectRead = {
                 if (!unmaskedForCapture) {
-                    // Scene discovery saw the masked child; screenshot setup sees it unmasked.
+                    // The child starts masked but is unmasked while the screenshot is taken.
                     unmaskedForCapture = true
                     h.child.tag = "ph-no-mask"
                 }

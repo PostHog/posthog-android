@@ -621,27 +621,28 @@ public class PostHogReplayIntegration(
             // Older dialog surfaces cannot be aligned with decor-coordinate masks. Recheck
             // privacy on every scene capture rather than reusing a previously unmasked image.
             val recheckDialogMasks = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
-            // View tags and semantics can change without a draw. Only reuse pixels whose
-            // current mask geometry still matches their capture baseline. Legacy dialogs
-            // already perform a fresh privacy check and may use a whole-window mask.
+            val cacheCandidate =
+                cached?.takeIf {
+                    !recheckDialogMasks && !dirty &&
+                        it.windowWidth == layer.width && it.windowHeight == layer.height &&
+                        it.windowAlpha == layer.windowAlpha && it.bitmapConfig == bitmapConfig &&
+                        it.maskAllTextInputs == maskAllTextInputs && it.maskAllImages == maskAllImages
+                }
+            // View tags and semantics can change without a draw. Validate masks only when
+            // considering reuse; fresh captures supply their actual painted mask baseline.
             val maskRects =
-                if (recheckDialogMasks) {
-                    null
-                } else {
+                if (cacheCandidate != null) {
                     runOnMainThreadBlocking { layer.view.collectSceneMaskRects() }
                         ?: run {
                             restoreDirty(layer)
                             return false
                         }
+                } else {
+                    null
                 }
             val image =
-                if (!recheckDialogMasks && !dirty && cached != null &&
-                    cached.windowWidth == layer.width && cached.windowHeight == layer.height &&
-                    cached.windowAlpha == layer.windowAlpha && cached.bitmapConfig == bitmapConfig &&
-                    cached.maskAllTextInputs == maskAllTextInputs && cached.maskAllImages == maskAllImages &&
-                    cached.maskRects == maskRects
-                ) {
-                    Screenshot(cached.wireframe, cached.maskRects)
+                if (cacheCandidate != null && cacheCandidate.maskRects == maskRects) {
+                    Screenshot(cacheCandidate.wireframe, cacheCandidate.maskRects)
                 } else {
                     val drawState = layer.status.drawState
                     // The Activity owns the scene worker; dialogs also need their own copy gate.
