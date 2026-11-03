@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.PorterDuff
@@ -1287,52 +1288,70 @@ public class PostHogReplayIntegration(
     }
 
     // Only explicit masks count: maskAllTextInputs/maskAllImages would drop every tap on a field or image.
-    private fun View.isTouchInsideExplicitMask(motionEvent: MotionEvent): Boolean {
-        val windowOffset = IntArray(2)
-        getLocationInWindow(windowOffset)
-        return hasExplicitMaskAt(motionEvent.x.toInt(), motionEvent.y.toInt(), Rect(), windowOffset)
-    }
+    private fun View.isTouchInsideExplicitMask(motionEvent: MotionEvent): Boolean =
+        TouchHitTest(this, motionEvent.x, motionEvent.y).hasExplicitMaskAt(this, motionEvent.x, motionEvent.y)
 
-    private fun View.hasExplicitMaskAt(
-        x: Int,
-        y: Int,
-        rect: Rect,
-        windowOffset: IntArray,
-        insideNoCapture: Boolean = false,
-    ): Boolean {
-        if (visibility != View.VISIBLE || !getGlobalVisibleRect(rect)) {
-            return false
-        }
-        val hit = rect.contains(x, y)
-        val rule = maskRule(insideNoCapture)
-        if (hit && rule == MaskRule.NO_CAPTURE) {
-            return true
-        }
+    // Carries the touch down in each view's local coordinates, as touch dispatch does, so each
+    // visited view costs O(1). Only a candidate mask pays for getGlobalVisibleRect, which climbs
+    // to the root, so the final call matches the rect the mask walk masks.
+    private inner class TouchHitTest(
+        decorView: View,
+        private val decorX: Float,
+        private val decorY: Float,
+    ) {
+        private val rect = Rect()
+        private val inverse = Matrix()
+        private val point = FloatArray(2)
+
         // Compose bounds are window coordinates, the touch is relative to the decor view.
-        if (hit && rule == MaskRule.COMPOSE &&
-            (this as? RootForTest)?.semanticsOwner?.rootSemanticsNode?.hasPostHogMaskAt(
-                Offset((x + windowOffset[0]).toFloat(), (y + windowOffset[1]).toFloat()),
-            ) == true
-        ) {
-            return true
-        }
-        // Children of a container that doesn't clip them can draw, and be masked, outside it.
-        val group = this as? ViewGroup ?: return false
-        if (!hit && group.clipChildren) {
-            return false
-        }
-        return when (rule) {
-            MaskRule.NO_CAPTURE, MaskRule.COMPOSE, MaskRule.CHILDREN ->
-                (0 until group.childCount).any { i ->
-                    group.getChildAt(i)?.hasExplicitMaskAt(
-                        x,
-                        y,
-                        rect,
-                        windowOffset,
-                        insideNoCapture = rule == MaskRule.NO_CAPTURE,
-                    ) == true
+        private val windowPoint =
+            IntArray(2).let {
+                decorView.getLocationInWindow(it)
+                Offset(decorX + it[0], decorY + it[1])
+            }
+
+        fun hasExplicitMaskAt(
+            view: View,
+            x: Float,
+            y: Float,
+            insideNoCapture: Boolean = false,
+        ): Boolean {
+            if (view.visibility != View.VISIBLE) {
+                return false
+            }
+            val hit = x >= 0 && y >= 0 && x < view.width && y < view.height
+            val rule = view.maskRule(insideNoCapture)
+            if (hit && rule == MaskRule.NO_CAPTURE &&
+                view.getGlobalVisibleRect(rect) && rect.contains(decorX.toInt(), decorY.toInt())
+            ) {
+                return true
+            }
+            if (hit && rule == MaskRule.COMPOSE &&
+                (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode?.hasPostHogMaskAt(windowPoint) == true
+            ) {
+                return true
+            }
+            // Children of a container that doesn't clip them can draw, and be masked, outside it.
+            val group = view as? ViewGroup ?: return false
+            if (!hit && group.clipChildren) {
+                return false
+            }
+            if (rule != MaskRule.NO_CAPTURE && rule != MaskRule.COMPOSE && rule != MaskRule.CHILDREN) {
+                return false
+            }
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i) ?: continue
+                point[0] = x + group.scrollX - child.left
+                point[1] = y + group.scrollY - child.top
+                val childMatrix = child.matrix
+                if (!childMatrix.isIdentity && childMatrix.invert(inverse)) {
+                    inverse.mapPoints(point)
                 }
-            MaskRule.MASK_VIEW, MaskRule.MASK_TEXT, MaskRule.NONE -> false
+                if (hasExplicitMaskAt(child, point[0], point[1], insideNoCapture = rule == MaskRule.NO_CAPTURE)) {
+                    return true
+                }
+            }
+            return false
         }
     }
 

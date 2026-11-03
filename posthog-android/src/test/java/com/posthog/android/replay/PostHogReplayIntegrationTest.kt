@@ -912,6 +912,42 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `a touch on a masked child of a scrolled container is hit-tested where it is drawn`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val scrolled =
+                    FrameLayout(activity).apply {
+                        addView(View(activity).apply { tag = "ph-no-capture" }, FrameLayout.LayoutParams(100, 50).apply { topMargin = 150 })
+                    }
+                activity.setContentView(FrameLayout(activity).apply { addView(scrolled, FrameLayout.LayoutParams(100, 300)) })
+                scrolled.scrollTo(0, 100)
+            },
+        ) { h ->
+            h.assertDropped(50f, 75f)
+            h.assertRecorded(50f, 175f)
+        }
+    }
+
+    @Test
+    fun `a touch on a translated masked view is hit-tested where it is drawn`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                activity.setContentWithTopLeftChild(
+                    View(activity).apply {
+                        tag = "ph-no-capture"
+                        translationX = 200f
+                    },
+                )
+            },
+        ) { h ->
+            h.assertDropped(250f, 50f)
+            h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
     fun `a touch on a text input is recorded when maskAllTextInputs is on`() {
         withMaskedTouchHarness(
             Activity::class.java,
