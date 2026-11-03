@@ -13,6 +13,7 @@
   - Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded
   - Apply `Modifier.postHogMask()` and `Modifier.postHogUnmask()` only to the element and its children, not to siblings merged into the same clickable row
   - Compose text that draws past its layout box is masked in full, and nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on; use `Modifier.postHogUnmask()` to show them
+  - `$sdk_debug_replay_capture_mode` is always `screenshot`
   - Wrapper SDKs: the internal `RRWireframe` keeps only `id`, `x`, `y`, `width`, `height`, `type` and `base64`, and `RRStyle` is removed; screenshot frames no longer send an empty `style`
 - **Breaking:** return `null` instead of the raw string for a malformed, empty, whitespace-only or lenient-only (unquoted or single-quoted) feature flag payload from `getFeatureFlagResult(key)?.payload`; payloads must be valid JSON (a JSON `null` payload now also reads as `null` instead of the string `"null"`)
 - **Breaking:** make SDK-internal helpers in the `com.posthog.internal`, `com.posthog.android.internal` and `com.posthog.android.replay.internal` packages non-public

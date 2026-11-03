@@ -225,6 +225,14 @@ Apps that relied on the default now upload screenshots:
 - Custom-drawn views and other content the SDK doesn't recognize, such as maps or video, can now appear in recordings. Mask them, or turn replay off with `sessionReplay = false`.
 - Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded.
 
+Compose masking also changed, including for apps that already set `screenshot = true`:
+
+- `Modifier.postHogMask()` and `Modifier.postHogUnmask()` apply only to the element and its children, not to siblings merged into the same clickable row.
+- Text that draws past its layout box is masked in full.
+- Nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
+
+The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
+
 ### Other changes that don't fail the build
 
 The code you end up with after these two migrations compiles, so they're easy to miss:
