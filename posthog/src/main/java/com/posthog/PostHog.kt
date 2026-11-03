@@ -1614,7 +1614,11 @@ public class PostHog private constructor(
             }
             // Person processing and flag person properties apply only while the SDK still has the
             // identity the event was built for: after a reset() or identify(), it belongs to the previous one.
-            val sameIdentity = build.sdkDistinctId == this.distinctId && build.resetGeneration == resetGeneration
+            // A wrapper that moves the event to another distinct id moves its \$set to that person too.
+            val sameIdentity =
+                build.sdkDistinctId == this.distinctId &&
+                    event.distinctId == build.sdkDistinctId &&
+                    build.resetGeneration == resetGeneration
             if (sameIdentity && build.requiresPersonProcessing) {
                 requirePersonProcessing("capture", ignoreMessage = true)
             }
