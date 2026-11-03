@@ -4,13 +4,13 @@
 Most removals are compile errors with a direct replacement. [Behavior changes](#behavior-changes) won't show up at build time.
 Read the checklist first, then the sections that apply to you.
 
-<!-- TODO(capture-v1): when the public capture v1 SDK upgrade guide is published (PostHog/posthog.com#21386), link it here for details on options, limits and per-event results. -->
+For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
 For the full list of 4.0 changes, see the [changelog](../posthog-android/CHANGELOG.md).
 
 ## Checklist
 
-You need to change something if your app does any of these:
+You need to change code if your app does any of these:
 
 - sends events to a self-hosted PostHog or a reverse proxy that doesn't serve `/i/v1/analytics/events`
 - authenticates its proxy with an `Authorization` header in `requestHeaders`
@@ -28,11 +28,13 @@ You need to change something if your app does any of these:
 - relies on a `Retry-After` longer than 30 seconds
 - sets `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig`
 - uses `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, `drawableConverter` or `remoteConfig`
+- passes `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position
 - calls `getFeatureFlagPayload()`, or passes a default value to `getFeatureFlag()`
 - sets `PostHogConfig.onFeatureFlags` or `PostHogOnFeatureFlags`, or passes a callback to `reloadFeatureFlags()`
 - uses session replay (see [Session replay records screenshots](#session-replay-records-screenshots))
 - reads a feature flag payload that isn't valid JSON, such as plain text saved as `hello`
 - breaks down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6–12)
+- reads event content or request bodies from the SDK's debug log, or matches its log text
 - depends only on `posthog-android-surveys-compose`, or uses `posthog-server`
 
 ## Requirements and versions
@@ -325,6 +327,8 @@ Capture v1 requests send the project token in an `Authorization: Bearer <project
 This header replaces any `Authorization` header you set in `PostHogConfig.requestHeaders`, so authenticate your proxy with a different header, such as `X-Proxy-Token`.
 Other requests still send your `Authorization` header.
 
+Analytics requests are gzipped unless you set `compression` to `PostHogCompression.NONE`, as in 3.x.
+
 A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty token does. Both print why, even when `debug` is off.
 In 3.x, the SDK started and PostHog rejected every event with a 401. Use your project token (`phc_...`).
 
@@ -358,9 +362,14 @@ Capture v1 checks each event on its own and drops only the invalid ones, so the 
 The SDK drops an event whose name is empty before sending it, for example `capture("")` or one `beforeSend` renames to `""`.
 With `debug` on, it logs this once.
 
+There's no error callback, as in 3.x. The SDK reports dropped and failed events only in its debug log.
+
 The SDK doesn't check the rest before sending. PostHog drops the event, and the SDK removes it from the queue.
 With `debug` on, the SDK logs one line per batch with how many events PostHog dropped, how many duplicate copies it dropped and how many it asked to retry, never the event names or properties.
 Debug logs for capture requests name the event count and the response status, and no longer print the request and response bodies.
+When a `beforeSend` hook throws, the debug log names the event and the exception type, not the exception message, which can hold the data the hook was removing. In 3.x it printed the exception.
+When a property value can't be serialized, the debug log names the key and the value's type, not the value. In 3.x it printed the value.
+Update any log-based checks that match the 3.x text.
 
 - An event with an empty or whitespace-only distinct ID is dropped, for example one `beforeSend` sets to `""`.
 - An event whose name is over 200 UTF-8 bytes is dropped. Legacy capture had no limit on event name length.
@@ -370,8 +379,11 @@ In 3.x, an empty event name or distinct ID made legacy capture reject the whole 
 
 A `NaN` or infinite number in the properties is dropped from the event, and the event is sent without it.
 
+A map key in the properties that isn't a string is converted to one when it's a number, a boolean or `null`. Any other key is dropped with its value, and the rest of the event is sent. With `debug` on, the SDK logs the key's type. In 3.x, a nested map with a non-string key lost the whole event.
+
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
+`identify()` with an empty or whitespace-only distinct ID is still ignored, as in 3.x.
 
 ## SDK identity
 
@@ -403,6 +415,13 @@ Any other value is removed and not sent. With `debug` on, the SDK logs the key a
 A null value counts as unset and is removed without a log.
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters and session replay work as before.
 
+## Timestamps and IDs
+
+The SDK sends every timestamp in UTC with 3 fractional digits, for example `2026-01-01T00:00:00.000Z`, as 3.x did.
+It doesn't check for future timestamps. PostHog replaces a timestamp more than 23 hours ahead with the time it received the event.
+Event uuids and anonymous distinct IDs are UUID v7, as in 3.x. An anonymous ID you change with `getAnonymousId` is sent as you return it.
+Each capture request also sends a UUID v7 request ID in the `PostHog-Request-Id` header, which 3.x didn't send.
+
 ## Event options
 
 Capture v1 reads processing settings from an `options` object sent next to `properties`.
@@ -423,10 +442,10 @@ Java callers pass the new trailing `options` argument, or `null`.
 Classes that implement `PostHogInterface` add the parameter.
 `identify(distinctId, userProperties, userPropertiesSetOnce)` moved from `PostHogCoreInterface` to `PostHogStatelessInterface`; call it through `PostHogInterface` or `PostHogStatelessInterface`.
 
-The legacy option properties still work.
+The legacy option properties, the `$`-prefixed properties legacy capture reads as settings, still work.
 When the event is sent, the SDK removes each one from `properties` and uses it for its option:
 
-| Legacy property | Option |
+| Legacy option property | Option |
 | --- | --- |
 | `$process_person_profile` | `process_person_profile` |
 | `$cookieless_mode` | `cookieless_mode` |
@@ -441,6 +460,9 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
 - There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$process_person_profile", false)`.
+- There's no setting for GeoIP lookup or `historical_migration` on events, as in 3.x.
+- With `personProfiles = PersonProfiles.IDENTIFIED_ONLY`, `identify`, `alias`, `group` and `setPersonProperties` still turn on person processing for the user's later events, as in 3.x.
+- A registered option also reaches `$identify`, `$create_alias` and `$groupidentify`. If it turns person processing off, for example `register("\$process_person_profile", false)`, PostHog accepts those events and then drops them with an ingestion warning, and the SDK doesn't report it.
 - An empty or whitespace-only `distinctId` argument to `capture` now uses the current distinct ID, like `null`. In 3.x, the event was dropped.
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
@@ -463,6 +485,7 @@ PostHog.captureAi(
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
 - `flush()` and `close()` also send the AI queue, and AI events left on disk are sent at the next launch.
+<!-- TODO(capture-v1): gzip by default, the 100-event and 50 MiB queue, the 60 s timeout and creating the AI queue at setup are mobile divergences Eli hasn't confirmed yet (DIVERGENCES "Accepted divergences", proposed 2026-11-02). Update these lines if he changes any default. -->
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
 - The SDK sends AI events unchanged. It doesn't redact or truncate prompts, outputs or media, so use `beforeSend` to remove anything you don't want to send.
@@ -472,12 +495,16 @@ PostHog.captureAi(
 - The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
 - A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. The request ID and attempt number reset after an app restart. OkHttp doesn't retry capture requests on its own.
-- A `Retry-After` header pauses sending for at most 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
+- A `Retry-After` header sets the minimum wait before the next send, up to 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
+- `Retry-After` can be a number of seconds or an HTTP date. 3.x read only a number of seconds.
+<!-- TODO(capture-v1): the 1 s starting wait is a mobile divergence from the fleet's 100 ms that Eli hasn't confirmed yet (DIVERGENCES "Accepted divergences", proposed 2026-11-02). Keep or change this line once he decides. -->
 - After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter at millisecond precision. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
 - Event, session replay and log retries have no limit, as in 3.x: queued records stay until they're delivered or a full queue evicts them (`maxQueueSize`, or `logs.maxBufferSize` for logs).
 - `maxRetries` is renamed to `pushNotificationSubscriptionMaxRetries`, with no deprecated alias. It only limits push-notification subscription retries.
 - A request carries at most `maxBatchSize` events and about 5 MiB, and the SDK sends as soon as about 5 MiB of events is queued, even before `flushAt` is reached. In 3.x, batches were limited by event count only.
-- A 413 still splits the batch into smaller requests.
+- There's no size limit for one analytics event in the SDK, as in 3.x. An event larger than about 5 MiB is sent in a request of its own.
+- A 413 still halves the batch until it fits, as in 3.x. An event that gets a 413 on its own is dropped.
+- `beforeSend` still runs when you capture the event, before it's queued, not when the batch is sent.
 
 ## New: `onFeatureFlags()`
 
@@ -499,6 +526,8 @@ On Android, listeners run on the main thread. On the JVM, they run on a backgrou
 ## `posthog-server`
 
 `posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it.
+
+It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
