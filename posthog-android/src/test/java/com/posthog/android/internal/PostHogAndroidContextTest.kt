@@ -1,5 +1,6 @@
 package com.posthog.android.internal
 
+import android.app.LocaleConfig
 import android.app.LocaleManager
 import android.content.Context
 import android.content.pm.InstallSourceInfo
@@ -209,13 +210,15 @@ internal class PostHogAndroidContextTest {
 
     @Test
     @Config(sdk = [34])
-    fun `reads locale at setup and refreshes it off the capture thread`() {
+    fun `reads locale off the setup and capture threads`() {
         context.mockTelephone()
         val localeManager = mock<LocaleManager>()
         whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH,en"))
         whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
         whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
         val sut = getSut()
+        verifyNoInteractions(localeManager)
+        runPendingTasks()
         assertEquals("de-CH", sut.getDynamicContext()["\$locale"])
 
         whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("es-ES"))
@@ -234,7 +237,10 @@ internal class PostHogAndroidContextTest {
         whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
         whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
 
-        assertEquals("de-CH", getSut().getDynamicContext()["\$locale"])
+        val sut = getSut()
+        runPendingTasks()
+
+        assertEquals("de-CH", sut.getDynamicContext()["\$locale"])
     }
 
     @Test
@@ -244,7 +250,9 @@ internal class PostHogAndroidContextTest {
         val localeManager = mock<LocaleManager>()
         whenever(localeManager.systemLocales).thenThrow(RuntimeException())
         whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
-        val dynamicContext = getSut().getDynamicContext()
+        val sut = getSut()
+        runPendingTasks()
+        val dynamicContext = sut.getDynamicContext()
 
         assertEquals(Resources.getSystem().configuration.locales[0].toLanguageTag(), dynamicContext["\$locale"])
         assertFalse(dynamicContext.containsKey("\$app_language"))
@@ -262,6 +270,25 @@ internal class PostHogAndroidContextTest {
         runPendingTasks()
 
         assertEquals("fr", sut.getDynamicContext()["\$app_language"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `app language follows supported locales changed at runtime`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
+        whenever(localeManager.overrideLocaleConfig).thenReturn(LocaleConfig(LocaleList.forLanguageTags("en")))
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        runPendingTasks()
+        assertEquals("en", sut.getDynamicContext()["\$app_language"])
+
+        whenever(localeManager.overrideLocaleConfig).thenReturn(LocaleConfig(LocaleList.forLanguageTags("en,de")))
+        runPendingTasks()
+
+        assertEquals("de", sut.getDynamicContext()["\$app_language"])
     }
 
     @Test

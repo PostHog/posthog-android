@@ -135,10 +135,6 @@ internal class PostHogAndroidContext(
                 }
                 try {
                     locales.refresh()
-                    // parses the locale config here rather than on the first capture
-                    if (config.detectAppLanguage) {
-                        locales.appLanguage()
-                    }
                 } catch (ignored: Throwable) {
                     // keep the last known value
                 } finally {

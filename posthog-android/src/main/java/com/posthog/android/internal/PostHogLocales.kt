@@ -14,8 +14,10 @@ import java.util.Locale
  * Reads `$locale` and `$app_language`.
  *
  * On Android 13+, Resources.getSystem() can report the per-app language and go stale, so the only
- * exact source is LocaleManager. Its Binder calls run once at setup, then [refresh] runs them off the
- * capture thread, so the event right after a language change can still carry the old value.
+ * exact source is LocaleManager. Its Binder calls and the locale config parsing only run in [refresh],
+ * on a worker thread, and capture reads the last values. So the event right after a language change
+ * can still carry the old value, and events before the first refresh carry the Resources language
+ * and no app language.
  */
 internal class PostHogLocales(
     private val context: Context,
@@ -27,12 +29,12 @@ internal class PostHogLocales(
     @Volatile
     private var applicationLocales: LocaleList? = null
 
-    private val supportedLocales: SupportedLocales? by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) readSupportedLocales() else null
-    }
+    @Volatile
+    private var supportedLocales: SupportedLocales? = null
 
-    init {
-        refresh()
+    // parsed once, because refresh runs as often as events are captured
+    private val declaredLocales: SupportedLocales? by lazy {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) readDeclaredLocales() else null
     }
 
     fun refresh() {
@@ -43,6 +45,9 @@ internal class PostHogLocales(
             val localeManager = context.getSystemService(LocaleManager::class.java) ?: return
             systemLocales = localeManager.systemLocales
             applicationLocales = localeManager.applicationLocales
+            if (config.detectAppLanguage) {
+                supportedLocales = readSupportedLocales(localeManager)
+            }
         } catch (e: Throwable) {
             config.logger.log("Error reading the locales: $e.")
         }
@@ -75,14 +80,25 @@ internal class PostHogLocales(
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) configuration.locales[0] else configuration.locale
     }
 
+    // Android 14+ apps can change their supported locales at runtime with setOverrideLocaleConfig
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun readSupportedLocales(): SupportedLocales? {
+    private fun readSupportedLocales(localeManager: LocaleManager): SupportedLocales? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            localeManager.overrideLocaleConfig?.let { return it.toSupportedLocales() }
+        }
+        return declaredLocales
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun readDeclaredLocales(): SupportedLocales? {
         return try {
-            val localeConfig = LocaleConfig(context)
-            val locales = localeConfig.supportedLocales?.takeUnless { it.isEmpty } ?: return null
-            val default =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) localeConfig.defaultLocale else null
-            SupportedLocales(locales.toList(), default)
+            val localeConfig =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    LocaleConfig.fromContextIgnoringOverride(context)
+                } else {
+                    LocaleConfig(context)
+                }
+            localeConfig.toSupportedLocales()
         } catch (e: Throwable) {
             config.logger.log("Error reading the locale config: $e.")
             null
@@ -94,6 +110,13 @@ internal class SupportedLocales(
     val locales: List<Locale>,
     val default: Locale?,
 )
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun LocaleConfig.toSupportedLocales(): SupportedLocales? {
+    val locales = supportedLocales?.takeUnless { it.isEmpty } ?: return null
+    val default = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) defaultLocale else null
+    return SupportedLocales(locales.toList(), default)
+}
 
 private fun LocaleList.toList(): List<Locale> = (0 until size()).map { get(it) }
 
