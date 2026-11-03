@@ -4748,21 +4748,21 @@ internal class PostHogReplayIntegrationTest {
     @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
     fun `timed out scene validation leaves history available for retry`() {
         val h = screenshotCaptureHarness()
-        val attributes = h.window.attributes.apply { title = "test/CheckoutActivity" }
         val capture = AtomicReference<Future<Boolean>>()
         var waitForTimeout = true
         var observedTimeout = false
-        val window =
-            mock<Window> {
-                on { this.attributes } doAnswer {
+        val attributes =
+            mock<WindowManager.LayoutParams> {
+                on { title } doAnswer {
                     if (waitForTimeout) {
-                        // The main-thread task has started, but the worker abandons its result.
+                        // Metadata validation has started, but the worker abandons its result.
                         assertFalse(capture.get().get(3, TimeUnit.SECONDS))
                         observedTimeout = true
                     }
-                    attributes
+                    "test/CheckoutActivity"
                 }
             }
+        val window = mock<Window> { on { this.attributes } doReturn attributes }
         val layers = listOf(sceneLayer(h.hookLayout, window, h.status))
         RecordingShadowPixelCopy.reset()
         try {
@@ -4934,6 +4934,102 @@ internal class PostHogReplayIntegrationTest {
             val bytes = Base64.decode(assertNotNull(image.base64).substringAfter(','), Base64.DEFAULT)
             return assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
         }
+
+        private fun assertSolidBlack(frame: RRWireframe) {
+            val image = bitmap(frame)
+            try {
+                for (x in 0 until image.width) {
+                    for (y in 0 until image.height) {
+                        val pixel = image.getPixel(x, y)
+                        assertEquals(255, Color.alpha(pixel))
+                        assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                    }
+                }
+            } finally {
+                image.recycle()
+            }
+        }
+
+        @Test
+        fun `secure flag changes invalidate cached Activity and dialog images without a redraw`() {
+            for (targetDialog in listOf(false, true)) {
+                withDialog { h, fx, fake, status ->
+                    RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                    assertTrue(capture(h, fx, status))
+                    val copies = RecordingShadowPixelCopy.requests.size
+                    val window = if (targetDialog) h.dialog.window!! else h.activity.window
+                    val targetIndex = if (targetDialog) 2 else 0
+                    // Change only flags, without invalidating or requesting a window relayout.
+                    window.attributes.flags = window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+                    assertSolidBlack(images(fake)[targetIndex])
+                    val other = bitmap(images(fake)[if (targetDialog) 0 else 2])
+                    try {
+                        assertTrue(Color.red(other.getPixel(200, 400)) > 200)
+                    } finally {
+                        other.recycle()
+                    }
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                    window.attributes.flags = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                    val restored = bitmap(images(fake)[targetIndex])
+                    try {
+                        assertTrue(Color.red(restored.getPixel(200, 400)) > 200)
+                    } finally {
+                        restored.recycle()
+                    }
+                }
+            }
+        }
+
+        @Test
+        fun `a dialog that turns secure during copy stays opaque despite window alpha`() =
+            withDialog { h, fx, fake, status ->
+                val window = h.dialog.window!!
+                window.attributes = window.attributes.apply { alpha = 0.5f }
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    if (RecordingShadowPixelCopy.requests.last().window === window) {
+                        window.attributes.flags = window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    }
+                }
+                assertTrue(capture(h, fx, status))
+                assertSolidBlack(images(fake).last())
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                window.attributes.flags = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                val restored = bitmap(images(fake).last())
+                try {
+                    assertEquals(128, Color.alpha(restored.getPixel(200, 400)))
+                    assertTrue(Color.red(restored.getPixel(200, 400)) > 200)
+                } finally {
+                    restored.recycle()
+                }
+            }
+
+        @Test
+        fun `a secure flag set on an earlier layer during a later copy withholds the scene`() =
+            withDialog { h, fx, fake, status ->
+                RecordingShadowPixelCopy.onRequest = {
+                    if (RecordingShadowPixelCopy.requests.last().window === h.dialog.window) {
+                        val attributes = h.activity.window.attributes
+                        attributes.flags = attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    }
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertTrue(capture(h, fx, status))
+                assertSolidBlack(images(fake).first())
+            }
 
         @Test
         fun `scene scales dialog masks and preserves window and dim placement`() =

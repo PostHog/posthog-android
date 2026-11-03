@@ -172,11 +172,13 @@ public class PostHogReplayIntegration(
         val maskAllTextInputs: Boolean,
         val maskAllImages: Boolean,
         val maskRects: List<Rect>?,
+        val secure: Boolean,
     )
 
     private data class Screenshot(
         val wireframe: RRWireframe,
         val maskRects: List<Rect>?,
+        val secure: Boolean = false,
     )
 
     private data class SceneMetadata(
@@ -593,6 +595,7 @@ public class PostHogReplayIntegration(
         val maskAllImages = config.sessionReplayConfig.maskAllImages
         val scene = mutableListOf<RRWireframe>()
         val sceneMasks = IdentityHashMap<View, List<Rect>>()
+        val unmaskedWindows = mutableListOf<Window>()
 
         fun maskingSettingsChanged(): Boolean =
             config.sessionReplayConfig.maskAllTextInputs != maskAllTextInputs ||
@@ -630,19 +633,27 @@ public class PostHogReplayIntegration(
                 }
             // View tags and semantics can change without a draw. Validate masks only when
             // considering reuse; fresh captures supply their actual painted mask baseline.
-            val maskRects =
+            val reuseImage =
                 if (cacheCandidate != null) {
-                    runOnMainThreadBlocking { layer.view.collectSceneMaskRects() }
-                        ?: run {
-                            restoreDirty(layer)
-                            return false
+                    runOnMainThreadBlocking {
+                        if (cacheCandidate.secure != layer.window.isSecure()) {
+                            false
+                        } else if (cacheCandidate.secure) {
+                            true
+                        } else {
+                            val maskRects = layer.view.collectSceneMaskRects() ?: return@runOnMainThreadBlocking null
+                            cacheCandidate.maskRects == maskRects
                         }
+                    } ?: run {
+                        restoreDirty(layer)
+                        return false
+                    }
                 } else {
-                    null
+                    false
                 }
             val image =
-                if (cacheCandidate != null && cacheCandidate.maskRects == maskRects) {
-                    Screenshot(cacheCandidate.wireframe, cacheCandidate.maskRects)
+                if (cacheCandidate != null && reuseImage) {
+                    Screenshot(cacheCandidate.wireframe, cacheCandidate.maskRects, cacheCandidate.secure)
                 } else {
                     val drawState = layer.status.drawState
                     // The Activity owns the scene worker; dialogs also need their own copy gate.
@@ -685,6 +696,7 @@ public class PostHogReplayIntegration(
                             PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
                             layer.view.width != layer.width || layer.view.height != layer.height || maskingSettingsChanged() ||
+                            (!image.secure && layer.window.isSecure()) ||
                             (image.maskRects != null && layer.view.collectSceneMaskRects() != image.maskRects)
                         ) {
                             return@runOnMainThreadBlocking false
@@ -701,6 +713,7 @@ public class PostHogReplayIntegration(
                                 maskAllTextInputs,
                                 maskAllImages,
                                 image.maskRects,
+                                image.secure,
                             )
                         true
                     }
@@ -711,6 +724,7 @@ public class PostHogReplayIntegration(
             }
             scene.add(positioned)
             image.maskRects?.let { sceneMasks[layer.view] = it }
+            if (!image.secure) unmaskedWindows.add(layer.window)
         }
 
         // Android applies the topmost requesting window's dim to the scene beneath it.
@@ -743,6 +757,7 @@ public class PostHogReplayIntegration(
                             decorViews[layer.view] !== layer.status || !layer.view.isShown ||
                                 layer.view.width != layer.width || layer.view.height != layer.height
                         } || layers.drop(1).any { it.window.attributes.alpha != it.windowAlpha } || maskingSettingsChanged() ||
+                        unmaskedWindows.any { it.isSecure() } ||
                         sceneMasks.any { (view, rects) -> view.collectSceneMaskRects() != rects }
                     ) {
                         return@runOnMainThreadBlocking null
@@ -2302,7 +2317,7 @@ public class PostHogReplayIntegration(
         }
         if (walk.poisoned) {
             config.logger.log("Session Replay screenshot discarded: a view with content to mask is animating or in a transient state.")
-            return false
+            return null
         }
 
         val painted =
@@ -2464,6 +2479,7 @@ public class PostHogReplayIntegration(
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
         var base64: String? = null
         var paintedMasks: List<Rect>? = null
+        var secure = geometry.secure
 
         // FLAG_SECURE asks that the window never be captured, so it's recorded as one mask
         // without copying its pixels.
@@ -2480,15 +2496,19 @@ public class PostHogReplayIntegration(
                 return null
             }
             drawState.resetScreenshotDiscards()
-            return RRWireframe(
-                id = viewId,
-                x = x,
-                y = y,
-                width = width,
-                height = height,
-                type = "screenshot",
-                base64 = base64,
-                style = RRStyle(),
+            return Screenshot(
+                RRWireframe(
+                    id = viewId,
+                    x = x,
+                    y = y,
+                    width = width,
+                    height = height,
+                    type = "screenshot",
+                    base64 = base64,
+                    style = RRStyle(),
+                ),
+                null,
+                secure = true,
             )
         }
 
@@ -2623,7 +2643,13 @@ public class PostHogReplayIntegration(
                     if (requestState.succeeded()) {
                         try {
                             // The window can turn secure while the copy runs.
-                            if (window.isSecure()) {
+                            secure =
+                                runOnMainThreadBlocking { window.isSecure() }
+                                    ?: run {
+                                        recordScreenshotDiscarded(drawState)
+                                        return null
+                                    }
+                            if (secure) {
                                 bitmap.eraseColor(paint.color)
                             } else if (windowAlpha != 1f) {
                                 // PixelCopy precedes window opacity. Apply it only after redaction;
@@ -2679,7 +2705,8 @@ public class PostHogReplayIntegration(
                 base64 = base64,
                 style = RRStyle(),
             ),
-            paintedMasks,
+            paintedMasks.takeUnless { secure },
+            secure,
         )
     }
 
