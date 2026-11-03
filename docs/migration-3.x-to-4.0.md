@@ -4,7 +4,7 @@
 Most removals are compile errors with a direct replacement. [Behavior changes](#behavior-changes) won't show up at build time.
 Read the checklist first, then the sections that apply to you.
 
-<!-- TODO(capture-v1): when the public capture v1 SDK upgrade guide is published (PostHog/posthog.com#21386), link it here for details on options, limits and per-event results. -->
+For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
 For the full list of 4.0 changes, see the [changelog](../posthog-android/CHANGELOG.md).
 
@@ -349,6 +349,8 @@ A string value, including an empty string, is sent unchanged.
 Any other value is removed and not sent. With `debug` on, the SDK logs the key and the value's JSON type, never the value.
 A null value counts as unset and is removed without a log.
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters and session replay work as before.
+
+<!-- TODO(capture-v1): add a "Timestamps and IDs" section like the iOS guide's: timestamp format and precision, and which IDs are UUID v7. -->
 
 ## Event options
 
