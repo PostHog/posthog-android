@@ -1,6 +1,7 @@
 package com.posthog.android
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 import com.posthog.android.replay.PostHogReplayQueue
 import com.posthog.android.replay.PostHogSessionReplayConfig
 import com.posthog.internal.EndpointSpec
@@ -96,6 +97,13 @@ public open class PostHogAndroidConfig
          * Independent of semantic capture and replay; shares interaction exclusions.
          */
         public var captureDeadClicks: Boolean = false
+
+        /**
+         * Whether the SDK detects `$app_language` itself. Wrappers that translate outside of native
+         * resources, such as Flutter, turn this off and report the language they resolved.
+         */
+        @PostHogInternal
+        public var detectAppLanguage: Boolean = true
 
         internal var replayQueueHolder: PostHogReplayQueue? = null
     }

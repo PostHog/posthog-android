@@ -57,6 +57,7 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 private const val MAX_DEBUG_ERROR_LENGTH = 500
+private const val APP_LANGUAGE = "\$app_language"
 private const val REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS = 30_000L
 
 // Kept on every event because the app reads them per event; the rest of the replay debug bundle is throttled.
@@ -872,6 +873,9 @@ public class PostHog private constructor(
             }
         }
 
+    @Volatile
+    private var appLanguage: String? = null
+
     private fun buildProperties(
         distinctId: String,
         properties: Map<String, Any>?,
@@ -895,6 +899,10 @@ public class PostHog private constructor(
 
             config?.context?.getDynamicContext()?.let {
                 props.putAll(it)
+            }
+
+            appLanguage?.let {
+                props[APP_LANGUAGE] = it
             }
 
             if (config?.sendFeatureFlagEvent == true) {
@@ -2942,6 +2950,10 @@ public class PostHog private constructor(
         getPreferences().remove(key)
     }
 
+    public override fun setAppLanguage(language: String?) {
+        appLanguage = language?.trim()?.replace('_', '-')?.ifEmpty { null }
+    }
+
     override fun distinctId(): String {
         if (!isEnabled()) {
             return ""
@@ -3559,6 +3571,10 @@ public class PostHog private constructor(
 
         public override fun unregister(key: String) {
             shared.unregister(key)
+        }
+
+        public override fun setAppLanguage(language: String?) {
+            shared.setAppLanguage(language)
         }
 
         override fun distinctId(): String = shared.distinctId()

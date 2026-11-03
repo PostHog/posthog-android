@@ -357,6 +357,25 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun unregister(key: String)
 
     /**
+     * Sets the `$app_language` property: the language your app displays, sent with every event.
+     *
+     * Call it at startup and whenever the language changes, because the value is kept in memory
+     * only. It overrides the language the SDK detects, and survives [reset].
+     *
+     * Default: on Android 13+ the SDK detects the language from your `localeConfig` declaration, and
+     * on Android 6-12 it sends no `$app_language` unless you call this. Compare `$locale`, which is
+     * the device language whichever language your app displays.
+     *
+     * ```kotlin
+     * PostHog.setAppLanguage("de")
+     * ```
+     *
+     * @param language a BCP 47 language tag, such as `de` or `pt-BR`. Pass `null` to go back to the
+     *   detected language
+     */
+    public fun setAppLanguage(language: String?)
+
+    /**
      * Returns the registered [distinctId] property
      * @return The current distinct ID.
      */

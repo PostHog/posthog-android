@@ -63,6 +63,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun resetPersonPropertiesForFlags (Z)V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public fun sendBuiltEventForWrapper (Lcom/posthog/PostHogEvent;Z)Ljava/util/UUID;
+	public fun setAppLanguage (Ljava/lang/String;)V
 	public fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
 	public fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun setPersonPropertiesForFlags (Ljava/util/Map;Z)V
@@ -117,6 +118,7 @@ public final class com/posthog/PostHog$Companion : com/posthog/PostHogInterface 
 	public final fun resetSharedInstance ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V
 	public fun sendBuiltEventForWrapper (Lcom/posthog/PostHogEvent;Z)Ljava/util/UUID;
+	public fun setAppLanguage (Ljava/lang/String;)V
 	public fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
 	public fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V
 	public fun setPersonPropertiesForFlags (Ljava/util/Map;Z)V
@@ -456,6 +458,7 @@ public abstract interface class com/posthog/PostHogInterface : com/posthog/PostH
 	public static synthetic fun screen$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)V
 	public fun sendBuiltEventForWrapper (Lcom/posthog/PostHogEvent;Z)Ljava/util/UUID;
 	public static synthetic fun sendBuiltEventForWrapper$default (Lcom/posthog/PostHogInterface;Lcom/posthog/PostHogEvent;ZILjava/lang/Object;)Ljava/util/UUID;
+	public abstract fun setAppLanguage (Ljava/lang/String;)V
 	public abstract fun setGroupPropertiesForFlags (Ljava/lang/String;Ljava/util/Map;Z)V
 	public static synthetic fun setGroupPropertiesForFlags$default (Lcom/posthog/PostHogInterface;Ljava/lang/String;Ljava/util/Map;ZILjava/lang/Object;)V
 	public abstract fun setPersonProperties (Ljava/util/Map;Ljava/util/Map;Ljava/util/Map;)V

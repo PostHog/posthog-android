@@ -31,6 +31,7 @@ You need to change something if your app does any of these:
 - calls `getFeatureFlagPayload()`
 - sets `PostHogOnFeatureFlags` or passes a callback to `reloadFeatureFlags()`
 - reads a feature flag payload that isn't valid JSON, such as plain text saved as `hello`
+- breaks down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6–12)
 - depends only on `posthog-android-surveys-compose`, or uses `posthog-server`
 
 ## Requirements and versions
@@ -188,7 +189,7 @@ These callbacks still run on a background thread, or right away on the calling t
 
 ## `PostHogInterface` implementations
 
-`PostHogInterface` lost `getFeatureFlagPayload()`, gained the abstract `onFeatureFlags()` and changed the callback type of `reloadFeatureFlags()`. Classes that implement it, such as hand-written fakes for tests, no longer compile until they're updated. They also add the `options` parameter and `captureAi()` (see [Event options](#event-options) and [AI events](#ai-events)).
+`PostHogInterface` lost `getFeatureFlagPayload()`, gained the abstract `onFeatureFlags()` and `setAppLanguage()`, and changed the callback type of `reloadFeatureFlags()`. Classes that implement it, such as hand-written fakes for tests, no longer compile until they're updated. They also add the `options` parameter and `captureAi()` (see [Event options](#event-options) and [AI events](#ai-events)).
 
 ```kotlin
 class FakePostHog : PostHogInterface {
@@ -235,6 +236,20 @@ The flag's value, enabled state, variant and any other flag's payload aren't aff
 If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
 
 A malformed payload cached by 3.x can still read as the raw string after the upgrade, until the app's first `/flags` response replaces it.
+
+### `$locale` and `$app_language`
+
+`$locale` now means the first language in the device settings, as a full language tag such as `de-CH` or `zh-Hant-TW`. In 3.x it came from `Locale.getDefault()`, which could be a secondary language, a per-app language or a value your app set with `Locale.setDefault()`, and it dropped the script (`zh-TW`). It's left out when the device reports no language. On older Android versions, 3.x also sent the legacy codes `iw`, `in` and `ji`, so Hebrew, Indonesian and Yiddish values change, such as `in-ID` to `id-ID`. Update filters that match those. Other values mostly stay the same, so otherwise only check filters if your users change these settings.
+
+The new `$app_language` property is the language your app shows. Android has no API that reports it exactly, so what you get depends on the version:
+
+| Android | `$app_language` |
+|---|---|
+| 13+ with `android:localeConfig` declared (by hand or with AGP `generateLocaleConfig`) | The per-app language or, without one, the first device language, as you declare it. If you don't declare that language, your `android:defaultLocale` (Android 15+) or your language if you only declare one. Not sent if several of your declared languages could match, such as `pt` and `pt-PT` for a `pt-MZ` device, or if nothing matches and you declare several languages without a default. |
+| 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
+| 6–12 | Not sent. |
+
+Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
 
 ### Other changes that don't fail the build
 
