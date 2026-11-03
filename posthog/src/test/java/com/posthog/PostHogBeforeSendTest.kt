@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 internal class PostHogBeforeSendTest {
     @get:Rule
@@ -130,6 +131,30 @@ internal class PostHogBeforeSendTest {
         val event = batch.batch.single()
         assertEquals("1", event.properties?.get("first"))
         assertEquals("1", event.properties?.get("sawFirst"))
+    }
+
+    @Test
+    fun `a hook's edits to nested values reach the wire but not the caller's objects`() {
+        val nested = mutableMapOf<String, Any>("kept" to mutableListOf("a"))
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        @Suppress("UNCHECKED_CAST")
+                        val map = event.properties?.get("nested") as MutableMap<String, Any>
+                        map["hook"] = true
+                        @Suppress("UNCHECKED_CAST")
+                        (map["kept"] as MutableList<String>).add("b")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("nested" to nested)) },
+            )
+
+        assertEquals(mutableMapOf<String, Any>("kept" to mutableListOf("a")), nested)
+        val sent = requests.single().body.unGzip()
+        assertTrue(sent.contains("\"hook\":true"), sent)
+        assertTrue(sent.contains("\"kept\":[\"a\",\"b\"]"), sent)
     }
 
     @Test

@@ -72,6 +72,7 @@ internal class PostHogQueueTest {
         networkStatus: PostHogNetworkStatus? = null,
         pushNotificationSubscriptionMaxRetries: Int = 3,
         httpClient: OkHttpClient? = null,
+        logger: PostHogLogger? = null,
     ): PostHogQueue<PostHogEvent> {
         val config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -83,9 +84,22 @@ internal class PostHogQueueTest {
                 this.dateProvider = dateProvider
                 this.pushNotificationSubscriptionMaxRetries = pushNotificationSubscriptionMaxRetries
                 this.httpClient = httpClient
+                logger?.let { this.logger = it }
             }
         val api = PostHogApi(config)
         return PostHogQueue(config, EndpointSpec.batch(config, api, config.storagePrefix), executor).also { queues.add(it) }
+    }
+
+    @Test
+    fun `queueing an event logs nothing per event`() {
+        val http = mockHttp()
+        val logger = TestLogger()
+        val sut = getSut(host = http.url("/").toString(), logger = logger)
+
+        sut.add(generateEvent())
+        awaitQueue()
+
+        assertTrue(logger.messages.isEmpty(), logger.messages.toString())
     }
 
     @Test

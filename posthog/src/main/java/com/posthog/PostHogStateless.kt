@@ -370,9 +370,10 @@ public open class PostHogStateless protected constructor(
         postHogEvent: PostHogEvent,
         uuid: UUID?,
     ): PostHogEvent? {
-        var eventChecked: PostHogEvent = postHogEvent
-
         val beforeSendList = config?.beforeSendList ?: emptyList()
+
+        // Hooks get their own nested values, so an edit never reaches the caller's objects.
+        var eventChecked: PostHogEvent = if (beforeSendList.isEmpty()) postHogEvent else copyForHooks(postHogEvent)
 
         for (beforeSend in beforeSendList) {
             try {
@@ -383,7 +384,8 @@ public open class PostHogStateless protected constructor(
                 }
                 eventChecked = result
             } catch (e: Throwable) {
-                config?.logger?.log("Error in beforeSend function: $e")
+                // The type only: the message can hold the values the hook was redacting.
+                config?.logger?.logWarning("Dropping event '${postHogEvent.event}': beforeSend threw ${e.javaClass.name}.")
                 return null
             }
         }
@@ -395,6 +397,22 @@ public open class PostHogStateless protected constructor(
         }
 
         return eventChecked
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun copyForHooks(event: PostHogEvent): PostHogEvent {
+        return event.copy(
+            properties = event.properties?.let { copyContainers(it) as MutableMap<String, Any> },
+            options = event.options?.let { copyContainers(it) as MutableMap<String, Any?> },
+        )
+    }
+
+    private fun copyContainers(value: Any?): Any? {
+        return when (value) {
+            is Map<*, *> -> value.entries.associateTo(LinkedHashMap(value.size)) { it.key to copyContainers(it.value) }
+            is List<*> -> value.mapTo(ArrayList(value.size)) { copyContainers(it) }
+            else -> value
+        }
     }
 
     /**

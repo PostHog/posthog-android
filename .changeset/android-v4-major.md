@@ -38,4 +38,6 @@
 - cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own
 - Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
 - add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event before it's sent
+- Fix losing an event whose properties hold a nested map with non-string keys
+- Give `beforeSend` its own copy of nested properties and options, so an edit never changes your objects
 - See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/docs/migration-3.x-to-4.0.md) for upgrade steps

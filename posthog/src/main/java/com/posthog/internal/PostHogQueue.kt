@@ -121,8 +121,6 @@ public class PostHogQueue<Record>(
                         countBytes(file, size)
                     }
                 }
-                config.logger.log("Queued ${spec.describe(record)}: ${file.name}.")
-
                 return true
             } catch (e: Throwable) {
                 config.logger.log("${spec.describe(record)}: ${file.name} failed to parse: $e.")
@@ -306,13 +304,7 @@ public class PostHogQueue<Record>(
     }
 
     private fun isAboveThreshold(flushAt: Int): Boolean {
-        if (deque.size >= flushAt || isAboveByteThreshold()) {
-            return true
-        } else if (deque.size > 0) {
-            // only log if there are records in the queue
-            config.logger.log("Cannot flush the Queue yet, below the threshold: $flushAt")
-        }
-        return false
+        return deque.size >= flushAt || isAboveByteThreshold()
     }
 
     private fun canFlushBatch(): Boolean {

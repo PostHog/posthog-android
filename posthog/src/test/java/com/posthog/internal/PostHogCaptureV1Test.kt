@@ -128,7 +128,7 @@ internal class PostHogCaptureV1Test {
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["PostHog-Sdk-Info"])
         assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
         assertEquals("1", request.headers["PostHog-Attempt"])
-        UUID.fromString(assertNotNull(request.headers["PostHog-Request-Id"]))
+        assertEquals(7, UUID.fromString(assertNotNull(request.headers["PostHog-Request-Id"])).version())
         assertEquals("2024-05-01T10:20:30.456Z", request.headers["PostHog-Request-Timestamp"])
         assertEquals("application/json", request.headers["Content-Type"])
         assertEquals("gzip", request.headers["Content-Encoding"])
@@ -333,6 +333,30 @@ internal class PostHogCaptureV1Test {
         assertEquals(7, result.retryAfterSeconds)
         assertTrue(
             logger.messages.contains("Capture /i/v1/analytics/events: 1 dropped (no details: 1), 0 duplicate copies dropped, 1 to retry."),
+        )
+    }
+
+    @Test
+    fun `cleans and clips the server's drop reasons, most common first`() {
+        val events = List(3) { event("event") }
+        val noisy = "bad\\n\\u2028tag" + "x".repeat(100)
+        val http =
+            httpServers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{" +
+                            "\"${events[0].uuid}\":{\"result\":\"drop\",\"details\":\"zzz\"}," +
+                            "\"${events[1].uuid}\":{\"result\":\"drop\",\"details\":\"zzz\"}," +
+                            "\"${events[2].uuid}\":{\"result\":\"drop\",\"details\":\"$noisy\"}}}",
+                    ),
+            )
+
+        api(http.url("/").toString()).captureAi(events)
+
+        val clean = "badtag" + "x".repeat(58)
+        assertEquals(
+            listOf("Capture /i/v1/ai/events: 3 dropped (zzz: 2, $clean: 1), 0 duplicate copies dropped, 0 to retry."),
+            logger.messages.filter { it.startsWith("Capture /") },
         )
     }
 

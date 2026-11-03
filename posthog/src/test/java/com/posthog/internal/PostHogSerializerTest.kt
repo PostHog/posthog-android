@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.google.gson.JsonParser
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
@@ -319,6 +320,21 @@ internal class PostHogSerializerTest {
     // toString carries the prompt so logging the value would leak it
     private class Turn(val prompt: String, val score: Double) {
         override fun toString(): String = "Turn(prompt=$prompt)"
+    }
+
+    @Test
+    fun `converts scalar map keys, drops other keys and keeps the event`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val nested = mapOf(1 to "int", 1.5 to "float", true to "bool", null to "null", listOf("k") to "dropped", "text" to "string")
+        val event = generateEvent().copy(properties = mutableMapOf("nested" to nested))
+
+        val writer = StringWriter()
+        config.serializer.serialize(event, writer)
+
+        val properties = JsonParser.parseString(writer.toString()).asJsonObject["properties"].asJsonObject
+        val sent = properties["nested"].asJsonObject
+        assertEquals(setOf("1", "1.5", "true", "null", "text"), sent.keySet())
+        assertEquals("int", sent["1"].asString)
     }
 
     @Test

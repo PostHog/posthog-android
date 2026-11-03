@@ -11,6 +11,7 @@ import com.posthog.PostHogEvent
 import com.posthog.PostHogInternal
 import com.posthog.internal.logs.PostHogLogsOTLP
 import com.posthog.logs.PostHogLogRecord
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -29,7 +30,6 @@ import java.io.OutputStream
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLException
@@ -290,7 +290,7 @@ public class PostHogApi(
                 } else {
                     CaptureV1RequestIdentity(
                         uuids = uuids,
-                        requestId = UUID.randomUUID().toString(),
+                        requestId = TimeBasedEpochGenerator.generate().toString(),
                         attempt = 1,
                         createdAt = formatISO8601Date(config.dateProvider.currentDate()),
                     )
@@ -348,7 +348,7 @@ public class PostHogApi(
             when (entry["result"]) {
                 "retry" -> retryUuids.add(uuid)
                 "drop" -> {
-                    val details = entry["details"] as? String ?: "no details"
+                    val details = (entry["details"] as? String)?.let(::cleanDropReason) ?: "no details"
                     droppedByDetails[details] = (droppedByDetails[details] ?: 0) + 1
                 }
             }
@@ -359,7 +359,14 @@ public class PostHogApi(
         // Counts and reasons only: one line per batch, never per event.
         val dropped = droppedByDetails.values.sum()
         if (dropped > 0 || duplicatesDropped > 0 || retryUuids.isNotEmpty()) {
-            val reasons = if (dropped > 0) droppedByDetails.entries.joinToString(", ", " (", ")") { "${it.key}: ${it.value}" } else ""
+            val reasons =
+                if (dropped > 0) {
+                    droppedByDetails.entries
+                        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+                        .joinToString(", ", " (", ")") { "${it.key}: ${it.value}" }
+                } else {
+                    ""
+                }
             config.logger.log(
                 "Capture $path: $dropped dropped$reasons, $duplicatesDropped duplicate copies dropped, ${retryUuids.size} to retry.",
             )
@@ -516,6 +523,11 @@ public class PostHogApi(
         } catch (e: Throwable) {
             null
         }
+    }
+
+    /** A drop reason is server text: no control or line-break characters, 64 characters at most. */
+    private fun cleanDropReason(details: String): String {
+        return details.filterNot { it.isISOControl() || it == '\u2028' || it == '\u2029' }.take(64)
     }
 
     private fun parseRetryAfter(response: Response): Int? {

@@ -1139,7 +1139,10 @@ internal class PostHogStatelessTest {
         sut.captureStateless("test", "user123")
 
         assertEquals(0, mockQueue.events.size)
-        assertTrue(mockLogger.messages.any { it.contains("Error in beforeSend function") })
+        val line = mockLogger.warnings.single { it.contains("beforeSend") }
+        assertTrue(line.contains("'test'"))
+        assertTrue(line.contains("RuntimeException"))
+        assertFalse(line.contains("Test error"))
     }
 
     @Test
