@@ -108,6 +108,42 @@
     public androidx.compose.ui.node.LayoutNode getLayoutNode();
 }
 
+# Read in reflection: added in Compose 1.4, after the version the SDK compiles against.
+-keepclassmembers class androidx.compose.ui.text.TextStyle {
+    public androidx.compose.ui.graphics.drawscope.DrawStyle getDrawStyle();
+}
+-keepclassmembers class androidx.compose.ui.text.SpanStyle {
+    public androidx.compose.ui.graphics.drawscope.DrawStyle getDrawStyle();
+}
+
+# Read in reflection: text semantics hidden by clearAndSetSemantics, newer than the version the SDK compiles against.
+-keepclassmembers class * extends androidx.compose.ui.node.NodeCoordinator {
+    public androidx.compose.ui.Modifier$Node getTail();
+}
+-keepclassmembers class * implements androidx.compose.ui.node.SemanticsModifierNode {
+    public void applySemantics(androidx.compose.ui.semantics.SemanticsPropertyReceiver);
+}
+-keepnames class androidx.compose.ui.node.DelegatingNode
+
+# Session replay walks the Compose layout tree to mask images that have no semantics.
+-keepclassmembers class androidx.compose.ui.node.LayoutNode {
+    java.util.List getChildren$ui();
+    java.util.List getChildren$ui_release();
+    java.util.List getChildrenInfo();
+    *** getNodes$ui();
+    *** getNodes$ui_release();
+}
+-keepclassmembers class androidx.compose.ui.node.NodeChain {
+    *** getHead$ui();
+    *** getHead$ui_release();
+}
+-keepnames class androidx.compose.ui.Modifier$Node
+-keepnames class androidx.compose.ui.graphics.painter.BrushPainter
+-keepclassmembers class androidx.compose.ui.Modifier$Node {
+    *** getChild$ui();
+    *** getChild$ui_release();
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable

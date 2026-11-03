@@ -489,8 +489,8 @@ public class PostHog private constructor(
                 clearWrapperBuilds()
                 super.enabled = true
 
-                // Captured before any user callout below (integrations, session hooks, the bootstrap
-                // config callback), any of which may close() and so supersede setup's flags load.
+                // Captured before any user callout below (integrations, session hooks), any of
+                // which may close() and so supersede setup's flags load.
                 val generation = featureFlagsGeneration
 
                 // Queued before integrations install, so a reload one starts there can't hold the
@@ -537,20 +537,16 @@ public class PostHog private constructor(
 
                 // only because of testing in isolation, this flag is always enabled
                 if (reloadFeatureFlags) {
-                    // Bootstrap already seeded the flags in RemoteConfig's init; fire the flags-loaded
-                    // callbacks now so listeners aren't blocked on the first network response.
+                    // Bootstrap already seeded the flags in RemoteConfig's init, so replay can start
+                    // without waiting for the first network response.
                     if (remoteConfig?.hasBootstrapFlags() == true) {
                         try {
                             startSessionReplayOnFeatureFlagsLoaded()
                         } catch (e: Throwable) {
                             config.logger.log("Executing the internal feature flags callback failed: $e")
                         }
-                        notifyFeatureFlagsCallback(config.onFeatureFlags, remoteConfig?.getFeatureFlags(), errorsLoading = false)
                     }
-                    loadRemoteConfigRequest(
-                        internalOnFeatureFlagsLoaded(generation),
-                        config.onFeatureFlags,
-                    )
+                    loadRemoteConfigRequest(internalOnFeatureFlagsLoaded(generation))
                 }
 
                 // Reconcile a differing identified bootstrap after the setup reload is dispatched.
@@ -2297,7 +2293,7 @@ public class PostHog private constructor(
 
             // only because of testing in isolation, this flag is always enabled
             if (reloadFeatureFlags) {
-                reloadFeatureFlags(config?.onFeatureFlags)
+                reloadFeatureFlags()
             }
             // we need to make sure the user props update is for the same user
             // otherwise they have to reset and identify again
@@ -2329,7 +2325,7 @@ public class PostHog private constructor(
             // The identified state itself is not part of the flags request; reload only when the
             // caller supplied properties that can affect flag evaluation.
             if ((userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true) && reloadFeatureFlags) {
-                reloadFeatureFlags(config?.onFeatureFlags)
+                reloadFeatureFlags()
             }
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
             if (!isPersonProcessed(options) ||
@@ -2563,7 +2559,7 @@ public class PostHog private constructor(
 
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags && reloadFeatureFlagsIfNewGroup) {
-            reloadFeatureFlags(config?.onFeatureFlags)
+            reloadFeatureFlags()
         }
     }
 
@@ -2639,10 +2635,7 @@ public class PostHog private constructor(
         )
     }
 
-    private fun loadRemoteConfigRequest(
-        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
-        onFeatureFlags: PostHogFeatureFlagsCallback?,
-    ) {
+    private fun loadRemoteConfigRequest(internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?) {
         @Suppress("UNCHECKED_CAST")
         val groups = getPreferences().getValue(GROUPS) as? Map<String, String>
 
@@ -2658,7 +2651,6 @@ public class PostHog private constructor(
             anonymousId = anonymousId,
             groups,
             internalOnFeatureFlags,
-            onFeatureFlags,
         )
     }
 
@@ -2667,7 +2659,7 @@ public class PostHog private constructor(
         defaultValue: Boolean,
         sendFeatureFlagEvent: Boolean?,
     ): Boolean {
-        val value = getFeatureFlag(key, defaultValue, sendFeatureFlagEvent)
+        val value = getFeatureFlag(key, sendFeatureFlagEvent) ?: defaultValue
 
         if (value is Boolean) {
             return value
@@ -2748,11 +2740,10 @@ public class PostHog private constructor(
 
     public override fun getFeatureFlag(
         key: String,
-        defaultValue: Any?,
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
-        if (!isEnabled()) return defaultValue
-        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value ?: defaultValue
+        if (!isEnabled()) return null
+        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value
         sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
         return flagValue
     }
@@ -2925,7 +2916,7 @@ public class PostHog private constructor(
         // reload flags as anon user
         // only because of testing in isolation, this flag is always enabled
         if (reloadFeatureFlags) {
-            reloadFeatureFlags(config?.onFeatureFlags)
+            reloadFeatureFlags()
         }
     }
 
@@ -3459,9 +3450,8 @@ public class PostHog private constructor(
 
         public override fun getFeatureFlag(
             key: String,
-            defaultValue: Any?,
             sendFeatureFlagEvent: Boolean?,
-        ): Any? = shared.getFeatureFlag(key, defaultValue = defaultValue, sendFeatureFlagEvent)
+        ): Any? = shared.getFeatureFlag(key, sendFeatureFlagEvent)
 
         override fun getAllFeatureFlags(): List<FeatureFlagResult>? {
             return shared.getAllFeatureFlags()

@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.posthog.android.surveys.compose.internal.DeferredSurveyContent
 import com.posthog.android.surveys.compose.internal.theme.LocalSurveyAppearance
 import com.posthog.android.surveys.compose.internal.theme.localAppearance
 import com.posthog.android.surveys.compose.internal.theme.resolve
@@ -107,10 +108,6 @@ internal fun SurveySheet(
     }
     val question = survey.questions.getOrNull(currentQuestionIndex)
 
-    LaunchedEffect(survey.id) {
-        onSurveyShown()
-    }
-
     if (question == null && !showingConfirmation) {
         // Defensive: an empty survey would otherwise leave the sheet stuck open.
         LaunchedEffect(Unit) { onClose() }
@@ -154,56 +151,60 @@ internal fun SurveySheet(
         properties =
             ModalBottomSheetProperties(
                 shouldDismissOnBackPress = false,
+                shouldDismissOnClickOutside = false,
             ),
     ) {
-        // Base survey body size. Without a MaterialTheme the default Text size is 14sp, which
-        // reads small; 15sp is the survey body scale. Components inherit this unless they
-        // override (e.g. the question header).
-        CompositionLocalProvider(
-            LocalSurveyAppearance provides appearance,
-            LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 15.sp),
-            LocalSaveableStateRegistry provides hostSaveableRegistry,
-        ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .padding(
-                                PaddingValues(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = 48.dp,
-                                    bottom = 16.dp,
+        DeferredSurveyContent {
+            LaunchedEffect(survey.id) { onSurveyShown() }
+            // Base survey body size. Without a MaterialTheme the default Text size is 14sp, which
+            // reads small; 15sp is the survey body scale. Components inherit this unless they
+            // override (e.g. the question header).
+            CompositionLocalProvider(
+                LocalSurveyAppearance provides appearance,
+                LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 15.sp),
+                LocalSaveableStateRegistry provides hostSaveableRegistry,
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(
+                                    PaddingValues(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        top = 48.dp,
+                                        bottom = 16.dp,
+                                    ),
                                 ),
-                            ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (showingConfirmation || question == null) {
-                        ConfirmationScreen(onClose = dismissSheet)
-                    } else if (showingIntroScreen) {
-                        IntroScreen(onStart = { showingIntroScreen = false })
-                    } else {
-                        QuestionContent(
-                            question = question,
-                            onSubmit = onSubmitResponse,
-                            onClose = dismissSheet,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        if (showingConfirmation || question == null) {
+                            ConfirmationScreen(onClose = dismissSheet)
+                        } else if (showingIntroScreen) {
+                            IntroScreen(onStart = { showingIntroScreen = false })
+                        } else {
+                            QuestionContent(
+                                question = question,
+                                onSubmit = onSubmitResponse,
+                                onClose = dismissSheet,
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = dismissSheet,
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close survey",
+                            tint = appearance.textColor,
                         )
                     }
-                }
-                IconButton(
-                    onClick = dismissSheet,
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 4.dp, end = 4.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Close survey",
-                        tint = appearance.textColor,
-                    )
                 }
             }
         }
