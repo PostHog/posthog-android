@@ -158,6 +158,42 @@ internal class PostHogBeforeSendTest {
     }
 
     @Test
+    fun `a hook's edit to a map inside an array doesn't reach the caller's map`() {
+        val nested = mutableMapOf<String, Any>("kept" to true)
+        captureWithHooks(
+            listOf(
+                PostHogBeforeSend { event ->
+                    @Suppress("UNCHECKED_CAST")
+                    val items = event.properties?.get("items") as List<MutableMap<String, Any>>
+                    items[0]["hook"] = true
+                    event
+                },
+            ),
+            trigger = { it.capture("event", properties = mapOf("items" to arrayOf(nested))) },
+        )
+
+        assertEquals(mutableMapOf<String, Any>("kept" to true), nested)
+    }
+
+    @Test
+    fun `a hook can remove a self-referencing property`() {
+        val cycle = mutableMapOf<String, Any>()
+        cycle["self"] = cycle
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        event.properties?.remove("cycle")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("cycle" to cycle)) },
+            )
+
+        assertEquals(1, requests.size)
+    }
+
+    @Test
     fun `drops the event when a hook throws`() {
         var callsAfterThrow = 0
         val requests =

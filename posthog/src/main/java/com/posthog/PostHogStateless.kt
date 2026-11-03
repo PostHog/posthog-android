@@ -16,6 +16,7 @@ import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
+import java.util.IdentityHashMap
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -385,7 +386,7 @@ public open class PostHogStateless protected constructor(
                 eventChecked = result
             } catch (e: Throwable) {
                 // The type only: the message can hold the values the hook was redacting.
-                config?.logger?.logWarning("Dropping event '${postHogEvent.event}': beforeSend threw ${e.javaClass.name}.")
+                config?.logger?.log("Dropping event '${eventChecked.event}': beforeSend threw ${e.javaClass.name}.")
                 return null
             }
         }
@@ -401,18 +402,43 @@ public open class PostHogStateless protected constructor(
 
     @Suppress("UNCHECKED_CAST")
     private fun copyForHooks(event: PostHogEvent): PostHogEvent {
+        val copies = IdentityHashMap<Any, Any>()
         return event.copy(
-            properties = event.properties?.let { copyContainers(it) as MutableMap<String, Any> },
-            options = event.options?.let { copyContainers(it) as MutableMap<String, Any?> },
+            properties = event.properties?.let { copyContainers(it, copies) as MutableMap<String, Any> },
+            options = event.options?.let { copyContainers(it, copies) as MutableMap<String, Any?> },
         )
     }
 
-    private fun copyContainers(value: Any?): Any? {
+    /** Arrays become lists, which serialize the same. [copies] keeps a cycle a cycle, so a hook can still remove it. */
+    private fun copyContainers(
+        value: Any?,
+        copies: IdentityHashMap<Any, Any>,
+    ): Any? {
+        if (value == null) return null
+        copies[value]?.let { return it }
         return when (value) {
-            is Map<*, *> -> value.entries.associateTo(LinkedHashMap(value.size)) { it.key to copyContainers(it.value) }
-            is List<*> -> value.mapTo(ArrayList(value.size)) { copyContainers(it) }
+            is Map<*, *> -> {
+                val copy = LinkedHashMap<Any?, Any?>(value.size)
+                copies[value] = copy
+                value.forEach { (key, item) -> copy[key] = copyContainers(item, copies) }
+                copy
+            }
+            is List<*> -> copyItems(value, value.size, value, copies)
+            is Array<*> -> copyItems(value, value.size, value.asList(), copies)
             else -> value
         }
+    }
+
+    private fun copyItems(
+        source: Any,
+        size: Int,
+        items: List<*>,
+        copies: IdentityHashMap<Any, Any>,
+    ): List<Any?> {
+        val copy = ArrayList<Any?>(size)
+        copies[source] = copy
+        items.forEach { copy.add(copyContainers(it, copies)) }
+        return copy
     }
 
     /**
