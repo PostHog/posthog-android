@@ -38,6 +38,7 @@ import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
@@ -1309,6 +1310,7 @@ public class PostHogReplayIntegration(
                     }
                     // Unmerged: a merged node inherits a child's postHogUnmask, exposing its siblings.
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
+                    val unmaskedLayouts = mutableSetOf<LayoutInfo>()
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
@@ -1324,7 +1326,7 @@ public class PostHogReplayIntegration(
                         when {
                             // postHogUnmask has precedence over everything, skip masking
                             isUnmaskEnabled -> {
-                                // do not mask this node
+                                unmaskedLayouts.add(node.layoutInfo)
                             }
 
                             // postHogMask forces masking
@@ -1352,6 +1354,13 @@ public class PostHogReplayIntegration(
                                 }
                             }
                         }
+                    }
+                    if (config.sessionReplayConfig.maskAllImages) {
+                        collectComposeImageRects(
+                            semanticsOwner.unmergedRootSemanticsNode.layoutInfo,
+                            unmaskedLayouts,
+                            maskableWidgets,
+                        )
                     }
                     traversalSucceeded = true
                 } catch (e: Throwable) {
