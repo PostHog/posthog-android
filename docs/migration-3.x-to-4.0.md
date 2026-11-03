@@ -35,6 +35,7 @@ All of these are compile errors. Calling them from an already-compiled library t
 | `getFeatureFlagPayload()`, on the instance and on `PostHog` | `getFeatureFlagResult()` |
 | `defaultValue` on `getFeatureFlag()` | `getFeatureFlag(key) ?: default` |
 | `PostHogSessionReplayConfig.debouncerDelayMs` | `throttleDelayMs` |
+| `PostHogSessionReplayConfig.screenshot`, `drawableConverter`, `PostHogDrawableConverter` | nothing; replay always records screenshots |
 | `PostHogConfig.remoteConfig` | nothing; remote config always loads |
 | `PostHogConfig.onFeatureFlags` | `PostHog.onFeatureFlags()` before `setup()` |
 | `PostHogOnFeatureFlags` | `PostHogFeatureFlagsCallback` |
@@ -232,6 +233,31 @@ The flag's value, enabled state, variant and any other flag's payload aren't aff
 If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
 
 A malformed payload cached by 3.x can still read as the raw string after the upgrade, until the app's first `/flags` response replaces it.
+
+### Session replay records screenshots
+
+4.0 removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did.
+
+```kotlin
+// 3.x
+config.sessionReplayConfig.screenshot = true
+
+// 4.0: remove the line
+```
+
+Apps that relied on the default now upload screenshots:
+
+- Masking still covers text inputs, images, `WebView`s, Compose semantics, `ph-no-capture` views and `Modifier.postHogMask()`.
+- Custom-drawn views and other content the SDK doesn't recognize, such as maps or video, can now appear in recordings. Mask them, or turn replay off with `sessionReplay = false`.
+- Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded.
+
+Compose masking also changed, including for apps that already set `screenshot = true`:
+
+- `Modifier.postHogMask()` and `Modifier.postHogUnmask()` apply only to the element and its children, not to siblings merged into the same clickable row.
+- Text that draws past its layout box is masked in full.
+- Nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
+
+The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
 
 ### Other changes that don't fail the build
 

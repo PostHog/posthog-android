@@ -42,19 +42,6 @@ internal class PostHogAndroidConfigTest {
         assertEquals(30, config.sessionReplayConfig.screenshotCompressionQuality)
         assertNull(config.sessionReplayConfig.screenshotScale)
         assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.sessionReplayConfig.screenshotColorMode)
-        assertFalse(config.sessionReplayConfig.screenshot)
-    }
-
-    @Test
-    fun `screenshot settings are independent of capture enablement`() {
-        config.sessionReplayConfig.screenshotScale = 0.5f
-        config.sessionReplayConfig.screenshotCompressionQuality = 60
-        config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
-
-        assertEquals(0.5f, config.sessionReplayConfig.screenshotScale)
-        assertEquals(60, config.sessionReplayConfig.screenshotCompressionQuality)
-        assertEquals(PostHogScreenshotColorMode.RGB_565, config.sessionReplayConfig.screenshotColorMode)
-        assertFalse(config.sessionReplayConfig.screenshot)
     }
 
     @Test
