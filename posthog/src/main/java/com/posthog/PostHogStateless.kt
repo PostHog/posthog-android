@@ -16,6 +16,9 @@ import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
+import java.util.IdentityHashMap
+import java.util.SortedMap
+import java.util.TreeMap
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -370,9 +373,10 @@ public open class PostHogStateless protected constructor(
         postHogEvent: PostHogEvent,
         uuid: UUID?,
     ): PostHogEvent? {
-        var eventChecked: PostHogEvent = postHogEvent
-
         val beforeSendList = config?.beforeSendList ?: emptyList()
+
+        // Hooks get their own nested values, so an edit never reaches the caller's objects.
+        var eventChecked: PostHogEvent = if (beforeSendList.isEmpty()) postHogEvent else copyForHooks(postHogEvent)
 
         for (beforeSend in beforeSendList) {
             try {
@@ -383,7 +387,8 @@ public open class PostHogStateless protected constructor(
                 }
                 eventChecked = result
             } catch (e: Throwable) {
-                config?.logger?.log("Error in beforeSend function: $e")
+                // The type only: the message can hold the values the hook was redacting.
+                config?.logger?.log("Dropping event '${eventChecked.event}': beforeSend threw ${e.javaClass.name}.")
                 return null
             }
         }
@@ -395,6 +400,65 @@ public open class PostHogStateless protected constructor(
         }
 
         return eventChecked
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun copyForHooks(event: PostHogEvent): PostHogEvent {
+        val copies = IdentityHashMap<Any, Any>()
+        return event.copy(
+            properties = event.properties?.let { copyContainers(it, copies) as MutableMap<String, Any> },
+            options = event.options?.let { copyContainers(it, copies) as MutableMap<String, Any?> },
+        )
+    }
+
+    /** [copies] keeps a cycle a cycle, so a hook can still remove it. */
+    private fun copyContainers(
+        value: Any?,
+        copies: IdentityHashMap<Any, Any>,
+    ): Any? {
+        if (value == null) return null
+        copies[value]?.let { return it }
+        return when (value) {
+            is Map<*, *> -> {
+                // A sorted map keeps its comparator, so a hook's lookups still match the same keys.
+                @Suppress("UNCHECKED_CAST")
+                val copy: MutableMap<Any?, Any?> =
+                    if (value is SortedMap<*, *>) TreeMap(value.comparator() as Comparator<Any?>?) else LinkedHashMap(value.size)
+                copies[value] = copy
+                value.forEach { (key, item) -> copy[key] = copyContainers(item, copies) }
+                copy
+            }
+            is List<*> -> {
+                val copy = ArrayList<Any?>(value.size)
+                copies[value] = copy
+                value.forEach { copy.add(copyContainers(it, copies)) }
+                copy
+            }
+            is Array<*> -> copyArray(value, copies)
+            is BooleanArray, is ByteArray, is CharArray, is ShortArray, is IntArray, is LongArray, is FloatArray, is DoubleArray -> {
+                val length = java.lang.reflect.Array.getLength(value)
+                val copy = java.lang.reflect.Array.newInstance(value.javaClass.componentType, length)
+                System.arraycopy(value, 0, copy, 0, length)
+                copies[value] = copy
+                copy
+            }
+            else -> value
+        }
+    }
+
+    /** Keeps the array's runtime type for hooks that cast it. An element whose copy doesn't fit that type stays as is. */
+    private fun copyArray(
+        array: Array<*>,
+        copies: IdentityHashMap<Any, Any>,
+    ): Any {
+        val componentType = array.javaClass.componentType
+        val copy = java.lang.reflect.Array.newInstance(componentType, array.size)
+        copies[array] = copy
+        array.forEachIndexed { index, item ->
+            val itemCopy = copyContainers(item, copies)
+            java.lang.reflect.Array.set(copy, index, if (componentType.isInstance(itemCopy)) itemCopy else item)
+        }
+        return copy
     }
 
     /**

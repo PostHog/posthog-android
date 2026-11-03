@@ -6,11 +6,13 @@ import com.posthog.internal.PostHogSerializer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.util.TreeMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 internal class PostHogBeforeSendTest {
     @get:Rule
@@ -130,6 +132,107 @@ internal class PostHogBeforeSendTest {
         val event = batch.batch.single()
         assertEquals("1", event.properties?.get("first"))
         assertEquals("1", event.properties?.get("sawFirst"))
+    }
+
+    @Test
+    fun `a hook's edits to nested values reach the wire but not the caller's objects`() {
+        val nested = mutableMapOf<String, Any>("kept" to mutableListOf("a"))
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        @Suppress("UNCHECKED_CAST")
+                        val map = event.properties?.get("nested") as MutableMap<String, Any>
+                        map["hook"] = true
+                        @Suppress("UNCHECKED_CAST")
+                        (map["kept"] as MutableList<String>).add("b")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("nested" to nested)) },
+            )
+
+        assertEquals(mutableMapOf<String, Any>("kept" to mutableListOf("a")), nested)
+        val sent = requests.single().body.unGzip()
+        assertTrue(sent.contains("\"hook\":true"), sent)
+        assertTrue(sent.contains("\"kept\":[\"a\",\"b\"]"), sent)
+    }
+
+    @Test
+    fun `a hook sees arrays as arrays, and its edits don't reach the caller's objects`() {
+        val nested = mutableMapOf<String, Any>("kept" to true)
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        val items = event.properties?.get("items") as Array<*>
+                        @Suppress("UNCHECKED_CAST")
+                        (items[0] as MutableMap<String, Any>)["hook"] = true
+                        assertEquals("a", (event.properties?.get("names") as Array<*>)[0])
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("items" to arrayOf(nested), "names" to arrayOf("a"))) },
+            )
+
+        assertEquals(mutableMapOf<String, Any>("kept" to true), nested)
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `a hook's edit to a primitive array doesn't reach the caller's array`() {
+        val numbers = intArrayOf(1)
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        (event.properties?.get("numbers") as IntArray)[0] = 2
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("numbers" to numbers)) },
+            )
+
+        assertEquals(1, numbers[0])
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `a hook's lookup in a sorted map uses the map's comparator`() {
+        val headers = TreeMap<String, Any>(String.CASE_INSENSITIVE_ORDER)
+        headers["Authorization"] = "secret"
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        @Suppress("UNCHECKED_CAST")
+                        (event.properties?.get("headers") as MutableMap<String, Any>).remove("authorization")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("headers" to headers)) },
+            )
+
+        assertEquals("secret", headers["Authorization"])
+        assertTrue(!requests.single().body.unGzip().contains("secret"))
+    }
+
+    @Test
+    fun `a hook can remove a self-referencing property`() {
+        val cycle = mutableMapOf<String, Any>()
+        cycle["self"] = cycle
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        event.properties?.remove("cycle")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("cycle" to cycle)) },
+            )
+
+        assertEquals(1, requests.size)
     }
 
     @Test
