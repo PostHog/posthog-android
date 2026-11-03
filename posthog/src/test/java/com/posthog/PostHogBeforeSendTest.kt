@@ -158,21 +158,24 @@ internal class PostHogBeforeSendTest {
     }
 
     @Test
-    fun `a hook's edit to a map inside an array doesn't reach the caller's map`() {
+    fun `a hook sees arrays as arrays, and its edits don't reach the caller's objects`() {
         val nested = mutableMapOf<String, Any>("kept" to true)
-        captureWithHooks(
-            listOf(
-                PostHogBeforeSend { event ->
-                    @Suppress("UNCHECKED_CAST")
-                    val items = event.properties?.get("items") as List<MutableMap<String, Any>>
-                    items[0]["hook"] = true
-                    event
-                },
-            ),
-            trigger = { it.capture("event", properties = mapOf("items" to arrayOf(nested))) },
-        )
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        val items = event.properties?.get("items") as Array<*>
+                        @Suppress("UNCHECKED_CAST")
+                        (items[0] as MutableMap<String, Any>)["hook"] = true
+                        assertEquals("a", (event.properties?.get("names") as Array<*>)[0])
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("items" to arrayOf(nested), "names" to arrayOf("a"))) },
+            )
 
         assertEquals(mutableMapOf<String, Any>("kept" to true), nested)
+        assertEquals(1, requests.size)
     }
 
     @Test

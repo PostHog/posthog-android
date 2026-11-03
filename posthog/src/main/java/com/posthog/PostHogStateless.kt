@@ -409,7 +409,7 @@ public open class PostHogStateless protected constructor(
         )
     }
 
-    /** Arrays become lists, which serialize the same. [copies] keeps a cycle a cycle, so a hook can still remove it. */
+    /** [copies] keeps a cycle a cycle, so a hook can still remove it. */
     private fun copyContainers(
         value: Any?,
         copies: IdentityHashMap<Any, Any>,
@@ -423,21 +423,29 @@ public open class PostHogStateless protected constructor(
                 value.forEach { (key, item) -> copy[key] = copyContainers(item, copies) }
                 copy
             }
-            is List<*> -> copyItems(value, value.size, value, copies)
-            is Array<*> -> copyItems(value, value.size, value.asList(), copies)
+            is List<*> -> {
+                val copy = ArrayList<Any?>(value.size)
+                copies[value] = copy
+                value.forEach { copy.add(copyContainers(it, copies)) }
+                copy
+            }
+            is Array<*> -> copyArray(value, copies)
             else -> value
         }
     }
 
-    private fun copyItems(
-        source: Any,
-        size: Int,
-        items: List<*>,
+    /** Keeps the array's runtime type for hooks that cast it. An element whose copy doesn't fit that type stays as is. */
+    private fun copyArray(
+        array: Array<*>,
         copies: IdentityHashMap<Any, Any>,
-    ): List<Any?> {
-        val copy = ArrayList<Any?>(size)
-        copies[source] = copy
-        items.forEach { copy.add(copyContainers(it, copies)) }
+    ): Any {
+        val componentType = array.javaClass.componentType
+        val copy = java.lang.reflect.Array.newInstance(componentType, array.size)
+        copies[array] = copy
+        array.forEachIndexed { index, item ->
+            val itemCopy = copyContainers(item, copies)
+            java.lang.reflect.Array.set(copy, index, if (componentType.isInstance(itemCopy)) itemCopy else item)
+        }
         return copy
     }
 
