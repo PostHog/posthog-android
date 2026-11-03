@@ -34,6 +34,12 @@ internal class PostHogAppLanguageTest {
     }
 
     @Test
+    fun `reports nothing when several relatives could match`() {
+        assertNull(resolve("pt-MZ", "pt,pt-PT"))
+        assertNull(resolve("pt-MZ", "pt-BR,pt-PT", default = "pt-BR"))
+    }
+
+    @Test
     fun `ignores regional preference extensions when matching`() {
         assertEquals("pt-PT", resolve("pt-PT-u-fw-mon", "pt-BR,pt-PT"))
     }

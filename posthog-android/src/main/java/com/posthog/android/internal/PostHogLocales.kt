@@ -124,10 +124,12 @@ private fun LocaleList.toList(): List<Locale> = (0 until size()).map { get(it) }
 private fun Locale.withoutExtensions(): Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) stripExtensions() else this
 
 /**
- * The declared form of the first preferred language: the exact tag, else the bare language, else
- * the first relative. It stops at the first preference because a library's translation of it makes
- * Android use that language, showing the app's default strings instead of a later preference. The
- * default's language is only known when declared or when the app declares just one.
+ * The declared form of the first preferred language: the exact tag, else its only relative. With
+ * several relatives it reports nothing, because Android ranks them with region data it doesn't
+ * expose, such as pt-MZ preferring pt-PT over pt. It stops at the first preference because a
+ * library's translation of it makes Android use that language, showing the app's default strings
+ * instead of a later preference. The default's language is only known when declared or when the app
+ * declares just one.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal fun resolveAppLanguage(
@@ -137,10 +139,10 @@ internal fun resolveAppLanguage(
     val language = preferred.withoutExtensions()
     val candidates = supported.locales.filter { LocaleList.matchesLanguageAndScript(it, language) }
     val match =
-        candidates.find { it == language }
-            ?: candidates.find { it.country.isEmpty() }
-            ?: candidates.firstOrNull()
-            ?: supported.default
-            ?: supported.locales.singleOrNull()
+        if (candidates.isEmpty()) {
+            supported.default ?: supported.locales.singleOrNull()
+        } else {
+            candidates.find { it == language } ?: candidates.singleOrNull()
+        }
     return match?.toLanguageTag()
 }

@@ -244,7 +244,7 @@ The new `$app_language` property is the language your app shows. Android has no 
 
 | Android | `$app_language` |
 |---|---|
-| 13+ with `android:localeConfig` declared (by hand or with AGP `generateLocaleConfig`) | The per-app language or, without one, the first device language, as you declare it. If you don't declare that language, your `android:defaultLocale` (Android 15+) or your language if you only declare one. Otherwise not sent. |
+| 13+ with `android:localeConfig` declared (by hand or with AGP `generateLocaleConfig`) | The per-app language or, without one, the first device language, as you declare it. If you don't declare that language, your `android:defaultLocale` (Android 15+) or your language if you only declare one. Not sent if several of your declared languages could match, such as `pt` and `pt-PT` for a `pt-MZ` device, or otherwise. |
 | 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
 | 6–12 | Not sent. |
 
