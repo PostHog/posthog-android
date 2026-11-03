@@ -6,6 +6,7 @@ import com.posthog.internal.PostHogSerializer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.util.TreeMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
@@ -176,6 +177,44 @@ internal class PostHogBeforeSendTest {
 
         assertEquals(mutableMapOf<String, Any>("kept" to true), nested)
         assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `a hook's edit to a primitive array doesn't reach the caller's array`() {
+        val numbers = intArrayOf(1)
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        (event.properties?.get("numbers") as IntArray)[0] = 2
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("numbers" to numbers)) },
+            )
+
+        assertEquals(1, numbers[0])
+        assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun `a hook's lookup in a sorted map uses the map's comparator`() {
+        val headers = TreeMap<String, Any>(String.CASE_INSENSITIVE_ORDER)
+        headers["Authorization"] = "secret"
+        val requests =
+            captureWithHooks(
+                listOf(
+                    PostHogBeforeSend { event ->
+                        @Suppress("UNCHECKED_CAST")
+                        (event.properties?.get("headers") as MutableMap<String, Any>).remove("authorization")
+                        event
+                    },
+                ),
+                trigger = { it.capture("event", properties = mapOf("headers" to headers)) },
+            )
+
+        assertEquals("secret", headers["Authorization"])
+        assertTrue(!requests.single().body.unGzip().contains("secret"))
     }
 
     @Test

@@ -17,6 +17,8 @@ import com.posthog.internal.errortracking.ThrowableCoercer
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
 import java.util.IdentityHashMap
+import java.util.SortedMap
+import java.util.TreeMap
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -418,7 +420,10 @@ public open class PostHogStateless protected constructor(
         copies[value]?.let { return it }
         return when (value) {
             is Map<*, *> -> {
-                val copy = LinkedHashMap<Any?, Any?>(value.size)
+                // A sorted map keeps its comparator, so a hook's lookups still match the same keys.
+                @Suppress("UNCHECKED_CAST")
+                val copy: MutableMap<Any?, Any?> =
+                    if (value is SortedMap<*, *>) TreeMap(value.comparator() as Comparator<Any?>?) else LinkedHashMap(value.size)
                 copies[value] = copy
                 value.forEach { (key, item) -> copy[key] = copyContainers(item, copies) }
                 copy
@@ -430,6 +435,13 @@ public open class PostHogStateless protected constructor(
                 copy
             }
             is Array<*> -> copyArray(value, copies)
+            is BooleanArray, is ByteArray, is CharArray, is ShortArray, is IntArray, is LongArray, is FloatArray, is DoubleArray -> {
+                val length = java.lang.reflect.Array.getLength(value)
+                val copy = java.lang.reflect.Array.newInstance(value.javaClass.componentType, length)
+                System.arraycopy(value, 0, copy, 0, length)
+                copies[value] = copy
+                copy
+            }
             else -> value
         }
     }
