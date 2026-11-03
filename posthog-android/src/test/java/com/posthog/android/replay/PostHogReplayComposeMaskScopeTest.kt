@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.getTextLayoutResult
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
@@ -348,6 +350,70 @@ internal class PostHogReplayComposeMaskScopeTest {
         }
 
         assertTrue(boundsOf("box") in maskRects())
+    }
+
+    @Test
+    fun `visible overflow of text with cleared semantics is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "a secret far wider than its layout box",
+                Modifier.testTag("text").clearAndSetSemantics {}.then(textModifier),
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+        }
+
+        val mask = maskRects().single()
+        assertTrue(mask.right > boundsOf("text").right, "expected $mask to extend past the layout box")
+    }
+
+    @Test
+    fun `visible overflow of text with a replacement description is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "a secret far wider than its layout box",
+                Modifier.testTag("text").clearAndSetSemantics { contentDescription = "hidden" }.then(textModifier),
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+        }
+
+        val mask = maskRects().single()
+        assertTrue(mask.right > boundsOf("text").right, "expected $mask to extend past the layout box")
+    }
+
+    @Test
+    fun `postHogMask covers the visible overflow of text with cleared semantics`() {
+        compose.activity.setContent {
+            Box(Modifier.postHogMask()) {
+                BasicText(
+                    "a secret far wider than its layout box",
+                    Modifier.testTag("text").clearAndSetSemantics {}.then(textModifier),
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                )
+            }
+        }
+
+        val masks = maskRects(maskAllTextInputs = false, maskAllImages = false)
+        assertTrue(masks.any { it.right > boundsOf("text").right }, "expected one of $masks to extend past the layout box")
+    }
+
+    @Test
+    fun `frame is discarded when cleared semantics hide text we cannot measure`() {
+        compose.activity.setContent {
+            SelectionContainer {
+                BasicText("secret", Modifier.clearAndSetSemantics {}.then(textModifier))
+            }
+        }
+        val sut = PostHogReplayIntegration(compose.activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+        val composeView = findComposeView(compose.activity.window.decorView)!!
+
+        listOf(true, false).forEach { failClosed ->
+            val walk = PostHogReplayIntegration.MaskWalk(failClosed = failClosed)
+            compose.runOnIdle { sut.findMaskableWidgets(composeView, walk) }
+            assertTrue(walk.poisoned, "failClosed=$failClosed")
+        }
     }
 
     @Test

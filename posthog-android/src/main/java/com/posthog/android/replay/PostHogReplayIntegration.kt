@@ -40,9 +40,11 @@ import android.widget.TextView
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.AnnotatedString
@@ -1339,13 +1341,13 @@ public class PostHogReplayIntegration(
                                     }
 
                                     hasImage && config.sessionReplayConfig.maskAllImages -> {
-                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                        maskableWidgets.add(node.maskBounds())
                                     }
 
                                     // clearAndSetSemantics hides what the node draws, so assume it is sensitive.
                                     node.config.isClearingSemantics &&
                                         (config.sessionReplayConfig.maskAllTextInputs || config.sessionReplayConfig.maskAllImages) -> {
-                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                        maskableWidgets.add(node.maskBounds())
                                     }
                                 }
                             }
@@ -1368,8 +1370,8 @@ public class PostHogReplayIntegration(
             for (rect in maskableWidgets) {
                 walk.addRect(rect)
             }
-        } else if (walk.failClosed) {
-            // Compose mask rects are missing or incomplete, so fail closed.
+        } else if (walk.failClosed || completed) {
+            // Compose mask rects are missing or incomplete, so fail closed. Legacy walks only tolerate a timeout.
             walk.poisoned = true
         }
     }
@@ -1400,29 +1402,60 @@ public class PostHogReplayIntegration(
         val bounds: androidx.compose.ui.geometry.Rect?,
     )
 
+    // clearAndSetSemantics also wipes text semantics on its own layout node, so read them from the text's
+    // modifier. Throws when that can't be read, which discards the frame. Reflection: these APIs are newer
+    // than the version the SDK compiles against.
+    private fun SemanticsNode.textSemantics(): SemanticsConfiguration {
+        if (!config.isClearingSemantics) {
+            return config
+        }
+        for (info in layoutInfo.getModifierInfo()) {
+            val coordinates = info.coordinates
+            val node = coordinates.javaClass.getMethod("getTail").invoke(coordinates) ?: continue
+            val applySemantics =
+                try {
+                    node.javaClass.getMethod("applySemantics", SemanticsPropertyReceiver::class.java)
+                } catch (e: NoSuchMethodException) {
+                    check(!node.isDelegatingNode()) { "Can't read the semantics delegated by $node" }
+                    continue
+                }
+            val semantics = SemanticsConfiguration()
+            applySemantics.invoke(node, semantics)
+            if (semantics.contains(SemanticsProperties.Text)) {
+                return semantics
+            }
+        }
+        return config
+    }
+
+    private fun Any.isDelegatingNode(): Boolean {
+        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == "androidx.compose.ui.node.DelegatingNode" }
+    }
+
     // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so a capture's walks
     // share the result until the next draw. Main thread only, like the traversal that reads it.
     private val textPaintedBoundsCache = HashMap<Int, CachedTextPaintedBounds>()
 
     private fun SemanticsNode.textPaintedBounds(): androidx.compose.ui.geometry.Rect? {
-        if (!config.contains(SemanticsProperties.Text) || config.contains(SemanticsProperties.EditableText)) {
+        val semantics = textSemantics()
+        if (!semantics.contains(SemanticsProperties.Text) || semantics.contains(SemanticsProperties.EditableText)) {
             return null
         }
-        val text = config.getOrNull(SemanticsProperties.Text)
+        val text = semantics.getOrNull(SemanticsProperties.Text)
         textPaintedBoundsCache[id]?.let {
             if (it.text == text && it.size == size) {
                 return it.bounds
             }
         }
-        return measureTextPaintedBounds().also {
+        return measureTextPaintedBounds(semantics).also {
             textPaintedBoundsCache[id] = CachedTextPaintedBounds(text, size, it)
         }
     }
 
     // Local bounds of what the text paints outside its layout box, or null if it stays inside.
-    private fun SemanticsNode.measureTextPaintedBounds(): androidx.compose.ui.geometry.Rect? {
+    private fun SemanticsNode.measureTextPaintedBounds(semantics: SemanticsConfiguration): androidx.compose.ui.geometry.Rect? {
         val results = mutableListOf<TextLayoutResult>()
-        if (config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
+        if (semantics.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
             return null
         }
         val layout = results.firstOrNull() ?: return null

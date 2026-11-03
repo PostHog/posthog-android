@@ -116,6 +116,15 @@
     public androidx.compose.ui.graphics.drawscope.DrawStyle getDrawStyle();
 }
 
+# Read in reflection: text semantics hidden by clearAndSetSemantics, newer than the version the SDK compiles against.
+-keepclassmembers class * extends androidx.compose.ui.node.NodeCoordinator {
+    public androidx.compose.ui.Modifier$Node getTail();
+}
+-keepclassmembers class * implements androidx.compose.ui.node.SemanticsModifierNode {
+    public void applySemantics(androidx.compose.ui.semantics.SemanticsPropertyReceiver);
+}
+-keepnames class androidx.compose.ui.node.DelegatingNode
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 -keepattributes SourceFile,LineNumberTable
