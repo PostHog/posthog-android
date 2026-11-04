@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,7 +36,9 @@ internal class PixelCopyBitmapBufferTest {
     }
 
     @Test
-    fun `changing color mode replaces the idle bitmap without disabling RGB565`() {
+    @Config(sdk = [28, 35])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `grows for ARGB then keeps the allocation when switching back to RGB565`() {
         val buffer = PixelCopyBitmapBuffer()
         buffer.open()
         val rgb = buffer.acquire(20, 20, Bitmap.Config.RGB_565)!!
@@ -48,8 +51,48 @@ internal class PixelCopyBitmapBufferTest {
 
         val rgbAgain = buffer.acquire(20, 20, Bitmap.Config.RGB_565)!!
         assertEquals(Bitmap.Config.RGB_565, rgbAgain.bitmap.config)
-        assertTrue(argb.bitmap.isRecycled)
+        assertSame(argb.bitmap, rgbAgain.bitmap)
+        assertEquals(20 * 20 * 4, rgbAgain.bitmap.allocationByteCount)
+        assertEquals(20 * 20 * 2, rgbAgain.bitmap.byteCount)
+        assertFalse(rgbAgain.bitmap.hasAlpha())
         rgbAgain.release()
+
+        val argbAgain = buffer.acquire(20, 20, Bitmap.Config.ARGB_8888)!!
+        assertSame(argb.bitmap, argbAgain.bitmap)
+        assertTrue(argbAgain.bitmap.hasAlpha())
+        argbAgain.release()
+        buffer.close()
+        assertTrue(argb.bitmap.isRecycled)
+    }
+
+    @Test
+    @Config(sdk = [28, 35])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `small ARGB dialog reuses the RGB565 activity allocation`() {
+        val buffer = PixelCopyBitmapBuffer()
+        buffer.open()
+        val activity = buffer.acquire(100, 100, Bitmap.Config.RGB_565)!!
+        val capacity = activity.bitmap.allocationByteCount
+        assertEquals(100 * 100 * 2, capacity)
+        activity.release()
+
+        repeat(20) {
+            val dialog = buffer.acquire(40, 40, Bitmap.Config.ARGB_8888)!!
+            assertSame(activity.bitmap, dialog.bitmap)
+            assertEquals(capacity, dialog.bitmap.allocationByteCount)
+            assertTrue(dialog.bitmap.hasAlpha())
+            dialog.bitmap.setHasAlpha(false)
+            dialog.release()
+            val dialogAgain = buffer.acquire(40, 40, Bitmap.Config.ARGB_8888)!!
+            assertSame(activity.bitmap, dialogAgain.bitmap)
+            assertTrue(dialogAgain.bitmap.hasAlpha())
+            dialogAgain.release()
+            val reused = buffer.acquire(100, 100, Bitmap.Config.RGB_565)!!
+            assertSame(activity.bitmap, reused.bitmap)
+            assertEquals(capacity, reused.bitmap.allocationByteCount)
+            assertFalse(reused.bitmap.hasAlpha())
+            reused.release()
+        }
         buffer.close()
     }
 
@@ -64,6 +107,9 @@ internal class PixelCopyBitmapBufferTest {
         uncached.release()
         assertTrue(uncached.bitmap.isRecycled)
         assertFalse(pending.bitmap.isRecycled)
+        assertEquals(Bitmap.Config.ARGB_8888, pending.bitmap.config)
+        assertEquals(20, pending.bitmap.width)
+        assertEquals(20, pending.bitmap.height)
 
         pending.release()
         val reused = buffer.acquire(20, 20, Bitmap.Config.ARGB_8888)!!
