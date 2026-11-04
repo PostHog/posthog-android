@@ -41,6 +41,7 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -128,11 +129,13 @@ internal class PostHogReplayComposeImageMaskTest {
         )
     }
 
+    private fun testBitmap() = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap()
+
     @Composable
     @Suppress("ktlint:standard:function-naming")
     private fun BitmapImage(contentDescription: String?) {
         Image(
-            bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap(),
+            bitmap = testBitmap(),
             contentDescription = contentDescription,
             modifier = Modifier.size(40.dp),
         )
@@ -242,15 +245,28 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
     // The activity's content sits below a title bar, so a dialog gives Compose the whole window.
-    private fun setWindowContent(content: @Composable () -> Unit) {
+    private fun setWindowContent(
+        withPane: Boolean = true,
+        content: @Composable () -> Unit,
+    ) {
         compose.activity.setContent {
             Dialog(
                 onDismissRequest = {},
                 properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-                content = content,
-            )
+            ) {
+                Box {
+                    content()
+                    if (withPane) Pane()
+                }
+            }
         }
         compose.waitForIdle()
+    }
+
+    @Composable
+    @Suppress("ktlint:standard:function-naming")
+    private fun Pane() {
+        Box(Modifier.size(40.dp).semantics { paneTitle = "pane" })
     }
 
     private fun dialogWindow(): View = ShadowDialog.getLatestDialog().window!!.decorView
@@ -272,7 +288,7 @@ internal class PostHogReplayComposeImageMaskTest {
 
     @Test
     fun `does not mask the scrim of a modal navigation drawer`() {
-        setWindowContent {
+        setWindowContent(withPane = false) {
             ModalNavigationDrawer(
                 drawerState = rememberDrawerState(DrawerValue.Open),
                 drawerContent = { ModalDrawerSheet { Text("drawer") } },
@@ -302,10 +318,37 @@ internal class PostHogReplayComposeImageMaskTest {
     @Test
     fun `masks a scrim that fills its compose view but not the window`() {
         compose.activity.setContent {
-            Canvas(Modifier.testTag("scrim").fillMaxSize().dismissTarget()) { drawRect(Color.Black) }
+            Box {
+                Canvas(Modifier.testTag("scrim").fillMaxSize().dismissTarget()) { drawRect(Color.Black) }
+                Pane()
+            }
         }
 
         assertEquals(listOf(boundsOf("scrim")), maskRects())
+    }
+
+    @Test
+    fun `masks a window-filling bitmap canvas with scrim semantics and no pane`() {
+        val bitmap = testBitmap()
+        setWindowContent(withPane = false) {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas behind a closed drawer`() {
+        setWindowContent(withPane = false) {
+            ModalNavigationDrawer(
+                drawerState = rememberDrawerState(DrawerValue.Closed),
+                drawerContent = { ModalDrawerSheet { Text("drawer") } },
+            ) {
+                Canvas(Modifier.fillMaxSize().dismissTarget()) { drawRect(Color.Black) }
+            }
+        }
+
+        assertTrue(windowBounds() in maskRects(root = dialogWindow()))
     }
 
     @Test

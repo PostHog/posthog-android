@@ -1526,7 +1526,7 @@ public class PostHogReplayIntegration(
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(window) -> {
+                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(window, semanticsNodes) -> {
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
                                 }
@@ -1583,9 +1583,16 @@ public class PostHogReplayIntegration(
         return false
     }
 
+    // A closed drawer keeps its pane in the tree, off screen.
+    private fun SemanticsNode.isVisiblePane(): Boolean = this.config.contains(SemanticsProperties.PaneTitle) && !boundsInWindow.isEmpty
+
     // A modal scrim's content description is its dismiss label, not an image, and masking it would
     // black out the whole window. Merging can drop a child image's role, so require no child layouts.
-    private fun SemanticsNode.isScrim(window: View): Boolean {
+    // Semantics can't show what a Canvas draws, so require a visible modal pane in the window as well.
+    private fun SemanticsNode.isScrim(
+        window: View,
+        windowNodes: List<SemanticsNode>,
+    ): Boolean {
         if (!this.config.contains(SemanticsActions.OnClick) || this.config.contains(SemanticsProperties.Role)) {
             return false
         }
@@ -1594,7 +1601,8 @@ public class PostHogReplayIntegration(
             bounds.top <= 0f &&
             bounds.right >= window.width &&
             bounds.bottom >= window.height &&
-            !layoutInfo.hasChildLayouts()
+            !layoutInfo.hasChildLayouts() &&
+            windowNodes.any { it.isVisiblePane() }
     }
 
     private fun View.isComposeView(): Boolean {
