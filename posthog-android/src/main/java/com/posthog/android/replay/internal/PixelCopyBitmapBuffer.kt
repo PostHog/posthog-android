@@ -6,7 +6,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Owns the reusable destination bitmap used by session replay PixelCopy requests.
  *
- * One bitmap is cached per recording run. Captures while that bitmap is in use receive
+ * One bitmap is cached per recording run and reconfigured across dimensions and pixel
+ * formats. Its allocation grows when needed and retains that capacity until the run closes.
+ * Captures while that bitmap is in use receive
  * uncached leases, so a timed-out request does not block later capture attempts.
  * Closing a run recycles the idle bitmap and detaches in-flight leases so late callbacks
  * cannot return their bitmaps to a later run.
@@ -95,16 +97,17 @@ internal class PixelCopyBitmapBuffer {
 
         val bitmap = idleBitmap
         idleBitmap = null
-        if (bitmap == null || bitmap.isRecycled || bitmap.config != bitmapConfig) {
+        if (bitmap == null || bitmap.isRecycled) {
             bitmap?.recycle()
             return Bitmap.createBitmap(width, height, bitmapConfig)
         }
-        if (bitmap.width == width && bitmap.height == height) {
-            return bitmap
-        }
-
         return try {
-            bitmap.reconfigure(width, height, bitmapConfig)
+            if (bitmap.width != width || bitmap.height != height || bitmap.config != bitmapConfig) {
+                // Reconfiguration keeps the backing allocation, including capacity grown for
+                // a larger window. Only insufficient capacity requires a replacement bitmap.
+                bitmap.reconfigure(width, height, bitmapConfig)
+            }
+            bitmap.setHasAlpha(bitmapConfig == Bitmap.Config.ARGB_8888)
             bitmap
         } catch (_: IllegalArgumentException) {
             bitmap.recycle()
