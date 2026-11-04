@@ -37,6 +37,7 @@ public data class PostHogEvent(
     // Only used for Replay
     @SerializedName("api_key")
     var apiKey: String? = null,
+) {
     /**
      * Options that tell PostHog how to process this event, separate from its properties.
      *
@@ -45,9 +46,13 @@ public data class PostHogEvent(
      * sent, the legacy `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and
      * `$product_tour_id` properties are removed from [properties] and used for their option
      * unless that option is already set here.
+     *
+     * Not a constructor parameter, so the constructor and [copy] keep their 3.x signatures. When
+     * `beforeSend` returns a different event whose options are null, such as one made with
+     * [copy], that event gets the options of the event the hook was given.
      */
-    var options: MutableMap<String, Any?>? = null,
-) {
+    var options: MutableMap<String, Any?>? = null
+
     /**
      * Checks if the event is an exception event ($exception)
      */

@@ -362,8 +362,7 @@ public open class PostHogStateless protected constructor(
             properties = properties,
             timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
             uuid = uuid ?: TimeBasedEpochGenerator.generate(),
-            options = options,
-        )
+        ).also { it.options = options }
 
     /**
      * Runs the `beforeSend` chain on [postHogEvent]. Returns null when a hook drops the event or
@@ -385,6 +384,11 @@ public open class PostHogStateless protected constructor(
                     config?.logger?.log("Event ${postHogEvent.event} was rejected in beforeSend function")
                     return null
                 }
+                // copy() and the constructor don't carry options, so a new event keeps the ones
+                // the hook was given unless it sets its own.
+                if (result !== eventChecked && result.options == null) {
+                    result.options = eventChecked.options
+                }
                 eventChecked = result
             } catch (e: Throwable) {
                 // The type only: the message can hold the values the hook was redacting.
@@ -396,7 +400,8 @@ public open class PostHogStateless protected constructor(
         // A given uuid is this capture's identity: beforeSend can return an event kept from an
         // earlier call, and a batch must never repeat a uuid.
         if (uuid != null && eventChecked.uuid != uuid) {
-            eventChecked = eventChecked.copy(uuid = uuid)
+            val options = eventChecked.options
+            eventChecked = eventChecked.copy(uuid = uuid).also { it.options = options }
         }
 
         return eventChecked
@@ -407,8 +412,7 @@ public open class PostHogStateless protected constructor(
         val copies = IdentityHashMap<Any, Any>()
         return event.copy(
             properties = event.properties?.let { copyContainers(it, copies) as MutableMap<String, Any> },
-            options = event.options?.let { copyContainers(it, copies) as MutableMap<String, Any?> },
-        )
+        ).also { it.options = event.options?.let { copyContainers(it, copies) as MutableMap<String, Any?> } }
     }
 
     /** [copies] keeps a cycle a cycle, so a hook can still remove it. */

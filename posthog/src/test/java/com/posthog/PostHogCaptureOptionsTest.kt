@@ -178,6 +178,35 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
+    fun `an event beforeSend copies or builds keeps the options it was given`() {
+        val http = httpServers.mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                personProfiles = PersonProfiles.NEVER,
+                beforeSend =
+                    PostHogBeforeSend { event ->
+                        if (event.event == "copied") {
+                            event.copy(properties = mutableMapOf("edited" to true))
+                        } else {
+                            PostHogEvent(event.event, event.distinctId, event.properties, event.timestamp, event.uuid)
+                        }
+                    },
+            )
+
+        sut.capture("copied", options = mapOf("product_tour_id" to "tour"))
+        sut.capture("built")
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val events = sentEvents(http)
+        val copied: Map<String, Any?>? = events.single { it.event == "copied" }.options
+        val built: Map<String, Any?>? = events.single { it.event == "built" }.options
+        assertEquals(mapOf("product_tour_id" to "tour", "process_person_profile" to false), copied)
+        assertEquals(mapOf<String, Any?>("process_person_profile" to false), built)
+        sut.close()
+    }
+
+    @Test
     fun `the personless option is set only when person processing is off`() {
         val never = getSut(personProfiles = PersonProfiles.NEVER)
         never.capture("test_event")

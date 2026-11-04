@@ -100,8 +100,7 @@ internal class PostHogCaptureV1Test {
             properties = properties.toMutableMap(),
             timestamp = date,
             uuid = UUID.randomUUID(),
-            options = options?.toMutableMap(),
-        )
+        ).also { it.options = options?.toMutableMap() }
 
     @Suppress("UNCHECKED_CAST")
     private fun body(request: RecordedRequest): Map<String, Any?> =
