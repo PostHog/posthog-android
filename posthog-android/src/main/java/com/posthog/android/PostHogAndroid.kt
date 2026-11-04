@@ -97,6 +97,8 @@ public class PostHogAndroid private constructor() {
         /**
          * Sets up the SDK and stores it as the global singleton.
          *
+         * posthog-capability: setup
+         *
          * @param context Android context; the application context is retained internally.
          * @param config Android SDK configuration.
          */
@@ -127,6 +129,8 @@ public class PostHogAndroid private constructor() {
          * Default PostHog integrations are installed only on the first instance created by either
          * [setup] or [with]. The first instance in the host app owns those integrations, so setup
          * order matters.
+         *
+         * posthog-capability: setup
          *
          * @param context Android context; the application context is retained internally.
          * @param config Android SDK configuration.

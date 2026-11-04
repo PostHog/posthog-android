@@ -32,11 +32,22 @@ public enum class PostHogLogSeverity(
     /** OTLP `severityText` (lower-case). */
     public val severityText: String,
 ) {
+    /** Fine-grained tracing detail. */
     TRACE(1, "trace"),
+
+    /** Debugging detail. */
     DEBUG(5, "debug"),
+
+    /** Normal operation. */
     INFO(9, "info"),
+
+    /** Something unexpected that is not an error. */
     WARN(13, "warn"),
+
+    /** An error. */
     ERROR(17, "error"),
+
+    /** An unrecoverable error. */
     FATAL(21, "fatal"),
     ;
 

@@ -2664,6 +2664,8 @@ public class PostHog private constructor(
         /**
          * Sets up the SDK and returns an instance that you can hold and pass around.
          *
+         * posthog-capability: setup
+         *
          * @param config SDK configuration.
          * @return The configured PostHog client instance.
          */

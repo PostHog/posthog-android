@@ -1,0 +1,17 @@
+// Adds Dokka's GFM Markdown output to the build, without touching the project or what it publishes.
+// Used only by generate_markdown.py: ./gradlew --init-script bin/docs_scripts/dokka-gfm.init.gradle dokkaGfm
+allprojects {
+    if (name == 'posthog' || name == 'posthog-android') {
+        pluginManager.withPlugin('org.jetbrains.dokka') {
+            dependencies.add('dokkaGfmPlugin', "org.jetbrains.dokka:gfm-plugin:${properties['dokkaVersion']}")
+            // After the build script, so these win over the project's own locking and Dokka output directory.
+            afterEvaluate {
+                // The plugin is outside the project's dependency lock state.
+                configurations.matching { it.name.startsWith('dokkaGfm') }.configureEach {
+                    resolutionStrategy.deactivateDependencyLocking()
+                }
+                tasks.named('dokkaGfm').configure { outputDirectory.set(layout.buildDirectory.dir('dokka/gfm')) }
+            }
+        }
+    }
+}

@@ -23,6 +23,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * ```
      *
      * Not to be confused with the internal `config.logger` debug sink.
+     *
+     * posthog-capability: logs
      */
     public val logger: PostHogLogger
 
@@ -44,6 +46,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      *     traceFlags = 0x01,
      * )
      * ```
+     *
+     * posthog-capability: logs
      *
      * @param message the log message body; blank messages are dropped
      * @param severity the log severity, defaults to [PostHogLogSeverity.INFO]
@@ -68,6 +72,9 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures events
+     *
+     * posthog-capability: capture
+     *
      * @param event the event name
      * @param distinctId the distinctId, the generated [distinctId] is used if not given
      * @param properties the custom properties
@@ -88,6 +95,9 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures exceptions
+     *
+     * posthog-capability: capture-exception
+     *
      * @param throwable the Throwable error
      * @param properties the custom properties
      */
@@ -113,6 +123,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * step recorded immediately before an exception or crash is present when it is
      * captured. The work is bounded and cheap, adding negligible latency to the caller.
      *
+     * posthog-capability: exception-steps
+     *
      * @param message a non-empty description of the step
      * @param properties optional user-supplied properties (the reserved keys
      * `$message` and `$timestamp` are stripped)
@@ -124,6 +136,9 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Reloads the feature flags
+     *
+     * posthog-capability: reload-feature-flags
+     *
      * @param onFeatureFlags the callback to get notified once feature flags is ready to use
      */
     public fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
@@ -131,6 +146,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * posthog-capability: is-feature-enabled
+     *
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
      * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
@@ -145,6 +163,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns the feature flag
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * posthog-capability: get-feature-flag
+     *
      * @param key the Key
      * @param defaultValue the default value if not found
      * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
@@ -159,6 +180,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns list of all feature flag result containing both value and payload.
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * posthog-capability: get-feature-flags
+     *
      * @return The currently loaded feature flag results, or null when flags are unavailable.
      */
     public fun getAllFeatureFlags(): List<FeatureFlagResult>?
@@ -166,6 +190,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * posthog-capability: get-feature-flag-payload
+     *
      * @param key the Key
      * @param defaultValue the default value if not found
      * @return The feature flag payload, or [defaultValue] if not found.
@@ -185,6 +212,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * the flag value and its payload atomically.
      *
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * posthog-capability: get-feature-flag-result
+     *
      * @param key The feature flag key
      * @param sendFeatureFlagEvent If false, won't send $feature_flag_called event to PostHog
      * @return FeatureFlagResult if the flag exists, null otherwise
@@ -197,12 +227,17 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Resets all the cached properties including the [distinctId]
      * The SDK will behave as its been setup for the first time
+     *
+     * posthog-capability: reset
      */
     public fun reset()
 
     /**
      * Creates a group
      * Docs https://posthog.com/docs/product-analytics/group-analytics
+     *
+     * posthog-capability: group
+     *
      * @param type the Group type
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
@@ -215,6 +250,9 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures a screen view event
+     *
+     * posthog-capability: screen
+     *
      * @param screenTitle the screen title. It takes precedence over a `$screen_name` key in [properties].
      * @param properties the custom properties
      */
@@ -226,6 +264,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Creates an alias for the user
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
+     *
+     * posthog-capability: alias
+     *
      * @param alias the alias
      */
     public fun alias(alias: String)
@@ -235,6 +276,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * [unregister] with the same key
      * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
      * the SDK only.
+     *
+     * posthog-capability: register
+     *
      * @param key the Key
      * @param value the Value
      */
@@ -245,12 +289,18 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Unregisters the previously set property to be sent with all the following events
+     *
+     * posthog-capability: unregister
+     *
      * @param key the Key
      */
     public fun unregister(key: String)
 
     /**
      * Returns the registered [distinctId] property
+     *
+     * posthog-capability: get-distinct-id
+     *
      * @return The current distinct ID.
      */
     public fun distinctId(): String
@@ -261,6 +311,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Unlike [distinctId], this value does not change after [identify] — it always reflects
      * the pre-identification anonymous identifier. Useful for linking anonymous sessions to
      * identified users in downstream systems.
+     *
+     * posthog-capability: get-anonymous-id
      *
      * @return The anonymous ID, or an empty string if the SDK is not enabled.
      */
@@ -299,6 +351,9 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Returns if Session Replay is Active
      * Android only.
+     *
+     * posthog-capability: is-session-replay-active
+     *
      * @return Whether session replay is currently active.
      */
     public fun isSessionReplayActive(): Boolean
@@ -313,6 +368,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * Android only.
      *
+     * posthog-capability: start-session-recording
+     *
      * @param resumeCurrent Whether to resume session replay of current session (true) or start a new session (false).
      */
     public fun startSessionReplay(resumeCurrent: Boolean = true)
@@ -321,11 +378,16 @@ public interface PostHogInterface : PostHogCoreInterface {
      * Stops the current session replay if one is in progress.
      *
      * Android only.
+     *
+     * posthog-capability: stop-session-recording
      */
     public fun stopSessionReplay()
 
     /**
      * Returns the session Id if a session is active
+     *
+     * posthog-capability: get-session-id
+     *
      * @return The current session ID, or null if no session is active.
      */
     public fun getSessionId(): UUID?
@@ -338,6 +400,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * If `personProfiles` is set to `IDENTIFIED_ONLY` and no profile exists, this will create one.
      *
      * This method sends a `$set` event to PostHog.
+     *
+     * posthog-capability: set-person-properties
      *
      * @param userPropertiesToSet Optional: Properties to store about the user. These will overwrite existing values.
      * @param userPropertiesToSetOnce Optional: Properties to store about the user only if not previously set.
@@ -352,6 +416,8 @@ public interface PostHogInterface : PostHogCoreInterface {
     /**
      * Sets person properties that will be included in feature flag evaluation requests.
      *
+     * posthog-capability: set-person-properties-for-flags
+     *
      * @param userProperties Dictionary of person properties to include in flag evaluation
      * @param reloadFeatureFlags Whether to automatically reload feature flags after setting properties
      */
@@ -362,12 +428,17 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Resets all person properties that were set for feature flag evaluation.
+     *
+     * posthog-capability: reset-person-properties-for-flags
+     *
      * @param reloadFeatureFlags Whether to automatically reload feature flags after resetting properties
      */
     public fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
 
     /**
      * Sets properties for a specific group type to include when evaluating feature flags.
+     *
+     * posthog-capability: set-group-properties-for-flags
      *
      * @param type The group type identifier (e.g., "organization", "team")
      * @param groupProperties Dictionary of properties to set for this group type
@@ -381,6 +452,8 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Clears group properties for feature flag evaluation.
+     *
+     * posthog-capability: reset-group-properties-for-flags
      *
      * @param type Optional group type to clear. If null, clears all group properties.
      * @param reloadFeatureFlags Whether to automatically reload feature flags after resetting properties
