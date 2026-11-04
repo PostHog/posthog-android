@@ -14,15 +14,30 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import org.robolectric.RobolectricTestRunner
+import org.robolectric.ParameterizedRobolectricTestRunner
+import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
 import java.io.StringReader
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-@RunWith(RobolectricTestRunner::class)
-internal class PostHogSurveysFlagEventTest {
+@RunWith(ParameterizedRobolectricTestRunner::class)
+internal class PostHogSurveysFlagEventTest(
+    private val prefix: String,
+    private val sendFeatureFlagEvent: Boolean?,
+) {
+    companion object {
+        @JvmStatic
+        @Parameters(name = "prefix={0}, sendFeatureFlagEvent={1}")
+        fun cases(): List<Array<Any?>> =
+            listOf(
+                arrayOf("survey-targeting-", false),
+                arrayOf("", null),
+                arrayOf("custom-survey-targeting-", null),
+            )
+    }
+
     @Test
-    fun `survey targeting flags are read without sending the feature flag called event`() {
+    fun `only survey targeting prefixed flags suppress tracking and variant reads stay silent`() {
         val config =
             PostHogConfig("test-api-key").apply {
                 surveys = true
@@ -38,10 +53,11 @@ internal class PostHogSurveysFlagEventTest {
                     {
                         "id": "survey", "name": "Survey", "type": "popover", "questions": [],
                         "start_date": "2024-07-23T09:18:18.376Z",
-                        "linked_flag_key": "linked-flag",
-                        "targeting_flag_key": "targeting-flag",
-                        "internal_targeting_flag_key": "internal-flag",
-                        "feature_flag_keys": [{"key": "flag1", "value": "extra-flag"}],
+                        "schedule": "once",
+                        "linked_flag_key": "${prefix}linked-flag",
+                        "targeting_flag_key": "${prefix}targeting-flag",
+                        "internal_targeting_flag_key": "${prefix}internal-flag",
+                        "feature_flag_keys": [{"key": "flag1", "value": "${prefix}extra-flag"}],
                         "conditions": { "linkedFlagVariant": "blue" }
                     }
                     """.trimIndent(),
@@ -56,9 +72,9 @@ internal class PostHogSurveysFlagEventTest {
             integration.uninstall()
         }
 
-        // Reading a survey's targeting flags must not report $feature_flag_called: the app never asked for them.
-        for (key in listOf("linked-flag", "targeting-flag", "extra-flag")) {
-            verify(postHog, atLeastOnce()).isFeatureEnabled(eq(key), any(), eq(false))
+        for (key in listOf("linked-flag", "targeting-flag", "internal-flag", "extra-flag")) {
+            verify(postHog, atLeastOnce()).isFeatureEnabled(eq("$prefix$key"), any(), eq(sendFeatureFlagEvent))
         }
+        verify(postHog, atLeastOnce()).getFeatureFlag(eq("${prefix}linked-flag"), anyOrNull(), eq(false))
     }
 }

@@ -2,4 +2,4 @@
 "posthog-android": patch
 ---
 
-Survey targeting and linked flag checks no longer send a `$feature_flag_called` event for every survey flag, matching posthog-js.
+Survey eligibility checks no longer send `$feature_flag_called` events for keys starting with `survey-targeting-`, matching posthog-js. Other flag keys retain their configured tracking behavior, and linked-variant lookups remain silent.
