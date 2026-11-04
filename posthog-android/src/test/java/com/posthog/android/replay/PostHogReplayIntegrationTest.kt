@@ -1,6 +1,7 @@
 package com.posthog.android.replay
 
 import android.app.Activity
+import android.app.Dialog
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +10,7 @@ import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
+import android.os.Binder
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -48,6 +50,7 @@ import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.webpBase64
 import com.posthog.android.replay.PostHogMaskModifier.postHogMask
 import com.posthog.android.replay.PostHogMaskModifier.postHogUnmask
+import com.posthog.android.replay.internal.DialogSceneFixture
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
@@ -82,6 +85,7 @@ import org.junit.runner.RunWith
 import org.mockito.MockedStatic
 import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -89,6 +93,7 @@ import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.Implementation
@@ -122,6 +127,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(AndroidJUnit4::class)
@@ -132,6 +138,7 @@ internal class PostHogReplayIntegrationTest {
 
     private val context = mock<Context>()
     private val replayExecutors = mutableListOf<ExecutorService>()
+    private val activityControllers = mutableListOf<ActivityController<Activity>>()
 
     private class FakeQueue : PostHogQueueInterface<PostHogEvent> {
         override val size: Int = 0
@@ -408,13 +415,23 @@ internal class PostHogReplayIntegrationTest {
 
     @AfterTest
     fun `tear down`() {
+        activityControllers.asReversed().forEach { it.pause().stop().destroy() }
+        activityControllers.clear()
         // Flush listener removals posted by uninstall before Robolectric resets the main looper.
         shadowOf(Looper.getMainLooper()).idle()
         PostHogSessionManager.isReactNative = false
         PostHogSessionManager.endSession()
         PostHogSessionManager.setAppInBackground(true)
         replayExecutors.forEach { it.shutdownNow() }
+        replayExecutors.forEach { assertTrue(it.awaitTermination(2, TimeUnit.SECONDS)) }
         replayExecutors.clear()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun createActivity(): Activity {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        activityControllers.add(controller)
+        return controller.get()
     }
 
     private fun createReplayExecutor(): ExecutorService {
@@ -550,6 +567,25 @@ internal class PostHogReplayIntegrationTest {
             sut.uninstall()
             curtains.close()
             controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `dialog belongs to its activity scene even when window tokens differ`() {
+        val first = Robolectric.buildActivity(Activity::class.java).setup()
+        val second = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            val sut = getSut()
+            val baseToken = Binder()
+            val dialogParams = WindowManager.LayoutParams().apply { token = Binder() }
+            assertTrue(sut.isSceneWindow(baseToken, first.get(), dialogParams, Dialog(first.get()).window!!))
+            assertFalse(sut.isSceneWindow(baseToken, first.get(), dialogParams, Dialog(second.get()).window!!))
+            assertFalse(sut.isSceneWindow(baseToken, null, dialogParams, Dialog(first.get()).window!!))
+            dialogParams.token = baseToken
+            assertTrue(sut.isSceneWindow(baseToken, null, dialogParams, Dialog(second.get()).window!!))
+        } finally {
+            second.pause().stop().destroy()
+            first.pause().stop().destroy()
         }
     }
 
@@ -1826,6 +1862,7 @@ internal class PostHogReplayIntegrationTest {
         samplingPasses: Boolean = true,
         preloadFeatureFlags: Boolean = true,
         integrationContext: Context = mock<Context>(),
+        captureExecutor: ExecutorService? = null,
     ): RealQueueFixture {
         val remoteConfig =
             mock<PostHogRemoteConfig> {
@@ -1851,7 +1888,7 @@ internal class PostHogReplayIntegrationTest {
             )
         val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
         config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler(), createReplayExecutor())
+        val sut = PostHogReplayIntegration(integrationContext, config, MainHandler(), captureExecutor ?: createReplayExecutor())
         return RealQueueFixture(sut, replayQueue, innerQueue, config, remoteConfig)
     }
 
@@ -2831,6 +2868,9 @@ internal class PostHogReplayIntegrationTest {
                 flagActive = true,
                 hasFetched = true,
                 integrationContext = ApplicationProvider.getApplicationContext(),
+                // These fixtures invoke capture explicitly. Automatic scheduling is covered
+                // separately using real root/layout/draw notifications and a queued executor.
+                captureExecutor = mock(),
             )
         fx.config.sessionReplayConfig.captureTouches = captureTouches
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
@@ -3016,7 +3056,7 @@ internal class PostHogReplayIntegrationTest {
         val (fx, fake) = screenshotFixture()
         try {
             assertTrue(fx.sut.isActive())
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val decorView = activity.window.decorView
             makeWindowVisible(decorView)
@@ -3093,7 +3133,7 @@ internal class PostHogReplayIntegrationTest {
         val (fx, fake) = screenshotFixture()
         try {
             assertTrue(fx.sut.isActive())
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val decorView = activity.window.decorView
             makeWindowVisible(decorView)
@@ -3868,7 +3908,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     fun `disabled verification does not run a draw-time mask walk during capture`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
         var visibleRectCalls = 0
         val child = VisibleRectHookView(activity) { _, _ -> visibleRectCalls++ }
@@ -3908,7 +3948,7 @@ internal class PostHogReplayIntegrationTest {
         // so the legacy animation-redraw classifier never runs for them.
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root = FrameLayout(activity).apply { addView(FakeAndroidComposeView(activity)) }
             root.setHasTransientState(true)
@@ -3927,7 +3967,7 @@ internal class PostHogReplayIntegrationTest {
     fun `compose rooted cache invalidates when layout changes`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root =
                 FrameLayout(activity).apply {
@@ -3964,7 +4004,7 @@ internal class PostHogReplayIntegrationTest {
                 override fun isEnabled(): Boolean = true
             }
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root =
                 ThrowingChildFrameLayout(activity).apply {
@@ -3999,7 +4039,7 @@ internal class PostHogReplayIntegrationTest {
     fun `compose detection failure is not cached and re-runs on the next draw`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root =
                 OnceThrowingChildFrameLayout(activity).apply {
@@ -4034,7 +4074,7 @@ internal class PostHogReplayIntegrationTest {
     fun `positive compose verdict survives a layout without re-walking the tree`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root =
                 CountingChildFrameLayout(activity).apply {
@@ -4064,7 +4104,7 @@ internal class PostHogReplayIntegrationTest {
     fun `negative compose verdict is not re-walked on the first draw after every layout`() {
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root =
                 CountingChildFrameLayout(activity).apply {
@@ -4096,7 +4136,7 @@ internal class PostHogReplayIntegrationTest {
         // animation-redraw classifier.
         val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val root = FrameLayout(activity).apply { addView(View(activity)) }
             root.setHasTransientState(true)
@@ -4126,7 +4166,7 @@ internal class PostHogReplayIntegrationTest {
                 override fun isEnabled(): Boolean = true
             }
         try {
-            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            val activity = createActivity()
             shadowOf(Looper.getMainLooper()).idle()
             val decorView = activity.window.decorView
             makeWindowVisible(decorView)
@@ -4254,7 +4294,7 @@ internal class PostHogReplayIntegrationTest {
             },
         )
         fx.sut.start(resumeCurrent = true)
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
 
         val guardedEntered = CountDownLatch(1)
@@ -4505,13 +4545,696 @@ internal class PostHogReplayIntegrationTest {
     // Runs [onWalkTouch] per mask-walk visit, so tests can inject changes between the walks.
     private class WalkHookLayout(context: Context) : FrameLayout(context) {
         var onWalkTouch: (() -> Unit)? = null
+        var onVisibilityRead: (() -> Unit)? = null
+        var onGlobalRectRead: (() -> Unit)? = null
         val visitedChildIndexes = mutableListOf<Int>()
+
+        override fun isShown(): Boolean {
+            onVisibilityRead?.invoke()
+            return super.isShown()
+        }
+
+        override fun getGlobalVisibleRect(
+            rect: Rect,
+            offset: Point?,
+        ): Boolean {
+            onGlobalRectRead?.invoke()
+            return super.getGlobalVisibleRect(rect, offset)
+        }
 
         override fun getChildAt(index: Int): View? {
             visitedChildIndexes.add(index)
             onWalkTouch?.invoke()
             return super.getChildAt(index)
         }
+    }
+
+    private fun sceneLayer(
+        view: View,
+        window: Window,
+        status: ViewTreeSnapshotStatus,
+        x: Int = 0,
+        y: Int = 0,
+        dimAmount: Float = 0f,
+        windowAlpha: Float = 1f,
+    ): Any {
+        val constructor =
+            PostHogReplayIntegration::class.java.declaredClasses.single { it.simpleName == "SceneLayer" }
+                .declaredConstructors.single().apply { isAccessible = true }
+        return constructor.newInstance(view, window, status, x, y, view.width, view.height, dimAmount, windowAlpha)
+    }
+
+    private fun captureScene(
+        sut: PostHogReplayIntegration,
+        layers: List<Any>,
+    ): Boolean =
+        ReflectionHelpers.callInstanceMethod(
+            sut,
+            "generateSceneSnapshot",
+            ReflectionHelpers.ClassParameter.from(List::class.java, layers),
+            ReflectionHelpers.ClassParameter.from(
+                Long::class.javaPrimitiveType,
+                ReflectionHelpers.getField<Long>(sut, "snapshotGeneration"),
+            ),
+        )
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    fun `scene capture reads window metadata and masks on main`() {
+        for (verified in listOf(false, true)) {
+            val h = screenshotCaptureHarness(verified)
+            val reads = Collections.synchronizedList(mutableListOf<Pair<String, Boolean>>())
+
+            fun record(name: String) {
+                reads.add(name to (Looper.myLooper() == Looper.getMainLooper()))
+            }
+            val attributes = h.window.attributes.apply { title = "test/CheckoutActivity" }
+            val window =
+                mock<Window> {
+                    on { this.attributes } doAnswer {
+                        record("window attributes")
+                        attributes
+                    }
+                }
+            val base = h.window.decorView
+            val baseStatus = h.fx.sut.decorViews.getOrPut(base) { ViewTreeSnapshotStatus(mock<NextDrawListener>()) }
+            val layers =
+                listOf(
+                    sceneLayer(base, window, baseStatus),
+                    sceneLayer(h.hookLayout, window, h.status, dimAmount = 0.35f),
+                )
+            h.hookLayout.onWalkTouch = { record("dialog mask") }
+            h.hookLayout.onVisibilityRead = { record("dialog visibility") }
+            RecordingShadowPixelCopy.reset()
+            try {
+                val future = createReplayExecutor().submit(Callable { captureScene(h.fx.sut, layers) })
+                assertTrue(awaitDraining(future, 4000), "verified=$verified")
+                assertEquals(2, RecordingShadowPixelCopy.requests.size)
+                assertTrue(reads.any { it.first == "window attributes" })
+                assertTrue(reads.any { it.first == "dialog mask" })
+                assertTrue(reads.any { it.first == "dialog visibility" })
+                assertTrue(reads.all { it.second }, "verified=$verified read scene state off main: $reads")
+                val events = h.fake.properties!!["\$snapshot_data"] as List<*>
+                assertEquals("CheckoutActivity", ((events.first() as RRMetaEvent).data as Map<*, *>)["href"])
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    fun `timed out scene validation leaves history available for retry`() {
+        val h = screenshotCaptureHarness()
+        val capture = AtomicReference<Future<Boolean>>()
+        var waitForTimeout = true
+        var observedTimeout = false
+        val attributes =
+            mock<WindowManager.LayoutParams> {
+                on { title } doAnswer {
+                    if (waitForTimeout) {
+                        // Metadata validation has started, but the worker abandons its result.
+                        assertFalse(capture.get().get(3, TimeUnit.SECONDS))
+                        observedTimeout = true
+                    }
+                    "test/CheckoutActivity"
+                }
+            }
+        val window = mock<Window> { on { this.attributes } doReturn attributes }
+        val layers = listOf(sceneLayer(h.hookLayout, window, h.status))
+        RecordingShadowPixelCopy.reset()
+        try {
+            val future = createReplayExecutor().submit(Callable { captureScene(h.fx.sut, layers) })
+            capture.set(future)
+            assertFalse(awaitDraining(future, 5000))
+            assertTrue(observedTimeout)
+            assertEquals(0, h.fake.captures)
+            assertNull(ReflectionHelpers.getField<Any?>(h.fx.sut, "lastScene"))
+            assertNull(ReflectionHelpers.getField<Any?>(h.fx.sut, "sceneViewport"))
+            val copies = RecordingShadowPixelCopy.requests.size
+
+            waitForTimeout = false
+            assertTrue(captureScene(h.fx.sut, layers))
+            assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+            val events = h.fake.properties!!["\$snapshot_data"] as List<*>
+            assertTrue(events[0] is RRMetaEvent)
+            assertTrue(events[1] is RRFullSnapshotEvent)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28, 35], shadows = [RecordingShadowPixelCopy::class])
+    fun `windows requiring capture only walk the capture baseline before PixelCopy`() {
+        val h = screenshotCaptureHarness()
+        var walks = 0
+        val walksAtCopy = mutableListOf<Int>()
+        h.hookLayout.onWalkTouch = { walks++ }
+        RecordingShadowPixelCopy.reset()
+        RecordingShadowPixelCopy.onRequest = { walksAtCopy.add(walks) }
+
+        fun capture() = captureScene(h.fx.sut, listOf(sceneLayer(h.hookLayout, h.window, h.status)))
+
+        fun assertCapture() {
+            walks = 0
+            walksAtCopy.clear()
+            assertTrue(capture())
+            assertEquals(listOf(1), walksAtCopy)
+        }
+        try {
+            assertCapture() // Uncached window.
+            val copies = RecordingShadowPixelCopy.requests.size
+            walks = 0
+            assertTrue(capture())
+            assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+            assertEquals(3, walks) // Reuse, cache commit and scene publication still validate masks.
+
+            ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)
+            assertCapture()
+            h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+            assertCapture()
+            h.fx.config.sessionReplayConfig.maskAllTextInputs = false
+            assertCapture()
+            h.fx.config.sessionReplayConfig.maskAllImages = false
+            assertCapture()
+            h.hookLayout.layout(0, 0, 120, 100)
+            assertCapture()
+            h.hookLayout.layout(0, 0, 120, 140)
+            assertCapture()
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [SnapshotBoundaryShadowPixelCopy::class])
+    fun `scene cache baseline follows painted masks when markers change and return`() {
+        for (verified in listOf(false, true)) {
+            val h = screenshotCaptureHarness(verified)
+            val layers = listOf(sceneLayer(h.hookLayout, h.window, h.status))
+            var unmaskedForCapture = false
+            h.hookLayout.onGlobalRectRead = {
+                if (!unmaskedForCapture) {
+                    // The child starts masked but is unmasked while the screenshot is taken.
+                    unmaskedForCapture = true
+                    h.child.tag = "ph-no-mask"
+                }
+            }
+            SnapshotBoundaryShadowPixelCopy.afterMasking = { h.child.tag = "ph-no-capture" }
+            try {
+                assertFalse(captureScene(h.fx.sut, layers), "verified=$verified")
+                assertTrue(unmaskedForCapture)
+                assertEquals(0, h.fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(h.fx.sut, "lastScene"))
+                assertTrue((ReflectionHelpers.getField<Map<*, *>>(h.fx.sut, "sceneImages")).isEmpty())
+                h.hookLayout.onGlobalRectRead = null
+                SnapshotBoundaryShadowPixelCopy.afterMasking = null
+                assertTrue(captureScene(h.fx.sut, layers), "verified=$verified")
+                assertEquals(1, h.fake.captures)
+            } finally {
+                SnapshotBoundaryShadowPixelCopy.afterMasking = null
+                h.fx.sut.uninstall()
+            }
+        }
+    }
+
+    @RunWith(AndroidJUnit4::class)
+    @Config(sdk = [28, 35], qualifiers = "w600dp-h1000dp-mdpi", shadows = [RecordingShadowPixelCopy::class])
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    class DialogSceneTest {
+        private val fixture = PostHogReplayIntegrationTest()
+
+        @get:Rule
+        val tmpDir = fixture.tmpDir
+
+        @BeforeTest
+        fun setUp() = fixture.`set up`()
+
+        @AfterTest
+        fun tearDown() = fixture.`tear down`()
+
+        private fun withDialog(test: (DialogSceneFixture, RealQueueFixture, PostHogFake, ViewTreeSnapshotStatus) -> Unit) {
+            DialogSceneFixture().use { h ->
+                fixture.mockCurtainsRoot(h.activity.window.decorView).use {
+                    val (fx, fake) = fixture.screenshotFixture()
+                    shadowOf(Looper.getMainLooper()).idle()
+                    h.layoutContent()
+                    val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+                    fx.sut.decorViews[h.root] = status
+                    fx.config.sessionReplayConfig.screenshotScale = 0.5f
+                    fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+                    RecordingShadowPixelCopy.reset()
+                    try {
+                        test(h, fx, fake, status)
+                    } finally {
+                        fx.sut.uninstall()
+                        RecordingShadowPixelCopy.reset()
+                    }
+                }
+            }
+        }
+
+        private fun capture(
+            h: DialogSceneFixture,
+            fx: RealQueueFixture,
+            status: ViewTreeSnapshotStatus,
+        ): Boolean {
+            val base = h.activity.window.decorView
+            val baseStatus = fx.sut.decorViews.getOrPut(base) { ViewTreeSnapshotStatus(mock<NextDrawListener>()) }
+            val position = IntArray(2).also { h.root.getLocationOnScreen(it) }
+            val layers =
+                listOf(
+                    fixture.sceneLayer(base, h.activity.window, baseStatus),
+                    fixture.sceneLayer(
+                        h.root,
+                        h.dialog.window!!,
+                        status,
+                        position[0],
+                        position[1],
+                        0.48f,
+                        h.dialog.window!!.attributes.alpha,
+                    ),
+                )
+            return fixture.captureScene(fx.sut, layers)
+        }
+
+        private fun images(fake: PostHogFake): List<RRWireframe> {
+            @Suppress("UNCHECKED_CAST")
+            val events = fake.properties!!["\$snapshot_data"] as List<RREvent>
+            @Suppress("UNCHECKED_CAST")
+            return (events.first { it.type == RREventType.FullSnapshot }.data as Map<*, *>)["wireframes"] as List<RRWireframe>
+        }
+
+        @Test
+        fun `secure flag changes invalidate cached Activity and dialog images without a redraw`() {
+            for (targetDialog in listOf(false, true)) {
+                withDialog { h, fx, fake, status ->
+                    RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                    assertTrue(capture(h, fx, status))
+                    val copies = RecordingShadowPixelCopy.requests.size
+                    val window = if (targetDialog) h.dialog.window!! else h.activity.window
+                    val targetIndex = if (targetDialog) 2 else 0
+                    // Change only flags, without invalidating or requesting a window relayout.
+                    window.attributes.flags = window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+                    assertSolidBlack(images(fake)[targetIndex])
+                    val other = bitmap(images(fake)[if (targetDialog) 0 else 2])
+                    try {
+                        assertTrue(Color.red(other.getPixel(200, 400)) > 200)
+                    } finally {
+                        other.recycle()
+                    }
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                    window.attributes.flags = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+                    assertTrue(capture(h, fx, status))
+                    assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                    val restored = bitmap(images(fake)[targetIndex])
+                    try {
+                        assertTrue(Color.red(restored.getPixel(200, 400)) > 200)
+                    } finally {
+                        restored.recycle()
+                    }
+                }
+            }
+        }
+
+        @Test
+        fun `a dialog that turns secure during copy stays opaque despite window alpha`() =
+            withDialog { h, fx, fake, status ->
+                val window = h.dialog.window!!
+                window.attributes = window.attributes.apply { alpha = 0.5f }
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    if (RecordingShadowPixelCopy.requests.last().window === window) {
+                        window.attributes.flags = window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    }
+                }
+                assertTrue(capture(h, fx, status))
+                assertSolidBlack(images(fake).last())
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                window.attributes.flags = window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                val restored = bitmap(images(fake).last())
+                try {
+                    assertEquals(128, Color.alpha(restored.getPixel(200, 400)))
+                    assertTrue(Color.red(restored.getPixel(200, 400)) > 200)
+                } finally {
+                    restored.recycle()
+                }
+            }
+
+        @Test
+        fun `a secure flag set on an earlier layer during a later copy withholds the scene`() =
+            withDialog { h, fx, fake, status ->
+                RecordingShadowPixelCopy.onRequest = {
+                    if (RecordingShadowPixelCopy.requests.last().window === h.dialog.window) {
+                        val attributes = h.activity.window.attributes
+                        attributes.flags = attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
+                    }
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertTrue(capture(h, fx, status))
+                assertSolidBlack(images(fake).first())
+            }
+
+        @Test
+        fun `scene scales dialog masks and preserves window and dim placement`() =
+            withDialog { h, fx, fake, status ->
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val request = RecordingShadowPixelCopy.requests.last()
+                assertEquals(Bitmap.Config.ARGB_8888, request.config)
+                assertEquals(300, request.width)
+                assertEquals(500, request.height)
+                val scene = images(fake)
+                val dialogImage = scene.last()
+                val density = h.root.resources.displayMetrics.density
+                val position = IntArray(2).also { h.root.getLocationOnScreen(it) }
+                assertEquals((position[0] / density).toInt(), dialogImage.x)
+                assertEquals((position[1] / density).toInt(), dialogImage.y)
+                assertEquals((h.root.width / density).toInt(), dialogImage.width)
+                assertEquals((h.root.height / density).toInt(), dialogImage.height)
+                assertEquals(scene.first().width, scene[1].width)
+                assertEquals(scene.first().height, scene[1].height)
+                assertDim(scene[1], 0.48f)
+                val mask = Rect().also { assertTrue(h.masked.getGlobalVisibleRect(it)) }
+                val image = bitmap(dialogImage)
+                try {
+                    val pixel = image.getPixel((mask.centerX() - position[0]) / 2, (mask.centerY() - position[1]) / 2)
+                    assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                    assertTrue(Color.red(image.getPixel(200, 400)) > 200)
+                } finally {
+                    image.recycle()
+                }
+            }
+
+        @Test
+        fun `new sensitive content during dialog copy discards instead of using stale masks`() =
+            withDialog { h, fx, _, status ->
+                h.masked.visibility = View.GONE
+                RecordingShadowPixelCopy.onRequest = {
+                    if (RecordingShadowPixelCopy.requests.last().window === h.dialog.window) {
+                        h.masked.visibility = View.VISIBLE
+                        fx.sut.onDrawCallback(h.root, status.drawState)
+                    }
+                }
+                assertFalse(capture(h, fx, status))
+            }
+
+        @Test
+        fun `window opacity invalidates cached dialog pixels and scales redaction alpha`() =
+            withDialog { h, fx, fake, status ->
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                val window = h.dialog.window!!
+                window.attributes = window.attributes.apply { alpha = 0.5f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                val image = bitmap(images(fake).last())
+                val mask = Rect().also { assertTrue(h.masked.getGlobalVisibleRect(it)) }
+                val position = IntArray(2).also { h.root.getLocationOnScreen(it) }
+                try {
+                    assertEquals(128, Color.alpha(image.getPixel(200, 400)))
+                    val maskedPixel = image.getPixel((mask.centerX() - position[0]) / 2, (mask.centerY() - position[1]) / 2)
+                    assertEquals(128, Color.alpha(maskedPixel))
+                    assertTrue(Color.red(maskedPixel) < 20)
+                } finally {
+                    image.recycle()
+                }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                window.attributes = window.attributes.apply { alpha = 0.25f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                val quarterOpacity = bitmap(images(fake).last())
+                try {
+                    assertEquals(64, Color.alpha(quarterOpacity.getPixel(200, 400)))
+                } finally {
+                    quarterOpacity.recycle()
+                }
+                window.attributes = window.attributes.apply { alpha = 1f }
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 3, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+            }
+
+        @Test
+        fun `color mode changes invalidate Activity pixels while dialog pixels remain reusable`() =
+            withDialog { h, fx, _, status ->
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+                fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+            }
+
+        @Test
+        fun `masking settings changing during capture discard the scene and allow retry`() =
+            withDialog { h, fx, fake, status ->
+                fx.config.sessionReplayConfig.maskAllTextInputs = false
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    fx.config.sessionReplayConfig.maskAllTextInputs = true
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(fx.sut, "lastScene"))
+                assertTrue(capture(h, fx, status))
+                assertEquals(1, fake.captures)
+            }
+
+        @Test
+        fun `enabling text masking invalidates cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = false)
+
+        @Test
+        fun `enabling image masking invalidates cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = true)
+
+        @Test
+        fun `unverifiable masks withhold cached pixels until geometry is safe`() =
+            withDialog { h, fx, fake, status ->
+                h.masked.tag = "ph-no-mask"
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                val captures = fake.captures
+
+                h.masked.tag = "ph-no-capture"
+                h.masked.setHasTransientState(true)
+                assertFalse(capture(h, fx, status))
+                assertEquals(captures, fake.captures)
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                h.masked.setHasTransientState(false)
+                assertTrue(capture(h, fx, status))
+                assertEquals(captures + 1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+            }
+
+        @Test
+        fun `unstable masked root cannot reuse an unmasked cached image`() =
+            withDialog { h, fx, fake, status ->
+                h.root.tag = "ph-no-mask"
+                RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+                assertTrue(capture(h, fx, status))
+                val copies = RecordingShadowPixelCopy.requests.size
+                val captures = fake.captures
+
+                h.root.tag = "ph-no-capture"
+                h.root.setHasTransientState(true)
+                assertFalse(capture(h, fx, status))
+                assertEquals(captures, fake.captures)
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                h.root.setHasTransientState(false)
+                assertTrue(capture(h, fx, status))
+                assertEquals(captures + 1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+            }
+
+        @Test
+        fun `marker changes in an earlier layer during a later copy withhold the scene`() =
+            withDialog { h, fx, fake, status ->
+                val base = h.activity.window.decorView
+                base.tag = "ph-no-mask"
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    if (RecordingShadowPixelCopy.requests.last().window === h.dialog.window) {
+                        base.tag = "ph-no-capture"
+                    }
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(fx.sut, "lastScene"))
+
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(1, fake.captures)
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                val image = bitmap(images(fake).first())
+                try {
+                    val pixel = image.getPixel(image.width / 2, image.height / 2)
+                    assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                } finally {
+                    image.recycle()
+                }
+            }
+
+        @Test
+        fun `tag masking changes invalidate cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = false, marker = true)
+
+        @Test
+        fun `content description masking changes invalidate cached scene layers`() =
+            assertMaskingSettingInvalidatesCache(maskImages = true, marker = true)
+
+        private fun assertMaskingSettingInvalidatesCache(
+            maskImages: Boolean,
+            marker: Boolean = false,
+        ) = withDialog { h, fx, fake, status ->
+            val source = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+
+            fun sensitiveView(): View =
+                if (maskImages) {
+                    ImageView(h.activity).apply { setImageBitmap(source) }
+                } else {
+                    TextView(h.activity).apply { text = "sensitive content" }
+                }
+            val activityView = sensitiveView()
+            val activityContent = FrameLayout(h.activity).apply { addView(activityView) }
+            h.activity.setContentView(activityContent)
+            val dialogView = sensitiveView()
+            if (marker) {
+                if (maskImages) {
+                    activityView.contentDescription = "ph-no-mask"
+                    dialogView.contentDescription = "ph-no-mask"
+                } else {
+                    activityView.tag = "ph-no-mask"
+                    dialogView.tag = "ph-no-mask"
+                }
+            }
+            h.content.removeAllViews()
+            h.content.addView(dialogView)
+            shadowOf(Looper.getMainLooper()).idle()
+            for (root in listOf(h.activity.window.decorView, h.root)) {
+                root.measure(
+                    View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY),
+                )
+                root.layout(0, 0, 600, 1000)
+            }
+            activityContent.layout(0, 0, 600, 1000)
+            h.content.layout(0, 0, 600, 1000)
+            activityView.layout(40, 50, 240, 100)
+            dialogView.layout(40, 50, 240, 100)
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            fx.config.sessionReplayConfig.maskAllImages = false
+            RecordingShadowPixelCopy.onRequest = { it.eraseColor(Color.RED) }
+
+            fun assertPixels(masked: Boolean) {
+                val scene = images(fake)
+                for ((view, root, frame) in listOf(
+                    Triple(activityView, h.activity.window.decorView, scene.first()),
+                    Triple(dialogView, h.root, scene.last()),
+                )) {
+                    val rect =
+                        Rect().also {
+                            assertTrue(view.getGlobalVisibleRect(it), "Mask target must be visible (activity=${view === activityView})")
+                        }
+                    val origin = IntArray(2).also { root.getLocationOnScreen(it) }
+                    val image = bitmap(frame)
+                    try {
+                        val pixel = image.getPixel((rect.centerX() - origin[0]) / 2, (rect.centerY() - origin[1]) / 2)
+                        if (masked) {
+                            assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+                        } else {
+                            assertTrue(Color.red(pixel) > 200)
+                        }
+                    } finally {
+                        image.recycle()
+                    }
+                }
+            }
+            try {
+                assertTrue(capture(h, fx, status))
+                assertPixels(masked = false)
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+
+                if (marker) {
+                    if (maskImages) {
+                        activityView.contentDescription = "ph-no-capture"
+                        dialogView.contentDescription = "ph-no-capture"
+                    } else {
+                        activityView.tag = "ph-no-capture"
+                        dialogView.tag = "ph-no-capture"
+                    }
+                } else if (maskImages) {
+                    fx.config.sessionReplayConfig.maskAllImages = true
+                } else {
+                    fx.config.sessionReplayConfig.maskAllTextInputs = true
+                }
+                // No draw/layout notification: a later scene must not reuse unmasked pixels.
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+                assertPixels(masked = true)
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 2, RecordingShadowPixelCopy.requests.size)
+            } finally {
+                source.recycle()
+            }
+        }
+
+        @Test
+        fun `scene reads configured color mode once before capturing its layers`() =
+            withDialog { h, fx, _, status ->
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.ARGB_8888
+                }
+                assertTrue(capture(h, fx, status))
+                assertEquals(
+                    listOf(Bitmap.Config.RGB_565, Bitmap.Config.ARGB_8888),
+                    RecordingShadowPixelCopy.requests.map { it.config },
+                )
+                val copies = RecordingShadowPixelCopy.requests.size
+                assertTrue(capture(h, fx, status))
+                assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+            }
+
+        @Test
+        fun `window opacity changing during capture discards the stale scene`() =
+            withDialog { h, fx, fake, status ->
+                val window = h.dialog.window!!
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    window.attributes = window.attributes.apply { alpha = 0.5f }
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertTrue(capture(h, fx, status))
+                assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+            }
     }
 
     @Implements(PixelCopy::class)
@@ -4536,6 +5259,7 @@ internal class PostHogReplayIntegrationTest {
     @Implements(PixelCopy::class)
     class RecordingShadowPixelCopy {
         data class Request(
+            val window: Window,
             val bitmap: Bitmap,
             val listener: PixelCopy.OnPixelCopyFinishedListener,
         ) {
@@ -4558,7 +5282,7 @@ internal class PostHogReplayIntegrationTest {
                 listener: PixelCopy.OnPixelCopyFinishedListener,
                 handler: Handler,
             ) {
-                requests.add(Request(bitmap, listener))
+                requests.add(Request(window, bitmap, listener))
                 onRequest?.invoke(bitmap)
                 if (!defer) {
                     listener.onPixelCopyFinished(result)
@@ -4625,7 +5349,7 @@ internal class PostHogReplayIntegrationTest {
     // A capturable window with a masked child, so the walks produce a rect to compare.
     private fun screenshotCaptureHarness(enableMaskAlignmentVerification: Boolean = true): ScreenshotCaptureHarness {
         val (fx, fake) = screenshotFixture(enableMaskAlignmentVerification)
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
         val child = TextView(activity).apply { tag = "ph-no-capture" }
         val hookLayout = WalkHookLayout(activity)
@@ -4638,6 +5362,223 @@ internal class PostHogReplayIntegrationTest {
         val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
         fx.sut.decorViews[hookLayout] = status
         return ScreenshotCaptureHarness(fx, fake, hookLayout, status, child, activity.window)
+    }
+
+    private fun captureDialog(h: ScreenshotCaptureHarness): RRWireframe? =
+        ReflectionHelpers.callInstanceMethod(
+            h.fx.sut,
+            "toScreenshotWireframe",
+            ReflectionHelpers.ClassParameter.from(View::class.java, h.hookLayout),
+            ReflectionHelpers.ClassParameter.from(Window::class.java, h.window),
+            ReflectionHelpers.ClassParameter.from(WindowDrawState::class.java, h.status.drawState),
+            ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, true),
+            ReflectionHelpers.ClassParameter.from(Bitmap.Config::class.java, Bitmap.Config.ARGB_8888),
+            ReflectionHelpers.ClassParameter.from(Float::class.javaPrimitiveType, 1f),
+        )
+
+    @Test
+    @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
+    fun `legacy dialog with masked content becomes an opaque rectangle without copying pixels`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        RecordingShadowPixelCopy.reset()
+        try {
+            val image = assertNotNull(captureDialog(h))
+            assertEquals("screenshot", image.type)
+            assertSolidBlack(image)
+            assertTrue(image.width!! > 0)
+            assertTrue(image.height!! > 0)
+            assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
+    fun `legacy dialog resumes pixel capture after its masked content is removed`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            assertSolidBlack(assertNotNull(captureDialog(h)))
+            h.child.tag = "ph-no-mask"
+            assertEquals("screenshot", captureDialog(h)?.type)
+            assertEquals(1, RecordingShadowPixelCopy.requests.size)
+            h.child.tag = "ph-no-capture"
+            assertSolidBlack(assertNotNull(captureDialog(h)))
+            assertEquals(1, RecordingShadowPixelCopy.requests.size)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
+    fun `legacy dialog with uncertain mask geometry becomes an opaque rectangle`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            val animation = mock<Animation>()
+            whenever(animation.hasStarted()).thenReturn(true)
+            whenever(animation.hasEnded()).thenReturn(false)
+            h.child.animation = animation
+            assertSolidBlack(assertNotNull(captureDialog(h)))
+            assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
+    fun `legacy dialog masks the whole window if sensitive content appears during pixel copy`() {
+        val h = screenshotCaptureHarness(enableMaskAlignmentVerification = false)
+        RecordingShadowPixelCopy.reset()
+        try {
+            h.child.tag = "ph-no-mask"
+            RecordingShadowPixelCopy.onRequest = { h.child.tag = "ph-no-capture" }
+            val image = assertNotNull(captureDialog(h))
+            assertEquals("screenshot", image.type)
+            assertSolidBlack(image)
+            assertEquals(1, RecordingShadowPixelCopy.requests.size)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26, 27], shadows = [RecordingShadowPixelCopy::class])
+    fun `legacy dialog scene replaces cached pixels with a mask and preserves the activity and dim layer`() {
+        val h = screenshotCaptureHarness()
+        val dialog = Dialog(h.hookLayout.context)
+        val content =
+            TextView(h.hookLayout.context).apply {
+                text = "Synthetic private dialog text"
+                tag = "ph-no-mask"
+            }
+        dialog.setContentView(content)
+        dialog.show()
+        val window = dialog.window!!
+        val decor = window.decorView
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(decor)
+        decor.measure(
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+        )
+        decor.layout(0, 0, 400, 400)
+        val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        h.fx.sut.decorViews[decor] = status
+        val layers =
+            listOf(
+                sceneLayer(h.hookLayout, h.window, h.status),
+                sceneLayer(decor, window, status, x = 10, y = 20, dimAmount = 0.35f),
+            )
+
+        fun captureScene(): List<RRWireframe> {
+            assertTrue(captureScene(h.fx.sut, layers))
+            val events = h.fake.properties!!["\$snapshot_data"] as List<*>
+            val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
+            @Suppress("UNCHECKED_CAST")
+            return (snapshot.data as Map<*, *>)["wireframes"] as List<RRWireframe>
+        }
+        RecordingShadowPixelCopy.reset()
+        try {
+            val before = captureScene()
+            assertEquals(listOf("screenshot", "screenshot", "screenshot"), before.map { it.type })
+            val copies = RecordingShadowPixelCopy.requests.size
+            content.tag = "ph-no-capture"
+            // No dirty notification: privacy must be checked before a cached image can be reused.
+            ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").clear()
+            val masked = captureScene()
+            assertEquals(before.take(2), masked.take(2))
+            assertDim(masked[1], 0.35f)
+            assertEquals("screenshot", masked.last().type)
+            assertSolidBlack(masked.last())
+            assertEquals(before.last().id, masked.last().id)
+            assertEquals(before.last().x, masked.last().x)
+            assertEquals(before.last().y, masked.last().y)
+            assertEquals(before.last().width, masked.last().width)
+            assertEquals(before.last().height, masked.last().height)
+            assertEquals(copies, RecordingShadowPixelCopy.requests.size)
+            content.tag = "ph-no-mask"
+            val restored = captureScene()
+            assertEquals("screenshot", restored.last().type)
+            assertEquals(copies + 1, RecordingShadowPixelCopy.requests.size)
+        } finally {
+            dialog.dismiss()
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    fun `scene keeps RGB565 Activity captures while dialogs preserve alpha`() {
+        val h = screenshotCaptureHarness()
+        h.fx.config.sessionReplayConfig.screenshotColorMode = PostHogScreenshotColorMode.RGB_565
+        h.fx.config.sessionReplayConfig.screenshotScale = 0.5f
+        val dialog = Dialog(h.hookLayout.context)
+        dialog.setContentView(View(h.hookLayout.context).apply { tag = "ph-no-mask" })
+        dialog.show()
+        val window = dialog.window!!
+        val decor = window.decorView
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(decor)
+        decor.measure(
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+        )
+        decor.layout(0, 0, 400, 400)
+        val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        h.fx.sut.decorViews[decor] = status
+        val activityLayer = sceneLayer(h.hookLayout, h.window, h.status)
+        val dialogLayer = sceneLayer(decor, window, status, x = 10, y = 20, dimAmount = 0.35f)
+
+        fun capture(layers: List<Any>) {
+            assertTrue(captureScene(h.fx.sut, layers))
+        }
+
+        RecordingShadowPixelCopy.reset()
+        try {
+            capture(listOf(activityLayer))
+            assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.single().config)
+            assertEquals(50, RecordingShadowPixelCopy.requests.single().width)
+            assertEquals(50, RecordingShadowPixelCopy.requests.single().height)
+            capture(listOf(activityLayer, dialogLayer))
+            assertEquals(Bitmap.Config.ARGB_8888, RecordingShadowPixelCopy.requests.last().config)
+            assertEquals(200, RecordingShadowPixelCopy.requests.last().width)
+            assertEquals(200, RecordingShadowPixelCopy.requests.last().height)
+            ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)
+            capture(listOf(activityLayer, dialogLayer))
+            assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+            dialog.dismiss()
+            ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").add(h.hookLayout)
+            capture(listOf(activityLayer))
+            assertEquals(Bitmap.Config.RGB_565, RecordingShadowPixelCopy.requests.last().config)
+            assertEquals(4, RecordingShadowPixelCopy.requests.size)
+        } finally {
+            dialog.dismiss()
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [28], shadows = [RecordingShadowPixelCopy::class])
+    fun `modern dialog retains element level screenshot masking`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            assertEquals("screenshot", captureDialog(h)?.type)
+            assertEquals(1, RecordingShadowPixelCopy.requests.size)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
     }
 
     @Test
@@ -5289,7 +6230,7 @@ internal class PostHogReplayIntegrationTest {
     fun `a timed-out arming does not leave an orphaned active capture`() {
         // On timeout the posted arming Runnable still finishes later; it must cancel its own
         // token rather than leave WindowDrawState reporting an active capture nobody will read.
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
         val view = View(activity)
         val drawState = WindowDrawState()
@@ -5565,5 +6506,41 @@ internal class PostHogReplayIntegrationTest {
         }
         assertEquals("disabled", sut.debugProperties()["\$recording_status"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))
+    }
+}
+
+private fun bitmap(image: RRWireframe): Bitmap {
+    val bytes = Base64.decode(assertNotNull(image.base64).substringAfter(','), Base64.DEFAULT)
+    return assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+}
+
+// The dim layer is a small translucent black image the player stretches over the scene.
+private fun assertDim(
+    frame: RRWireframe,
+    amount: Float,
+) {
+    assertEquals("screenshot", frame.type)
+    val image = bitmap(frame)
+    try {
+        val pixel = image.getPixel(0, 0)
+        assertTrue(kotlin.math.abs(Color.alpha(pixel) - amount * 255) <= 3, "alpha ${Color.alpha(pixel)}")
+        assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+    } finally {
+        image.recycle()
+    }
+}
+
+private fun assertSolidBlack(frame: RRWireframe) {
+    val image = bitmap(frame)
+    try {
+        for (x in 0 until image.width) {
+            for (y in 0 until image.height) {
+                val pixel = image.getPixel(x, y)
+                assertEquals(255, Color.alpha(pixel))
+                assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+            }
+        }
+    } finally {
+        image.recycle()
     }
 }
