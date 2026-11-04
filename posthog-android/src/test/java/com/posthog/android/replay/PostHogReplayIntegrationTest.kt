@@ -19,9 +19,19 @@ import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
@@ -33,6 +43,8 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.internal.MainHandler
 import com.posthog.android.internal.webpBase64
+import com.posthog.android.replay.PostHogMaskModifier.postHogMask
+import com.posthog.android.replay.PostHogMaskModifier.postHogUnmask
 import com.posthog.android.replay.internal.NextDrawListener
 import com.posthog.android.replay.internal.PixelCopyBitmapBuffer
 import com.posthog.android.replay.internal.ViewTreeSnapshotStatus
@@ -733,6 +745,257 @@ internal class PostHogReplayIntegrationTest {
             sut.uninstall()
             curtains.close()
             controller.pause().stop().destroy()
+        }
+    }
+
+    // Coordinates are relative to the activity content, which sits below the action bar.
+    private class MaskedTouchHarness(
+        val window: Window,
+        val submits: AtomicInteger,
+        private val awaitExecutors: () -> Unit,
+    ) {
+        private val contentOrigin =
+            Rect().also { window.decorView.findViewById<View>(android.R.id.content).getGlobalVisibleRect(it) }
+
+        fun isRecorded(
+            action: Int,
+            x: Float,
+            y: Float,
+        ): Boolean {
+            val before = submits.get()
+            val event = MotionEvent.obtain(0L, 0L, action, contentOrigin.left + x, contentOrigin.top + y, 0)
+            window.callback.dispatchTouchEvent(event)
+            event.recycle()
+            awaitExecutors()
+            return submits.get() > before
+        }
+
+        fun assertDropped(
+            x: Float,
+            y: Float,
+        ) {
+            assertFalse(isRecorded(MotionEvent.ACTION_DOWN, x, y), "TouchStart at ($x, $y) must be dropped")
+            assertFalse(isRecorded(MotionEvent.ACTION_UP, x, y), "TouchEnd at ($x, $y) must be dropped")
+        }
+
+        fun assertRecorded(
+            x: Float,
+            y: Float,
+        ) {
+            assertTrue(isRecorded(MotionEvent.ACTION_DOWN, x, y), "TouchStart at ($x, $y) must be recorded")
+            assertTrue(isRecorded(MotionEvent.ACTION_UP, x, y), "TouchEnd at ($x, $y) must be recorded")
+        }
+    }
+
+    private fun <A : Activity> withMaskedTouchHarness(
+        activityClass: Class<A>,
+        configure: PostHogAndroidConfig.() -> Unit = {},
+        content: (A) -> Unit,
+        block: (MaskedTouchHarness) -> Unit,
+    ) {
+        val submits = AtomicInteger(0)
+        val config = configWithSampling(flagActive = true, samplingPasses = true).apply(configure)
+        val sut = getSutWithExecutor(config, countingReplayExecutor(submits))
+        val fake = createPostHogFake()
+        fake.sessionReplayActive = false
+        val controller = Robolectric.buildActivity(activityClass).setup()
+        val activity = controller.get()
+        content(activity)
+        shadowOf(Looper.getMainLooper()).idle()
+        val curtains = mockCurtainsRoot(activity.window.decorView)
+        sut.install(fake)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+            block(MaskedTouchHarness(activity.window, submits, ::awaitReplayExecutors))
+        } finally {
+            sut.uninstall()
+            curtains.close()
+            controller.pause().stop().destroy()
+        }
+    }
+
+    private fun Activity.setContentWithTopLeftChild(child: View) {
+        setContentView(
+            FrameLayout(this).apply {
+                addView(child, FrameLayout.LayoutParams(100, 100))
+            },
+        )
+    }
+
+    @Test
+    fun `a touch inside a view tagged ph-no-capture is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { it.setContentWithTopLeftChild(View(it).apply { tag = "ph-no-capture" }) },
+        ) { h ->
+            h.assertDropped(50f, 50f)
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch inside a child of a ph-no-capture content description is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val container =
+                    FrameLayout(activity).apply {
+                        contentDescription = "ph-no-capture"
+                        addView(View(activity).apply { tag = "ph-no-mask" }, FrameLayout.LayoutParams(50, 50))
+                    }
+                activity.setContentWithTopLeftChild(container)
+            },
+        ) { h ->
+            h.assertDropped(25f, 25f)
+            h.assertDropped(75f, 75f)
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch on a masked view that removes itself while handling it is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val masked =
+                    object : View(activity) {
+                        override fun onTouchEvent(event: MotionEvent): Boolean {
+                            (parent as? ViewGroup)?.removeView(this)
+                            return true
+                        }
+                    }.apply { tag = "ph-no-capture" }
+                activity.setContentWithTopLeftChild(masked)
+            },
+        ) { h ->
+            assertFalse(h.isRecorded(MotionEvent.ACTION_DOWN, 50f, 50f))
+            assertFalse(h.isRecorded(MotionEvent.ACTION_UP, 50f, 50f), "TouchEnd must stay dropped once the view is gone")
+            h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
+    fun `a gesture that starts inside a mask is not recorded where it ends`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { it.setContentWithTopLeftChild(View(it).apply { tag = "ph-no-capture" }) },
+        ) { h ->
+            assertFalse(h.isRecorded(MotionEvent.ACTION_DOWN, 50f, 50f))
+            assertFalse(h.isRecorded(MotionEvent.ACTION_UP, 250f, 300f))
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch on a masked child that overflows an unclipped container is not recorded`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val container =
+                    FrameLayout(activity).apply {
+                        tag = "ph-no-capture"
+                        clipChildren = false
+                        addView(View(activity), FrameLayout.LayoutParams(100, 20).apply { topMargin = 60 })
+                    }
+                activity.setContentView(
+                    FrameLayout(activity).apply {
+                        clipChildren = false
+                        addView(container, FrameLayout.LayoutParams(100, 20))
+                    },
+                )
+            },
+        ) { h ->
+            h.assertDropped(50f, 70f)
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch on a masked child of a scrolled container is hit-tested where it is drawn`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                val scrolled =
+                    FrameLayout(activity).apply {
+                        addView(View(activity).apply { tag = "ph-no-capture" }, FrameLayout.LayoutParams(100, 50).apply { topMargin = 150 })
+                    }
+                activity.setContentView(FrameLayout(activity).apply { addView(scrolled, FrameLayout.LayoutParams(100, 300)) })
+                scrolled.scrollTo(0, 100)
+            },
+        ) { h ->
+            h.assertDropped(50f, 75f)
+            h.assertRecorded(50f, 175f)
+        }
+    }
+
+    @Test
+    fun `a touch on a translated masked view is hit-tested where it is drawn`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            content = { activity ->
+                activity.setContentWithTopLeftChild(
+                    View(activity).apply {
+                        tag = "ph-no-capture"
+                        translationX = 200f
+                    },
+                )
+            },
+        ) { h ->
+            h.assertDropped(250f, 50f)
+            h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
+    fun `a touch on a postHogMask node drawn outside a smaller parent is not recorded`() {
+        withMaskedTouchHarness(
+            ComponentActivity::class.java,
+            content = { activity ->
+                activity.setContent {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(Modifier.size(20.dp).testTag("parent")) {
+                            Box(Modifier.offset(x = 100.dp).size(20.dp).postHogMask())
+                        }
+                    }
+                }
+            },
+        ) { h ->
+            val density = h.window.context.resources.displayMetrics.density
+            h.assertDropped(110f * density, 10f * density)
+            h.assertRecorded(250f, 300f)
+        }
+    }
+
+    @Test
+    fun `a touch on a text input is recorded when maskAllTextInputs is on`() {
+        withMaskedTouchHarness(
+            Activity::class.java,
+            configure = { sessionReplayConfig.maskAllTextInputs = true },
+            content = { it.setContentWithTopLeftChild(EditText(it).apply { setText("secret") }) },
+        ) { h ->
+            h.assertRecorded(50f, 50f)
+        }
+    }
+
+    @Test
+    fun `a touch inside a postHogMask compose node is not recorded`() {
+        withMaskedTouchHarness(
+            ComponentActivity::class.java,
+            content = { activity ->
+                activity.setContent {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(Modifier.size(20.dp).postHogMask())
+                        Box(Modifier.size(20.dp).offset(x = 40.dp).postHogMask().postHogUnmask())
+                    }
+                }
+            },
+        ) { h ->
+            h.assertDropped(5f, 5f)
+            h.assertRecorded(250f, 300f)
+            val unmaskedX = 45f * h.window.context.resources.displayMetrics.density
+            h.assertRecorded(unmaskedX, 5f)
         }
     }
 
