@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Point
 import android.graphics.PorterDuff
@@ -50,8 +51,10 @@ import android.widget.RatingBar
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -101,6 +104,7 @@ import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
 import curtains.Curtains
+import curtains.DispatchState
 import curtains.OnRootViewsChangedListener
 import curtains.TouchEventInterceptor
 import curtains.onDecorViewReady
@@ -461,56 +465,107 @@ public class PostHogReplayIntegration(
     internal fun touchInterceptor(window: Window): TouchEventInterceptor =
         touchInterceptors.getOrPut(window) {
             val windowRef = WeakReference(window)
+            val gesture = TouchGesture()
             TouchEventInterceptor { motionEvent, dispatch ->
-                if (windowRef.get()?.isSecure() == true) {
+                val currentWindow = windowRef.get()
+                if (currentWindow?.isSecure() == true) {
                     dispatch(motionEvent)
                 } else {
-                    onTouchEventListener.intercept(motionEvent, dispatch)
+                    interceptTouch(motionEvent, dispatch, currentWindow?.peekDecorView(), gesture)
                 }
             }
         }
+
+    private val listenerGesture = TouchGesture()
 
     internal val onTouchEventListener =
         TouchEventInterceptor { motionEvent, dispatch ->
-            try {
-                val state = dispatch(motionEvent)
-                try {
-                    if (!config.sessionReplayConfig.captureTouches || !isActive()) {
-                        return@TouchEventInterceptor state
-                    }
-                    val timestamp = config.dateProvider.currentTimeMillis()
-                    // 1. prevent MotionEvent Object Is Recycled or Invalid
-                    // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
-                    val safeMotionEvent = MotionEvent.obtain(motionEvent)
+            interceptTouch(motionEvent, dispatch, null, listenerGesture)
+        }
 
-                    executor.submit {
-                        try {
-                            if (!isActive()) {
-                                return@submit
-                            }
-                            when (safeMotionEvent.action.and(MotionEvent.ACTION_MASK)) {
-                                MotionEvent.ACTION_DOWN -> {
-                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchStart)
-                                }
-                                MotionEvent.ACTION_UP -> {
-                                    generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchEnd)
-                                }
-                            }
-                        } catch (e: Throwable) {
-                            config.logger.log("Executor#OnTouchEventListener $safeMotionEvent failed: $e.")
-                        } finally {
-                            safeMotionEvent.recycle()
-                        }
-                    }
-                } catch (e: Throwable) {
-                    // does nothing
+    // Main-thread only. Once a gesture starts inside an explicit mask, its later events stay
+    // unrecorded even if the masked view is gone, so the TouchEnd can't reveal the key.
+    private class TouchGesture {
+        var masked = false
+    }
+
+    private fun interceptTouch(
+        motionEvent: MotionEvent,
+        dispatch: (MotionEvent) -> DispatchState,
+        decorView: View?,
+        gesture: TouchGesture,
+    ): DispatchState {
+        val action = motionEvent.action.and(MotionEvent.ACTION_MASK)
+        // Decided before dispatch, while the view tree still shows what was touched.
+        val record = shouldRecordTouch(action, motionEvent, decorView, gesture)
+        try {
+            val state = dispatch(motionEvent)
+            try {
+                if (!record) {
+                    return state
                 }
-                state
+                val timestamp = config.dateProvider.currentTimeMillis()
+                // 1. prevent MotionEvent Object Is Recycled or Invalid
+                // 2. pointerCount Changed Between Checks and Access (since we call on a background thread)
+                val safeMotionEvent = MotionEvent.obtain(motionEvent)
+
+                executor.submit {
+                    try {
+                        if (!isActive()) {
+                            return@submit
+                        }
+                        when (action) {
+                            MotionEvent.ACTION_DOWN -> {
+                                generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchStart)
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                generateMouseInteractions(timestamp, safeMotionEvent, RRMouseInteraction.TouchEnd)
+                            }
+                        }
+                    } catch (e: Throwable) {
+                        config.logger.log("Executor#OnTouchEventListener $safeMotionEvent failed: $e.")
+                    } finally {
+                        safeMotionEvent.recycle()
+                    }
+                }
             } catch (e: Throwable) {
-                config.logger.log("TouchEventInterceptor $motionEvent failed: $e.")
-                throw e
+                // does nothing
+            }
+            return state
+        } catch (e: Throwable) {
+            config.logger.log("TouchEventInterceptor $motionEvent failed: $e.")
+            throw e
+        }
+    }
+
+    private fun shouldRecordTouch(
+        action: Int,
+        motionEvent: MotionEvent,
+        decorView: View?,
+        gesture: TouchGesture,
+    ): Boolean {
+        val gestureEnds = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL
+        try {
+            if (!config.sessionReplayConfig.captureTouches || !isActive()) {
+                gesture.masked = false
+                return false
+            }
+            if (action == MotionEvent.ACTION_DOWN) {
+                gesture.masked = decorView?.isTouchInsideExplicitMask(motionEvent) == true
+            }
+            val masked =
+                gesture.masked ||
+                    (action == MotionEvent.ACTION_UP && decorView?.isTouchInsideExplicitMask(motionEvent) == true)
+            return !masked
+        } catch (e: Throwable) {
+            gesture.masked = action == MotionEvent.ACTION_DOWN || gesture.masked
+            return false
+        } finally {
+            if (gestureEnds) {
+                gesture.masked = false
             }
         }
+    }
 
     private fun generateMouseInteractions(
         timestamp: Long,
@@ -1233,6 +1288,94 @@ public class PostHogReplayIntegration(
         }
     }
 
+    // Only explicit masks count: maskAllTextInputs/maskAllImages would drop every tap on a field or image.
+    private fun View.isTouchInsideExplicitMask(motionEvent: MotionEvent): Boolean =
+        TouchHitTest(this, motionEvent.x, motionEvent.y).hasExplicitMaskAt(this, motionEvent.x, motionEvent.y)
+
+    // Carries the touch down in each view's local coordinates, as touch dispatch does, so each
+    // visited view costs O(1). Only a candidate mask pays for getGlobalVisibleRect, which climbs
+    // to the root, so the final call matches the rect the mask walk masks.
+    private inner class TouchHitTest(
+        decorView: View,
+        private val decorX: Float,
+        private val decorY: Float,
+    ) {
+        private val rect = Rect()
+        private val inverse = Matrix()
+        private val point = FloatArray(2)
+
+        private val windowOffset = IntArray(2).also { decorView.getLocationInWindow(it) }
+
+        fun hasExplicitMaskAt(
+            view: View,
+            x: Float,
+            y: Float,
+            insideNoCapture: Boolean = false,
+        ): Boolean {
+            if (view.visibility != View.VISIBLE) {
+                return false
+            }
+            val hit = x >= 0 && y >= 0 && x < view.width && y < view.height
+            val rule = view.maskRule(insideNoCapture)
+            if (hit && rule == MaskRule.NO_CAPTURE &&
+                view.getGlobalVisibleRect(rect) && rect.contains(decorX.toInt(), decorY.toInt())
+            ) {
+                return true
+            }
+            if (hit && rule == MaskRule.COMPOSE &&
+                hasComposeMaskAt(view)
+            ) {
+                return true
+            }
+            // Children of a container that doesn't clip them can draw, and be masked, outside it.
+            val group = view as? ViewGroup ?: return false
+            if (!hit && group.clipChildren) {
+                return false
+            }
+            if (rule != MaskRule.NO_CAPTURE && rule != MaskRule.COMPOSE && rule != MaskRule.CHILDREN) {
+                return false
+            }
+            for (i in 0 until group.childCount) {
+                val child = group.getChildAt(i) ?: continue
+                point[0] = x + group.scrollX - child.left
+                point[1] = y + group.scrollY - child.top
+                val childMatrix = child.matrix
+                if (!childMatrix.isIdentity && childMatrix.invert(inverse)) {
+                    inverse.mapPoints(point)
+                }
+                if (hasExplicitMaskAt(child, point[0], point[1], insideNoCapture = rule == MaskRule.NO_CAPTURE)) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        // Only reached for a Compose view, so Compose is on the classpath. Compose bounds are
+        // window coordinates, the touch is relative to the decor view.
+        private fun hasComposeMaskAt(view: View): Boolean {
+            val root = (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode ?: return false
+            return root.hasPostHogMaskAt(Offset(decorX + windowOffset[0], decorY + windowOffset[1]))
+        }
+    }
+
+    // Visits every node: a child can draw outside a parent that doesn't clip, so a parent's
+    // bounds can't rule its children out. postHogUnmask on a node or an ancestor wins.
+    private fun SemanticsNode.hasPostHogMaskAt(
+        point: Offset,
+        insideMask: Boolean = false,
+    ): Boolean {
+        if (config.isActive(PostHogReplayUnmask)) {
+            return false
+        }
+        val masked = insideMask || config.isActive(PostHogReplayMask)
+        if (masked && boundsInWindow.contains(point)) {
+            return true
+        }
+        return children.any { it.hasPostHogMaskAt(point, masked) }
+    }
+
+    private fun SemanticsConfiguration.isActive(key: SemanticsPropertyKey<Boolean>): Boolean = contains(key) && this[key]
+
     private fun View.addGlobalVisibleRect(walk: MaskWalk) {
         if (isViewStateStableForMatrixOperations()) {
             getWindowVisibleRect(walk)
@@ -1430,7 +1573,7 @@ public class PostHogReplayIntegration(
     private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
         var current: SemanticsNode? = this
         while (current != null) {
-            if (current.config.contains(key) && current.config[key]) {
+            if (current.config.isActive(key)) {
                 return true
             }
             current = current.parent

@@ -1,5 +1,17 @@
 ## Next
 
+## 3.75.3
+
+### Patch Changes
+
+- b17ca78: Stop recording session replay touches that land inside a `ph-no-capture` view or a `postHogMask()` Compose node
+
+## 3.75.2
+
+### Patch Changes
+
+- 784571b: Survey eligibility checks no longer send `$feature_flag_called` events for keys starting with `survey-targeting-`, matching posthog-js. Other flag keys retain their configured tracking behavior, and linked-variant lookups remain silent.
+
 ## 3.75.1
 
 ### Patch Changes
