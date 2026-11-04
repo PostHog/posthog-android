@@ -453,7 +453,7 @@ public open class PostHogConfig(
 
     /**
      * Maximum size, in bytes, of a serialized [PostHog.captureAi] event, measured before [encryption].
-     * The SDK drops a larger event; then `captureAi` returns null and logs only the event name and size.
+     * The SDK drops a larger event; then `captureAi` returns null and logs only the event name and the limit.
      *
      * Use it to lower the limit. PostHog drops AI events whose properties are over 8 MiB, so the default
      * allows 8 MiB plus 64 KiB for the rest of the event. A larger value uses the default and logs a

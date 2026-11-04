@@ -53,7 +53,7 @@ These are unchanged, so you don't need to change your build for them:
 - Kotlin language and API compatibility: 2.0
 - `posthog-android-gradle-plugin`
 
-Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, and a mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
+Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. A mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
 ## Removed APIs
 
@@ -240,7 +240,7 @@ These helpers were public only by accident and were marked `@PostHogInternal`. T
 
 - `com.posthog.internal`: `CustomHeadersInterceptor`, `PostHogPrintLogger`, `PropertyGroupDeserializer`, `PropertyValueDeserializer`, `personPropertiesContext()`, `PostHogPreferences.PUSH_SUBSCRIPTION_REJECTED`
 - `com.posthog.internal.errortracking`: `ThrowableCoercer.fromThrowableToPostHogProperties()`
-- `com.posthog.internal.replay`: `RRDocumentNode`, `RRDomContentLoadedEvent`, `RRLoadedEvent`
+- `com.posthog.internal.replay`: `RRDocumentNode`, `RRDomContentLoadedEvent`, `RRLoadedEvent`, `RRStyle`; `RRWireframe` keeps only `id`, `x`, `y`, `width`, `height`, `type` and `base64`
 - `com.posthog.internal.surveys`: `findBestTranslationMatch()`
 - `com.posthog.android.internal`: `Bitmap.isValid()`, `Bitmap.webpBase64()`
 - `com.posthog.android.replay.internal`: `LogLine`, `LogcatParser`
@@ -329,12 +329,12 @@ Other requests still send your `Authorization` header.
 
 Analytics requests are gzipped unless you set `compression` to `PostHogCompression.NONE`, as in 3.x.
 
-A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty token does. Both print why, even when `debug` is off.
+A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty or whitespace-only token does. Both print why, even when `debug` is off. To turn the SDK off in tests, use an empty token.
 In 3.x, the SDK started and PostHog rejected every event with a 401. Use your project token (`phc_...`).
 
 ### Hosts without capture v1
 
-If you self-host PostHog, make sure `/i/v1/analytics/events` is served before you upgrade.
+If you self-host PostHog, make sure `/i/v1/analytics/events` is served before you upgrade, and `/i/v1/ai/events` if you use `captureAi`.
 PostHog Cloud (`us.i.posthog.com`, `eu.i.posthog.com`) serves it.
 
 If you send events through your own reverse proxy, update it before you upgrade:
@@ -365,7 +365,8 @@ With `debug` on, it logs this once.
 There's no error callback, as in 3.x. The SDK reports dropped and failed events only in its debug log.
 
 The SDK doesn't check the rest before sending. PostHog drops the event, and the SDK removes it from the queue.
-With `debug` on, the SDK logs one line per batch with how many events PostHog dropped, how many duplicate copies it dropped and how many it asked to retry, never the event names or properties.
+With `debug` on, the SDK logs one line per batch with how many events PostHog dropped, how many duplicate copies it dropped and how many it asked to retry, with the reasons PostHog gave, never the event names or properties.
+It no longer logs a line for each queued event.
 Debug logs for capture requests name the event count and the response status, and no longer print the request and response bodies.
 When a `beforeSend` hook throws, the debug log names the event and the exception type, not the exception message, which can hold the data the hook was removing. In 3.x it printed the exception.
 When a property value can't be serialized, the debug log names the key and the value's type, not the value. In 3.x it printed the value.
@@ -405,6 +406,7 @@ In 3.x, the SDK's own values won over super properties, and `$is_identified`, `$
 In 4.0 a value you register or pass wins, for example `register("\$os_name", "custom")` sends every event with that value.
 A registered `$session_id` now overrides the SDK's session ID, which can detach events from their session replay.
 A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
+In 3.x, a `$set`, `$set_once` or `$groups` map in properties replaced the per-call values and the groups set with `group()`. A `$set` or `$set_once` you pass, or `userProperties`, still replaces a registered one whole.
 
 ## Session and window IDs
 
@@ -480,25 +482,23 @@ PostHog.captureAi(
 )
 ```
 
-- `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, `beforeSend` dropped it, or it's over the size limit. Once 100 AI events (`captureAiMaxQueueSize`) or 50 MiB are queued, including events still waiting to be written to disk during a slow upload, the oldest are dropped.
+- `captureAi` returns the event's uuid, or `null` when the event isn't queued: the SDK is disabled or opted out, the event name is empty, `beforeSend` dropped it, or it's over the size limit. Once 100 AI events (`captureAiMaxQueueSize`) or 50 MiB are queued, including events still waiting to be written to disk during a slow upload, the oldest are dropped.
 - An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`. With `debug` on, it logs the event name and the limit, never the content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB, and with `debug` on the SDK logs that it did.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
 - AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
 - `flush()` and `close()` also send the AI queue, and AI events left on disk are sent at the next launch.
-<!-- TODO(capture-v1): gzip by default, the 100-event and 50 MiB queue, the 60 s timeout and creating the AI queue at setup are mobile divergences Eli hasn't confirmed yet (DIVERGENCES "Accepted divergences", proposed 2026-11-02). Update these lines if he changes any default. -->
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
 - The SDK sends AI events unchanged. It doesn't redact or truncate prompts, outputs or media, so use `beforeSend` to remove anything you don't want to send.
 
 ## Retries
 
-- The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. 3.x also retried 3xx responses, and didn't retry 404.
+- The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. A product quota, such as for exceptions or AI events, drops only those events inside a 200 response. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
 - A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. The request ID and attempt number reset after an app restart. OkHttp doesn't retry capture requests on its own.
 - A `Retry-After` header sets the minimum wait before the next send, up to 30 seconds. This also applies to session replay and logs. In 3.x there was no cap.
 - `Retry-After` can be a number of seconds or an HTTP date. 3.x read only a number of seconds.
-<!-- TODO(capture-v1): the 1 s starting wait is a mobile divergence from the fleet's 100 ms that Eli hasn't confirmed yet (DIVERGENCES "Accepted divergences", proposed 2026-11-02). Keep or change this line once he decides. -->
 - After a failed send, the wait before the next one doubles from 1 second up to 30 seconds, with up to 25% random jitter at millisecond precision. In 3.x it doubled without jitter and a `Retry-After` replaced it. This applies to events, session replay and logs.
 - Event, session replay and log retries have no limit, as in 3.x: queued records stay until they're delivered or a full queue evicts them (`maxQueueSize`, or `logs.maxBufferSize` for logs).
 - `maxRetries` is renamed to `pushNotificationSubscriptionMaxRetries`, with no deprecated alias. It only limits push-notification subscription retries.
