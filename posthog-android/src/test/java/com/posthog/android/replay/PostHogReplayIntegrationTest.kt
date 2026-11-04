@@ -26,7 +26,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -995,6 +997,25 @@ internal class PostHogReplayIntegrationTest {
             h.assertDropped(5f, 5f)
             h.assertRecorded(250f, 300f)
             val unmaskedX = 45f * h.window.context.resources.displayMetrics.density
+            h.assertRecorded(unmaskedX, 5f)
+        }
+    }
+
+    @Test
+    fun `a touch on a postHogMask node inside a clickable row with an unmasked sibling is not recorded`() {
+        withMaskedTouchHarness(
+            ComponentActivity::class.java,
+            content = { activity ->
+                activity.setContent {
+                    Row(Modifier.clickable {}) {
+                        Box(Modifier.size(20.dp).postHogMask())
+                        Box(Modifier.size(20.dp).postHogUnmask())
+                    }
+                }
+            },
+        ) { h ->
+            h.assertDropped(5f, 5f)
+            val unmaskedX = 25f * h.window.context.resources.displayMetrics.density
             h.assertRecorded(unmaskedX, 5f)
         }
     }

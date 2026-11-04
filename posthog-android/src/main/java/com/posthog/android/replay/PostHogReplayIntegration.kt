@@ -1307,7 +1307,7 @@ public class PostHogReplayIntegration(
         // Only reached for a Compose view, so Compose is on the classpath. Compose bounds are
         // window coordinates, the touch is relative to the decor view.
         private fun hasComposeMaskAt(view: View): Boolean {
-            val root = (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode ?: return false
+            val root = (view as? RootForTest)?.semanticsOwner?.unmergedRootSemanticsNode ?: return false
             return root.hasPostHogMaskAt(Offset(decorX + windowOffset[0], decorY + windowOffset[1]))
         }
     }
