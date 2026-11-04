@@ -1,5 +1,11 @@
 ## Next
 
+## 3.75.3
+
+### Patch Changes
+
+- b17ca78: Stop recording session replay touches that land inside a `ph-no-capture` view or a `postHogMask()` Compose node
+
 ## 3.75.2
 
 ### Patch Changes
