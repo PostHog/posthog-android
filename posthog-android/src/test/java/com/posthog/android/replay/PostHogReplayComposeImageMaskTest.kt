@@ -318,6 +318,17 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
+    fun `masks a window-filling canvas with a content description and no click action`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().semantics(mergeDescendants = true) { contentDescription = "chart" }) {
+                drawRect(Color.Black)
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
     fun `masks a window-filling clickable image with a content description`() {
         setWindowContent {
             Image(
