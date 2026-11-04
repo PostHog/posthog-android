@@ -39,7 +39,7 @@ internal fun collectComposeImageRects(
     unmaskedLayouts: Set<LayoutInfo>,
     rects: MutableList<Rect>,
 ) {
-    val children = layoutNodeChildren ?: root.javaClass.findMethod(layoutNodeChildrenNames).also { layoutNodeChildren = it }
+    val children = root.childrenMethod()
     if (!nodeChainResolved) {
         nodeChainAccess = root.javaClass.findNodeChainAccess()
         nodeChainResolved = true
@@ -58,6 +58,12 @@ internal fun collectComposeImageRects(
         }
     }
 }
+
+/** Throws if Compose internals are not available, so that the caller can fail closed. */
+internal fun LayoutInfo.hasChildLayouts(): Boolean = (childrenMethod().invoke(this) as List<*>).isNotEmpty()
+
+private fun LayoutInfo.childrenMethod(): Method =
+    layoutNodeChildren ?: javaClass.findMethod(layoutNodeChildrenNames).also { layoutNodeChildren = it }
 
 private fun Class<*>.findMethodOrNull(names: List<String>): Method? {
     for (name in names) {

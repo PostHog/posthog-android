@@ -54,6 +54,7 @@ import android.widget.TextView
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -1493,6 +1494,7 @@ public class PostHogReplayIntegration(
                         }
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
                     val unmaskedLayouts = mutableSetOf<LayoutInfo>()
+                    val window = view.rootView
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
@@ -1524,7 +1526,7 @@ public class PostHogReplayIntegration(
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(window) -> {
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
                                 }
@@ -1579,6 +1581,20 @@ public class PostHogReplayIntegration(
             current = current.parent
         }
         return false
+    }
+
+    // A modal scrim's content description is its dismiss label, not an image, and masking it would
+    // black out the whole window. Merging can drop a child image's role, so require no child layouts.
+    private fun SemanticsNode.isScrim(window: View): Boolean {
+        if (!this.config.contains(SemanticsActions.OnClick) || this.config.contains(SemanticsProperties.Role)) {
+            return false
+        }
+        val bounds = boundsInWindow
+        return bounds.left <= 0f &&
+            bounds.top <= 0f &&
+            bounds.right >= window.width &&
+            bounds.bottom >= window.height &&
+            !layoutInfo.hasChildLayouts()
     }
 
     private fun View.isComposeView(): Boolean {
