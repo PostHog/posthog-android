@@ -48,7 +48,9 @@ public class PostHogSessionReplayConfig
          * Capture touch coordinates in session replay. Defaults to true.
          * Set before SDK setup. Runtime changes are not supported.
          * Screenshot and view capture are unaffected.
-         * Disable this when touch positions could reveal sensitive input, even if the views are masked.
+         * Touches inside views marked `ph-no-capture` or `postHogMask()` nodes are never recorded.
+         * Disable this when other touch positions could reveal sensitive input, such as taps on
+         * fields masked only by `maskAllTextInputs`.
          */
         public var captureTouches: Boolean = true
 

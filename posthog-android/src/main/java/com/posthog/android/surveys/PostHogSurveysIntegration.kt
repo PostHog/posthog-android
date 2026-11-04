@@ -321,7 +321,9 @@ public class PostHogSurveysIntegration(
         }
 
         // All collected flag keys must be enabled
-        return allKeys.all { postHog.isFeatureEnabled(it) } && matchesLinkedFlagVariant(survey, postHog)
+        return allKeys.all {
+            postHog.isFeatureEnabled(it, sendFeatureFlagEvent = if (it.startsWith("survey-targeting-")) false else null)
+        } && matchesLinkedFlagVariant(survey, postHog)
     }
 
     private fun matchesLinkedFlagVariant(
