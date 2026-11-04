@@ -269,6 +269,16 @@ internal class PostHogReplayComposeImageMaskTest {
         Box(Modifier.size(40.dp).semantics { paneTitle = "pane" })
     }
 
+    @Composable
+    @Suppress("ktlint:standard:function-naming")
+    private fun OpenDrawer(content: @Composable () -> Unit) {
+        ModalNavigationDrawer(
+            drawerState = rememberDrawerState(DrawerValue.Open),
+            drawerContent = { ModalDrawerSheet { Text("drawer") } },
+            content = content,
+        )
+    }
+
     private fun dialogWindow(): View = ShadowDialog.getLatestDialog().window!!.decorView
 
     private fun windowBounds() = dialogWindow().run { Rect(0, 0, width, height) }
@@ -289,10 +299,7 @@ internal class PostHogReplayComposeImageMaskTest {
     @Test
     fun `does not mask the scrim of a modal navigation drawer`() {
         setWindowContent(withPane = false) {
-            ModalNavigationDrawer(
-                drawerState = rememberDrawerState(DrawerValue.Open),
-                drawerContent = { ModalDrawerSheet { Text("drawer") } },
-            ) {}
+            OpenDrawer {}
         }
 
         val rects = maskRects(root = dialogWindow())
@@ -349,6 +356,25 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
         assertTrue(windowBounds() in maskRects(root = dialogWindow()))
+    }
+
+    @Test
+    fun `masks a window-filling bitmap canvas behind an open drawer`() {
+        val bitmap = testBitmap()
+        setWindowContent(withPane = false) {
+            OpenDrawer { Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) } }
+        }
+
+        assertTrue(windowBounds() in maskRects(root = dialogWindow()))
+    }
+
+    @Test
+    fun `does not mask the scrim of a drawer open over a window-filling click target without a description`() {
+        setWindowContent(withPane = false) {
+            OpenDrawer { Box(Modifier.fillMaxSize().clickable {}) }
+        }
+
+        assertNoRectFillsWindow(maskRects(root = dialogWindow()))
     }
 
     @Test

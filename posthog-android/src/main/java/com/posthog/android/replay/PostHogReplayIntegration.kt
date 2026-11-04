@@ -1494,7 +1494,7 @@ public class PostHogReplayIntegration(
                         }
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
                     val unmaskedLayouts = mutableSetOf<LayoutInfo>()
-                    val window = view.rootView
+                    val scrim by lazy(LazyThreadSafetyMode.NONE) { semanticsNodes.findScrim(view.rootView) }
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
@@ -1526,7 +1526,7 @@ public class PostHogReplayIntegration(
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(window, semanticsNodes) -> {
+                                    hasImage && config.sessionReplayConfig.maskAllImages && node !== scrim -> {
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
                                 }
@@ -1587,13 +1587,18 @@ public class PostHogReplayIntegration(
     private fun SemanticsNode.isVisiblePane(): Boolean = this.config.contains(SemanticsProperties.PaneTitle) && !boundsInWindow.isEmpty
 
     // A modal scrim's content description is its dismiss label, not an image, and masking it would
-    // black out the whole window. Merging can drop a child image's role, so require no child layouts.
-    // Semantics can't show what a Canvas draws, so require a visible modal pane in the window as well.
-    private fun SemanticsNode.isScrim(
-        window: View,
-        windowNodes: List<SemanticsNode>,
-    ): Boolean {
-        if (!this.config.contains(SemanticsActions.OnClick) || this.config.contains(SemanticsProperties.Role)) {
+    // black out the whole window. Semantics can't show what a Canvas draws, so require a visible
+    // modal pane. With two candidates one isn't a scrim and its mask fills the window, so exempt none.
+    private fun List<SemanticsNode>.findScrim(window: View): SemanticsNode? {
+        return if (any { it.isVisiblePane() }) singleOrNull { it.isScrimCandidate(window) } else null
+    }
+
+    // Merging can drop a child image's role, so require no child layouts.
+    private fun SemanticsNode.isScrimCandidate(window: View): Boolean {
+        if (!this.config.contains(SemanticsProperties.ContentDescription) ||
+            !this.config.contains(SemanticsActions.OnClick) ||
+            this.config.contains(SemanticsProperties.Role)
+        ) {
             return false
         }
         val bounds = boundsInWindow
@@ -1601,8 +1606,7 @@ public class PostHogReplayIntegration(
             bounds.top <= 0f &&
             bounds.right >= window.width &&
             bounds.bottom >= window.height &&
-            !layoutInfo.hasChildLayouts() &&
-            windowNodes.any { it.isVisiblePane() }
+            !layoutInfo.hasChildLayouts()
     }
 
     private fun View.isComposeView(): Boolean {
