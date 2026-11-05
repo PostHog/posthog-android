@@ -127,7 +127,7 @@ jobs:
               with:
                   python-version: '3.13'
 
-            # The reference is docs, so it never blocks a release. The next release regenerates it.
+            # Best-effort: a failure never blocks the release. Run generate-references.yml to retry.
             - name: Regenerate the SDK reference
               continue-on-error: true
               env:
