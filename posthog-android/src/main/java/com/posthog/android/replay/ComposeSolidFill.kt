@@ -65,6 +65,9 @@ internal fun LayoutInfo.paintsSolidFill(): Boolean {
     // A delegate draws outside the chain, so the recorder can't see what it paints. Any other draw node
     // can reach the no-op drawContent and empty what the app reuses, such as a draw cache or a layer.
     if (nodes.any { delegatingNode.isInstance(it) } || drawNodes.any { !drawBehindNode.isInstance(it) }) return false
+    // extra is a modifier's layer, whose effects the compositor applies where the recorder can't see them.
+    // Coordinates of another size mean replay would run a lambda at a size the screen doesn't use.
+    if (getModifierInfo().any { it.extra != null || it.coordinates.size != IntSize(width, height) }) return false
     val recorder = SolidFillRecorder(width.toFloat(), height.toFloat())
     val density = layoutNodeDensity.invoke(this) as Density
     val layoutDirection = layoutNodeLayoutDirection.invoke(this) as LayoutDirection

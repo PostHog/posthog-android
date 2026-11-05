@@ -46,10 +46,12 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -62,6 +64,7 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -73,6 +76,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -593,6 +597,59 @@ internal class PostHogReplayComposeImageMaskTest {
                         if (layoutDirection == LayoutDirection.Rtl) drawImage(testBitmap()) else drawRect(Color.Black)
                     },
                 )
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that draws a bitmap only at its padded size`() {
+        setWindowContent {
+            Box(
+                Modifier.fillMaxSize().dismissTarget().padding(1.dp).drawBehind {
+                    if (size.width < dialogWindow().width) drawImage(testBitmap()) else drawRect(Color.Black)
+                },
+            )
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that draws a bitmap only at its font scale`() {
+        setWindowContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 3f)) {
+                Box(
+                    Modifier.fillMaxSize().dismissTarget().drawBehind {
+                        if (fontScale == 3f) drawImage(testBitmap()) else drawRect(Color.Black)
+                    },
+                )
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid draw under a bitmap layer effect`() {
+        val bitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        val effect = android.graphics.RenderEffect.createBitmapEffect(bitmap).asComposeRenderEffect()
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().graphicsLayer(renderEffect = effect).dismissTarget()) {
+                drawRect(Color.Black)
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid draw in a graphics layer`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().graphicsLayer(alpha = 0.5f).dismissTarget()) {
+                drawRect(Color.Black)
             }
         }
 
