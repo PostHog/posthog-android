@@ -1,5 +1,11 @@
 ## Next
 
+## 3.76.0
+
+### Minor Changes
+
+- e9a8f5d: Compose activity and dialog windows into one scene in screenshot-mode session replay.
+
 ## 3.75.3
 
 ### Patch Changes
