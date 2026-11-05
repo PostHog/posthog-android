@@ -9,9 +9,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,9 +29,12 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.DrawModifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -39,12 +46,15 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -245,28 +255,16 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
     // The activity's content sits below a title bar, so a dialog gives Compose the whole window.
-    private fun setWindowContent(
-        withPane: Boolean = true,
-        content: @Composable () -> Unit,
-    ) {
+    private fun setWindowContent(content: @Composable () -> Unit) {
         compose.activity.setContent {
             Dialog(
                 onDismissRequest = {},
                 properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
             ) {
-                Box {
-                    content()
-                    if (withPane) Pane()
-                }
+                Box { content() }
             }
         }
         compose.waitForIdle()
-    }
-
-    @Composable
-    @Suppress("ktlint:standard:function-naming")
-    private fun Pane() {
-        Box(Modifier.size(40.dp).semantics { paneTitle = "pane" })
     }
 
     @Composable
@@ -298,7 +296,7 @@ internal class PostHogReplayComposeImageMaskTest {
 
     @Test
     fun `does not mask the scrim of a modal navigation drawer`() {
-        setWindowContent(withPane = false) {
+        setWindowContent {
             OpenDrawer {}
         }
 
@@ -327,7 +325,6 @@ internal class PostHogReplayComposeImageMaskTest {
         compose.activity.setContent {
             Box {
                 Canvas(Modifier.testTag("scrim").fillMaxSize().dismissTarget()) { drawRect(Color.Black) }
-                Pane()
             }
         }
 
@@ -335,9 +332,58 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
-    fun `masks a window-filling bitmap canvas with scrim semantics and no pane`() {
+    fun `masks a solid canvas narrower than the window`() {
+        setWindowContent {
+            Box(Modifier.fillMaxSize()) {
+                Canvas(Modifier.testTag("scrim").fillMaxHeight().width(100.dp).dismissTarget()) { drawRect(Color.Black) }
+            }
+        }
+
+        assertEquals(listOf(boundsOf("scrim")), maskRects(root = dialogWindow()))
+    }
+
+    @Test
+    fun `masks a solid canvas shorter than the window`() {
+        setWindowContent {
+            Box(Modifier.fillMaxSize()) {
+                Canvas(Modifier.testTag("scrim").fillMaxWidth().height(100.dp).dismissTarget()) { drawRect(Color.Black) }
+            }
+        }
+
+        assertEquals(listOf(boundsOf("scrim")), maskRects(root = dialogWindow()))
+    }
+
+    @Test
+    fun `masks a window-filling solid canvas with a role`() {
+        setWindowContent {
+            Canvas(
+                Modifier.fillMaxSize().semantics(mergeDescendants = true) {
+                    contentDescription = "Close sheet"
+                    role = Role.Image
+                    onClick { true }
+                },
+            ) { drawRect(Color.Black) }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid box with a bitmap canvas child`() {
         val bitmap = testBitmap()
-        setWindowContent(withPane = false) {
+        setWindowContent {
+            Box(Modifier.fillMaxSize().dismissTarget().drawBehind { drawRect(Color.Black) }) {
+                Canvas(Modifier.fillMaxSize()) { drawImage(bitmap) }
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling bitmap canvas with scrim semantics`() {
+        val bitmap = testBitmap()
+        setWindowContent {
             Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) }
         }
 
@@ -345,13 +391,14 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
-    fun `masks a window-filling canvas behind a closed drawer`() {
-        setWindowContent(withPane = false) {
+    fun `masks a window-filling bitmap canvas behind a closed drawer`() {
+        val bitmap = testBitmap()
+        setWindowContent {
             ModalNavigationDrawer(
                 drawerState = rememberDrawerState(DrawerValue.Closed),
                 drawerContent = { ModalDrawerSheet { Text("drawer") } },
             ) {
-                Canvas(Modifier.fillMaxSize().dismissTarget()) { drawRect(Color.Black) }
+                Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) }
             }
         }
 
@@ -361,7 +408,7 @@ internal class PostHogReplayComposeImageMaskTest {
     @Test
     fun `masks a window-filling bitmap canvas behind an open drawer`() {
         val bitmap = testBitmap()
-        setWindowContent(withPane = false) {
+        setWindowContent {
             OpenDrawer { Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) } }
         }
 
@@ -369,8 +416,94 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
+    fun `masks a window-filling bitmap canvas inside a pane`() {
+        val bitmap = testBitmap()
+        setWindowContent {
+            Box(Modifier.fillMaxSize().semantics { paneTitle = "Document preview" }) {
+                Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) }
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling bitmap canvas beside a pane`() {
+        val bitmap = testBitmap()
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) { drawImage(bitmap) }
+            Box(Modifier.size(40.dp).semantics { paneTitle = "pane" })
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that scales a bitmap`() {
+        val bitmap = testBitmap()
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawImage(bitmap, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that paints a bitmap through a shader`() {
+        val bitmap = testBitmap()
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) { drawRect(ShaderBrush(ImageShader(bitmap))) }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that paints more than one rectangle`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawRect(Color.Black)
+                drawRect(Color.White)
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that paints a partial rectangle`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) { drawRect(Color.Black, size = size / 2f) }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that paints nothing`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {}
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas whose draw throws`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                if (size.width > 0f) error("draw failed")
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
     fun `does not mask the scrim of a drawer open over a window-filling click target without a description`() {
-        setWindowContent(withPane = false) {
+        setWindowContent {
             OpenDrawer { Box(Modifier.fillMaxSize().clickable {}) }
         }
 

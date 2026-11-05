@@ -63,6 +63,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.unit.Density
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogEventName
@@ -1898,7 +1899,6 @@ public class PostHogReplayIntegration(
                         }
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
                     val unmaskedLayouts = mutableSetOf<LayoutInfo>()
-                    val scrim by lazy(LazyThreadSafetyMode.NONE) { semanticsNodes.findScrim(view.rootView) }
 
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
@@ -1930,7 +1930,7 @@ public class PostHogReplayIntegration(
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages && node !== scrim -> {
+                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(view.rootView) -> {
                                         maskableWidgets.add(node.boundsInWindow.toRect())
                                     }
                                 }
@@ -1987,22 +1987,11 @@ public class PostHogReplayIntegration(
         return false
     }
 
-    // A closed drawer keeps its pane in the tree, off screen.
-    private fun SemanticsNode.isVisiblePane(): Boolean = this.config.contains(SemanticsProperties.PaneTitle) && !boundsInWindow.isEmpty
-
-    // A modal scrim's content description is its dismiss label, not an image, and masking it would
-    // black out the whole window. Semantics can't show what a Canvas draws, so require a visible
-    // modal pane. With two candidates one isn't a scrim and its mask fills the window, so exempt none.
-    private fun List<SemanticsNode>.findScrim(window: View): SemanticsNode? {
-        return if (any { it.isVisiblePane() }) singleOrNull { it.isScrimCandidate(window) } else null
-    }
-
-    // Merging can drop a child image's role, so require no child layouts.
-    private fun SemanticsNode.isScrimCandidate(window: View): Boolean {
-        if (!this.config.contains(SemanticsProperties.ContentDescription) ||
-            !this.config.contains(SemanticsActions.OnClick) ||
-            this.config.contains(SemanticsProperties.Role)
-        ) {
+    // A scrim's content description is its dismiss label, not an image, so masking it blacks out the
+    // window. Semantics only find candidates, what the node paints decides. A child layout paints
+    // outside that check, and merging can drop its image role, so require none.
+    private fun SemanticsNode.isScrim(window: View): Boolean {
+        if (!this.config.contains(SemanticsActions.OnClick) || this.config.contains(SemanticsProperties.Role)) {
             return false
         }
         val bounds = boundsInWindow
@@ -2010,8 +1999,17 @@ public class PostHogReplayIntegration(
             bounds.top <= 0f &&
             bounds.right >= window.width &&
             bounds.bottom >= window.height &&
-            !layoutInfo.hasChildLayouts()
+            !layoutInfo.hasChildLayouts() &&
+            paintsSolidFill()
     }
+
+    private fun SemanticsNode.paintsSolidFill(): Boolean =
+        try {
+            layoutInfo.paintsSolidFill(Density(screenDensity))
+        } catch (e: Throwable) {
+            this@PostHogReplayIntegration.config.logger.log("Session Replay paintsSolidFill failed: ${e.cause ?: e}")
+            false
+        }
 
     private fun View.isComposeView(): Boolean {
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)

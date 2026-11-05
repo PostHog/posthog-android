@@ -20,7 +20,7 @@ private val layoutNodeNodesNames = listOf("getNodes\$ui", "getNodes\$ui_release"
 private val nodeChainHeadNames = listOf("getHead\$ui", "getHead\$ui_release")
 private val modifierNodeChildNames = listOf("getChild\$ui", "getChild\$ui_release")
 
-private class NodeChainAccess(val nodes: Method, val head: Method, val child: Method)
+internal class NodeChainAccess(val nodes: Method, val head: Method, val child: Method)
 
 private var layoutNodeChildren: Method? = null
 private var nodeChainResolved = false
@@ -40,11 +40,7 @@ internal fun collectComposeImageRects(
     rects: MutableList<Rect>,
 ) {
     val children = root.childrenMethod()
-    if (!nodeChainResolved) {
-        nodeChainAccess = root.javaClass.findNodeChainAccess()
-        nodeChainResolved = true
-    }
-    val chain = nodeChainAccess
+    val chain = root.nodeChain()
     val stack = ArrayDeque<LayoutInfo>()
     stack.addLast(root)
     while (stack.isNotEmpty()) {
@@ -61,6 +57,14 @@ internal fun collectComposeImageRects(
 
 /** Throws if Compose internals are not available, so that the caller can fail closed. */
 internal fun LayoutInfo.hasChildLayouts(): Boolean = (childrenMethod().invoke(this) as List<*>).isNotEmpty()
+
+internal fun LayoutInfo.nodeChain(): NodeChainAccess? {
+    if (!nodeChainResolved) {
+        nodeChainAccess = javaClass.findNodeChainAccess()
+        nodeChainResolved = true
+    }
+    return nodeChainAccess
+}
 
 private fun LayoutInfo.childrenMethod(): Method =
     layoutNodeChildren ?: javaClass.findMethod(layoutNodeChildrenNames).also { layoutNodeChildren = it }
