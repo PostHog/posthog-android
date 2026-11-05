@@ -53,6 +53,10 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.layout.LayoutModifier
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.testTag
@@ -64,6 +68,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -539,6 +544,39 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
         assertWindowMasked()
+    }
+
+    @Test
+    fun `does not mask a scrim with an old-style modifier that does not draw`() {
+        val layout =
+            object : LayoutModifier {
+                override fun MeasureScope.measure(
+                    measurable: Measurable,
+                    constraints: Constraints,
+                ): MeasureResult {
+                    val placeable = measurable.measure(constraints)
+                    return layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                }
+            }
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().then(layout).dismissTarget()) { drawRect(Color.Black) }
+        }
+
+        assertNoRectFillsWindow(maskRects(root = dialogWindow()))
+        assertTrue(logMessages.none { "paintsSolidFill failed" in it }, "$logMessages")
+    }
+
+    @Test
+    fun `does not mask a scrim painted by an old-style draw modifier`() {
+        val fill =
+            object : DrawModifier {
+                override fun ContentDrawScope.draw() = drawRect(Color.Black)
+            }
+        setWindowContent {
+            Box(Modifier.fillMaxSize().dismissTarget().then(fill))
+        }
+
+        assertNoRectFillsWindow(maskRects(root = dialogWindow()))
     }
 
     @Test

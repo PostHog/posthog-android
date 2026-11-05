@@ -1,6 +1,7 @@
 package com.posthog.android.replay
 
 import androidx.compose.ui.draw.DrawCacheModifier
+import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -63,7 +64,7 @@ internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
     val recorder = SolidFillRecorder(width.toFloat(), height.toFloat())
     CanvasDrawScope().draw(density, LayoutDirection.Ltr, recorder, Size(recorder.width, recorder.height)) {
         val scope = withoutContent()
-        nodes.filter { drawModifierNode.isInstance(it) }.forEach { drawModifierNodeDraw.invoke(it, scope) }
+        nodes.filter { it.draws() }.forEach { drawModifierNodeDraw.invoke(it, scope) }
     }
     return recorder.isSolidFill
 }
@@ -71,6 +72,10 @@ internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
 // Replaying a draw cache would build it without content, and the next real draw would reuse that.
 // Compose before 1.5 holds drawWithCache in a DrawCacheModifier element.
 private fun Any.holdsDrawCache(): Boolean = cacheDrawNode?.isInstance(this) == true || legacyElement() is DrawCacheModifier
+
+// Every old-style modifier wraps in a DrawModifierNode, whose draw throws unless the modifier draws.
+private fun Any.draws(): Boolean =
+    drawModifierNode.isInstance(this) && (!backwardsCompatNode.isInstance(this) || legacyElement() is DrawModifier)
 
 private fun Any.legacyElement(): Any? = if (backwardsCompatNode.isInstance(this)) backwardsCompatNodeElement.invoke(this) else null
 
