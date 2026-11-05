@@ -871,8 +871,9 @@ internal val LEGACY_OPTION_PROPERTIES: List<Pair<String, String>> =
     )
 
 /**
- * Shapes a stored event for capture v1. `$session_id` and `$window_id` move to the event root, and
- * `$lib`/`$lib_version` are dropped because the server reads them from `PostHog-Sdk-Info`.
+ * Shapes a stored event for capture v1. `$session_id` and `$window_id` move to the event root.
+ * `$lib`/`$lib_version` stay in properties, so an event queued by an older SDK version keeps the
+ * version that captured it.
  *
  * Legacy option properties are hoisted here, after `beforeSend`, so events queued by older versions
  * are hoisted too. Each is always removed from properties and fills its option only when the option
@@ -883,8 +884,6 @@ internal fun captureV1Json(
     logger: PostHogLogger,
 ): Map<String, Any?> {
     val properties = LinkedHashMap<String, Any?>(event.properties ?: emptyMap())
-    properties.remove("\$lib")
-    properties.remove("\$lib_version")
 
     val options = LinkedHashMap<String, Any?>(event.options ?: emptyMap())
     for ((property, option) in LEGACY_OPTION_PROPERTIES) {

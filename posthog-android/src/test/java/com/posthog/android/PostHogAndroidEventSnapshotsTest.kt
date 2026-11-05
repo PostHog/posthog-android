@@ -31,7 +31,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -269,9 +268,7 @@ internal class PostHogAndroidEventSnapshotsTest {
             UUID.fromString(uuid)
             event["uuid"] = "<uuid>"
             val properties = event.map("properties")
-            // capture v1 reads the SDK name and version from the PostHog-Sdk-Info header
-            assertFalse(properties.containsKey("\$lib"))
-            assertFalse(properties.containsKey("\$lib_version"))
+            normalizeSdkVersion(properties)
             // Depends on how many earlier captures the async queueExecutor has drained by the time
             // this event's properties are built on the calling thread -- not deterministic run to run.
             if (properties.containsKey("\$sdk_debug_pending_queue_size")) {

@@ -229,8 +229,7 @@ internal class PostHogCaptureV1Test {
         assertEquals(event.uuid.toString(), sent["uuid"])
         assertEquals("distinctId", sent["distinct_id"])
         assertEquals("2023-09-20T11:58:49.000Z", sent["timestamp"])
-        // $lib and $lib_version come from the PostHog-Sdk-Info header
-        assertEquals(mapOf("prop" to "value"), sent.properties())
+        assertEquals(mapOf("prop" to "value", "\$lib" to "posthog-android", "\$lib_version" to "1.2.3"), sent.properties())
         assertNull(sent.options())
     }
 
@@ -895,7 +894,10 @@ internal class PostHogCaptureV1Test {
         assertEquals(uuid.toString(), sent["uuid"])
         assertEquals("session", sent["session_id"])
         assertEquals(mapOf<String, Any?>("process_person_profile" to false), sent.options())
-        assertEquals(mapOf<String, Any?>("a" to "b"), sent.properties())
+        assertEquals(
+            mapOf<String, Any?>("a" to "b", "\$lib" to "posthog-android", "\$lib_version" to "3.20.0"),
+            sent.properties(),
+        )
         assertTrue(sut.dequeList.isEmpty())
     }
 

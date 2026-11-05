@@ -8,7 +8,6 @@
 - **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times); retry 404, 408, 429, 500, 502, 503 and 504
 - **Breaking:** cap a `Retry-After` wait at 30 seconds, read it as a minimum wait and accept an HTTP date, and add up to 25% random jitter to the backoff, which still doubles from 1 to 30 seconds, for events, session replay and logs
 - **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`; PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
-- **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header, removing any value set in properties, super properties or `beforeSend`
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, dropping non-string values
 - **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties; PostHog drops an event whose option value it can't read
 - **Breaking:** set the `process_person_profile` option to `false` only when person processing is off, instead of adding a `$process_person_profile` property to every event

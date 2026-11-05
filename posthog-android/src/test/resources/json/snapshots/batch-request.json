@@ -38,6 +38,14 @@
           "$timezone": "UTC",
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
+          "$is_identified": false,
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$recording_status": "disabled",
+          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_internal_buffer_length": 0,
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$set": {
             "plan": "pro"
           },
@@ -47,12 +55,6 @@
           "$groups": {
             "company": "posthog"
           },
-          "$is_identified": false,
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "amount": 42.5,
           "currency": "USD",
           "items": [
@@ -88,6 +90,16 @@
           "$timezone": "UTC",
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
+          "$is_identified": true,
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
+          "$recording_status": "disabled",
+          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
+          "$sdk_debug_replay_capture_mode": "screenshot",
+          "$sdk_debug_replay_internal_buffer_length": 0,
+          "$sdk_debug_session_start": 1700000000123,
+          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$set": {
             "email": "person@example.com"
           },
@@ -97,14 +109,6 @@
           "$groups": {
             "company": "posthog"
           },
-          "$is_identified": true,
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_capture_mode": "screenshot",
-          "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_session_start": 1700000000123,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$anon_distinct_id": "anonymous-user"
         }
       },
@@ -134,6 +138,8 @@
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
           "$is_identified": true,
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
@@ -172,19 +178,21 @@
           "$timezone": "UTC",
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
-          "$groups": {
-            "company": "posthog"
-          },
           "$feature/snapshot-flag": "snapshot-variant",
           "$active_feature_flags": [
             "snapshot-flag"
           ],
           "$is_identified": true,
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
+          "$groups": {
+            "company": "posthog"
+          },
           "$feature_flag": "snapshot-flag",
           "$feature_flag_response": "snapshot-variant",
           "$feature_flag_request_id": "flag-request-123",
@@ -218,19 +226,21 @@
           "$timezone": "UTC",
           "$network_type": "wifi",
           "$network_carrier": "Snapshot Telecom",
-          "$groups": {
-            "company": "posthog"
-          },
           "$feature/snapshot-flag": "snapshot-variant",
           "$active_feature_flags": [
             "snapshot-flag"
           ],
           "$is_identified": true,
+          "$lib": "posthog-android",
+          "$lib_version": "<sdk-version>",
           "$recording_status": "disabled",
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
+          "$groups": {
+            "company": "posthog"
+          },
           "$exception_level": "error",
           "$exception_list": [
             {
