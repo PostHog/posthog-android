@@ -2,8 +2,10 @@
 
 Dokka (already applied to every module) writes one HTML page per symbol. BeautifulSoup reads each
 page's signature, parameters and description, and markdownify turns the description into Markdown.
-Our code only groups symbols by the `posthog-capability: <slug>` line in their KDoc, in the
-PostHog/sdk-specs README's order, and writes front matter. Untagged symbols go to SDK utils.
+Our code groups the clients' members by the sdk-specs capability `docs/capabilities.json` maps their
+label to, in the PostHog/sdk-specs README's order, and writes front matter. PostHog members the map
+lists under "utils" go to SDK utils. A PostHog member in neither, an unknown slug, or (for the
+declared major) a map entry with no member fails the run. "next" maps members only the next major has.
 
     pip install -r bin/docs_scripts/requirements.txt
     python3 bin/docs_scripts/generate_markdown.py --sdk-specs DIR [--major 4 --experimental]
@@ -13,6 +15,7 @@ Set GRADLE_ARGS for extra Gradle arguments.
 
 import argparse
 import functools
+import json
 import os
 import shlex
 import subprocess
@@ -24,7 +27,6 @@ from markdownify import markdownify
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = ["posthog", "posthog-android"]
 FIRST = ["setup", "capture", "identify"]
-TAG = "posthog-capability:"
 # Public classes users call, as Dokka folders. The interfaces come first because only they show defaults.
 CLIENTS = [
     ("PostHogAndroid", ["posthog-android/com.posthog.android/-post-hog-android/-companion"]),
@@ -89,24 +91,16 @@ def markdown(node, level: int) -> str:
         if not text.find_parent(["code", "pre"]):
             text.replace_with(str(text).translate(MDX))
     md = markdownify(str(node), strip=["a"], heading_style="ATX", bullets="-")
-    lines = [l for l in md.split("\n") if not l.strip().startswith(TAG)]
-    return "\n".join(lines).strip().replace("<br>", "<br />")
+    return md.strip().replace("<br>", "<br />")
 
 
-def tag(node) -> str | None:
-    for p in node.select("p"):
-        if p.get_text().strip().startswith(TAG):
-            return p.get_text().strip()[len(TAG) :].strip()
-    return None
-
-
-def entry(page: Path, label: str) -> tuple[str, str | None]:
-    """A member's page as one H3 entry, and its capability tag."""
+def entry(page: Path, label: str) -> str:
+    """A member's page as one H3 entry."""
     body = content(page).select_one(".content")
-    sig, found = signature(body), tag(body)
+    sig = signature(body)
     for s in body.select(".symbol"):
         s.decompose()
-    return f"### `{label}`\n\n```kotlin\n{sig}\n```\n\n{markdown(body, 4)}".strip(), found
+    return f"### `{label}`\n\n```kotlin\n{sig}\n```\n\n{markdown(body, 4)}".strip()
 
 
 @functools.cache
@@ -156,9 +150,13 @@ def capabilities(checkout: str) -> dict[str, str]:
     return {s: titles[s][0].upper() + titles[s][1:] for s in order if s in titles}
 
 
-def reference(caps: dict[str, str]) -> list[str]:
+def reference(caps: dict[str, str], current: bool) -> list[str]:
+    mapped = json.loads((ROOT / "docs/capabilities.json").read_text())
+    listed, upcoming = set(mapped.pop("utils")), mapped.pop("next", {})
+    if unknown := sorted(k for k, s in {**mapped, **upcoming}.items() if s not in caps):
+        raise SystemExit(f"docs/capabilities.json: unknown capability for {unknown}")
     tagged: dict[str, list[str]] = {}
-    utils, clients = [], []
+    utils, clients, labels = [], [], set()
     for cls, folders in CLIENTS:
         mine = []
         pages = {p.name: p for f in reversed(folders) for p in folder(f).glob("*.html") if p.name != "index.html"}
@@ -166,14 +164,19 @@ def reference(caps: dict[str, str]) -> list[str]:
             name = title(page)
             if name in HIDDEN:
                 continue
-            md, found = entry(page, f"{cls}.{name}")
-            if found and found not in caps:
-                raise SystemExit(f"{page}: unknown capability {found}")
+            label = f"{cls}.{name}"
+            labels.add(label)
+            found = mapped.get(label) or upcoming.get(label)
+            if not found and cls == "PostHog" and label not in listed:
+                raise SystemExit(f"{label} is not in docs/capabilities.json, map it or list it in utils")
+            md = entry(page, label)
             (tagged.setdefault(found, []) if found else mine).append(md)
         (utils if cls == "PostHog" else clients).append((cls, mine))
     for page in sorted(folder("posthog-android/com.posthog.android").glob("*.html")):
         if page.name != "index.html":  # Top-level functions, like the Compose modifier.
-            utils[0][1].append(entry(page, title(page))[0])
+            utils[0][1].append(entry(page, title(page)))
+    if current and (stale := sorted(set(mapped) - labels)):
+        raise SystemExit(f"docs/capabilities.json names no member: {stale}")
     out = []
     for slug, heading in caps.items():
         if slug in tagged:
@@ -227,7 +230,7 @@ def main() -> None:
     props = (ROOT / "gradle.properties").read_text().split("\n")
     declared = int(next(l for l in props if l.startswith("androidVersion=")).split("=")[1].split(".")[0])
     major = opts.major or declared
-    body = ["## Getting started", nest((ROOT / "docs/getting-started.md").read_text()), *reference(capabilities(opts.sdk_specs))]
+    body = ["## Getting started", nest((ROOT / "docs/getting-started.md").read_text()), *reference(capabilities(opts.sdk_specs), not opts.experimental)]
     title = f"PostHog Android SDK {major}.x" + (" (experimental)" if opts.experimental else "")
     (ROOT / "references").mkdir(exist_ok=True)
     write(f"posthog-android-{major}.md", [front_matter(title, body), *body])
