@@ -122,13 +122,22 @@ jobs:
                   java-version: '17'
                   distribution: 'temurin'
 
+            - name: 'Set up Python'
+              uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+              with:
+                  python-version: '3.13'
+
+            # The reference is docs, so it never blocks a release. The next release regenerates it.
             - name: Regenerate the SDK reference
+              continue-on-error: true
               env:
                   GH_TOKEN: ${{ steps.releaser.outputs.token }}
               run: |
                   gh repo clone PostHog/sdk-specs "$RUNNER_TEMP/sdk-specs" -- --depth 1
                   python3 -m pip install --quiet -r bin/docs_scripts/requirements.txt
                   python3 bin/docs_scripts/generate_markdown.py --sdk-specs "$RUNNER_TEMP/sdk-specs"
+                  # Stage the pages, so a new page shows in git status as a file, not as an untracked folder.
+                  git add references
 
             - name: Check for version bump changes
               id: check-changes

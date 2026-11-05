@@ -13,6 +13,8 @@ declared major) a map entry with no member fails the run. "next" maps members on
 Set GRADLE_ARGS for extra Gradle arguments.
 """
 
+from __future__ import annotations  # `str | None` on Python 3.9, macOS's built-in one
+
 import argparse
 import functools
 import json
@@ -37,10 +39,12 @@ HIDDEN = """PostHog PostHogCoreInterface PostHogInterface PostHogStateless PostH
 PostHogInternal PostHogExperimental PostHogVisibleForTesting PostHogInternalReplayApi
 PostHogReplayIntegration PostHogSurveysIntegration PostHogNativeCrashIntegration
 PostHogDrawableConverter PostHogOptInReceiver PostHogAndroid overrideSharedInstance resetSharedInstance""".split()
-# Members every class and enum has, and @PostHogInternal members of the config classes, which Dokka can't tell.
-NOISE = set("""equals hashCode toString copy valueOf values entries name ordinal Companion cachePreferences
-context dateProvider legacyStoragePrefix logger logsStoragePrefix networkStatus replayStoragePrefix sdkName
-sdkVersion serializer snapshotEndpoint storagePrefix""".split())
+# Members every class and enum has, which say nothing about the SDK.
+NOISE = set("equals hashCode toString copy valueOf values entries name ordinal Companion".split())
+# @PostHogInternal is @MustBeDocumented, so Dokka prints it in the signature of every internal member.
+INTERNAL = "@PostHogInternal"
+# The core PostHog.setup and PostHog.with skip the Android integrations; apps call PostHogAndroid's.
+CORE_ONLY = {"PostHog.setup", "PostHog.with"}
 MDX = str.maketrans({"{": "&#123;", "}": "&#125;"})  # MDX 1 reads braces as JSX
 
 
@@ -85,12 +89,19 @@ def lists(node) -> None:
 
 def markdown(node, level: int) -> str:
     lists(node)
+    for el in node.select(".top-right-position"):  # Dokka's copy button
+        el.decompose()
+    for br in node.select("pre br"):
+        br.replace_with("\n")
     for h in node.find_all(["h2", "h3", "h4"]):
         h.name = f"h{min(level, 6)}"
     for text in node.find_all(string=True):  # braces in prose only; code keeps them
         if not text.find_parent(["code", "pre"]):
             text.replace_with(str(text).translate(MDX))
-    md = markdownify(str(node), strip=["a"], heading_style="ATX", bullets="-")
+    md = markdownify(
+        str(node), strip=["a"], heading_style="ATX", bullets="-",
+        code_language_callback=lambda el: "kotlin" if el.select_one(".lang-kotlin") else "",
+    )
     return md.strip().replace("<br>", "<br />")
 
 
@@ -131,6 +142,8 @@ def type_entry(page: Path, name: str) -> str:
                 continue
             brief = row.select_one(".brief")
             sig = signature(row) if row.select_one(".symbol") else link.get_text()
+            if INTERNAL in sig:
+                continue
             rows.append(f"- `{sig}`" + (f": {markdown(brief, 5)}" if brief else ""))
         if rows:
             parts.append(f"#### {heading}\n\n" + "\n".join(rows))
@@ -165,6 +178,8 @@ def reference(caps: dict[str, str], current: bool) -> list[str]:
             if name in HIDDEN:
                 continue
             label = f"{cls}.{name}"
+            if label in CORE_ONLY or INTERNAL in signature(content(page).select_one(".content")):
+                continue
             labels.add(label)
             found = mapped.get(label) or upcoming.get(label)
             if not found and cls == "PostHog" and label not in listed:
