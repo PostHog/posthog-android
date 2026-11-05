@@ -19,7 +19,6 @@ You need to change code if your app does any of these:
 - sets an empty distinct ID in `beforeSend`
 - assigns a new map to `event.options` in `beforeSend` (see [Event options](#event-options))
 - sets `projectToken` to a personal API key (`phx_...`)
-- sets `$lib` or `$lib_version` and expects PostHog to store that value
 - reads `$session_id` or `$window_id` from the raw request body, for example in a proxy
 - sets `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` or `$product_tour_id` to a value PostHog can't read, such as `"maybe"`
 - registers a super property, or passes an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expects the SDK's value to win
@@ -388,13 +387,6 @@ A map key in the properties that isn't a string is converted to one when it's a 
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
 `identify()` with an empty or whitespace-only distinct ID is still ignored, as in 3.x.
-
-## SDK identity
-
-PostHog sets `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header, for example `posthog-android/4.0.0`.
-The SDK removes `$lib` and `$lib_version` from the properties it sends to capture v1.
-A value you set in properties, in a super property or in `beforeSend` doesn't reach PostHog.
-The SDK removes them when it sends the event, so `beforeSend` still sees them.
 
 ## Property precedence
 

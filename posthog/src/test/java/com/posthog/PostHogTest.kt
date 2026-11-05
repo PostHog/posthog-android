@@ -703,6 +703,8 @@ internal class PostHogTest {
                 "\$feature_flag_reason",
                 "\$feature_flag_request_id",
                 "\$groups",
+                "\$lib",
+                "\$lib_version",
             )
         assertEquals(expectedKeys, theEvent.properties!!.keys)
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
