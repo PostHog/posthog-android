@@ -42,6 +42,6 @@
 - Cap a capture request at about 5 MiB of events and send as soon as that much is queued
 - Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - Stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
-- Stop printing request and response bodies, property values and `beforeSend` exception messages in debug logs, and log per-batch drop and retry counts instead
+- Stop printing analytics and AI event request and response bodies, property values and `beforeSend` exception messages in debug logs, and log per-batch drop and retry counts instead
 - Fix losing an event whose properties hold a nested map with non-string keys; number, boolean and `null` keys are converted to strings
 - Fix `beforeSend` edits reaching the caller's nested maps and lists, by giving each hook its own copy
