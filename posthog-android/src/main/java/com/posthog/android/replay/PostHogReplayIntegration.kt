@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -14,14 +13,12 @@ import android.graphics.Point
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
-import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.VectorDrawable
 import android.os.Build
 import android.os.Handler
@@ -29,8 +26,6 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.text.InputType
-import android.util.TypedValue
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -43,25 +38,26 @@ import android.view.WindowManager
 import android.view.WindowManager.LayoutParams.FLAG_SECURE
 import android.webkit.WebView
 import android.widget.Button
-import android.widget.CheckBox
-import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.ProgressBar
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.RatingBar
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogEventName
@@ -103,7 +99,6 @@ import com.posthog.internal.replay.RRMetaEvent
 import com.posthog.internal.replay.RRMouseInteraction
 import com.posthog.internal.replay.RRMutatedNode
 import com.posthog.internal.replay.RRRemovedNode
-import com.posthog.internal.replay.RRStyle
 import com.posthog.internal.replay.RRWireframe
 import com.posthog.internal.replay.capture
 import curtains.Curtains
@@ -125,6 +120,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 public class PostHogReplayIntegration(
@@ -265,9 +262,6 @@ public class PostHogReplayIntegration(
     private val isNativeSdk: Boolean
         get() = (config.sdkName != "posthog-flutter")
 
-    private val isScreenshotCapable: Boolean
-        get() = config.sessionReplayConfig.screenshot || !isNativeSdk
-
     @Volatile
     private var postHog: PostHogInterface? = null
 
@@ -314,7 +308,7 @@ public class PostHogReplayIntegration(
     }
 
     // Reused across frames; draw-time walks only ever run on the main thread.
-    private val drawSampleWalk = MaskWalk()
+    private val drawSampleWalk = MaskWalk(reuseTextLayouts = true)
 
     internal fun onDrawCallback(
         view: View,
@@ -322,15 +316,21 @@ public class PostHogReplayIntegration(
     ) {
         // Keep this first so a draw that overlaps the verified pre-walk cannot go unnoticed.
         drawState.recordDraw()
+        // A text style change only shows up in a new layout result, and it has to draw to reach pixels.
+        textPaintedBoundsCache.clear()
 
         val classifyLegacyDraw =
             !shouldVerifyMaskAlignment(view, drawState) ||
                 drawState.isLegacyCaptureActive
         if (classifyLegacyDraw) {
             val isOnlyAnimationRedraw =
-                isScreenshotCapable &&
-                    !drawState.didLayoutSinceReset &&
-                    (view.hasTransientState() || view.hasActiveSurfaceRendering()) &&
+                !drawState.didLayoutSinceReset &&
+                    // The surface scan walks the whole tree, so it runs only while a legacy
+                    // capture can read the verdict; beginLegacyCapture resets it anyway.
+                    (
+                        view.hasTransientState() ||
+                            (drawState.isLegacyCaptureActive && view.hasActiveSurfaceRendering())
+                    ) &&
                     !view.isAnimationRunning()
             drawState.recordLegacyAnimationRedraw(isOnlyAnimationRedraw)
         }
@@ -408,20 +408,7 @@ public class PostHogReplayIntegration(
                                             return@onNextDraw
                                         }
 
-                                        if (config.sessionReplayConfig.screenshot) {
-                                            requestSceneCapture(decorView, drawState)
-                                        } else {
-                                            submitCapture(drawState) {
-                                                try {
-                                                    if (decorViews[decorView]?.drawState !== drawState) {
-                                                        return@submitCapture
-                                                    }
-                                                    generateSnapshot(WeakReference(decorView), WeakReference(window))
-                                                } catch (e: Throwable) {
-                                                    config.logger.log("Session Replay generateSnapshot failed: $e.")
-                                                }
-                                            }
-                                        }
+                                        requestSceneCapture(decorView, drawState)
                                     }
 
                                 val layoutListener =
@@ -434,7 +421,7 @@ public class PostHogReplayIntegration(
 
                                 val status = ViewTreeSnapshotStatus(listener, layoutListener, drawState = drawState)
                                 decorViews[decorView] = status
-                                if (isActive() && isNativeSdk && config.sessionReplayConfig.screenshot) {
+                                if (isActive() && isNativeSdk) {
                                     mainHandler.handler.post { requestSceneCapture(decorView, drawState) }
                                 }
                             } catch (e: Throwable) {
@@ -490,7 +477,7 @@ public class PostHogReplayIntegration(
         drawState: WindowDrawState? = null,
     ) {
         try {
-            if (!isNativeSdk || !config.sessionReplayConfig.screenshot) return
+            if (!isNativeSdk) return
             val generation =
                 synchronized(decorViews) {
                     if (!isActive()) return
@@ -731,18 +718,21 @@ public class PostHogReplayIntegration(
         val dimIndex = layers.indexOfLast { it.dimAmount > 0f }
         if (dimIndex >= 0) {
             val base = scene.first()
-            scene.add(
-                dimIndex,
-                RRWireframe(
-                    id = DIM_LAYER_ID,
-                    x = base.x,
-                    y = base.y,
-                    width = base.width,
-                    height = base.height,
-                    type = "rectangle",
-                    style = RRStyle(backgroundColor = "rgba(0,0,0,${layers[dimIndex].dimAmount})"),
-                ),
-            )
+            // 4.0 wireframes carry no style, so the dim is a small translucent image the player stretches.
+            dimScreenshotBase64(layers[dimIndex].dimAmount)?.let { dim ->
+                scene.add(
+                    dimIndex,
+                    RRWireframe(
+                        id = DIM_LAYER_ID,
+                        x = base.x,
+                        y = base.y,
+                        width = base.width,
+                        height = base.height,
+                        type = "screenshot",
+                        base64 = dim,
+                    ),
+                )
+            }
         }
         // Do not hold the producer lock while waiting for main: start/stop also need it.
         val metadata =
@@ -814,7 +804,7 @@ public class PostHogReplayIntegration(
     private val onRootViewsChangedListener =
         OnRootViewsChangedListener { view, added ->
             addView(view, added)
-            if (isActive() && isNativeSdk && config.sessionReplayConfig.screenshot) {
+            if (isActive() && isNativeSdk) {
                 // Curtains notifies before it updates rootViews. Read the completed topology later.
                 mainHandler.handler.post { requestSceneCapture() }
             }
@@ -1207,7 +1197,7 @@ public class PostHogReplayIntegration(
                             }
                         }
                     }
-                    val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window), forceScreenshot = true)
+                    val delivered = generateSnapshot(WeakReference(decorView), WeakReference(window))
                     if (!delivered) {
                         config.logger.log("Session Replay bridge capture produced no frame (will retry next tick).")
                     }
@@ -1223,25 +1213,12 @@ public class PostHogReplayIntegration(
         }
     }
 
-    private fun Resources.Theme.toRGBColor(): String? {
-        val value = TypedValue()
-        resolveAttribute(android.R.attr.windowBackground, value, true)
-        return if (value.type >= TypedValue.TYPE_FIRST_COLOR_INT &&
-            value.type <= TypedValue.TYPE_LAST_COLOR_INT
-        ) {
-            value.data
-        } else {
-            null
-        }?.toRGBColor()
-    }
-
     // internal (not private) so tests can drive a snapshot pass directly.
     // Returns whether a frame was actually produced (false on every early bail),
     // so the bridge caller can tell "captured" from "silently skipped".
     internal fun generateSnapshot(
         viewRef: WeakReference<View>,
         windowRef: WeakReference<Window>,
-        forceScreenshot: Boolean = false,
     ): Boolean {
         if (!isActive()) return false
         val postHog = postHog ?: return false
@@ -1260,28 +1237,11 @@ public class PostHogReplayIntegration(
 
         val timestamp = config.dateProvider.currentTimeMillis()
 
-        val useScreenshot = config.sessionReplayConfig.screenshot || forceScreenshot
         val wireframe =
-            if (useScreenshot) {
-                view.toScreenshotWireframe(
-                    window,
-                    status.drawState,
-                ) ?: return false
-            } else if (window.isSecure()) {
-                view.toSecureWireframe() ?: return false
-            } else {
-                val tree = view.toWireframe() ?: return false
-                // The window can turn secure while the tree is walked.
-                if (window.isSecure()) view.toSecureWireframe() ?: return false else tree
-            }
-
-        // if the decorView has no backgroundColor, we use the theme color
-        // no need to do this if we are capturing a screenshot
-        if (wireframe.style?.backgroundColor == null && !useScreenshot) {
-            context.theme?.toRGBColor()?.let {
-                wireframe.style?.backgroundColor = it
-            }
-        }
+            view.toScreenshotWireframe(
+                window,
+                status.drawState,
+            ) ?: return false
 
         val events =
             synchronized(decorViews) {
@@ -1355,40 +1315,21 @@ public class PostHogReplayIntegration(
             events.add(event)
             status.sentFullSnapshot = true
         } else {
+            // Each window sends one screenshot node, so a frame is an update to that node.
             val lastSnapshot = status.lastSnapshot
-            val lastSnapshots = if (lastSnapshot != null) listOf(lastSnapshot) else emptyList()
-            val (addedItems, removedItems, updatedItems) =
-                findAddedAndRemovedItems(
-                    lastSnapshots.flattenChildren(),
-                    listOf(wireframe).flattenChildren(),
-                )
+            val incrementalMutationData =
+                when {
+                    lastSnapshot == null -> RRIncrementalMutationData(adds = listOf(RRMutatedNode(wireframe)))
+                    lastSnapshot.id != wireframe.id ->
+                        RRIncrementalMutationData(
+                            adds = listOf(RRMutatedNode(wireframe)),
+                            removes = listOf(RRRemovedNode(lastSnapshot.id)),
+                        )
+                    lastSnapshot != wireframe -> RRIncrementalMutationData(updates = listOf(RRMutatedNode(wireframe)))
+                    else -> null
+                }
 
-            val addedNodes = mutableListOf<RRMutatedNode>()
-            addedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                addedNodes.add(item)
-            }
-
-            val removedNodes = mutableListOf<RRRemovedNode>()
-            removedItems.forEach {
-                val item = RRRemovedNode(it.id, parentId = it.parentId)
-                removedNodes.add(item)
-            }
-
-            val updatedNodes = mutableListOf<RRMutatedNode>()
-            updatedItems.forEach {
-                val item = RRMutatedNode(it, parentId = it.parentId)
-                updatedNodes.add(item)
-            }
-
-            if (addedNodes.isNotEmpty() || removedNodes.isNotEmpty() || updatedNodes.isNotEmpty()) {
-                val incrementalMutationData =
-                    RRIncrementalMutationData(
-                        adds = addedNodes.ifEmpty { null },
-                        removes = removedNodes.ifEmpty { null },
-                        updates = updatedNodes.ifEmpty { null },
-                    )
-
+            if (incrementalMutationData != null) {
                 val incrementalSnapshotEvent =
                     RRIncrementalSnapshotEvent(
                         mutationData = incrementalMutationData,
@@ -1463,8 +1404,8 @@ public class PostHogReplayIntegration(
 
     /**
      * Checks whether the view has a non-empty visible rect. Walk callers pass their walk so
-     * its scratch objects are reused; other callers allocate per call (see the wireframe
-     * vs delayed-screenshot-walk race test).
+     * its scratch objects are reused; other callers allocate per call (see the concurrent
+     * capture vs delayed-screenshot-walk race test).
      */
     private fun View.hasGlobalVisibleRect(walk: MaskWalk? = null): Boolean {
         return if (isViewStateStableForMatrixOperations()) {
@@ -1530,7 +1471,11 @@ public class PostHogReplayIntegration(
     internal class MaskWalk(
         val failClosed: Boolean = true,
         private val shouldAbort: (() -> Boolean)? = null,
+        // True for walks re-checking a capture's first walk; false re-measures text.
+        val reuseTextLayouts: Boolean = false,
     ) {
+        var textLayoutsCleared: Boolean = false
+
         val rects: MutableList<Rect> = mutableListOf()
         var poisoned: Boolean = false
         var aborted: Boolean = false
@@ -1757,7 +1702,7 @@ public class PostHogReplayIntegration(
         // Only reached for a Compose view, so Compose is on the classpath. Compose bounds are
         // window coordinates, the touch is relative to the decor view.
         private fun hasComposeMaskAt(view: View): Boolean {
-            val root = (view as? RootForTest)?.semanticsOwner?.rootSemanticsNode ?: return false
+            val root = (view as? RootForTest)?.semanticsOwner?.unmergedRootSemanticsNode ?: return false
             return root.hasPostHogMaskAt(Offset(decorX + windowOffset[0], decorY + windowOffset[1]))
         }
     }
@@ -1895,7 +1840,13 @@ public class PostHogReplayIntegration(
                             config.logger.log("View is not a RootForTest: $view")
                             return@Runnable
                         }
-                    val semanticsNodes = semanticsOwner.getAllSemanticsNodes(true)
+                    // Once per walk: a walk visits every ComposeView, all sharing this cache.
+                    if (!walk.reuseTextLayouts && !walk.textLayoutsCleared) {
+                        textPaintedBoundsCache.clear()
+                        walk.textLayoutsCleared = true
+                    }
+                    // Unmerged: a merged node inherits a child's postHogUnmask, exposing its siblings.
+                    val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
                     val unmaskedLayouts = mutableSetOf<LayoutInfo>()
 
                     semanticsNodes.forEach { node ->
@@ -1917,7 +1868,7 @@ public class PostHogReplayIntegration(
 
                             // postHogMask forces masking
                             isMaskEnabled -> {
-                                maskableWidgets.add(node.boundsInWindow.toRect())
+                                maskableWidgets.add(node.maskBounds())
                             }
 
                             // no active modifier, apply default config rules
@@ -1925,11 +1876,17 @@ public class PostHogReplayIntegration(
                                 when {
                                     (hasText || hasEditableText) &&
                                         (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
-                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                        maskableWidgets.add(node.maskBounds())
                                     }
 
                                     hasImage && config.sessionReplayConfig.maskAllImages -> {
-                                        maskableWidgets.add(node.boundsInWindow.toRect())
+                                        maskableWidgets.add(node.maskBounds())
+                                    }
+
+                                    // clearAndSetSemantics hides what the node draws, so assume it is sensitive.
+                                    node.config.isClearingSemantics &&
+                                        (config.sessionReplayConfig.maskAllTextInputs || config.sessionReplayConfig.maskAllImages) -> {
+                                        maskableWidgets.add(node.maskBounds())
                                     }
                                 }
                             }
@@ -1959,11 +1916,136 @@ public class PostHogReplayIntegration(
             for (rect in maskableWidgets) {
                 walk.addRect(rect)
             }
-        } else if (walk.failClosed) {
-            // Compose mask rects are missing or incomplete, so fail closed.
+        } else if (walk.failClosed || completed) {
+            // Compose mask rects are missing or incomplete, so fail closed. Legacy walks only tolerate a timeout.
             walk.poisoned = true
         }
     }
+
+    // Text can draw past its layout box, so cover what it paints, mapped through the node's transforms.
+    private fun SemanticsNode.maskBounds(): Rect {
+        val bounds = boundsInWindow.toRect()
+        val painted = textPaintedBounds() ?: return bounds
+        val coordinates = layoutInfo.coordinates
+        if (!coordinates.isAttached) {
+            return bounds
+        }
+        val corners =
+            listOf(painted.topLeft, painted.topRight, painted.bottomLeft, painted.bottomRight)
+                .map { coordinates.localToWindow(it) }
+        bounds.union(
+            floor(corners.minOf { it.x }).toInt(),
+            floor(corners.minOf { it.y }).toInt(),
+            ceil(corners.maxOf { it.x }).toInt(),
+            ceil(corners.maxOf { it.y }).toInt(),
+        )
+        return bounds
+    }
+
+    private class CachedTextPaintedBounds(
+        val text: List<AnnotatedString>?,
+        val size: IntSize,
+        val bounds: androidx.compose.ui.geometry.Rect?,
+    )
+
+    // clearAndSetSemantics also wipes text semantics on its own layout node, so read them from the text's
+    // modifier. Throws when that can't be read, which discards the frame. Reflection: these APIs are newer
+    // than the version the SDK compiles against.
+    private fun SemanticsNode.textSemantics(): SemanticsConfiguration {
+        if (!config.isClearingSemantics) {
+            return config
+        }
+        for (info in layoutInfo.getModifierInfo()) {
+            val coordinates = info.coordinates
+            val node = coordinates.javaClass.getMethod("getTail").invoke(coordinates) ?: continue
+            val applySemantics =
+                try {
+                    node.javaClass.getMethod("applySemantics", SemanticsPropertyReceiver::class.java)
+                } catch (e: NoSuchMethodException) {
+                    check(!node.isDelegatingNode()) { "Can't read the semantics delegated by $node" }
+                    continue
+                }
+            val semantics = SemanticsConfiguration()
+            applySemantics.invoke(node, semantics)
+            if (semantics.contains(SemanticsProperties.Text)) {
+                return semantics
+            }
+        }
+        return config
+    }
+
+    private fun Any.isDelegatingNode(): Boolean {
+        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == "androidx.compose.ui.node.DelegatingNode" }
+    }
+
+    // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so a capture's walks
+    // share the result until the next draw. Main thread only, like the traversal that reads it.
+    private val textPaintedBoundsCache = HashMap<Int, CachedTextPaintedBounds>()
+
+    private fun SemanticsNode.textPaintedBounds(): androidx.compose.ui.geometry.Rect? {
+        val semantics = textSemantics()
+        if (!semantics.contains(SemanticsProperties.Text) || semantics.contains(SemanticsProperties.EditableText)) {
+            return null
+        }
+        val text = semantics.getOrNull(SemanticsProperties.Text)
+        textPaintedBoundsCache[id]?.let {
+            if (it.text == text && it.size == size) {
+                return it.bounds
+            }
+        }
+        return measureTextPaintedBounds(semantics).also {
+            textPaintedBoundsCache[id] = CachedTextPaintedBounds(text, size, it)
+        }
+    }
+
+    // Local bounds of what the text paints outside its layout box, or null if it stays inside.
+    private fun SemanticsNode.measureTextPaintedBounds(semantics: SemanticsConfiguration): androidx.compose.ui.geometry.Rect? {
+        val results = mutableListOf<TextLayoutResult>()
+        if (semantics.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results) != true) {
+            return null
+        }
+        val layout = results.firstOrNull() ?: return null
+        val input = layout.layoutInput
+        var glyphs = androidx.compose.ui.geometry.Rect(0f, 0f, size.width.toFloat(), size.height.toFloat())
+        var overdraws = false
+        if (input.overflow == TextOverflow.Visible) {
+            val paragraph = layout.multiParagraph
+            // This result is re-wrapped to the box, but softWrap = false draws one unwrapped line.
+            val width = if (input.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
+            glyphs = glyphs.copy(right = max(glyphs.right, width), bottom = max(glyphs.bottom, paragraph.height))
+            overdraws = true
+        }
+        val strokes = listOfNotNull(input.style.textStroke()) + input.text.spanStyles.mapNotNull { it.item.textStroke() }
+        strokes.maxOfOrNull { it.width / 2 * max(1f, it.miter) }?.let {
+            glyphs = glyphs.inflate(it)
+            overdraws = true
+        }
+        var painted = glyphs
+        val shadows = listOfNotNull(input.style.shadow) + input.text.spanStyles.mapNotNull { it.item.shadow }
+        for (shadow in shadows) {
+            // Skia's Gaussian blur reaches about 1.73x the radius.
+            painted = painted.expandToInclude(glyphs.translate(shadow.offset).inflate(shadow.blurRadius * 2))
+            overdraws = true
+        }
+        return if (overdraws) painted else null
+    }
+
+    // drawStyle arrived in Compose 1.4, after the version the SDK compiles against. Older runtimes can't stroke text.
+    private fun Any.textStroke(): Stroke? {
+        return try {
+            javaClass.getMethod("getDrawStyle").invoke(this) as? Stroke
+        } catch (e: NoSuchMethodException) {
+            null
+        }
+    }
+
+    private fun androidx.compose.ui.geometry.Rect.expandToInclude(other: androidx.compose.ui.geometry.Rect) =
+        androidx.compose.ui.geometry.Rect(
+            min(left, other.left),
+            min(top, other.top),
+            max(right, other.right),
+            max(bottom, other.bottom),
+        )
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
@@ -2260,7 +2342,7 @@ public class PostHogReplayIntegration(
                 if (width != sourceWidth || height != sourceHeight) {
                     return@runOnMainThreadBlocking null
                 }
-                MaskWalk().also {
+                MaskWalk(reuseTextLayouts = true).also {
                     if (!drawState.isCaptureInvalid(armedCapture.token)) {
                         findMaskableWidgets(this, it)
                     }
@@ -2398,6 +2480,25 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun dimScreenshotBase64(dimAmount: Float): String? {
+        val bitmap =
+            try {
+                Bitmap.createBitmap(DIM_BITMAP_SIZE, DIM_BITMAP_SIZE, Bitmap.Config.ARGB_8888)
+            } catch (e: Throwable) {
+                config.logger.log("Session Replay screenshot setup failed: $e.")
+                return null
+            }
+        return try {
+            bitmap.eraseColor(Color.argb((dimAmount.coerceIn(0f, 1f) * 255).roundToInt(), 0, 0, 0))
+            bitmap.webpBase64(config.sessionReplayConfig.screenshotCompressionQuality)
+        } catch (e: Throwable) {
+            config.logger.log("Session Replay screenshot encoding failed: $e.")
+            null
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private class ScreenshotGeometry(
         val x: Int,
         val y: Int,
@@ -2460,23 +2561,29 @@ public class PostHogReplayIntegration(
         val height = sourceHeight.densityValue(screenDensity)
         val maskWholeDialog = isDialog && Build.VERSION.SDK_INT < Build.VERSION_CODES.P
 
-        fun maskedDialog(): RRWireframe =
-            RRWireframe(
-                id = viewId,
-                x = x,
-                y = y,
-                width = width,
-                height = height,
-                type = "rectangle",
-                style = RRStyle(backgroundColor = "#000000"),
-            )
-
         val screenshotScale = resolveScreenshotScale(config.sessionReplayConfig.screenshotScale, screenDensity)
         val targetWidth = scaledScreenshotDimension(sourceWidth, screenshotScale)
         val targetHeight = scaledScreenshotDimension(sourceHeight, screenshotScale)
         val copySize = twoStageCopySize(sourceWidth, sourceHeight, targetWidth, targetHeight)
         val (copyWidth, copyHeight) = copySize ?: (targetWidth to targetHeight)
         val compressionQuality = config.sessionReplayConfig.screenshotCompressionQuality
+
+        // Recorded as one masked screenshot, as for a FLAG_SECURE window.
+        fun maskedDialog(): Screenshot? =
+            maskedScreenshotBase64(targetWidth, targetHeight, bitmapConfig, compressionQuality)?.let {
+                Screenshot(
+                    RRWireframe(
+                        id = viewId,
+                        x = x,
+                        y = y,
+                        width = width,
+                        height = height,
+                        type = "screenshot",
+                        base64 = it,
+                    ),
+                    null,
+                )
+            }
         var base64: String? = null
         var paintedMasks: List<Rect>? = null
         var secure = geometry.secure
@@ -2505,7 +2612,6 @@ public class PostHogReplayIntegration(
                     height = height,
                     type = "screenshot",
                     base64 = base64,
-                    style = RRStyle(),
                 ),
                 null,
                 secure = true,
@@ -2528,11 +2634,11 @@ public class PostHogReplayIntegration(
         if (verifyMaskAlignment && armedCapture == null) {
             config.logger.log("Session Replay screenshot discarded due to screen changes.")
             recordScreenshotDiscarded(drawState)
-            return if (maskWholeDialog) Screenshot(maskedDialog(), null) else null
+            return if (maskWholeDialog) maskedDialog() else null
         }
         if (maskWholeDialog && armedCapture!!.preWalk.rects.isNotEmpty()) {
             finishScreenshotCapture(drawState, armedCapture, verifyMaskAlignment)
-            return Screenshot(maskedDialog(), null)
+            return maskedDialog()
         }
 
         if (sourceWidth <= 0 || sourceHeight <= 0 || view.width != sourceWidth || view.height != sourceHeight) {
@@ -2690,7 +2796,7 @@ public class PostHogReplayIntegration(
         // instead; the caller retries on the next capture.
         if (base64 == null) {
             recordScreenshotDiscarded(drawState)
-            return if (maskWholeDialog) Screenshot(maskedDialog(), null) else null
+            return if (maskWholeDialog) maskedDialog() else null
         }
         drawState.resetScreenshotDiscards()
 
@@ -2703,7 +2809,6 @@ public class PostHogReplayIntegration(
                 height = height,
                 type = "screenshot",
                 base64 = base64,
-                style = RRStyle(),
             ),
             paintedMasks.takeUnless { secure },
             secure,
@@ -2717,503 +2822,6 @@ public class PostHogReplayIntegration(
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
         return this.isTextInputSensitive(ancestorUnmasked)
-    }
-
-    // A FLAG_SECURE window is recorded as one black rectangle, with nothing from its view tree.
-    private fun View.toSecureWireframe(): RRWireframe? {
-        if (!isVisible()) {
-            return null
-        }
-        val coordinates = IntArray(2)
-        if (isViewStateStableForMatrixOperations()) {
-            getLocationOnScreen(coordinates)
-        }
-        return RRWireframe(
-            id = System.identityHashCode(this),
-            x = coordinates[0].densityValue(screenDensity),
-            y = coordinates[1].densityValue(screenDensity),
-            width = width.densityValue(screenDensity),
-            height = height.densityValue(screenDensity),
-            style = RRStyle().apply { backgroundColor = "#000000" },
-        )
-    }
-
-    private fun View.toWireframe(
-        parentId: Int? = null,
-        ancestorUnmasked: Boolean = false,
-    ): RRWireframe? {
-        val view = this
-        if (!view.isVisible()) {
-            return null
-        }
-
-        val isUnmasked = ancestorUnmasked || view.isUnmasked()
-
-        val viewId = System.identityHashCode(view)
-
-        val coordinates = IntArray(2)
-        if (view.isViewStateStableForMatrixOperations()) {
-            view.getLocationOnScreen(coordinates)
-        } else {
-            // Use zero coordinates as fallback when view state is unstable
-            coordinates[0] = 0
-            coordinates[1] = 0
-        }
-        val x = coordinates[0].densityValue(screenDensity)
-        val y = coordinates[1].densityValue(screenDensity)
-        val width = view.width.densityValue(screenDensity)
-        val height = view.height.densityValue(screenDensity)
-        var base64: String? = null
-
-        var type: String? = null
-        if (view.id == android.R.id.statusBarBackground) {
-            type = "status_bar"
-        }
-        if (view.id == android.R.id.navigationBarBackground) {
-            type = "navigation_bar"
-        }
-
-        val style = RRStyle()
-        view.background?.let { background ->
-            background.toRGBColor()?.let { color ->
-                style.backgroundColor = color
-            } ?: run {
-                style.backgroundImage = background.base64(view.width, view.height)
-            }
-        }
-
-        var checked: Boolean? = null
-
-        var text: String? = null
-        var inputType: String? = null
-        var value: Any? = null
-        // button inherits from textview
-        if (view is TextView) {
-            val viewText = view.text?.toString()
-            if (!viewText.isNullOrEmpty()) {
-                text =
-                    if (!view.shouldMaskTextView(isUnmasked)) {
-                        viewText
-                    } else {
-                        viewText.mask()
-                    }
-            }
-
-            val hint = view.hint?.toString()
-            if (text.isNullOrEmpty() && !hint.isNullOrEmpty()) {
-                text =
-                    if (!view.shouldMaskTextView(isUnmasked)) {
-                        hint
-                    } else {
-                        hint.mask()
-                    }
-            }
-
-            type = "text"
-            style.color = view.currentTextColor.toRGBColor()
-
-            // CompoundButton is a subclass of CheckBox, RadioButton, Switch, etc
-            if (view is Button && view !is CompoundButton) {
-                style.borderWidth = 1
-                style.borderColor = "#000000"
-                type = "input"
-                inputType = "button"
-                value = text
-                text = null
-            }
-//            TODO: do this when we upgrade API to 34
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-//                style.fontFamily = view.typeface?.systemFontFamilyName
-//            } else {
-            view.typeface?.let {
-                when (it) {
-                    Typeface.DEFAULT -> style.fontFamily = "sans-serif"
-                    Typeface.DEFAULT_BOLD -> style.fontFamily = "sans-serif-bold"
-                    Typeface.MONOSPACE -> style.fontFamily = "monospace"
-                    Typeface.SERIF -> style.fontFamily = "serif"
-                }
-            }
-//            }
-            style.fontSize = view.textSize.toInt().densityValue(screenDensity)
-            when (view.textAlignment) {
-                View.TEXT_ALIGNMENT_CENTER -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "center"
-                }
-                View.TEXT_ALIGNMENT_TEXT_END, View.TEXT_ALIGNMENT_VIEW_END -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "right"
-                }
-                View.TEXT_ALIGNMENT_TEXT_START, View.TEXT_ALIGNMENT_VIEW_START -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "left"
-                }
-                View.TEXT_ALIGNMENT_GRAVITY -> {
-                    val horizontalAlignment =
-                        when (view.gravity.and(Gravity.HORIZONTAL_GRAVITY_MASK)) {
-                            Gravity.START, Gravity.LEFT -> "left"
-                            Gravity.END, Gravity.RIGHT -> "right"
-                            Gravity.CENTER, Gravity.CENTER_HORIZONTAL -> "center"
-                            else -> "left"
-                        }
-                    style.horizontalAlign = horizontalAlignment
-
-                    val verticalAlignment =
-                        when (view.gravity.and(Gravity.VERTICAL_GRAVITY_MASK)) {
-                            Gravity.TOP -> "top"
-                            Gravity.BOTTOM -> "bottom"
-                            Gravity.CENTER_VERTICAL, Gravity.CENTER -> "center"
-                            else -> "center"
-                        }
-                    style.verticalAlign = verticalAlignment
-                }
-                else -> {
-                    style.verticalAlign = "center"
-                    style.horizontalAlign = "left"
-                }
-            }
-
-            // left, top, right, bottom
-            view.compoundDrawables.forEachIndexed { index, drawable ->
-                drawable?.let {
-                    val drawableBase64 = it.base64(view.width, view.height)
-                    // TODO: the 2 other possible drawables (top and bottom are not common)
-                    when (index) {
-                        0 -> style.iconLeft = drawableBase64
-//                        1 -> style.iconTop = drawableBase64
-                        2 -> style.iconRight = drawableBase64
-//                        3 -> style.iconBottom = drawableBase64
-                    }
-                }
-            }
-
-            // Do not set padding if the text is centered, otherwise the padding will be off
-            if (style.verticalAlign != "center") {
-                style.paddingTop = view.totalPaddingTop.densityValue(screenDensity)
-                style.paddingBottom = view.totalPaddingBottom.densityValue(screenDensity)
-            }
-            if (style.horizontalAlign != "center") {
-                style.paddingLeft = view.totalPaddingLeft.densityValue(screenDensity)
-                style.paddingRight = view.totalPaddingRight.densityValue(screenDensity)
-            }
-        }
-
-        var label: String? = null
-        if (view is CheckBox) {
-            type = "input"
-            inputType = "checkbox"
-            label = text
-            text = null
-            checked = view.isChecked
-        }
-        if (view is RadioGroup) {
-            type = "radio_group"
-        }
-        if (view is RadioButton) {
-            type = "input"
-            inputType = "radio"
-            label = text
-            text = null
-            checked = view.isChecked
-        }
-
-        if (view is EditText) {
-            type = "input"
-            inputType = "text_area"
-            value = text
-            text = null
-        }
-        var options: List<String>? = null
-        if (view is Spinner) {
-            type = "input"
-            inputType = "select"
-            val mask = view.shouldMaskSpinner(isUnmasked)
-            view.selectedItem?.let {
-                val theValue =
-                    if (!mask) {
-                        it.toString()
-                    } else {
-                        it.toString().mask()
-                    }
-                value = theValue
-            }
-
-            view.adapter?.let {
-                val items = mutableListOf<String>()
-                for (i in 0 until it.count) {
-                    val item = it.getItem(i)?.toString() ?: continue
-
-                    val theItem =
-                        if (!mask) {
-                            item
-                        } else {
-                            item.mask()
-                        }
-
-                    items.add(theItem)
-                }
-                options = items.ifEmpty { null }
-            }
-        }
-
-        if (view is ImageView) {
-            type = "image"
-            if (!view.shouldMaskImage(isUnmasked)) {
-                // TODO: we can probably do a LRU caching here for already captured images
-                view.drawable?.let { drawable ->
-                    base64 = drawable.base64(view.width, view.height)
-//                    style.paddingTop = view.paddingTop.densityValue(screenDensity)
-//                    style.paddingBottom = view.paddingBottom.densityValue(screenDensity)
-//                    style.paddingLeft = view.paddingLeft.densityValue(screenDensity)
-//                    style.paddingRight = view.paddingRight.densityValue(screenDensity)
-                }
-            }
-        }
-
-        var max: Int? = null // can be a Int or Float
-        if (view is ProgressBar) {
-            inputType = "progress"
-            type = "input"
-            val bar =
-                if (view.isIndeterminate) {
-                    "circular"
-                } else {
-                    max = view.max
-                    value = view.progress
-                    "horizontal"
-                }
-            style.bar = bar
-        }
-        if (view is RatingBar) {
-            style.bar = "rating"
-
-            // since stars allow half stars, we need to divide the max by 2, because
-            // 5 stars is 10
-            max = (view.max / 2)
-            value = view.rating
-        }
-
-        if (view is Switch) {
-            type = "input"
-            inputType = "toggle"
-            checked = view.isChecked
-            label = text
-            text = null
-        }
-
-        // TODO: people might be used androidx.webkit:webkit though
-        if (view is WebView) {
-            type = "web_view"
-        }
-
-        val children = mutableListOf<RRWireframe>()
-        if (view is ViewGroup && view.childCount > 0) {
-            for (i in 0 until view.childCount) {
-                val viewChild = view.getChildAt(i) ?: continue
-                viewChild.toWireframe(parentId = viewId, ancestorUnmasked = isUnmasked)?.let {
-                    children.add(it)
-                }
-            }
-        }
-
-        return RRWireframe(
-            id = viewId,
-            x = x,
-            y = y,
-            width = width,
-            height = height,
-            text = text,
-            type = type,
-            style = style,
-            childWireframes = children.ifEmpty { null },
-            base64 = base64,
-            parentId = parentId,
-            disabled = !view.isEnabled,
-            checked = checked,
-            inputType = inputType,
-            value = value,
-            label = label,
-            options = options,
-            max = max,
-        )
-    }
-
-    private fun runDrawableConverter(drawable: Drawable): Bitmap? {
-        return config.sessionReplayConfig.drawableConverter?.convert(drawable)
-    }
-
-    @SuppressLint("NewApi")
-    private fun Drawable.toRGBColor(): String? {
-        when (this) {
-            is ColorDrawable -> {
-                return color.toRGBColor()
-            }
-
-            is RippleDrawable -> {
-                try {
-                    return getFirstDrawable()?.toRGBColor()
-                } catch (e: Throwable) {
-                    // ignore
-                }
-            }
-
-            is InsetDrawable -> {
-                return drawable?.toRGBColor()
-            }
-
-            is GradientDrawable -> {
-                colors?.let { rgcColors ->
-                    if (rgcColors.isNotEmpty()) {
-                        // Get the first color from the array
-                        val color = rgcColors[0]
-
-                        // Extract RGB values
-                        val red = Color.red(color)
-                        val green = Color.green(color)
-                        val blue = Color.blue(color)
-
-                        // Construct the RGB color
-                        val rgb = Color.rgb(red, green, blue)
-                        return rgb.toRGBColor()
-                    }
-                }
-                color?.let {
-                    if (it.defaultColor != -1) {
-                        return it.defaultColor.toRGBColor()
-                    }
-                }
-            }
-        }
-        return null
-    }
-
-    private fun Drawable.base64(
-        width: Int,
-        height: Int,
-        cloned: Boolean = false,
-    ): String? {
-        val convertedBitmap = runDrawableConverter(this)
-        if (convertedBitmap != null) {
-            return convertedBitmap.webpBase64()
-        }
-
-        var clonedDrawable = this
-        if (!cloned) {
-            clonedDrawable = copy() ?: return null
-        }
-
-        when (clonedDrawable) {
-            is BitmapDrawable -> {
-                try {
-                    return clonedDrawable.bitmap.webpBase64()
-                } catch (_: Throwable) {
-                    // ignore
-                }
-            }
-
-            is LayerDrawable -> {
-                clonedDrawable.getFirstDrawable()?.let {
-                    return it.base64(width, height)
-                }
-            }
-
-            is InsetDrawable -> {
-                clonedDrawable.drawable?.let {
-                    return it.base64(width, height)
-                }
-            }
-        }
-
-        try {
-            val bitmap = clonedDrawable.toBitmap(width, height)
-            val base64 = bitmap.webpBase64()
-            bitmap.recycle()
-            return base64
-        } catch (_: Throwable) {
-            // ignore
-        }
-        return null
-    }
-
-    private fun LayerDrawable.getFirstDrawable(): Drawable? {
-        for (i in 0 until numberOfLayers) {
-            getDrawable(i)?.let {
-                return it
-            }
-        }
-
-        return null
-    }
-
-    private fun Int.toRGBColor(): String {
-        // TODO: missing alpha
-        return String.format("#%06X", (0xFFFFFF and this))
-    }
-
-    private fun List<RRWireframe>.flattenChildren(): List<RRWireframe> {
-        val result = mutableListOf<RRWireframe>()
-
-        for (item in this) {
-            result.add(item)
-
-            item.childWireframes?.let {
-                result.addAll(it.flattenChildren())
-            }
-        }
-
-        return result
-    }
-
-    private fun findAddedAndRemovedItems(
-        oldItems: List<RRWireframe>,
-        newItems: List<RRWireframe>,
-    ): Triple<List<RRWireframe>, List<RRWireframe>, List<RRWireframe>> {
-        val oldMap = oldItems.associateBy { it.id }
-        val newMap = newItems.associateBy { it.id }
-
-        // Create HashSet to track unique IDs
-        val oldItemIds = HashSet(oldItems.map { it.id })
-        val newItemIds = HashSet(newItems.map { it.id })
-
-        // Find added items by subtracting oldItemIds from newItemIds
-        val addedIds = newItemIds - oldItemIds
-        val addedItems = newItems.filter { it.id in addedIds }
-
-        // Find removed items by subtracting newItemIds from oldItemIds
-        val removedIds = oldItemIds - newItemIds
-        val removedItems = oldItems.filter { it.id in removedIds }
-
-        val updatedItems = mutableListOf<RRWireframe>()
-
-        // Find updated items by finding the intersection of oldItemIds and newItemIds
-        val sameItems = oldItemIds.intersect(newItemIds)
-
-        for (id in sameItems) {
-            // we have to copy without the childWireframes, otherwise they all would be different
-            // if one of the child is different, but we only wanna compare the parent
-            val oldItem = oldMap[id]?.copy(childWireframes = null) ?: continue
-            val newItem = newMap[id] ?: continue
-            val newItemCopy = newItem.copy(childWireframes = null)
-
-            // If the items are different (any property has a different value), add the new item to the updatedItems list
-            if (oldItem != newItemCopy) {
-                updatedItems.add(newItem)
-            }
-        }
-
-        return Triple(addedItems, removedItems, updatedItems)
-    }
-
-    private fun Drawable.toBitmap(
-        width: Int,
-        height: Int,
-    ): Bitmap {
-        val bitmap = Bitmap.createBitmap(displayMetrics, width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.MULTIPLY)
-        setBounds(0, 0, canvas.width, canvas.height)
-        draw(canvas)
-        return bitmap
     }
 
     private fun MotionEvent.getRawXCompat(index: Int): Float {
@@ -3248,14 +2856,6 @@ public class PostHogReplayIntegration(
     private fun View.isUnmasked(): Boolean {
         return (tag as? String)?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true ||
             contentDescription?.toString()?.contains(PH_NO_MASK_LABEL, ignoreCase = true) == true
-    }
-
-    private fun Drawable.copy(): Drawable? {
-        return constantState?.newDrawable()
-    }
-
-    private fun String.mask(): String {
-        return "*".repeat(length)
     }
 
     @SuppressLint("AnnotateVersionCheck")
@@ -3308,7 +2908,7 @@ public class PostHogReplayIntegration(
             }
         if (!claimed) return
 
-        if (isNativeSdk && config.sessionReplayConfig.screenshot) {
+        if (isNativeSdk) {
             mainHandler.handler.post { requestSceneCapture() }
         }
 
@@ -3412,8 +3012,7 @@ public class PostHogReplayIntegration(
             props["\$sdk_debug_replay_pending_trigger_conditions"] = pendingConditions
         }
 
-        val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
-        props["\$sdk_debug_replay_capture_mode"] = captureMode
+        props["\$sdk_debug_replay_capture_mode"] = "screenshot"
         props["\$sdk_debug_replay_internal_buffer_length"] =
             if (buffering) replayQueue?.bufferDepth ?: 0 else replayQueue?.size ?: 0
 
@@ -3821,15 +3420,9 @@ public class PostHogReplayIntegration(
     }
 
     // Whether to buffer until the live remote config resolves: only when a remote config holder
-    // exists and hasn't resolved yet, AND a fetch will actually be attempted at setup. If neither
-    // remoteConfig nor preloadFeatureFlags is enabled, PostHog.setup dispatches no /config or /flags
-    // request, so no onRemoteConfig callback ever arrives to disarm the gate —
-    // buffering would then grow unbounded for the whole session. Don't arm in that case.
+    // exists and hasn't resolved yet. PostHog.setup always requests /config, so the
+    // onRemoteConfig callback disarms the gate.
     private fun shouldAwaitFirstRemoteConfig(): Boolean {
-        @Suppress("DEPRECATION")
-        if (!config.remoteConfig && !config.preloadFeatureFlags) {
-            return false
-        }
         return config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
     }
 
@@ -3862,6 +3455,7 @@ public class PostHogReplayIntegration(
 
     internal companion object {
         private const val DIM_LAYER_ID: Int = 10_000_000
+        private const val DIM_BITMAP_SIZE: Int = 8
         private const val FIRST_SCENE_IMAGE_ID: Int = 10_000_001
 
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"

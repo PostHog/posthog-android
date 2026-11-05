@@ -6,14 +6,12 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
 import com.google.gson.stream.MalformedJsonException
-import com.posthog.PostHogInternal
 import java.lang.reflect.Type
 
 /**
  * Gson deserializer for PropertyGroup
  */
-@PostHogInternal
-public class PropertyGroupDeserializer : JsonDeserializer<PropertyGroup> {
+internal class PropertyGroupDeserializer : JsonDeserializer<PropertyGroup> {
     override fun deserialize(
         json: JsonElement,
         typeOfT: Type,
@@ -43,8 +41,7 @@ public class PropertyGroupDeserializer : JsonDeserializer<PropertyGroup> {
  * Gson deserializer for PropertyValue sealed interface
  * Determines whether to deserialize as PropertyGroups or FlagProperties based on structure
  */
-@PostHogInternal
-public class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
+internal class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
     override fun deserialize(
         json: JsonElement,
         typeOfT: Type,

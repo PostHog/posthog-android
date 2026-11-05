@@ -11,12 +11,12 @@ import java.util.UUID
 // if we'd ever allow users to inspect and mutate the event, it should be a public API
 
 /**
- * The PostHog event data structure accepted by the batch API
+ * The PostHog event data structure sent to capture
  * @property event The event name
  * @property distinctId The distinct Id
  * @property properties All the event properties
  * @property timestamp The event timestamp. UTC is preferred; the equivalent instant is serialized in UTC
- * @property uuid the UUID v4 is automatically generated and used for deduplication
+ * @property uuid the UUID v7 is automatically generated and used for deduplication
  */
 public data class PostHogEvent(
     val event: String,
@@ -38,6 +38,21 @@ public data class PostHogEvent(
     @SerializedName("api_key")
     var apiKey: String? = null,
 ) {
+    /**
+     * Options that tell PostHog how to process this event, separate from its properties.
+     *
+     * Known keys are `process_person_profile`, `cookieless_mode`, `disable_skew_correction` and
+     * `product_tour_id`; unknown keys are sent unchanged and ignored by PostHog. When the event is
+     * sent, the legacy `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and
+     * `$product_tour_id` properties are removed from [properties] and used for their option
+     * unless that option is already set here.
+     *
+     * Not a constructor parameter, so the constructor and [copy] keep their 3.x signatures. When
+     * `beforeSend` returns a different event whose options are null, such as one made with
+     * [copy], that event gets the options of the event the hook was given.
+     */
+    var options: MutableMap<String, Any?>? = null
+
     /**
      * Checks if the event is an exception event ($exception)
      */

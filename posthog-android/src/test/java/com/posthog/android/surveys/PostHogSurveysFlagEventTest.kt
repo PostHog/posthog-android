@@ -45,7 +45,7 @@ internal class PostHogSurveysFlagEventTest(
             }
         val postHog = mock<PostHogInterface>()
         whenever(postHog.isFeatureEnabled(any(), any(), anyOrNull())).thenReturn(true)
-        whenever(postHog.getFeatureFlag(any(), anyOrNull(), anyOrNull())).thenReturn("blue")
+        whenever(postHog.getFeatureFlag(any(), anyOrNull())).thenReturn("blue")
         val survey =
             config.serializer.deserialize<Survey>(
                 StringReader(
@@ -75,6 +75,6 @@ internal class PostHogSurveysFlagEventTest(
         for (key in listOf("linked-flag", "targeting-flag", "internal-flag", "extra-flag")) {
             verify(postHog, atLeastOnce()).isFeatureEnabled(eq("$prefix$key"), any(), eq(sendFeatureFlagEvent))
         }
-        verify(postHog, atLeastOnce()).getFeatureFlag(eq("${prefix}linked-flag"), anyOrNull(), eq(false))
+        verify(postHog, atLeastOnce()).getFeatureFlag(eq("${prefix}linked-flag"), eq(false))
     }
 }

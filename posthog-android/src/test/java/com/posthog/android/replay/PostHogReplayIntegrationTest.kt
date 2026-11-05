@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.Base64
 import android.view.MotionEvent
 import android.view.PixelCopy
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -27,7 +28,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -1035,74 +1038,21 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `a secure window is recorded as one black wireframe in wireframe mode`() {
-        val h = screenshotCaptureHarness()
-        try {
-            h.fx.config.sessionReplayConfig.screenshot = false
-            h.child.tag = null
-            h.child.text = "secret"
-            h.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
-
-            @Suppress("UNCHECKED_CAST")
-            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
-            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
-            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
-            assertEquals("#000000", wireframe.style?.backgroundColor)
-            assertNull(wireframe.childWireframes)
-            assertNull(wireframe.text)
-        } finally {
-            h.fx.sut.uninstall()
-        }
-    }
-
-    @Test
-    fun `a window secure when the wireframe walk starts is recorded as one black wireframe`() {
-        val h = screenshotCaptureHarness()
-        try {
-            h.fx.config.sessionReplayConfig.screenshot = false
-            h.child.tag = null
-            h.child.text = "secret"
-            h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
-            h.hookLayout.onWalkTouch = {
-                h.window.attributes.flags = h.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE.inv()
-            }
-
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
-
-            @Suppress("UNCHECKED_CAST")
-            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
-            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
-            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
-            assertEquals("#000000", wireframe.style?.backgroundColor)
-            assertNull(wireframe.childWireframes)
-        } finally {
-            h.fx.sut.uninstall()
-        }
-    }
-
-    @Test
-    fun `a window that turns secure during the wireframe walk is recorded as one black wireframe`() {
-        val h = screenshotCaptureHarness()
-        try {
-            h.fx.config.sessionReplayConfig.screenshot = false
-            h.child.tag = null
-            h.child.text = "secret"
-            h.hookLayout.onWalkTouch = {
-                h.window.attributes.flags = h.window.attributes.flags or WindowManager.LayoutParams.FLAG_SECURE
-            }
-
-            h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window))
-
-            @Suppress("UNCHECKED_CAST")
-            val events = h.fake.properties?.get("\$snapshot_data") as List<RREvent>
-            val fullSnapshot = events.first { it.type == RREventType.FullSnapshot }
-            val wireframe = ((fullSnapshot.data as Map<*, *>)["wireframes"] as List<*>).single() as RRWireframe
-            assertEquals("#000000", wireframe.style?.backgroundColor)
-            assertNull(wireframe.childWireframes)
-        } finally {
-            h.fx.sut.uninstall()
+    fun `a touch on a postHogMask node inside a clickable row with an unmasked sibling is not recorded`() {
+        withMaskedTouchHarness(
+            ComponentActivity::class.java,
+            content = { activity ->
+                activity.setContent {
+                    Row(Modifier.clickable {}) {
+                        Box(Modifier.size(20.dp).postHogMask())
+                        Box(Modifier.size(20.dp).postHogUnmask())
+                    }
+                }
+            },
+        ) { h ->
+            h.assertDropped(5f, 5f)
+            val unmaskedX = 25f * h.window.context.resources.displayMetrics.density
+            h.assertRecorded(unmaskedX, 5f)
         }
     }
 
@@ -2607,53 +2557,6 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `gate does not arm when neither remoteConfig nor preloadFeatureFlags will fetch`() {
-        // With both remoteConfig and preloadFeatureFlags disabled, setup dispatches no /config or
-        // /flags request, so no onRemoteConfig callback arrives to disarm the gate. Arming it would
-        // buffer every snapshot for the whole session; instead it must stay disarmed and persist.
-        val remoteConfigMock =
-            mock<PostHogRemoteConfig> {
-                on { isSessionReplayFlagActive() } doReturn true
-                on { hasRemoteConfigFetched() } doReturn false
-                on { makeSamplingDecision(any()) } doReturn true
-                on { getEventTriggers() } doReturn emptySet<String>()
-                on { getRecordingMinimumDurationMs() } doReturn null
-            }
-        val config =
-            PostHogAndroidConfig(PROJECT_TOKEN).apply {
-                remoteConfigHolder = remoteConfigMock
-                sessionReplay = true
-                @Suppress("DEPRECATION")
-                remoteConfig = false
-                preloadFeatureFlags = false
-            }
-        val storagePrefix = tmpDir.newFolder().absolutePath
-        val executor = createReplayExecutor()
-        val innerQueue =
-            PostHogQueue(
-                config,
-                EndpointSpec.snapshot(config, PostHogApi(config), storagePrefix),
-                executor,
-            )
-        val replayQueue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
-        config.replayQueueHolder = replayQueue
-        val sut = PostHogReplayIntegration(mock<Context>(), config, MainHandler())
-        val postHog = mock<PostHogInterface>()
-        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
-        sut.install(postHog)
-        sut.start(resumeCurrent = true)
-        try {
-            // No remote-config callback will ever fire, so buffering must not be armed.
-            replayQueue.add(createTestEvent("snapshot_1"))
-            awaitCondition { replayQueue.depth == 1 }
-            assertEquals(0, replayQueue.bufferDepth)
-            assertEquals(1, replayQueue.depth)
-        } finally {
-            sut.uninstall()
-        }
-    }
-
-    @Test
     fun `mid-session resume forces a fresh keyframe by clearing per-view snapshot state`() {
         // A mid-session flag-on resume must emit a fresh full snapshot: while stopped, per-view state
         // is frozen and can reference a full snapshot that was never delivered (e.g. a dropped
@@ -2970,7 +2873,6 @@ internal class PostHogReplayIntegrationTest {
                 captureExecutor = mock(),
             )
         fx.config.sessionReplayConfig.captureTouches = captureTouches
-        fx.config.sessionReplayConfig.screenshot = true
         fx.config.sessionReplayConfig.verifyScreenshotMaskAlignment = enableMaskAlignmentVerification
         val fake = PostHogFake()
         PostHogSessionManager.startSession()
@@ -3081,9 +2983,7 @@ internal class PostHogReplayIntegrationTest {
     @Test
     @Config(sdk = [26], shadows = [SnapshotBoundaryShadowPixelCopy::class])
     fun `committed snapshot keeps its session when rotation precedes core enrichment`() {
-        val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        @Suppress("DEPRECATION")
-        config.remoteConfig = false
+        val config = PostHogAndroidConfig(PROJECT_TOKEN, "http://127.0.0.1:1")
         config.preloadFeatureFlags = false
         var captured: PostHogEvent? = null
         config.addBeforeSend { event ->
@@ -3094,7 +2994,6 @@ internal class PostHogReplayIntegrationTest {
         PostHogSessionManager.startSession()
         val sessionId = PostHogSessionManager.peekSessionId().toString()
         val fx = createIntegrationWithRealQueue(true, true, integrationContext = ApplicationProvider.getApplicationContext())
-        fx.config.sessionReplayConfig.screenshot = true
         val client =
             object : PostHogInterface by core {
                 override fun capture(
@@ -3105,10 +3004,11 @@ internal class PostHogReplayIntegrationTest {
                     userPropertiesSetOnce: Map<String, Any>?,
                     groups: Map<String, String>?,
                     timestamp: Date?,
+                    options: Map<String, Any?>?,
                 ) {
                     PostHogSessionManager.setSessionId(UUID.randomUUID())
                     fx.sut.onSessionIdChanged()
-                    core.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+                    core.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp, options)
                 }
             }
         fx.sut.install(client)
@@ -4377,7 +4277,7 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @Config(sdk = [26], shadows = [ShadowPixelCopy::class])
-    fun `wireframe visibility does not race a delayed screenshot mask walk's shared scratch objects`() {
+    fun `a concurrent capture's visibility check does not race a delayed screenshot mask walk's shared scratch objects`() {
         val appContext = ApplicationProvider.getApplicationContext<Context>()
         val fx =
             createIntegrationWithRealQueue(
@@ -4399,15 +4299,15 @@ internal class PostHogReplayIntegrationTest {
 
         val guardedEntered = CountDownLatch(1)
         val releaseGuardedCall = CountDownLatch(1)
-        val wireframeEntered = CountDownLatch(1)
+        val concurrentEntered = CountDownLatch(1)
         val guardedTimedOut = AtomicBoolean(false)
         val guardedRectWasCorrupted = AtomicBoolean(false)
         val guardedPointWasCorrupted = AtomicBoolean(false)
         val guardedRect = AtomicReference<Rect>()
         val guardedPoint = AtomicReference<Point>()
         val guardedVisibilityCalls = AtomicInteger(0)
-        val wireframeReusedGuardedRect = AtomicBoolean(false)
-        val wireframeReusedGuardedPoint = AtomicBoolean(false)
+        val concurrentReusedGuardedRect = AtomicBoolean(false)
+        val concurrentReusedGuardedPoint = AtomicBoolean(false)
         val guardedRectValue = Rect(1, 2, 30, 40)
         val guardedPointValue = Point(5, 6)
 
@@ -4427,19 +4327,19 @@ internal class PostHogReplayIntegrationTest {
                     guardedPointWasCorrupted.set(point != guardedPointValue)
                 }
             }
-        val wireframeView =
+        val concurrentView =
             VisibleRectHookView(activity) { rect, point ->
-                wireframeReusedGuardedRect.set(rect === guardedRect.get())
-                wireframeReusedGuardedPoint.set(point === guardedPoint.get())
+                concurrentReusedGuardedRect.set(rect === guardedRect.get())
+                concurrentReusedGuardedPoint.set(point === guardedPoint.get())
                 rect.set(100, 200, 300, 400)
                 point?.set(500, 600)
-                wireframeEntered.countDown()
+                concurrentEntered.countDown()
             }
         val guardedRoot = FrameLayout(activity).apply { addView(guardedView) }
         val outerRoot =
             FrameLayout(activity).apply {
                 addView(guardedRoot)
-                addView(wireframeView)
+                addView(concurrentView)
             }
         activity.setContentView(outerRoot)
         shadowOf(Looper.getMainLooper()).idle()
@@ -4447,18 +4347,18 @@ internal class PostHogReplayIntegrationTest {
         outerRoot.layout(0, 0, 100, 100)
         guardedRoot.layout(0, 0, 100, 50)
         guardedView.layout(0, 0, 50, 50)
-        wireframeView.layout(50, 0, 100, 50)
+        concurrentView.layout(50, 0, 100, 50)
         fx.sut.decorViews[guardedRoot] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
-        fx.sut.decorViews[wireframeView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
+        fx.sut.decorViews[concurrentView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
         val executor = Executors.newFixedThreadPool(2)
 
         try {
-            val wireframeFuture =
+            val concurrentFuture =
                 executor.submit {
                     try {
                         assertTrue(guardedEntered.await(3, TimeUnit.SECONDS))
                         fx.sut.generateSnapshot(
-                            WeakReference(wireframeView),
+                            WeakReference(concurrentView),
                             WeakReference(activity.window),
                         )
                     } finally {
@@ -4470,7 +4370,6 @@ internal class PostHogReplayIntegrationTest {
                     fx.sut.generateSnapshot(
                         WeakReference(guardedRoot),
                         WeakReference(activity.window),
-                        forceScreenshot = true,
                     )
                 }
             assertTrue(
@@ -4478,21 +4377,21 @@ internal class PostHogReplayIntegrationTest {
                 "The delayed screenshot callback did not reach its guarded post-copy mask walk",
             )
 
-            val callsOverlapped = wireframeEntered.count == 0L
+            val callsOverlapped = concurrentEntered.count == 0L
             releaseGuardedCall.countDown()
             awaitDraining(screenshotFuture, 3000)
-            awaitDraining(wireframeFuture, 3000)
+            awaitDraining(concurrentFuture, 3000)
 
             assertFalse(guardedTimedOut.get(), "The guarded visibility hook timed out")
             val overlappingCallsWereSafe =
-                !wireframeReusedGuardedRect.get() &&
-                    !wireframeReusedGuardedPoint.get() &&
+                !concurrentReusedGuardedRect.get() &&
+                    !concurrentReusedGuardedPoint.get() &&
                     !guardedRectWasCorrupted.get() &&
                     !guardedPointWasCorrupted.get()
             assertTrue(
                 !callsOverlapped || overlappingCallsWereSafe,
-                "An unguarded wireframe visibility call entered during the delayed screenshot mask walk and reused " +
-                    "its Rect=${wireframeReusedGuardedRect.get()} and Point=${wireframeReusedGuardedPoint.get()}; " +
+                "An unguarded visibility call entered during the delayed screenshot mask walk and reused " +
+                    "its Rect=${concurrentReusedGuardedRect.get()} and Point=${concurrentReusedGuardedPoint.get()}; " +
                     "guarded Rect corrupted=${guardedRectWasCorrupted.get()}, " +
                     "Point corrupted=${guardedPointWasCorrupted.get()}",
             )
@@ -4930,26 +4829,6 @@ internal class PostHogReplayIntegrationTest {
             return (events.first { it.type == RREventType.FullSnapshot }.data as Map<*, *>)["wireframes"] as List<RRWireframe>
         }
 
-        private fun bitmap(image: RRWireframe): Bitmap {
-            val bytes = Base64.decode(assertNotNull(image.base64).substringAfter(','), Base64.DEFAULT)
-            return assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-        }
-
-        private fun assertSolidBlack(frame: RRWireframe) {
-            val image = bitmap(frame)
-            try {
-                for (x in 0 until image.width) {
-                    for (y in 0 until image.height) {
-                        val pixel = image.getPixel(x, y)
-                        assertEquals(255, Color.alpha(pixel))
-                        assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
-                    }
-                }
-            } finally {
-                image.recycle()
-            }
-        }
-
         @Test
         fun `secure flag changes invalidate cached Activity and dialog images without a redraw`() {
             for (targetDialog in listOf(false, true)) {
@@ -5050,7 +4929,7 @@ internal class PostHogReplayIntegrationTest {
                 assertEquals((h.root.height / density).toInt(), dialogImage.height)
                 assertEquals(scene.first().width, scene[1].width)
                 assertEquals(scene.first().height, scene[1].height)
-                assertEquals("rgba(0,0,0,0.48)", scene[1].style?.backgroundColor)
+                assertDim(scene[1], 0.48f)
                 val mask = Rect().also { assertTrue(h.masked.getGlobalVisibleRect(it)) }
                 val image = bitmap(dialogImage)
                 try {
@@ -5504,9 +5383,8 @@ internal class PostHogReplayIntegrationTest {
         RecordingShadowPixelCopy.reset()
         try {
             val image = assertNotNull(captureDialog(h))
-            assertEquals("rectangle", image.type)
-            assertEquals("#000000", image.style?.backgroundColor)
-            assertEquals(null, image.base64)
+            assertEquals("screenshot", image.type)
+            assertSolidBlack(image)
             assertTrue(image.width!! > 0)
             assertTrue(image.height!! > 0)
             assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
@@ -5522,12 +5400,12 @@ internal class PostHogReplayIntegrationTest {
         val h = screenshotCaptureHarness()
         RecordingShadowPixelCopy.reset()
         try {
-            assertEquals("rectangle", captureDialog(h)?.type)
+            assertSolidBlack(assertNotNull(captureDialog(h)))
             h.child.tag = "ph-no-mask"
             assertEquals("screenshot", captureDialog(h)?.type)
             assertEquals(1, RecordingShadowPixelCopy.requests.size)
             h.child.tag = "ph-no-capture"
-            assertEquals("rectangle", captureDialog(h)?.type)
+            assertSolidBlack(assertNotNull(captureDialog(h)))
             assertEquals(1, RecordingShadowPixelCopy.requests.size)
         } finally {
             h.fx.sut.uninstall()
@@ -5545,7 +5423,7 @@ internal class PostHogReplayIntegrationTest {
             whenever(animation.hasStarted()).thenReturn(true)
             whenever(animation.hasEnded()).thenReturn(false)
             h.child.animation = animation
-            assertEquals("rectangle", captureDialog(h)?.type)
+            assertSolidBlack(assertNotNull(captureDialog(h)))
             assertTrue(RecordingShadowPixelCopy.requests.isEmpty())
         } finally {
             h.fx.sut.uninstall()
@@ -5562,8 +5440,8 @@ internal class PostHogReplayIntegrationTest {
             h.child.tag = "ph-no-mask"
             RecordingShadowPixelCopy.onRequest = { h.child.tag = "ph-no-capture" }
             val image = assertNotNull(captureDialog(h))
-            assertEquals("rectangle", image.type)
-            assertEquals(null, image.base64)
+            assertEquals("screenshot", image.type)
+            assertSolidBlack(image)
             assertEquals(1, RecordingShadowPixelCopy.requests.size)
         } finally {
             h.fx.sut.uninstall()
@@ -5610,17 +5488,16 @@ internal class PostHogReplayIntegrationTest {
         RecordingShadowPixelCopy.reset()
         try {
             val before = captureScene()
-            assertEquals(listOf("screenshot", "rectangle", "screenshot"), before.map { it.type })
+            assertEquals(listOf("screenshot", "screenshot", "screenshot"), before.map { it.type })
             val copies = RecordingShadowPixelCopy.requests.size
             content.tag = "ph-no-capture"
             // No dirty notification: privacy must be checked before a cached image can be reused.
             ReflectionHelpers.getField<MutableSet<View>>(h.fx.sut, "sceneDirtyViews").clear()
             val masked = captureScene()
             assertEquals(before.take(2), masked.take(2))
-            assertEquals("rgba(0,0,0,0.35)", masked[1].style?.backgroundColor)
-            assertEquals("rectangle", masked.last().type)
-            assertEquals("#000000", masked.last().style?.backgroundColor)
-            assertEquals(null, masked.last().base64)
+            assertDim(masked[1], 0.35f)
+            assertEquals("screenshot", masked.last().type)
+            assertSolidBlack(masked.last())
             assertEquals(before.last().id, masked.last().id)
             assertEquals(before.last().x, masked.last().x)
             assertEquals(before.last().y, masked.last().y)
@@ -5916,6 +5793,48 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.findMaskableWidgets(root, walk)
 
             assertFalse(walk.poisoned)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `draws outside a legacy capture skip the surface scan`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val root = CountingChildFrameLayout(activity).apply { addView(View(activity)) }
+            val drawState = WindowDrawState()
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+            val walkCountAfterFirstDraw = root.childWalkCount
+
+            drawState.recordDraw()
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertEquals(walkCountAfterFirstDraw, root.childWalkCount)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a surface redraw during a legacy capture is animation only`() {
+        val (fx, _) = screenshotFixture(enableMaskAlignmentVerification = false)
+        try {
+            val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+            shadowOf(Looper.getMainLooper()).idle()
+            val surface = SurfaceView(activity)
+            val root = FrameLayout(activity).apply { addView(surface) }
+            surface.layout(0, 0, 100, 100)
+            val drawState = WindowDrawState()
+            drawState.beginLegacyCapture()
+            drawState.recordDraw()
+
+            fx.sut.onDrawCallback(root, drawState)
+
+            assertTrue(drawState.isOnlyAnimationRedraw)
         } finally {
             fx.sut.uninstall()
         }
@@ -6387,31 +6306,10 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `debugProperties reports screenshot capture mode when the screenshot flag is on`() {
-        val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        config.sessionReplayConfig.screenshot = true
-        val sut = getSut(config)
+    fun `debugProperties reports screenshot capture mode`() {
+        val sut = getSut(PostHogAndroidConfig(PROJECT_TOKEN))
 
         assertEquals("screenshot", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
-    }
-
-    @Test
-    fun `debugProperties reports screenshot capture mode for the flutter host`() {
-        val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        config.sdkName = "posthog-flutter"
-        config.sessionReplayConfig.screenshot = false
-        val sut = getSut(config)
-
-        assertEquals("screenshot", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
-    }
-
-    @Test
-    fun `debugProperties reports wireframe capture mode otherwise`() {
-        val config = PostHogAndroidConfig(PROJECT_TOKEN)
-        config.sessionReplayConfig.screenshot = false
-        val sut = getSut(config)
-
-        assertEquals("wireframe", sut.debugProperties()["\$sdk_debug_replay_capture_mode"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_throttle_delay_ms"))
     }
 
@@ -6545,7 +6443,7 @@ internal class PostHogReplayIntegrationTest {
             val props = sut.debugProperties()
             assertEquals("disabled", props["\$recording_status"])
             assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
-            assertEquals("wireframe", props["\$sdk_debug_replay_capture_mode"])
+            assertEquals("screenshot", props["\$sdk_debug_replay_capture_mode"])
             assertEquals(0, props["\$sdk_debug_replay_internal_buffer_length"])
         } finally {
             sut.uninstall()
@@ -6608,5 +6506,41 @@ internal class PostHogReplayIntegrationTest {
         }
         assertEquals("disabled", sut.debugProperties()["\$recording_status"])
         assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_flush_hold_reason"))
+    }
+}
+
+private fun bitmap(image: RRWireframe): Bitmap {
+    val bytes = Base64.decode(assertNotNull(image.base64).substringAfter(','), Base64.DEFAULT)
+    return assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+}
+
+// The dim layer is a small translucent black image the player stretches over the scene.
+private fun assertDim(
+    frame: RRWireframe,
+    amount: Float,
+) {
+    assertEquals("screenshot", frame.type)
+    val image = bitmap(frame)
+    try {
+        val pixel = image.getPixel(0, 0)
+        assertTrue(kotlin.math.abs(Color.alpha(pixel) - amount * 255) <= 3, "alpha ${Color.alpha(pixel)}")
+        assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+    } finally {
+        image.recycle()
+    }
+}
+
+private fun assertSolidBlack(frame: RRWireframe) {
+    val image = bitmap(frame)
+    try {
+        for (x in 0 until image.width) {
+            for (y in 0 until image.height) {
+                val pixel = image.getPixel(x, y)
+                assertEquals(255, Color.alpha(pixel))
+                assertTrue(Color.red(pixel) < 10 && Color.green(pixel) < 10 && Color.blue(pixel) < 10)
+            }
+        }
+    } finally {
+        image.recycle()
     }
 }

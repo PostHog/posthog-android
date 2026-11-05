@@ -19,8 +19,7 @@ public interface PostHogContext {
  * Returns person properties context by extracting relevant properties from static context.
  * This centralizes the logic for determining which properties should be used as person properties.
  */
-@PostHogInternal
-public fun PostHogContext.personPropertiesContext(): Map<String, Any> {
+internal fun PostHogContext.personPropertiesContext(): Map<String, Any> {
     val sdkInfo = getSdkInfo()
     val staticCtx = getStaticContext()
     val personProperties = mutableMapOf<String, Any>()

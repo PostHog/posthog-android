@@ -306,13 +306,11 @@ public open class PostHogConfig constructor(
                 debug = debug,
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
                 preloadFeatureFlags = preloadFeatureFlags,
-                remoteConfig = remoteConfig,
                 flushAt = flushAt,
                 maxQueueSize = maxQueueSize,
                 maxBatchSize = maxBatchSize,
                 flushIntervalSeconds = flushIntervalSeconds,
                 encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
                 proxy = proxy,
                 remoteConfigProvider = { config, api, _, _, _, _ ->
                     PostHogFeatureFlags(

@@ -194,7 +194,6 @@ internal class PostHogOkHttpInterceptorTest {
                 this.replayStoragePrefix = tmpDir.newFolder().absolutePath
                 this.cachePreferences = PostHogMemoryPreferences()
                 this.preloadFeatureFlags = false
-                this.remoteConfig = false
             }
 
         val postHog =

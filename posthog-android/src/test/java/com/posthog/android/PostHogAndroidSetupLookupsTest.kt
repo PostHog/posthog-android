@@ -110,6 +110,7 @@ internal class PostHogAndroidSetupLookupsTest {
         assertEquals(File(cacheDir, "posthog-disk-queue").absolutePath, config.storagePrefix)
         assertEquals(File(cacheDir, "posthog-disk-replay-queue").absolutePath, config.replayStoragePrefix)
         assertEquals(File(cacheDir, "posthog-disk-logs-queue").absolutePath, config.logsStoragePrefix)
+        assertEquals(File(cacheDir, "posthog-disk-ai-queue").absolutePath, config.aiStoragePrefix)
     }
 
     @Test
@@ -120,15 +121,29 @@ internal class PostHogAndroidSetupLookupsTest {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 replayStoragePrefix = tmpDir.newFolder().absolutePath
                 logsStoragePrefix = tmpDir.newFolder().absolutePath
+                aiStoragePrefix = tmpDir.newFolder().absolutePath
             }
-        val expected = listOf(config.legacyStoragePrefix, config.storagePrefix, config.replayStoragePrefix, config.logsStoragePrefix)
+        val expected =
+            listOf(
+                config.legacyStoragePrefix,
+                config.storagePrefix,
+                config.replayStoragePrefix,
+                config.logsStoragePrefix,
+                config.aiStoragePrefix,
+            )
         setup(config)
 
         verify(app, never()).cacheDir
         verify(app, never()).getDir(any(), any())
         assertEquals(
             expected,
-            listOf(config.legacyStoragePrefix, config.storagePrefix, config.replayStoragePrefix, config.logsStoragePrefix),
+            listOf(
+                config.legacyStoragePrefix,
+                config.storagePrefix,
+                config.replayStoragePrefix,
+                config.logsStoragePrefix,
+                config.aiStoragePrefix,
+            ),
         )
     }
 
@@ -142,6 +157,7 @@ internal class PostHogAndroidSetupLookupsTest {
         assertEquals(customPath, config.storagePrefix)
         assertEquals(File(cacheDir, "posthog-disk-replay-queue").absolutePath, config.replayStoragePrefix)
         assertEquals(File(cacheDir, "posthog-disk-logs-queue").absolutePath, config.logsStoragePrefix)
+        assertEquals(File(cacheDir, "posthog-disk-ai-queue").absolutePath, config.aiStoragePrefix)
     }
 
     @Test

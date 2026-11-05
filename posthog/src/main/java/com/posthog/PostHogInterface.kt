@@ -68,13 +68,29 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Captures events
+     *
+     * The event's properties are merged in this order, and later values win: properties the SDK
+     * sets itself (such as `$os`, `$app_version`, `$screen_name`, `$is_identified` and the session
+     * replay debug properties), registered super properties ([register]), [properties], then
+     * `beforeSend`.
+     *
+     * Example:
+     * ```
+     * PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
+     * ```
      * @param event the event name
-     * @param distinctId the distinctId, the generated [distinctId] is used if not given
+     * @param distinctId the distinctId, the generated [distinctId] is used if not given or blank
      * @param properties the custom properties
      * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
      * @param groups the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
      * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+     * @param options settings that tell PostHog how to process this event, sent apart from its
+     *   properties. Known keys are `process_person_profile`, `cookieless_mode`,
+     *   `disable_skew_correction` and `product_tour_id`; unknown keys are sent unchanged and
+     *   ignored by PostHog. An option wins over its legacy property (`$process_person_profile`,
+     *   `$cookieless_mode`, `$ignore_sent_at`, `$product_tour_id`) when the event is sent. The map
+     *   is copied, and `beforeSend` can change it through [PostHogEvent.options]
      */
     public fun capture(
         event: String,
@@ -84,16 +100,70 @@ public interface PostHogInterface : PostHogCoreInterface {
         userPropertiesSetOnce: Map<String, Any>? = null,
         groups: Map<String, String>? = null,
         timestamp: Date? = null,
+        options: Map<String, Any?>? = null,
     )
+
+    /**
+     * Captures an AI observability event, such as `$ai_generation`, `$ai_span`, `$ai_trace` or
+     * `$ai_embedding`, and sends it to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts much
+     * larger events than [capture].
+     *
+     * Takes the same arguments as [capture], merges properties in the same order and goes through
+     * the same `beforeSend` hooks. The event is queued on disk separately from other events and sent
+     * unchanged: the SDK doesn't redact or truncate prompts, outputs or media. PostHog drops an event
+     * sent here whose name doesn't start with `$ai_`, and the SDK logs a debug message when it's
+     * given one. [capture] never sends events here, even ones named `$ai_*`.
+     *
+     * AI events use [PostHogConfig.flushAt], [PostHogConfig.maxBatchSize] and
+     * [PostHogConfig.flushIntervalSeconds], like other events, and
+     * [PostHogConfig.captureAiCompression], [PostHogConfig.captureAiMaxQueueSize] and
+     * [PostHogConfig.captureAiTimeout] instead of `compression`, `maxQueueSize` and the default
+     * timeouts. A serialized event over [PostHogConfig.captureAiMaxEventBytes] (8 MiB + 64 KiB by
+     * default) is dropped, with a log line naming the event and the limit. Requests carry up to about
+     * 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events
+     * are kept on disk; beyond that, the oldest are dropped.
+     *
+     * Example:
+     * ```
+     * PostHog.captureAi(
+     *     "\$ai_generation",
+     *     properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),
+     * )
+     * ```
+     * @param event the AI event name, such as `$ai_generation`
+     * @param distinctId the distinctId, the generated [distinctId] is used if not given or blank
+     * @param properties the custom properties
+     * @param userProperties the user properties, set as a "$set" property
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property
+     * @param groups the groups, set as a "$groups" property
+     * @param timestamp the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+     * @param options settings that tell PostHog how to process this event, see `options` in [capture]
+     * @return the event's uuid once it's handed to the queue, or null when it isn't: the SDK is
+     *   disabled or opted out, the event name is empty, `beforeSend` dropped it, or it's over the
+     *   size limit
+     */
+    public fun captureAi(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        timestamp: Date? = null,
+        options: Map<String, Any?>? = null,
+    ): UUID?
 
     /**
      * Captures exceptions
      * @param throwable the Throwable error
      * @param properties the custom properties
+     * @param options settings that tell PostHog how to process the `$exception` event, see
+     *   `options` in [capture]
      */
     public fun captureException(
         throwable: Throwable,
         properties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
@@ -124,9 +194,52 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Reloads the feature flags
-     * @param onFeatureFlags the callback to get notified once feature flags is ready to use
+     *
+     * The callback is invoked when the reload finishes, on a background thread. If the request fails,
+     * [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last known flags. If
+     * the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
+     *
+     * ```kotlin
+     * PostHog.reloadFeatureFlags { loaded ->
+     *     if (loaded.errorsLoading) {
+     *         // The reload failed. loaded.variants holds the last known flags.
+     *     }
+     * }
+     * ```
+     *
+     * @param onFeatureFlags the callback to get notified once the reload finishes, defaults to none
      */
-    public fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
+    public fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
+
+    /**
+     * Registers a callback that's invoked whenever feature flags are loaded or updated.
+     *
+     * On Android, the callback runs on the main thread, after the getters already return the new
+     * values. On the JVM, it runs on the SDK's background remote config thread. It's
+     * invoked after the SDK loads flags at startup (including from bootstrap values), after
+     * [reloadFeatureFlags], and after calls that reload flags such as [identify], [group] or [reset].
+     * If a load fails, [PostHogFeatureFlagsLoaded.errorsLoading] is `true` and the values are the last
+     * known flags. If flags have already loaded when you register, it's also invoked with the current
+     * values shortly afterwards.
+     *
+     * You can register before `setup()`, and the callback stays registered across `close()` and
+     * `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
+     *
+     * ```kotlin
+     * val subscription = PostHog.onFeatureFlags { loaded ->
+     *     if (loaded.variants["new-checkout"] == "test") {
+     *         // Show the test variant
+     *     }
+     * }
+     *
+     * // Later, stop listening
+     * subscription.unsubscribe()
+     * ```
+     *
+     * @param callback receives the enabled flags, their values, and whether loading failed
+     * @return a subscription; call [PostHogFeatureFlagsSubscription.unsubscribe] to stop receiving updates
+     */
+    public fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
 
     /**
      * Returns if a feature flag is enabled, the feature flag must be a Boolean
@@ -143,16 +256,21 @@ public interface PostHogInterface : PostHogCoreInterface {
     ): Boolean
 
     /**
-     * Returns the feature flag
+     * Returns the feature flag value, or null if the flag has no value or the SDK is disabled.
+     * Use `?:` for a fallback; it is never reported in the $feature_flag_called event.
+     *
+     * ```kotlin
+     * val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
+     * ```
+     *
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
-     * @param defaultValue the default value if not found
      * @param sendFeatureFlagEvent (optional) If false, we won't send an $feature_flag_called event to PostHog.
-     * @return The feature flag value, or [defaultValue] if not found.
+     * Defaults to [PostHogConfig.sendFeatureFlagEvent].
+     * @return The feature flag value, or null if not found.
      */
     public fun getFeatureFlag(
         key: String,
-        defaultValue: Any? = null,
         sendFeatureFlagEvent: Boolean? = null,
     ): Any?
 
@@ -162,22 +280,6 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @return The currently loaded feature flag results, or null when flags are unavailable.
      */
     public fun getAllFeatureFlags(): List<FeatureFlagResult>?
-
-    /**
-     * Returns the feature flag payload
-     * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-     * @param key the Key
-     * @param defaultValue the default value if not found
-     * @return The feature flag payload, or [defaultValue] if not found.
-     */
-    @Deprecated(
-        message = "Use getFeatureFlagResult() instead; note it sends the \$feature_flag_called event by default.",
-        replaceWith = ReplaceWith("getFeatureFlagResult(key)?.payload"),
-    )
-    public fun getFeatureFlagPayload(
-        key: String,
-        defaultValue: Any? = null,
-    ): Any?
 
     /**
      * Returns the feature flag result containing both value and payload.
@@ -206,29 +308,40 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param type the Group type
      * @param key the Group key
      * @param groupProperties the Group properties, set as a "$group_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+     * @param options settings that tell PostHog how to process the `$groupidentify` event, see
+     *   `options` in [capture]
      */
     public fun group(
         type: String,
         key: String,
         groupProperties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
      * Captures a screen view event
      * @param screenTitle the screen title. It takes precedence over a `$screen_name` key in [properties].
      * @param properties the custom properties
+     * @param options settings that tell PostHog how to process the `$screen` event, see
+     *   `options` in [capture]
      */
     public fun screen(
         screenTitle: String,
         properties: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
      * Creates an alias for the user
      * Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
      * @param alias the alias
+     * @param options settings that tell PostHog how to process the `$create_alias` event, see
+     *   `options` in [capture]
      */
-    public fun alias(alias: String)
+    public fun alias(
+        alias: String,
+        options: Map<String, Any?>? = null,
+    )
 
     /**
      * Register a property to always be sent with all the following events until you call
@@ -248,6 +361,25 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param key the Key
      */
     public fun unregister(key: String)
+
+    /**
+     * Sets the `$app_language` property: the language your app displays, sent with every event.
+     *
+     * Call it at startup and whenever the language changes, because the value is kept in memory
+     * only. It overrides the language the SDK detects, and survives [reset].
+     *
+     * Default: on Android 13+ the SDK detects the language from your `localeConfig` declaration, and
+     * on Android 6-12 it sends no `$app_language` unless you call this. Compare `$locale`, which is
+     * the device language whichever language your app displays.
+     *
+     * ```kotlin
+     * PostHog.setAppLanguage("de")
+     * ```
+     *
+     * @param language a BCP 47 language tag, such as `de` or `pt-BR`. Pass `null` to go back to the
+     *   detected language
+     */
+    public fun setAppLanguage(language: String?)
 
     /**
      * Returns the registered [distinctId] property
@@ -331,6 +463,22 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun getSessionId(): UUID?
 
     /**
+     * Identifies the user
+     * Docs https://posthog.com/docs/product-analytics/identify
+     * @param distinctId the distinctId
+     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+     * @param options settings that tell PostHog how to process the `$identify` or `$set` event
+     *   this call sends, see `options` in [capture]
+     */
+    public fun identify(
+        distinctId: String,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
+    )
+
+    /**
      * Sets properties on the person profile associated with the current distinct_id.
      * Learn more about [identifying users](https://posthog.com/docs/product-analytics/identify)
      *
@@ -343,10 +491,13 @@ public interface PostHogInterface : PostHogCoreInterface {
      * @param userPropertiesToSetOnce Optional: Properties to store about the user only if not previously set.
      *   Note: For feature flag evaluations, if the same key is present in both parameters,
      *   the value from userPropertiesToSet will take precedence.
+     * @param options settings that tell PostHog how to process the `$set` event, see `options`
+     *   in [capture]
      */
     public fun setPersonProperties(
         userPropertiesToSet: Map<String, Any>? = null,
         userPropertiesToSetOnce: Map<String, Any>? = null,
+        options: Map<String, Any?>? = null,
     )
 
     /**
@@ -484,4 +635,68 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     @PostHogInternal
     public fun <T : PostHogConfig> getConfig(): T?
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Builds the event that [capture] (or [captureAi] when [ai] is true) would send: the same
+     * checks, SDK and registered properties, per-call values, session, screen and options, with a
+     * new uuid and timestamp. It doesn't run `beforeSend` and doesn't queue the event, so a wrapper
+     * can run its own hook on the full event, then pass the result to [sendBuiltEventForWrapper].
+     * It changes no SDK state, so a wrapper can drop the event: the current screen, the person
+     * properties used for flags, person processing turned on by [userProperties],
+     * [userPropertiesSetOnce] or [groups], and the replay debug window are updated by
+     * [sendBuiltEventForWrapper]. That send uses the event name passed here to decide whether the
+     * replay debug bundle applies, even if the wrapper's hook renamed the event.
+     *
+     * Returns null when the SDK wouldn't capture the event: disabled, opted out, an ignored
+     * exception type, or a `$screen` event (not on the AI lane) without a non-blank `$screen_name`. Defaults to null.
+     *
+     * ```kotlin
+     * val event = PostHog.buildEventForWrapper("purchase", properties = mapOf("plan" to "pro"))
+     *     ?: return
+     * PostHog.sendBuiltEventForWrapper(wrapperBeforeSend(event) ?: return)
+     * ```
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun buildEventForWrapper(
+        event: String,
+        distinctId: String? = null,
+        properties: Map<String, Any>? = null,
+        userProperties: Map<String, Any>? = null,
+        userPropertiesSetOnce: Map<String, Any>? = null,
+        groups: Map<String, String>? = null,
+        options: Map<String, Any?>? = null,
+        ai: Boolean = false,
+        timestamp: Date? = null,
+    ): PostHogEvent? = null
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); apps use [capture] and [captureAi].
+     *
+     * Sends an event from [buildEventForWrapper] without adding properties again: runs the native
+     * `beforeSend` chain, then queues it on the analytics lane, or the AI lane when [ai] is true.
+     * The event keeps its uuid and timestamp. Legacy option properties are moved into options when
+     * the event is sent, as for [capture].
+     * Surveys and session replay event triggers see [event] as passed in, after the wrapper's hook.
+     * Like [capture], it updates the person properties used for flags from `$set` and `$set_once`,
+     * caches the `$screen_name` of an event built and sent as `$screen` as the current screen, turns person processing on
+     * when the build had user properties or groups, and may add the replay debug values snapshotted
+     * at build that the event lacks. Keys the wrapper's hook removed aren't added back.
+     *
+     * Person processing and the person properties for flags are skipped when `reset()` or
+     * `identify()` changed the user since the build. The event is dropped when this instance didn't
+     * build it, when `setup()` or `close()` ran since the build, or when it was already sent.
+     *
+     * Returns the event's uuid once it's queued, or null when it's dropped. Defaults to null.
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun sendBuiltEventForWrapper(
+        event: PostHogEvent,
+        ai: Boolean = false,
+    ): UUID? = null
 }

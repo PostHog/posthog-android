@@ -2,7 +2,6 @@ package com.posthog.android.sample
 
 import android.app.Application
 import android.os.StrictMode
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 
@@ -39,7 +38,6 @@ class MyApp : Application() {
                 sessionReplay = true
                 preloadFeatureFlags = true
                 sendFeatureFlagEvent = false
-                onFeatureFlags = PostHogOnFeatureFlags { print("feature flags loaded") }
                 addBeforeSend { event ->
                     if (event.event == "test_event") {
                         null
@@ -50,7 +48,6 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllTextInputs = false
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
-                sessionReplayConfig.screenshot = true
                 // Surveys are opt-in. With :posthog-android-surveys-compose on the classpath the
                 // core SDK auto-discovers the Compose UI delegate — no surveysConfig wiring needed.
                 surveys = true

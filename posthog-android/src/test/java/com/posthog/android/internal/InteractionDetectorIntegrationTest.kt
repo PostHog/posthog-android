@@ -48,12 +48,11 @@ internal class InteractionDetectorIntegrationTest {
 
     @Suppress("DEPRECATION")
     private val config =
-        PostHogAndroidConfig(PROJECT_TOKEN).apply {
+        PostHogAndroidConfig(PROJECT_TOKEN, "http://127.0.0.1:1").apply {
             captureRageClicks = true
             captureDeadClicks = true
             sessionReplay = false
             cachePreferences = PostHogMemoryPreferences()
-            remoteConfig = false
             preloadFeatureFlags = false
             addBeforeSend { event ->
                 if (event.event in listOf("\$rageclick", "\$dead_click", "\$autocapture")) events += event
@@ -253,9 +252,8 @@ internal class InteractionDetectorIntegrationTest {
     fun `secondary session changes use normal capture context when owner is not notified`() {
         val secondary =
             PostHog.with(
-                PostHogAndroidConfig("secondary-test-key").apply {
+                PostHogAndroidConfig("secondary-test-key", "http://127.0.0.1:1").apply {
                     cachePreferences = PostHogMemoryPreferences()
-                    remoteConfig = false
                     preloadFeatureFlags = false
                     addBeforeSend { null }
                 },

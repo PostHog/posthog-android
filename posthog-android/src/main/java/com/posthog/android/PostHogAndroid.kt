@@ -35,6 +35,7 @@ import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.io.File
+import java.util.concurrent.Executor
 
 /**
  * Main entry point for the Android SDK.
@@ -195,6 +196,7 @@ public class PostHogAndroid private constructor() {
             config.storagePrefix = config.storagePrefix ?: File(cacheDir, "posthog-disk-queue").absolutePath
             config.replayStoragePrefix = config.replayStoragePrefix ?: File(cacheDir, "posthog-disk-replay-queue").absolutePath
             config.logsStoragePrefix = config.logsStoragePrefix ?: File(cacheDir, "posthog-disk-logs-queue").absolutePath
+            config.aiStoragePrefix = config.aiStoragePrefix ?: File(cacheDir, "posthog-disk-ai-queue").absolutePath
             val preferences = config.cachePreferences ?: PostHogSharedPreferences(context, config)
             config.cachePreferences = preferences
             // Defaults to PostHogDeviceDateProvider when api < 33
@@ -236,6 +238,8 @@ public class PostHogAndroid private constructor() {
             config.sampleRateProvider = { config.sessionReplayConfig.sampleRate }
 
             val mainHandler = MainHandler()
+            // onFeatureFlags listeners usually update UI, so deliver them on the main thread
+            config.featureFlagsListenerExecutor = Executor { mainHandler.handler.post(it) }
             config.addIntegrationSafely("PostHogReplayIntegration") {
                 PostHogReplayIntegration(context, config, mainHandler)
             }

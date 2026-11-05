@@ -171,7 +171,6 @@ internal class PostHogReplaySceneSchedulingTest {
         config =
             PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 sessionReplay = true
-                sessionReplayConfig.screenshot = true
                 sessionReplayConfig.verifyScreenshotMaskAlignment = true
                 sessionReplayConfig.throttleDelayMs = 0
                 remoteConfigHolder =
@@ -314,7 +313,7 @@ internal class PostHogReplaySceneSchedulingTest {
         val events = fake.properties!!["\$snapshot_data"] as List<*>
         val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
         val scene = (snapshot.data as Map<*, *>)["wireframes"] as List<*>
-        assertEquals(listOf("screenshot", "rectangle", "screenshot"), scene.map { (it as RRWireframe).type })
+        assertEquals(listOf("screenshot", "screenshot", "screenshot"), scene.map { (it as RRWireframe).type })
     }
 
     private fun timeoutDialogCopy(): Dialog {
@@ -522,7 +521,7 @@ internal class PostHogReplaySceneSchedulingTest {
 
         @Suppress("UNCHECKED_CAST")
         val frames = (snapshot.data as Map<*, *>)["wireframes"] as List<RRWireframe>
-        assertEquals(listOf("screenshot", "rectangle", "screenshot"), frames.map { it.type })
+        assertEquals(listOf("screenshot", "screenshot", "screenshot"), frames.map { it.type })
         assertTrue(dialog.window!!.decorView in sut.decorViews)
     }
 
