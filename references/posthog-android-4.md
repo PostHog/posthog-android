@@ -23,6 +23,9 @@ tableOfContents:
   - value: "Alias"
     url: alias
     depth: 0
+  - value: "Capture AI"
+    url: capture-ai
+    depth: 0
   - value: "Capture exception"
     url: capture-exception
     depth: 0
@@ -64,6 +67,9 @@ tableOfContents:
     depth: 0
   - value: "Is session replay active"
     url: is-session-replay-active
+    depth: 0
+  - value: "On feature flags"
+    url: on-feature-flags
     depth: 0
   - value: "Opt in"
     url: opt-in
@@ -162,7 +168,6 @@ fun <T : PostHogAndroidConfig> setup(context: Context, config: T)
 
 Sets up the SDK and stores it as the global singleton.
 
-
 #### Parameters
 
 - `context`: Android context; the application context is retained internally.
@@ -177,7 +182,6 @@ fun <T : PostHogAndroidConfig> with(context: Context, config: T): PostHogInterfa
 Creates and returns a configured SDK instance that you can hold and pass around.
 
 Default PostHog integrations are installed only on the first instance created by either setup or with. The first instance in the host app owns those integrations, so setup order matters.
-
 
 #### Return
 
@@ -196,7 +200,6 @@ fun <T : PostHogConfig> setup(config: T)
 
 Setup the SDK
 
-
 #### Parameters
 
 - `config`: the SDK configuration
@@ -208,7 +211,6 @@ fun <T : PostHogConfig> with(config: T): PostHogInterface
 ```
 
 Sets up the SDK and returns an instance that you can hold and pass around.
-
 
 #### Return
 
@@ -238,7 +240,6 @@ PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
 
 Content copied to clipboard
 
-
 #### Parameters
 
 - `event`: the event name
@@ -259,7 +260,6 @@ fun identify(distinctId: String, userProperties: Map<String, Any>? = null, userP
 ```
 
 Identifies the user Docs https://posthog.com/docs/product-analytics/identify
-
 
 #### Parameters
 
@@ -292,7 +292,6 @@ posthog.captureLog(
 ```
 
 Content copied to clipboard
-
 
 #### Parameters
 
@@ -330,474 +329,12 @@ fun alias(alias: String, options: Map<String, Any?>? = null)
 
 Creates an alias for the user Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
 
-
 #### Parameters
 
 - `alias`: the alias
 - `options`: settings that tell PostHog how to process the `$create_alias` event, see `options` in capture
 
-## Capture exception
-
-### `PostHog.captureException`
-
-```kotlin
-fun captureException(throwable: Throwable, properties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
-```
-
-Captures exceptions
-
-
-#### Parameters
-
-- `throwable`: the Throwable error
-- `properties`: the custom properties
-- `options`: settings that tell PostHog how to process the `$exception` event, see `options` in capture
-
-## Debug
-
-### `PostHog.debug`
-
-```kotlin
-fun debug(enable: Boolean = true)
-```
-
-Enables or disables the debug mode
-
-
-#### Parameters
-
-- `enable`: true to enable SDK debug logging, false to disable it.
-
-## Exception steps
-
-### `PostHog.addExceptionStep`
-
-```kotlin
-fun addExceptionStep(message: String, properties: Map<String, Any>? = null)
-```
-
-Records a breadcrumb-style exception step. A snapshot of the recorded steps is attached to every captured `$exception` event as `$exception_steps`, giving the error-tracking UI a timeline of recent activity leading up to each error.
-
-The buffer is a rolling window scoped to the SDK instance: it persists across captures and user identity changes, rotating only by byte-budget eviction (see com.posthog.errortracking.PostHogExceptionStepsConfig).
-
-Recording never throws into the host app: an empty message is ignored with a warning, and internal failures skip the step (logged via the configured logger).
-
-Recording is synchronous: the `$timestamp` is captured at call time and the step is normalized, byte-budget enforced, and buffered before this method returns, so a step recorded immediately before an exception or crash is present when it is captured. The work is bounded and cheap, adding negligible latency to the caller.
-
-
-#### Parameters
-
-- `message`: a non-empty description of the step
-- `properties`: optional user-supplied properties (the reserved keys `$message` and `$timestamp` are stripped)
-
-## Flush
-
-### `PostHog.flush`
-
-```kotlin
-fun flush()
-```
-
-Flushes all the events in the Queue right away
-
-## Get anonymous ID
-
-### `PostHog.getAnonymousId`
-
-```kotlin
-fun getAnonymousId(): String
-```
-
-Returns the anonymous ID generated for this device before any identify call.
-
-Unlike distinctId, this value does not change after identify — it always reflects the pre-identification anonymous identifier. Useful for linking anonymous sessions to identified users in downstream systems.
-
-
-#### Return
-
-The anonymous ID, or an empty string if the SDK is not enabled.
-
-## Get distinct ID
-
-### `PostHog.distinctId`
-
-```kotlin
-fun distinctId(): String
-```
-
-Returns the registered distinctId property
-
-
-#### Return
-
-The current distinct ID.
-
-## Get feature flag
-
-### `PostHog.getFeatureFlag`
-
-```kotlin
-fun getFeatureFlag(key: String, sendFeatureFlagEvent: Boolean? = null): Any?
-```
-
-Returns the feature flag value, or null if the flag has no value or the SDK is disabled. Use `?:` for a fallback; it is never reported in the $feature\_flag\_called event.
-
-```
-val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
-```
-
-Content copied to clipboard
-
-Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
-
-#### Return
-
-The feature flag value, or null if not found.
-
-#### Parameters
-
-- `key`: the Key
-- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog. Defaults to PostHogConfig.sendFeatureFlagEvent.
-
-## Get feature flag result
-
-### `PostHog.getFeatureFlagResult`
-
-```kotlin
-fun getFeatureFlagResult(key: String, sendFeatureFlagEvent: Boolean? = null): FeatureFlagResult?
-```
-
-Returns the feature flag result containing both value and payload. This is the recommended way to access feature flags when you need both the flag value and its payload atomically.
-
-Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
-
-#### Return
-
-FeatureFlagResult if the flag exists, null otherwise
-
-#### Parameters
-
-- `key`: The feature flag key
-- `sendFeatureFlagEvent`: If false, won't send $feature\_flag\_called event to PostHog
-
-## Get feature flags
-
-### `PostHog.getAllFeatureFlags`
-
-```kotlin
-fun getAllFeatureFlags(): List<FeatureFlagResult>?
-```
-
-Returns list of all feature flag result containing both value and payload. Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
-
-#### Return
-
-The currently loaded feature flag results, or null when flags are unavailable.
-
-## Get session ID
-
-### `PostHog.getSessionId`
-
-```kotlin
-fun getSessionId(): UUID?
-```
-
-Returns the session Id if a session is active
-
-
-#### Return
-
-The current session ID, or null if no session is active.
-
-## Group
-
-### `PostHog.group`
-
-```kotlin
-fun group(type: String, key: String, groupProperties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
-```
-
-Creates a group Docs https://posthog.com/docs/product-analytics/group-analytics
-
-
-#### Parameters
-
-- `type`: the Group type
-- `key`: the Group key
-- `groupProperties`: the Group properties, set as a "$group\_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
-- `options`: settings that tell PostHog how to process the `$groupidentify` event, see `options` in capture
-
-## Is feature enabled
-
-### `PostHog.isFeatureEnabled`
-
-```kotlin
-fun isFeatureEnabled(key: String, defaultValue: Boolean = false, sendFeatureFlagEvent: Boolean? = null): Boolean
-```
-
-Returns if a feature flag is enabled, the feature flag must be a Boolean Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
-
-#### Return
-
-Whether the feature flag is enabled.
-
-#### Parameters
-
-- `key`: the Key
-- `defaultValue`: the default value if not found, false if not given
-- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog.
-
-## Is opt out
-
-### `PostHog.isOptOut`
-
-```kotlin
-fun isOptOut(): Boolean
-```
-
-Checks if the optOut mode is enabled or disabled
-
-## Is session replay active
-
-### `PostHog.isSessionReplayActive`
-
-```kotlin
-fun isSessionReplayActive(): Boolean
-```
-
-Returns if Session Replay is Active Android only.
-
-
-#### Return
-
-Whether session replay is currently active.
-
-## Opt in
-
-### `PostHog.optIn`
-
-```kotlin
-fun optIn()
-```
-
-Enables the SDK to capture events
-
-## Register
-
-### `PostHog.register`
-
-```kotlin
-fun register(key: String, value: Any)
-```
-
-Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
-
-
-#### Parameters
-
-- `key`: the Key
-- `value`: the Value
-
-## Reload feature flags
-
-### `PostHog.reloadFeatureFlags`
-
-```kotlin
-fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
-```
-
-Reloads the feature flags
-
-The callback is invoked when the reload finishes, on a background thread. If the request fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
-
-```
-PostHog.reloadFeatureFlags { loaded ->  
-    if (loaded.errorsLoading) {  
-        // The reload failed. loaded.variants holds the last known flags.  
-    }  
-}
-```
-
-Content copied to clipboard
-
-
-#### Parameters
-
-- `onFeatureFlags`: the callback to get notified once the reload finishes, defaults to none
-
-## Reset
-
-### `PostHog.reset`
-
-```kotlin
-fun reset()
-```
-
-Resets all the cached properties including the distinctId The SDK will behave as its been setup for the first time
-
-## Reset group properties for flags
-
-### `PostHog.resetGroupPropertiesForFlags`
-
-```kotlin
-fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boolean = true)
-```
-
-Clears group properties for feature flag evaluation.
-
-
-#### Parameters
-
-- `type`: Optional group type to clear. If null, clears all group properties.
-- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
-
-## Reset person properties for flags
-
-### `PostHog.resetPersonPropertiesForFlags`
-
-```kotlin
-fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
-```
-
-Resets all person properties that were set for feature flag evaluation.
-
-
-#### Parameters
-
-- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
-
-## Screen
-
-### `PostHog.screen`
-
-```kotlin
-fun screen(screenTitle: String, properties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
-```
-
-Captures a screen view event
-
-
-#### Parameters
-
-- `screenTitle`: the screen title. It takes precedence over a `$screen_name` key in properties.
-- `properties`: the custom properties
-- `options`: settings that tell PostHog how to process the `$screen` event, see `options` in capture
-
-## Set group properties for flags
-
-### `PostHog.setGroupPropertiesForFlags`
-
-```kotlin
-fun setGroupPropertiesForFlags(type: String, groupProperties: Map<String, Any>, reloadFeatureFlags: Boolean = true)
-```
-
-Sets properties for a specific group type to include when evaluating feature flags.
-
-
-#### Parameters
-
-- `type`: The group type identifier (e.g., "organization", "team")
-- `groupProperties`: Dictionary of properties to set for this group type
-- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
-
-## Set person properties
-
-### `PostHog.setPersonProperties`
-
-```kotlin
-fun setPersonProperties(userPropertiesToSet: Map<String, Any>? = null, userPropertiesToSetOnce: Map<String, Any>? = null, options: Map<String, Any?>? = null)
-```
-
-Sets properties on the person profile associated with the current distinct\_id. Learn more about identifying users
-
-Updates user properties that are stored with the person profile in PostHog. If `personProfiles` is set to `IDENTIFIED_ONLY` and no profile exists, this will create one.
-
-This method sends a `$set` event to PostHog.
-
-
-#### Parameters
-
-- `userPropertiesToSet`: Optional: Properties to store about the user. These will overwrite existing values.
-- `userPropertiesToSetOnce`: Optional: Properties to store about the user only if not previously set. Note: For feature flag evaluations, if the same key is present in both parameters, the value from userPropertiesToSet will take precedence.
-- `options`: settings that tell PostHog how to process the `$set` event, see `options` in capture
-
-## Set person properties for flags
-
-### `PostHog.setPersonPropertiesForFlags`
-
-```kotlin
-fun setPersonPropertiesForFlags(userProperties: Map<String, Any>, reloadFeatureFlags: Boolean = true)
-```
-
-Sets person properties that will be included in feature flag evaluation requests.
-
-
-#### Parameters
-
-- `userProperties`: Dictionary of person properties to include in flag evaluation
-- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
-
-## Shutdown
-
-### `PostHog.close`
-
-```kotlin
-fun close()
-```
-
-Closes the SDK
-
-## Start session recording
-
-### `PostHog.startSessionReplay`
-
-```kotlin
-fun startSessionReplay(resumeCurrent: Boolean = true)
-```
-
-Starts session replay. This method will be NoOp if session replay is disabled in your project settings.
-
-Note: This method respects ingestion controls configured in your project settings. If sampling is configured and the session is not sampled, recording will not start. If event triggers are configured, recording will not start until a matching event is captured.
-
-Android only.
-
-
-#### Parameters
-
-- `resumeCurrent`: Whether to resume session replay of current session (true) or start a new session (false).
-
-## Stop session recording
-
-### `PostHog.stopSessionReplay`
-
-```kotlin
-fun stopSessionReplay()
-```
-
-Stops the current session replay if one is in progress.
-
-Android only.
-
-## Unregister
-
-### `PostHog.unregister`
-
-```kotlin
-fun unregister(key: String)
-```
-
-Unregisters the previously set property to be sent with all the following events
-
-
-#### Parameters
-
-- `key`: the Key
-
-## SDK utils
+## Capture AI
 
 ### `PostHog.captureAi`
 
@@ -836,6 +373,482 @@ the event's uuid once it's handed to the queue, or null when it isn't: the SDK i
 - `groups`: the groups, set as a "$groups" property
 - `timestamp`: the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
 - `options`: settings that tell PostHog how to process this event, see `options` in capture
+
+## Capture exception
+
+### `PostHog.captureException`
+
+```kotlin
+fun captureException(throwable: Throwable, properties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
+```
+
+Captures exceptions
+
+#### Parameters
+
+- `throwable`: the Throwable error
+- `properties`: the custom properties
+- `options`: settings that tell PostHog how to process the `$exception` event, see `options` in capture
+
+## Debug
+
+### `PostHog.debug`
+
+```kotlin
+fun debug(enable: Boolean = true)
+```
+
+Enables or disables the debug mode
+
+#### Parameters
+
+- `enable`: true to enable SDK debug logging, false to disable it.
+
+## Exception steps
+
+### `PostHog.addExceptionStep`
+
+```kotlin
+fun addExceptionStep(message: String, properties: Map<String, Any>? = null)
+```
+
+Records a breadcrumb-style exception step. A snapshot of the recorded steps is attached to every captured `$exception` event as `$exception_steps`, giving the error-tracking UI a timeline of recent activity leading up to each error.
+
+The buffer is a rolling window scoped to the SDK instance: it persists across captures and user identity changes, rotating only by byte-budget eviction (see com.posthog.errortracking.PostHogExceptionStepsConfig).
+
+Recording never throws into the host app: an empty message is ignored with a warning, and internal failures skip the step (logged via the configured logger).
+
+Recording is synchronous: the `$timestamp` is captured at call time and the step is normalized, byte-budget enforced, and buffered before this method returns, so a step recorded immediately before an exception or crash is present when it is captured. The work is bounded and cheap, adding negligible latency to the caller.
+
+#### Parameters
+
+- `message`: a non-empty description of the step
+- `properties`: optional user-supplied properties (the reserved keys `$message` and `$timestamp` are stripped)
+
+## Flush
+
+### `PostHog.flush`
+
+```kotlin
+fun flush()
+```
+
+Flushes all the events in the Queue right away
+
+## Get anonymous ID
+
+### `PostHog.getAnonymousId`
+
+```kotlin
+fun getAnonymousId(): String
+```
+
+Returns the anonymous ID generated for this device before any identify call.
+
+Unlike distinctId, this value does not change after identify — it always reflects the pre-identification anonymous identifier. Useful for linking anonymous sessions to identified users in downstream systems.
+
+#### Return
+
+The anonymous ID, or an empty string if the SDK is not enabled.
+
+## Get distinct ID
+
+### `PostHog.distinctId`
+
+```kotlin
+fun distinctId(): String
+```
+
+Returns the registered distinctId property
+
+#### Return
+
+The current distinct ID.
+
+## Get feature flag
+
+### `PostHog.getFeatureFlag`
+
+```kotlin
+fun getFeatureFlag(key: String, sendFeatureFlagEvent: Boolean? = null): Any?
+```
+
+Returns the feature flag value, or null if the flag has no value or the SDK is disabled. Use `?:` for a fallback; it is never reported in the $feature\_flag\_called event.
+
+```
+val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
+```
+
+Content copied to clipboard
+
+Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
+#### Return
+
+The feature flag value, or null if not found.
+
+#### Parameters
+
+- `key`: the Key
+- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog. Defaults to PostHogConfig.sendFeatureFlagEvent.
+
+## Get feature flag result
+
+### `PostHog.getFeatureFlagResult`
+
+```kotlin
+fun getFeatureFlagResult(key: String, sendFeatureFlagEvent: Boolean? = null): FeatureFlagResult?
+```
+
+Returns the feature flag result containing both value and payload. This is the recommended way to access feature flags when you need both the flag value and its payload atomically.
+
+Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
+#### Return
+
+FeatureFlagResult if the flag exists, null otherwise
+
+#### Parameters
+
+- `key`: The feature flag key
+- `sendFeatureFlagEvent`: If false, won't send $feature\_flag\_called event to PostHog
+
+## Get feature flags
+
+### `PostHog.getAllFeatureFlags`
+
+```kotlin
+fun getAllFeatureFlags(): List<FeatureFlagResult>?
+```
+
+Returns list of all feature flag result containing both value and payload. Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
+#### Return
+
+The currently loaded feature flag results, or null when flags are unavailable.
+
+## Get session ID
+
+### `PostHog.getSessionId`
+
+```kotlin
+fun getSessionId(): UUID?
+```
+
+Returns the session Id if a session is active
+
+#### Return
+
+The current session ID, or null if no session is active.
+
+## Group
+
+### `PostHog.group`
+
+```kotlin
+fun group(type: String, key: String, groupProperties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
+```
+
+Creates a group Docs https://posthog.com/docs/product-analytics/group-analytics
+
+#### Parameters
+
+- `type`: the Group type
+- `key`: the Group key
+- `groupProperties`: the Group properties, set as a "$group\_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+- `options`: settings that tell PostHog how to process the `$groupidentify` event, see `options` in capture
+
+## Is feature enabled
+
+### `PostHog.isFeatureEnabled`
+
+```kotlin
+fun isFeatureEnabled(key: String, defaultValue: Boolean = false, sendFeatureFlagEvent: Boolean? = null): Boolean
+```
+
+Returns if a feature flag is enabled, the feature flag must be a Boolean Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
+#### Return
+
+Whether the feature flag is enabled.
+
+#### Parameters
+
+- `key`: the Key
+- `defaultValue`: the default value if not found, false if not given
+- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog.
+
+## Is opt out
+
+### `PostHog.isOptOut`
+
+```kotlin
+fun isOptOut(): Boolean
+```
+
+Checks if the optOut mode is enabled or disabled
+
+## Is session replay active
+
+### `PostHog.isSessionReplayActive`
+
+```kotlin
+fun isSessionReplayActive(): Boolean
+```
+
+Returns if Session Replay is Active Android only.
+
+#### Return
+
+Whether session replay is currently active.
+
+## On feature flags
+
+### `PostHog.onFeatureFlags`
+
+```kotlin
+fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
+```
+
+Registers a callback that's invoked whenever feature flags are loaded or updated.
+
+On Android, the callback runs on the main thread, after the getters already return the new values. On the JVM, it runs on the SDK's background remote config thread. It's invoked after the SDK loads flags at startup (including from bootstrap values), after reloadFeatureFlags, and after calls that reload flags such as identify, group or reset. If a load fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If flags have already loaded when you register, it's also invoked with the current values shortly afterwards.
+
+You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
+
+```
+val subscription = PostHog.onFeatureFlags { loaded ->  
+    if (loaded.variants["new-checkout"] == "test") {  
+        // Show the test variant  
+    }  
+}  
+  
+// Later, stop listening  
+subscription.unsubscribe()
+```
+
+Content copied to clipboard
+
+#### Return
+
+a subscription; call PostHogFeatureFlagsSubscription.unsubscribe to stop receiving updates
+
+#### Parameters
+
+- `callback`: receives the enabled flags, their values, and whether loading failed
+
+## Opt in
+
+### `PostHog.optIn`
+
+```kotlin
+fun optIn()
+```
+
+Enables the SDK to capture events
+
+## Register
+
+### `PostHog.register`
+
+```kotlin
+fun register(key: String, value: Any)
+```
+
+Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
+
+#### Parameters
+
+- `key`: the Key
+- `value`: the Value
+
+## Reload feature flags
+
+### `PostHog.reloadFeatureFlags`
+
+```kotlin
+fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback? = null)
+```
+
+Reloads the feature flags
+
+The callback is invoked when the reload finishes, on a background thread. If the request fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
+
+```
+PostHog.reloadFeatureFlags { loaded ->  
+    if (loaded.errorsLoading) {  
+        // The reload failed. loaded.variants holds the last known flags.  
+    }  
+}
+```
+
+Content copied to clipboard
+
+#### Parameters
+
+- `onFeatureFlags`: the callback to get notified once the reload finishes, defaults to none
+
+## Reset
+
+### `PostHog.reset`
+
+```kotlin
+fun reset()
+```
+
+Resets all the cached properties including the distinctId The SDK will behave as its been setup for the first time
+
+## Reset group properties for flags
+
+### `PostHog.resetGroupPropertiesForFlags`
+
+```kotlin
+fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boolean = true)
+```
+
+Clears group properties for feature flag evaluation.
+
+#### Parameters
+
+- `type`: Optional group type to clear. If null, clears all group properties.
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
+
+## Reset person properties for flags
+
+### `PostHog.resetPersonPropertiesForFlags`
+
+```kotlin
+fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
+```
+
+Resets all person properties that were set for feature flag evaluation.
+
+#### Parameters
+
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
+
+## Screen
+
+### `PostHog.screen`
+
+```kotlin
+fun screen(screenTitle: String, properties: Map<String, Any>? = null, options: Map<String, Any?>? = null)
+```
+
+Captures a screen view event
+
+#### Parameters
+
+- `screenTitle`: the screen title. It takes precedence over a `$screen_name` key in properties.
+- `properties`: the custom properties
+- `options`: settings that tell PostHog how to process the `$screen` event, see `options` in capture
+
+## Set group properties for flags
+
+### `PostHog.setGroupPropertiesForFlags`
+
+```kotlin
+fun setGroupPropertiesForFlags(type: String, groupProperties: Map<String, Any>, reloadFeatureFlags: Boolean = true)
+```
+
+Sets properties for a specific group type to include when evaluating feature flags.
+
+#### Parameters
+
+- `type`: The group type identifier (e.g., "organization", "team")
+- `groupProperties`: Dictionary of properties to set for this group type
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
+
+## Set person properties
+
+### `PostHog.setPersonProperties`
+
+```kotlin
+fun setPersonProperties(userPropertiesToSet: Map<String, Any>? = null, userPropertiesToSetOnce: Map<String, Any>? = null, options: Map<String, Any?>? = null)
+```
+
+Sets properties on the person profile associated with the current distinct\_id. Learn more about identifying users
+
+Updates user properties that are stored with the person profile in PostHog. If `personProfiles` is set to `IDENTIFIED_ONLY` and no profile exists, this will create one.
+
+This method sends a `$set` event to PostHog.
+
+#### Parameters
+
+- `userPropertiesToSet`: Optional: Properties to store about the user. These will overwrite existing values.
+- `userPropertiesToSetOnce`: Optional: Properties to store about the user only if not previously set. Note: For feature flag evaluations, if the same key is present in both parameters, the value from userPropertiesToSet will take precedence.
+- `options`: settings that tell PostHog how to process the `$set` event, see `options` in capture
+
+## Set person properties for flags
+
+### `PostHog.setPersonPropertiesForFlags`
+
+```kotlin
+fun setPersonPropertiesForFlags(userProperties: Map<String, Any>, reloadFeatureFlags: Boolean = true)
+```
+
+Sets person properties that will be included in feature flag evaluation requests.
+
+#### Parameters
+
+- `userProperties`: Dictionary of person properties to include in flag evaluation
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
+
+## Shutdown
+
+### `PostHog.close`
+
+```kotlin
+fun close()
+```
+
+Closes the SDK
+
+## Start session recording
+
+### `PostHog.startSessionReplay`
+
+```kotlin
+fun startSessionReplay(resumeCurrent: Boolean = true)
+```
+
+Starts session replay. This method will be NoOp if session replay is disabled in your project settings.
+
+Note: This method respects ingestion controls configured in your project settings. If sampling is configured and the session is not sampled, recording will not start. If event triggers are configured, recording will not start until a matching event is captured.
+
+Android only.
+
+#### Parameters
+
+- `resumeCurrent`: Whether to resume session replay of current session (true) or start a new session (false).
+
+## Stop session recording
+
+### `PostHog.stopSessionReplay`
+
+```kotlin
+fun stopSessionReplay()
+```
+
+Stops the current session replay if one is in progress.
+
+Android only.
+
+## Unregister
+
+### `PostHog.unregister`
+
+```kotlin
+fun unregister(key: String)
+```
+
+Unregisters the previously set property to be sent with all the following events
+
+#### Parameters
+
+- `key`: the Key
+
+## SDK utils
 
 ### `PostHog.captureFeatureInteraction`
 
@@ -923,39 +936,6 @@ Returns if a session is active
 #### Return
 
 Whether a session is currently active.
-
-### `PostHog.onFeatureFlags`
-
-```kotlin
-fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
-```
-
-Registers a callback that's invoked whenever feature flags are loaded or updated.
-
-On Android, the callback runs on the main thread, after the getters already return the new values. On the JVM, it runs on the SDK's background remote config thread. It's invoked after the SDK loads flags at startup (including from bootstrap values), after reloadFeatureFlags, and after calls that reload flags such as identify, group or reset. If a load fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If flags have already loaded when you register, it's also invoked with the current values shortly afterwards.
-
-You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
-
-```
-val subscription = PostHog.onFeatureFlags { loaded ->  
-    if (loaded.variants["new-checkout"] == "test") {  
-        // Show the test variant  
-    }  
-}  
-  
-// Later, stop listening  
-subscription.unsubscribe()
-```
-
-Content copied to clipboard
-
-#### Return
-
-a subscription; call PostHogFeatureFlagsSubscription.unsubscribe to stop receiving updates
-
-#### Parameters
-
-- `callback`: receives the enabled flags, their values, and whether loading failed
 
 ### `PostHog.optOut`
 

@@ -165,7 +165,6 @@ fun <T : PostHogAndroidConfig> setup(context: Context, config: T)
 
 Sets up the SDK and stores it as the global singleton.
 
-
 #### Parameters
 
 - `context`: Android context; the application context is retained internally.
@@ -180,7 +179,6 @@ fun <T : PostHogAndroidConfig> with(context: Context, config: T): PostHogInterfa
 Creates and returns a configured SDK instance that you can hold and pass around.
 
 Default PostHog integrations are installed only on the first instance created by either setup or with. The first instance in the host app owns those integrations, so setup order matters.
-
 
 #### Return
 
@@ -199,7 +197,6 @@ fun <T : PostHogConfig> setup(config: T)
 
 Setup the SDK
 
-
 #### Parameters
 
 - `config`: the SDK configuration
@@ -211,7 +208,6 @@ fun <T : PostHogConfig> with(config: T): PostHogInterface
 ```
 
 Sets up the SDK and returns an instance that you can hold and pass around.
-
 
 #### Return
 
@@ -230,7 +226,6 @@ fun capture(event: String, distinctId: String? = null, properties: Map<String, A
 ```
 
 Captures events
-
 
 #### Parameters
 
@@ -251,7 +246,6 @@ fun identify(distinctId: String, userProperties: Map<String, Any>? = null, userP
 ```
 
 Identifies the user Docs https://posthog.com/docs/product-analytics/identify
-
 
 #### Parameters
 
@@ -283,7 +277,6 @@ posthog.captureLog(
 ```
 
 Content copied to clipboard
-
 
 #### Parameters
 
@@ -321,7 +314,6 @@ fun alias(alias: String)
 
 Creates an alias for the user Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
 
-
 #### Parameters
 
 - `alias`: the alias
@@ -335,7 +327,6 @@ fun captureException(throwable: Throwable, properties: Map<String, Any>? = null)
 ```
 
 Captures exceptions
-
 
 #### Parameters
 
@@ -351,7 +342,6 @@ fun debug(enable: Boolean = true)
 ```
 
 Enables or disables the debug mode
-
 
 #### Parameters
 
@@ -372,7 +362,6 @@ The buffer is a rolling window scoped to the SDK instance: it persists across ca
 Recording never throws into the host app: an empty message is ignored with a warning, and internal failures skip the step (logged via the configured logger).
 
 Recording is synchronous: the `$timestamp` is captured at call time and the step is normalized, byte-budget enforced, and buffered before this method returns, so a step recorded immediately before an exception or crash is present when it is captured. The work is bounded and cheap, adding negligible latency to the caller.
-
 
 #### Parameters
 
@@ -401,7 +390,6 @@ Returns the anonymous ID generated for this device before any identify call.
 
 Unlike distinctId, this value does not change after identify — it always reflects the pre-identification anonymous identifier. Useful for linking anonymous sessions to identified users in downstream systems.
 
-
 #### Return
 
 The anonymous ID, or an empty string if the SDK is not enabled.
@@ -416,7 +404,6 @@ fun distinctId(): String
 
 Returns the registered distinctId property
 
-
 #### Return
 
 The current distinct ID.
@@ -430,7 +417,6 @@ fun getFeatureFlag(key: String, defaultValue: Any? = null, sendFeatureFlagEvent:
 ```
 
 Returns the feature flag Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
 
 #### Return
 
@@ -464,7 +450,6 @@ Content copied to clipboard
 
 Returns the feature flag payload Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
-
 #### Return
 
 The feature flag payload, or defaultValue if not found.
@@ -486,7 +471,6 @@ Returns the feature flag result containing both value and payload. This is the r
 
 Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
-
 #### Return
 
 FeatureFlagResult if the flag exists, null otherwise
@@ -506,7 +490,6 @@ fun getAllFeatureFlags(): List<FeatureFlagResult>?
 
 Returns list of all feature flag result containing both value and payload. Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
-
 #### Return
 
 The currently loaded feature flag results, or null when flags are unavailable.
@@ -521,7 +504,6 @@ fun getSessionId(): UUID?
 
 Returns the session Id if a session is active
 
-
 #### Return
 
 The current session ID, or null if no session is active.
@@ -535,7 +517,6 @@ fun group(type: String, key: String, groupProperties: Map<String, Any>? = null)
 ```
 
 Creates a group Docs https://posthog.com/docs/product-analytics/group-analytics
-
 
 #### Parameters
 
@@ -552,7 +533,6 @@ fun isFeatureEnabled(key: String, defaultValue: Boolean = false, sendFeatureFlag
 ```
 
 Returns if a feature flag is enabled, the feature flag must be a Boolean Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
-
 
 #### Return
 
@@ -584,7 +564,6 @@ fun isSessionReplayActive(): Boolean
 
 Returns if Session Replay is Active Android only.
 
-
 #### Return
 
 Whether session replay is currently active.
@@ -609,7 +588,6 @@ fun register(key: String, value: Any)
 
 Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
 
-
 #### Parameters
 
 - `key`: the Key
@@ -624,7 +602,6 @@ fun reloadFeatureFlags(onFeatureFlags: PostHogOnFeatureFlags? = null)
 ```
 
 Reloads the feature flags
-
 
 #### Parameters
 
@@ -650,7 +627,6 @@ fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boole
 
 Clears group properties for feature flag evaluation.
 
-
 #### Parameters
 
 - `type`: Optional group type to clear. If null, clears all group properties.
@@ -666,7 +642,6 @@ fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
 
 Resets all person properties that were set for feature flag evaluation.
 
-
 #### Parameters
 
 - `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
@@ -680,7 +655,6 @@ fun screen(screenTitle: String, properties: Map<String, Any>? = null)
 ```
 
 Captures a screen view event
-
 
 #### Parameters
 
@@ -696,7 +670,6 @@ fun setGroupPropertiesForFlags(type: String, groupProperties: Map<String, Any>, 
 ```
 
 Sets properties for a specific group type to include when evaluating feature flags.
-
 
 #### Parameters
 
@@ -718,7 +691,6 @@ Updates user properties that are stored with the person profile in PostHog. If `
 
 This method sends a `$set` event to PostHog.
 
-
 #### Parameters
 
 - `userPropertiesToSet`: Optional: Properties to store about the user. These will overwrite existing values.
@@ -733,7 +705,6 @@ fun setPersonPropertiesForFlags(userProperties: Map<String, Any>, reloadFeatureF
 ```
 
 Sets person properties that will be included in feature flag evaluation requests.
-
 
 #### Parameters
 
@@ -764,7 +735,6 @@ Note: This method respects ingestion controls configured in your project setting
 
 Android only.
 
-
 #### Parameters
 
 - `resumeCurrent`: Whether to resume session replay of current session (true) or start a new session (false).
@@ -790,7 +760,6 @@ fun unregister(key: String)
 ```
 
 Unregisters the previously set property to be sent with all the following events
-
 
 #### Parameters
 
