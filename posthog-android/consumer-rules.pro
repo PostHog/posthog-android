@@ -132,6 +132,12 @@
 }
 # A delegate's drawing can't be recorded, so session replay looks for this class by name.
 -keepnames class androidx.compose.ui.node.DelegatingNode
+# Replaying a draw cache would corrupt it, so session replay looks for these by name.
+-keepnames class androidx.compose.ui.draw.CacheDrawModifierNodeImpl
+-keepnames class androidx.compose.ui.node.BackwardsCompatNode
+-keepclassmembers class androidx.compose.ui.node.BackwardsCompatNode {
+    public androidx.compose.ui.Modifier$Element getElement();
+}
 -keepnames class androidx.compose.ui.graphics.painter.BrushPainter
 -keepclassmembers class androidx.compose.ui.Modifier$Node {
     *** getChild$ui();

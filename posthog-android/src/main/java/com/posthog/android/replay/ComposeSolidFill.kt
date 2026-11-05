@@ -1,5 +1,6 @@
 package com.posthog.android.replay
 
+import androidx.compose.ui.draw.DrawCacheModifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -33,6 +34,21 @@ private val delegatingNode by lazy(LazyThreadSafetyMode.NONE) {
 private val drawModifierNodeDraw by lazy(LazyThreadSafetyMode.NONE) {
     drawModifierNode.getMethod("draw", ContentDrawScope::class.java)
 }
+private val backwardsCompatNode by lazy(LazyThreadSafetyMode.NONE) {
+    Class.forName("androidx.compose.ui.node.BackwardsCompatNode")
+}
+private val backwardsCompatNodeElement by lazy(LazyThreadSafetyMode.NONE) {
+    backwardsCompatNode.getMethod("getElement")
+}
+
+// Compose before 1.5 has no such node.
+private val cacheDrawNode by lazy(LazyThreadSafetyMode.NONE) {
+    try {
+        Class.forName("androidx.compose.ui.draw.CacheDrawModifierNodeImpl")
+    } catch (_: ClassNotFoundException) {
+        null
+    }
+}
 
 /**
  * Replays this node's draw modifiers into a recorder to see what they paint, since a Canvas keeps
@@ -41,8 +57,9 @@ private val drawModifierNodeDraw by lazy(LazyThreadSafetyMode.NONE) {
 internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
     val chain = nodeChain() ?: return false
     val nodes = generateSequence(chain.head.invoke(chain.nodes.invoke(this))) { chain.child.invoke(it) }.toList()
-    // A delegate draws outside the chain, so the recorder can't see what it paints.
-    if (nodes.any { delegatingNode.isInstance(it) }) return false
+    // A delegate draws outside the chain, so the recorder can't see what it paints, and a draw cache
+    // isn't safe to replay.
+    if (nodes.any { delegatingNode.isInstance(it) || it.holdsDrawCache() }) return false
     val recorder = SolidFillRecorder(width.toFloat(), height.toFloat())
     CanvasDrawScope().draw(density, LayoutDirection.Ltr, recorder, Size(recorder.width, recorder.height)) {
         val scope = withoutContent()
@@ -50,6 +67,12 @@ internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
     }
     return recorder.isSolidFill
 }
+
+// Replaying a draw cache would build it without content, and the next real draw would reuse that.
+// Compose before 1.5 holds drawWithCache in a DrawCacheModifier element.
+private fun Any.holdsDrawCache(): Boolean = cacheDrawNode?.isInstance(this) == true || legacyElement() is DrawCacheModifier
+
+private fun Any.legacyElement(): Any? = if (backwardsCompatNode.isInstance(this)) backwardsCompatNodeElement.invoke(this) else null
 
 // A compiled implementation would miss DrawScope members added after our Compose compile floor, and
 // their defaults can call themselves. R8 renames drawContent, so match it by its declaring interface.

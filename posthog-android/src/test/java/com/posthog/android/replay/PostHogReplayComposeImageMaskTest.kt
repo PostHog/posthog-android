@@ -31,8 +31,11 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BuildDrawCacheParams
+import androidx.compose.ui.draw.DrawCacheModifier
 import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
@@ -535,6 +539,55 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
         assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid draw held in a draw cache`() {
+        setWindowContent {
+            Box(Modifier.fillMaxSize().dismissTarget().drawWithCache { onDrawBehind { drawRect(Color.Black) } })
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid draw held in an old-style draw cache`() {
+        val drawCache =
+            object : DrawCacheModifier {
+                override fun onBuildCache(params: BuildDrawCacheParams) = Unit
+
+                override fun ContentDrawScope.draw() = drawRect(Color.Black)
+            }
+        setWindowContent {
+            Box(Modifier.fillMaxSize().dismissTarget().then(drawCache))
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `does not build an app draw cache without its content`() {
+        var contentDraws = 0
+        setWindowContent {
+            Box(
+                Modifier.fillMaxSize().dismissTarget().drawWithCache {
+                    val layer = obtainGraphicsLayer()
+                    layer.record { drawContent() }
+                    onDrawWithContent { drawLayer(layer) }
+                }.drawBehind {
+                    contentDraws++
+                    drawRect(Color.Black)
+                },
+            )
+        }
+
+        maskRects(root = dialogWindow())
+        compose.runOnIdle {
+            val view = findComposeView(dialogWindow())!!
+            view.draw(android.graphics.Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+        }
+
+        assertTrue(contentDraws > 0)
     }
 
     @Test
