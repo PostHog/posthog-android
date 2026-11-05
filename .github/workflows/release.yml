@@ -129,6 +129,7 @@ jobs:
 
             # Best-effort: a failure never blocks the release. Run generate-references.yml to retry.
             - name: Regenerate the SDK reference
+              id: reference
               continue-on-error: true
               env:
                   GH_TOKEN: ${{ steps.releaser.outputs.token }}
@@ -138,6 +139,10 @@ jobs:
                   python3 bin/docs_scripts/generate_markdown.py --sdk-specs "$RUNNER_TEMP/sdk-specs"
                   # Stage the pages, so a new page shows in git status as a file, not as an untracked folder.
                   git add references
+
+            - name: Warn if the SDK reference didn't regenerate
+              if: steps.reference.outcome == 'failure'
+              run: echo "::warning::The SDK reference didn't regenerate. Run generate-references.yml to retry."
 
             - name: Check for version bump changes
               id: check-changes
