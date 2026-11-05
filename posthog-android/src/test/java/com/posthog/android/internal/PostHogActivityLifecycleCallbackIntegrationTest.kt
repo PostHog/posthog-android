@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -207,6 +208,14 @@ internal class PostHogActivityLifecycleCallbackIntegrationTest {
 
         assertEquals("ABCDEFG", fake.properties?.get("barcode"))
         assertEquals("fasf", fake.properties?.get("Reference"))
+    }
+
+    @Test
+    fun `onActivityCreated drops deep link query params reserved for PostHog`() {
+        val fake = executeDeepLinkTest("test://print?barcode=ABCDEFG&%24process_person_profile=true")
+
+        assertEquals("ABCDEFG", fake.properties?.get("barcode"))
+        assertFalse(fake.properties!!.containsKey("\$process_person_profile"))
     }
 
     @Test

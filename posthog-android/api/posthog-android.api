@@ -34,6 +34,7 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun getCapturePushNotificationSubscriptions ()Z
 	public final fun getCaptureRageClicks ()Z
 	public final fun getCaptureScreenViews ()Z
+	public final fun getDetectAppLanguage ()Z
 	public final fun getSessionReplayConfig ()Lcom/posthog/android/replay/PostHogSessionReplayConfig;
 	public final fun setCaptureApplicationLifecycleEvents (Z)V
 	public final fun setCaptureDeadClicks (Z)V
@@ -43,6 +44,7 @@ public class com/posthog/android/PostHogAndroidConfig : com/posthog/PostHogConfi
 	public final fun setCapturePushNotificationSubscriptions (Z)V
 	public final fun setCaptureRageClicks (Z)V
 	public final fun setCaptureScreenViews (Z)V
+	public final fun setDetectAppLanguage (Z)V
 	public final fun setSessionReplayConfig (Lcom/posthog/android/replay/PostHogSessionReplayConfig;)V
 }
 

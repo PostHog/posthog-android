@@ -35,6 +35,9 @@ internal class PostHogReplayQueueTest {
             setAddSecondsToCurrentDate(Date(1000))
         }
 
+    // past the pause: the whole seconds pinned above plus a jittered remainder under a second
+    private val afterPause = Date(2000)
+
     @AfterTest
     fun cleanup() {
         queues.forEach {
@@ -201,7 +204,7 @@ internal class PostHogReplayQueueTest {
 
         http.enqueue(MockResponse())
         http.enqueue(MockResponse())
-        clock.setCurrentDate(Date(1000))
+        clock.setCurrentDate(afterPause)
         sut.flush()
         awaitQueue()
         assertBatches(http, listOf(List(2) { "failed" to "user" }, listOf("later" to "user")))
@@ -237,7 +240,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(files, sut.dequeList)
         assertEquals(1, sut.currentBatchCapForTesting)
         repeat(3) { http.enqueue(MockResponse()) }
-        clock.setCurrentDate(Date(1000))
+        clock.setCurrentDate(afterPause)
         sut.flush()
         awaitQueue()
         assertBatches(http, listOf(listOf("oversized" to "user"), listOf("oversized" to "user"), listOf("later" to "user")))
@@ -271,7 +274,7 @@ internal class PostHogReplayQueueTest {
 
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
-        assertEquals("/batch", request.path)
+        assertEquals("/i/v1/analytics/events", request.path)
         val payload = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals(2, (payload["batch"] as List<*>).size)
         assertEquals(0, sut.size)

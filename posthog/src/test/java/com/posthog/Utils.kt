@@ -1,6 +1,7 @@
 package com.posthog
 
 import com.posthog.internal.PostHogContext
+import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.parseISO8601Date
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -86,6 +87,13 @@ public fun Buffer.unGzip(): String {
     return GzipSource(this).use { source ->
         source.buffer().use { bufferedSource -> bufferedSource.readUtf8() }
     }
+}
+
+/** The events of a capture v1 request [body], as sent on the wire. */
+@Suppress("UNCHECKED_CAST")
+public fun captureV1Events(body: String): List<Map<String, Any?>> {
+    val parsed = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any?>>(body.reader())
+    return parsed["batch"] as List<Map<String, Any?>>
 }
 
 public class TestPostHogContext : PostHogContext {
