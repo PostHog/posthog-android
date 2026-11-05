@@ -10,6 +10,7 @@ import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
+import com.posthog.internal.PostHogPreferences.Companion.FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.shutdownAndAwaitTermination
@@ -3314,6 +3315,43 @@ internal class PostHogRemoteConfigTest {
             // the cache holds no raw string either, so a later launch reads no payload
             assertNull(getSut(host = "http://127.0.0.1:1/").getFeatureFlagPayload("checkout"))
         }
+    }
+
+    @Test
+    fun `a malformed payload cached by 3x reads as null after the upgrade`() {
+        fun metadata(payload: String?) = FeatureFlagMetadata(id = 1, payload = payload, version = 1)
+        val asObjects =
+            mapOf<String, Any>(
+                "checkout" to FeatureFlag("checkout", true, "blue", metadata("hello"), null),
+                "beta-ui" to FeatureFlag("beta-ui", true, null, metadata("{\"color\":\"green\"}"), null),
+            )
+        val asStoredJson =
+            mapOf<String, Any>(
+                "checkout" to mapOf("key" to "checkout", "metadata" to mapOf("payload" to "hello")),
+                "beta-ui" to mapOf("key" to "beta-ui", "metadata" to mapOf("payload" to "{\"color\":\"green\"}")),
+            )
+        for (cachedFlags in listOf(asObjects, asStoredJson)) {
+            preferences.clear()
+            preferences.setValue(FLAGS, cachedFlags)
+            preferences.setValue(FEATURE_FLAGS, mapOf("checkout" to "blue", "beta-ui" to true))
+            preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("checkout" to "hello", "beta-ui" to mapOf("color" to "green")))
+
+            val sut = getSut(host = "http://127.0.0.1:1/")
+
+            assertNull(sut.getFeatureFlagResult("checkout")?.payload)
+            assertEquals("blue", sut.getFeatureFlagResult("checkout")?.variant)
+            assertEquals(mapOf("color" to "green"), sut.getFeatureFlagResult("beta-ui")?.payload)
+        }
+    }
+
+    @Test
+    fun `a cache without flag details keeps its payloads`() {
+        preferences.setValue(FEATURE_FLAGS, mapOf("beta-ui" to true))
+        preferences.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("beta-ui" to mapOf("color" to "green")))
+
+        val sut = getSut(host = "http://127.0.0.1:1/")
+
+        assertEquals(mapOf("color" to "green"), sut.getFeatureFlagResult("beta-ui")?.payload)
     }
 
     @Test
