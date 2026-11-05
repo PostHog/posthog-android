@@ -1,5 +1,6 @@
 package com.posthog.android.replay
 
+import android.graphics.PorterDuffXfermode
 import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -101,9 +102,8 @@ private fun DrawScope.withoutContent(): ContentDrawScope =
         }
     } as ContentDrawScope
 
-// Solid means exactly one rectangle over the whole node with no shader, whatever its color, alpha or
-// style. A shader can paint a bitmap through a rectangle, and several rectangles can draw a picture.
-// Paint.shader doesn't see a shader set on the framework paint.
+// Solid means exactly one rectangle over the whole node, drawn with a plain fill, whatever its color or
+// alpha. Several rectangles can draw a picture.
 private class SolidFillRecorder(val width: Float, val height: Float) : Canvas {
     private var filled = false
     private var otherDrawing = false
@@ -117,14 +117,23 @@ private class SolidFillRecorder(val width: Float, val height: Float) : Canvas {
         bottom: Float,
         paint: Paint,
     ) {
-        if (
-            !filled && left <= 0f && top <= 0f && right >= width && bottom >= height &&
-            paint.shader == null && paint.asFrameworkPaint().shader == null
-        ) {
+        if (!filled && left <= 0f && top <= 0f && right >= width && bottom >= height && paint.isPlainFill()) {
             filled = true
         } else {
             otherDrawing = true
         }
+    }
+
+    // Anything else on the paint can carry a picture. The Compose paint writes through to the framework
+    // paint, which also holds what the app set there directly. Below API 29 Compose sets its blend mode as
+    // a PorterDuffXfermode.
+    private fun Paint.isPlainFill(): Boolean {
+        val frameworkPaint = asFrameworkPaint()
+        return shader == null && frameworkPaint.shader == null &&
+            frameworkPaint.style == android.graphics.Paint.Style.FILL &&
+            frameworkPaint.pathEffect == null && frameworkPaint.colorFilter == null &&
+            frameworkPaint.maskFilter == null &&
+            frameworkPaint.xfermode.let { it == null || it is PorterDuffXfermode }
     }
 
     private fun other() {

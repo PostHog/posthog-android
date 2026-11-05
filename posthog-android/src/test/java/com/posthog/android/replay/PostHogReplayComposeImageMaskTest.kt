@@ -2,8 +2,11 @@ package com.posthog.android.replay
 
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
+import android.graphics.BlurMaskFilter
+import android.graphics.DashPathEffect
 import android.graphics.Rect
 import android.graphics.Shader
+import android.graphics.Xfermode
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.setContent
@@ -41,15 +44,21 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StampedPathEffectStyle
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -487,15 +496,77 @@ internal class PostHogReplayComposeImageMaskTest {
         assertWindowMasked()
     }
 
-    @Suppress("DEPRECATION")
     @Test
     fun `masks a window-filling canvas that sets a shader on the framework paint`() {
-        val shader = BitmapShader(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val bitmapShader = BitmapShader(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        assertFrameworkPaintMasked { shader = bitmapShader }
+    }
+
+    @Test
+    fun `masks a window-filling stroked rectangle that stamps a path`() {
+        val stamp =
+            Path().apply {
+                lineTo(4f, 0f)
+                lineTo(4f, 4f)
+                close()
+            }
+        val effect = PathEffect.stampedPathEffect(stamp, 8f, 0f, StampedPathEffectStyle.Translate)
         setWindowContent {
             Canvas(Modifier.fillMaxSize().dismissTarget()) {
-                drawIntoCanvas {
-                    it.drawRect(0f, 0f, size.width, size.height, Paint().apply { asFrameworkPaint().shader = shader })
-                }
+                drawRect(Color.Black, style = Stroke(width = 4f, pathEffect = effect))
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling stroked rectangle`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawRect(Color.Black, style = Stroke(width = 4f))
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that sets a path effect on the framework paint`() {
+        val effect = DashPathEffect(floatArrayOf(4f, 4f), 0f)
+        assertFrameworkPaintMasked { pathEffect = effect }
+    }
+
+    @Test
+    fun `masks a window-filling rectangle with a color filter`() {
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawRect(Color.Black, colorFilter = ColorFilter.tint(Color.Red))
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that sets a mask filter on the framework paint`() {
+        val filter = BlurMaskFilter(4f, BlurMaskFilter.Blur.NORMAL)
+        assertFrameworkPaintMasked { maskFilter = filter }
+    }
+
+    @Test
+    fun `masks a window-filling canvas that sets a custom transfer mode on the framework paint`() {
+        assertFrameworkPaintMasked { xfermode = Xfermode() }
+    }
+
+    // Robolectric leaves the style of a new paint unset, and a device defaults it to fill.
+    @Suppress("DEPRECATION")
+    private fun assertFrameworkPaintMasked(configure: android.graphics.Paint.() -> Unit) {
+        val paint = Paint().apply { style = PaintingStyle.Fill }
+        paint.asFrameworkPaint().configure()
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawIntoCanvas { it.drawRect(0f, 0f, size.width, size.height, paint) }
             }
         }
 
