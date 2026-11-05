@@ -1,6 +1,5 @@
 package com.posthog.android.replay
 
-import androidx.compose.ui.draw.DrawCacheModifier
 import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -42,42 +41,44 @@ private val backwardsCompatNodeElement by lazy(LazyThreadSafetyMode.NONE) {
     backwardsCompatNode.getMethod("getElement")
 }
 
-// Compose before 1.5 has no such node.
-private val cacheDrawNode by lazy(LazyThreadSafetyMode.NONE) {
-    try {
-        Class.forName("androidx.compose.ui.draw.CacheDrawModifierNodeImpl")
-    } catch (_: ClassNotFoundException) {
-        null
-    }
+private val drawBehindNode by lazy(LazyThreadSafetyMode.NONE) {
+    Class.forName("androidx.compose.ui.draw.DrawBackgroundModifier")
+}
+private val layoutNode by lazy(LazyThreadSafetyMode.NONE) {
+    Class.forName("androidx.compose.ui.node.LayoutNode")
+}
+private val layoutNodeLayoutDirection by lazy(LazyThreadSafetyMode.NONE) {
+    layoutNode.getMethod("getLayoutDirection")
+}
+private val layoutNodeDensity by lazy(LazyThreadSafetyMode.NONE) {
+    layoutNode.getMethod("getDensity")
 }
 
 /**
- * Replays this node's draw modifiers into a recorder to see what they paint, since a Canvas keeps
+ * Replays this node's drawBehind draws into a recorder to see what they paint, since a Canvas keeps
  * its drawing in a lambda. Callers must treat a thrown error as not solid, which keeps the node masked.
  */
-internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
+internal fun LayoutInfo.paintsSolidFill(): Boolean {
     val chain = nodeChain() ?: return false
     val nodes = generateSequence(chain.head.invoke(chain.nodes.invoke(this))) { chain.child.invoke(it) }.toList()
-    // A delegate draws outside the chain, so the recorder can't see what it paints, and a draw cache
-    // isn't safe to replay.
-    if (nodes.any { delegatingNode.isInstance(it) || it.holdsDrawCache() }) return false
+    val drawNodes = nodes.filter { it.draws() }
+    // A delegate draws outside the chain, so the recorder can't see what it paints. Any other draw node
+    // can reach the no-op drawContent and empty what the app reuses, such as a draw cache or a layer.
+    if (nodes.any { delegatingNode.isInstance(it) } || drawNodes.any { !drawBehindNode.isInstance(it) }) return false
     val recorder = SolidFillRecorder(width.toFloat(), height.toFloat())
-    CanvasDrawScope().draw(density, LayoutDirection.Ltr, recorder, Size(recorder.width, recorder.height)) {
+    val density = layoutNodeDensity.invoke(this) as Density
+    val layoutDirection = layoutNodeLayoutDirection.invoke(this) as LayoutDirection
+    CanvasDrawScope().draw(density, layoutDirection, recorder, Size(recorder.width, recorder.height)) {
         val scope = withoutContent()
-        nodes.filter { it.draws() }.forEach { drawModifierNodeDraw.invoke(it, scope) }
+        drawNodes.forEach { drawModifierNodeDraw.invoke(it, scope) }
     }
     return recorder.isSolidFill
 }
 
-// Replaying a draw cache would build it without content, and the next real draw would reuse that.
-// Compose before 1.5 holds drawWithCache in a DrawCacheModifier element.
-private fun Any.holdsDrawCache(): Boolean = cacheDrawNode?.isInstance(this) == true || legacyElement() is DrawCacheModifier
-
 // Every old-style modifier wraps in a DrawModifierNode, whose draw throws unless the modifier draws.
 private fun Any.draws(): Boolean =
-    drawModifierNode.isInstance(this) && (!backwardsCompatNode.isInstance(this) || legacyElement() is DrawModifier)
-
-private fun Any.legacyElement(): Any? = if (backwardsCompatNode.isInstance(this)) backwardsCompatNodeElement.invoke(this) else null
+    drawModifierNode.isInstance(this) &&
+        (!backwardsCompatNode.isInstance(this) || backwardsCompatNodeElement.invoke(this) is DrawModifier)
 
 // A compiled implementation would miss DrawScope members added after our Compose compile floor, and
 // their defaults can call themselves. R8 renames drawContent, so match it by its declaring interface.

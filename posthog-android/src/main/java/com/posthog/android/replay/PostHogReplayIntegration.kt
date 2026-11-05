@@ -63,7 +63,6 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getAllSemanticsNodes
-import androidx.compose.ui.unit.Density
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.posthog.PostHogEventName
@@ -2005,7 +2004,7 @@ public class PostHogReplayIntegration(
 
     private fun SemanticsNode.paintsSolidFill(): Boolean =
         try {
-            layoutInfo.paintsSolidFill(Density(screenDensity))
+            layoutInfo.paintsSolidFill()
         } catch (e: Throwable) {
             this@PostHogReplayIntegration.config.logger.log("Session Replay paintsSolidFill failed: ${e.cause ?: e}")
             false

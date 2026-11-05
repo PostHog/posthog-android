@@ -30,12 +30,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BuildDrawCacheParams
 import androidx.compose.ui.draw.DrawCacheModifier
 import androidx.compose.ui.draw.DrawModifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -50,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -59,6 +62,7 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +74,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -567,7 +572,7 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
-    fun `does not mask a scrim painted by an old-style draw modifier`() {
+    fun `masks a window-filling solid draw in an old-style draw modifier`() {
         val fill =
             object : DrawModifier {
                 override fun ContentDrawScope.draw() = drawRect(Color.Black)
@@ -576,7 +581,38 @@ internal class PostHogReplayComposeImageMaskTest {
             Box(Modifier.fillMaxSize().dismissTarget().then(fill))
         }
 
-        assertNoRectFillsWindow(maskRects(root = dialogWindow()))
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling canvas that draws a bitmap only in right-to-left`() {
+        setWindowContent {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Box(
+                    Modifier.fillMaxSize().dismissTarget().drawBehind {
+                        if (layoutDirection == LayoutDirection.Rtl) drawImage(testBitmap()) else drawRect(Color.Black)
+                    },
+                )
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `does not replay a modifier that records its content into a layer`() {
+        setWindowContent {
+            val layer = rememberGraphicsLayer()
+            Box(
+                Modifier.fillMaxSize().dismissTarget().drawWithContent {
+                    layer.record { this@drawWithContent.drawContent() }
+                    drawLayer(layer)
+                }.drawBehind { drawRect(Color.Black) },
+            )
+        }
+
+        assertWindowMasked()
+        assertTrue(logMessages.none { "paintsSolidFill failed" in it }, "$logMessages")
     }
 
     @Test
