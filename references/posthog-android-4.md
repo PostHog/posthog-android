@@ -113,6 +113,12 @@ tableOfContents:
   - value: "Unregister"
     url: unregister
     depth: 0
+  - value: "Device ID generator"
+    url: device-id-generator
+    depth: 0
+  - value: "Session manager"
+    url: session-manager
+    depth: 0
   - value: "SDK utils"
     url: sdk-utils
     depth: 0
@@ -192,34 +198,6 @@ The configured PostHog client instance.
 - `context`: Android context; the application context is retained internally.
 - `config`: Android SDK configuration.
 
-### `PostHog.setup`
-
-```kotlin
-fun <T : PostHogConfig> setup(config: T)
-```
-
-Setup the SDK
-
-#### Parameters
-
-- `config`: the SDK configuration
-
-### `PostHog.with`
-
-```kotlin
-fun <T : PostHogConfig> with(config: T): PostHogInterface
-```
-
-Sets up the SDK and returns an instance that you can hold and pass around.
-
-#### Return
-
-The configured PostHog client instance.
-
-#### Parameters
-
-- `config`: SDK configuration.
-
 ## Capture
 
 ### `PostHog.capture`
@@ -234,11 +212,9 @@ The event's properties are merged in this order, and later values win: propertie
 
 Example:
 
-```
+```kotlin
 PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
 ```
-
-Content copied to clipboard
 
 #### Parameters
 
@@ -280,18 +256,16 @@ Captures a single log record into PostHog's logs product, with optional W3C dist
 
 Prefer the logger facade (logger.info, .error, …) for everyday logging. Reach for this entry point when you need to correlate a log with a distributed trace by attaching traceId / spanId / traceFlags.
 
-```
-posthog.captureLog(  
-    "payment failed",  
-    severity = PostHogLogSeverity.ERROR,  
-    attributes = mapOf("code" to "PAY_3001"),  
-    traceId = "4bf92f3577b34da6a3ce929d0e0e4736",  
-    spanId = "00f067aa0ba902b7",  
-    traceFlags = 0x01,  
+```kotlin
+posthog.captureLog(
+    "payment failed",
+    severity = PostHogLogSeverity.ERROR,
+    attributes = mapOf("code" to "PAY_3001"),
+    traceId = "4bf92f3577b34da6a3ce929d0e0e4736",
+    spanId = "00f067aa0ba902b7",
+    traceFlags = 0x01,
 )
 ```
-
-Content copied to clipboard
 
 #### Parameters
 
@@ -310,12 +284,10 @@ val logger: PostHogLogger
 
 Captures application log records into PostHog's logs product (separate from product analytics events). Use the severity-specific helpers (PostHogLogger.trace, debug, info, warn, error, fatal) or the generic PostHogLogger.log.
 
-```
-posthog.logger.info("checkout opened")  
+```kotlin
+posthog.logger.info("checkout opened")
 posthog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
 ```
-
-Content copied to clipboard
 
 Not to be confused with the internal `config.logger` debug sink.
 
@@ -350,14 +322,12 @@ AI events use PostHogConfig.flushAt, PostHogConfig.maxBatchSize and PostHogConfi
 
 Example:
 
-```
-PostHog.captureAi(  
-    "\$ai_generation",  
-    properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),  
+```kotlin
+PostHog.captureAi(
+    "\$ai_generation",
+    properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),
 )
 ```
-
-Content copied to clipboard
 
 #### Return
 
@@ -475,11 +445,9 @@ fun getFeatureFlag(key: String, sendFeatureFlagEvent: Boolean? = null): Any?
 
 Returns the feature flag value, or null if the flag has no value or the SDK is disabled. Use `?:` for a fallback; it is never reported in the $feature\_flag\_called event.
 
-```
+```kotlin
 val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
 ```
-
-Content copied to clipboard
 
 Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
@@ -616,18 +584,16 @@ On Android, the callback runs on the main thread, after the getters already retu
 
 You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
 
-```
-val subscription = PostHog.onFeatureFlags { loaded ->  
-    if (loaded.variants["new-checkout"] == "test") {  
-        // Show the test variant  
-    }  
-}  
-  
-// Later, stop listening  
+```kotlin
+val subscription = PostHog.onFeatureFlags { loaded ->
+    if (loaded.variants["new-checkout"] == "test") {
+        // Show the test variant
+    }
+}
+
+// Later, stop listening
 subscription.unsubscribe()
 ```
-
-Content copied to clipboard
 
 #### Return
 
@@ -646,6 +612,14 @@ fun optIn()
 ```
 
 Enables the SDK to capture events
+
+### `PostHog.optOut`
+
+```kotlin
+fun optOut()
+```
+
+Disables the SDK to capture events until you optIn again
 
 ## Register
 
@@ -674,15 +648,13 @@ Reloads the feature flags
 
 The callback is invoked when the reload finishes, on a background thread. If the request fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
 
-```
-PostHog.reloadFeatureFlags { loaded ->  
-    if (loaded.errorsLoading) {  
-        // The reload failed. loaded.variants holds the last known flags.  
-    }  
+```kotlin
+PostHog.reloadFeatureFlags { loaded ->
+    if (loaded.errorsLoading) {
+        // The reload failed. loaded.variants holds the last known flags.
+    }
 }
 ```
-
-Content copied to clipboard
 
 #### Parameters
 
@@ -848,6 +820,38 @@ Unregisters the previously set property to be sent with all the following events
 
 - `key`: the Key
 
+## Device ID generator
+
+### `PostHog.getDeviceId`
+
+```kotlin
+fun getDeviceId(): String
+```
+
+Returns the stable device identifier used for device-level feature flag bucketing. This ID persists across identify and reset calls, only changing on a fresh app install, manual cache clearing, or OS-initiated storage cleanup.
+
+#### Return
+
+The device ID, or an empty string if not yet initialized
+
+## Session manager
+
+### `PostHog.endSession`
+
+```kotlin
+fun endSession()
+```
+
+Ends a session The SDK will automatically end a session when you call close On Android, the SDK will automatically end a session when the app is in the background for at least 30 minutes
+
+### `PostHog.startSession`
+
+```kotlin
+fun startSession()
+```
+
+Starts a session The SDK will automatically start a session when you call setup On Android, the SDK will automatically start a session when the app is in the foreground
+
 ## SDK utils
 
 ### `PostHog.captureFeatureInteraction`
@@ -899,32 +903,6 @@ A rerun of that workflow, or a loop back to its push step, sends the pair again 
 - `payload`: the notification data payload; its `posthog` entry is spread into `$notification_*` props
 - `action`: the tapped notification action identifier, attached as `$notification_action`; leave `null` for a plain tap/open (the default action carries no identifier)
 
-### `PostHog.endSession`
-
-```kotlin
-fun endSession()
-```
-
-Ends a session The SDK will automatically end a session when you call close On Android, the SDK will automatically end a session when the app is in the background for at least 30 minutes
-
-### `PostHog.getConfig`
-
-```kotlin
-fun <T : PostHogConfig> getConfig(): T?
-```
-
-### `PostHog.getDeviceId`
-
-```kotlin
-fun getDeviceId(): String
-```
-
-Returns the stable device identifier used for device-level feature flag bucketing. This ID persists across identify and reset calls, only changing on a fresh app install, manual cache clearing, or OS-initiated storage cleanup.
-
-#### Return
-
-The device ID, or an empty string if not yet initialized
-
 ### `PostHog.isSessionActive`
 
 ```kotlin
@@ -936,14 +914,6 @@ Returns if a session is active
 #### Return
 
 Whether a session is currently active.
-
-### `PostHog.optOut`
-
-```kotlin
-fun optOut()
-```
-
-Disables the SDK to capture events until you optIn again
 
 ### `PostHog.registerPushNotificationToken`
 
@@ -972,23 +942,13 @@ Call it at startup and whenever the language changes, because the value is kept 
 
 Default: on Android 13+ the SDK detects the language from your `localeConfig` declaration, and on Android 6-12 it sends no `$app_language` unless you call this. Compare `$locale`, which is the device language whichever language your app displays.
 
-```
+```kotlin
 PostHog.setAppLanguage("de")
 ```
-
-Content copied to clipboard
 
 #### Parameters
 
 - `language`: a BCP 47 language tag, such as `de` or `pt-BR`. Pass `null` to go back to the detected language
-
-### `PostHog.startSession`
-
-```kotlin
-fun startSession()
-```
-
-Starts a session The SDK will automatically start a session when you call setup On Android, the SDK will automatically start a session when the app is in the foreground
 
 ### `PostHog.unregisterPushNotificationToken`
 
@@ -1192,7 +1152,6 @@ Android SDK configuration.
 - `var capturePushNotificationSubscriptions: Boolean`: Whether to auto-register this device's push token at startup. When enabled and Firebase Messaging is on the classpath, the SDK fetches the FCM token + Firebase `project_id` and registers them so PostHog Workflows can deliver push notifications. When the manifest enables `firebase_messaging_installation_id_enabled`, the Firebase Installation ID is registered instead. No effect when Firebase is absent (a single debug log). Instant token refresh still needs the app to forward `onNewToken` (or, in installation ID mode, `onRegistered`) to `registerPushNotificationToken(...)`. Default: `true`.
 - `var captureRageClicks: Boolean`: Captures `$rageclick` after four nearby taps on the same target within one second. Default: false. Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties.
 - `var captureScreenViews: Boolean`: Whether to capture a `$screen` event whenever a foreground Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most recent screen name is also attached as `$screen_name` to every subsequent event captured by the SDK. To opt out of `$screen_name` stamping entirely, set this to `false` and avoid calling `PostHog.screen(...)` manually. Default: `true`.
-- `var detectAppLanguage: Boolean`: Whether the SDK detects `$app_language` itself. Wrappers that translate outside of native resources, such as Flutter, turn this off and report the language they resolved.
 - `var sessionReplayConfig: PostHogSessionReplayConfig`: Android-specific session replay capture options.
 
 ### `PostHogBeforeSend`
@@ -1223,24 +1182,20 @@ Runs synchronously on the thread that called the logger — keep work fast (no n
 
 #### Kotlin (SAM)
 
-```
-config.logs.addBeforeSend { record ->  
-    if (record.level == PostHogLogSeverity.TRACE) null else record  
+```kotlin
+config.logs.addBeforeSend { record ->
+    if (record.level == PostHogLogSeverity.TRACE) null else record
 }
 ```
-
-Content copied to clipboard
 
 #### Java
 
 ```
-config.getLogs().addBeforeSend(record -> {  
-    if (record.getLevel() == PostHogLogSeverity.TRACE) return null;  
-    return record;  
+config.getLogs().addBeforeSend(record -> {
+    if (record.getLevel() == PostHogLogSeverity.TRACE) return null;
+    return record;
 });
 ```
-
-Content copied to clipboard
 
 #### See also
 
@@ -1293,7 +1248,6 @@ The SDK Config
 
 #### Properties
 
-- `var aiStoragePrefix: String?`
 - `val beforeSendList: List<PostHogBeforeSend>`: The beforeSend list
 - `var bootstrap: PostHogBootstrapConfig?`: Optional bootstrap configuration that seeds identity and feature-flag state before any network request completes. Identity is seeded only on the very first launch, when nothing has been persisted yet. The feature-flag snapshot is applied on every launch as the initial layer — served immediately and taking precedence over any persisted flag cache — until the first `/flags` response replaces it (a complete response drops bootstrapped-only keys; a partial or errored one keeps the keys it did not recompute) or `reset()` drops it. See PostHogBootstrapConfig for the precedence rules.
 - `var captureAiCompression: PostHogCompression`: How the SDK compresses PostHog.captureAi request bodies, separately from compression.
@@ -1307,31 +1261,25 @@ The SDK Config
 - `var evaluationContexts: List<String>?`: Optional list of evaluation context tags for feature flag evaluation When specified, only feature flags that have at least one matching evaluation tag will be evaluated Feature flags with no evaluation tags will always be evaluated for backward compatibility Example: listOf("production", "web", "checkout") Defaults to null (evaluate all flags)
 - `var featureFlagCalledCacheSize: Int`: Maximum number of distinct feature flag calls to cache for deduplication When the cache is full, the least recently used entries are evicted Defaults to 1000
 - `var featureFlagRequestMaxRetries: Int`: Maximum number of retries for feature flag requests after transient network errors. Defaults to 1. Set to 0 to disable feature flag request retries.
-- `var featureFlagsListenerExecutor: Executor?`: Runs the PostHog.onFeatureFlags listeners. Set by platform-specific modules (e.g., Android) to deliver them on the main thread. When null, they run on the SDK's remote config thread.
 - `var flushAt: Int`: Number of minimum events before they are sent over the wire Defaults to 20
 - `var flushIntervalSeconds: Int`: Interval in seconds for sending events over the wire The lower the number, most likely more battery is used Defaults to 30s
 - `var getAnonymousId: (UUID) -> UUID`: Hook that allows for modification of the default mechanism for generating anonymous id (which as of now is just random UUID v7)
 - `val host: String`: The PostHog Host Defaults to https://us.i.posthog.com EU Host: https://eu.i.posthog.com
-- `var httpClient: OkHttpClient?`: Optional custom OkHttpClient for HTTP requests.
 - `val integrations: List<PostHogIntegration>`: The integrations list
 - `var logs: PostHogLogsConfig`: Configuration for the logs subsystem. See PostHogLogsConfig for per-field mutability semantics — resource attributes and the `flushAt` / `maxBatchSize` knobs are snapshotted at setup; the `beforeSend` chain, `maxBufferSize`, and `flushIntervalSeconds` remain live.
 - `var maxBatchSize: Int`: Number of maximum events in a batch call Defaults to 50
 - `var maxQueueSize: Int`: Number of maximum events in memory and disk, when the maximum is exceed, the oldest event is deleted and the new one takes place Defaults to 1000
 - `@Volatilevar optOut: Boolean`: This flag prevents capturing any data if enabled You can overwrite this value at runtime by calling PostHog.optIn or PostHog.optOut Defaults to false
-- `@Volatilevar persistOptOut: Boolean`: Whether the SDK stores the opt-out state itself and restores it on the next setup.
 - `var personProfiles: PersonProfiles`: Determines the behavior for processing user profiles.
 - `var preloadFeatureFlags: Boolean`: Preload feature flags automatically Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments Defaults to true
 - `val projectToken: String`: Your PostHog project token, trimmed of leading and trailing whitespace.
 - `var proxy: Proxy?`: Configures an optional HTTP proxy for the PostHog API client.
 - `var pushIdentityProvider: (distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit?`: Hook that supplies a signed identity token for push subscription requests, enabling the optional identity verification of the push subscriptions API.
 - `var pushNotificationSubscriptionMaxRetries: Int`: Maximum number of retries for push subscription registration failures.
-- `val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface<PostHogEvent>`: Factory to instantiate a custom queue implementation.
 - `var releaseIdentifier: String?`: The release identifier used to identify the correct proguard mappings (mapping.txt) in order to make minified stack traces into human readable stack traces
-- `var remoteConfigHolder: PostHogRemoteConfig?`: Reference to the PostHogRemoteConfig instance, set during setup. Used by integrations to check remote config values.
 - `val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService, PostHogDefaultPersonPropertiesProvider?, PostHogOnRemoteConfigLoaded?, PostHogFeatureFlagCalledProvider?) -> PostHogFeatureFlagsInterface`: Factory to instantiate a custom com.posthog.internal.PostHogRemoteConfigInterface implementation.
 - `@Volatilevar requestHeaders: Map<String, String>`: Custom headers to send with every request to the PostHog API.
 - `var reuseAnonymousId: Boolean`: Flag to reuse the anonymous id. If enabled, the anonymous id will be reused across `identify()` and `reset()` calls.
-- `var sampleRateProvider: () -> Double??`: Provider for the local session recording sample rate. Set by platform-specific modules (e.g., Android) to supply the sample rate from the session replay config without duplicating the field.
 - `var sendFeatureFlagEvent: Boolean`: Send a $feature\_flag\_called event when a feature flag is used automatically Used by experiments
 - `var sessionReplay: Boolean`: Enable Recording of Session Replays for Android Requires Record user sessions to be enabled in the PostHog Project Settings Defaults to false
 - `var setDefaultPersonProperties: Boolean`: Automatically set common device and app properties as person properties for feature flag evaluation.
@@ -1343,7 +1291,6 @@ The SDK Config
 
 - `fun addBeforeSend(beforeSend: PostHogBeforeSend)`: Adds a new PostHogBeforeSend
 - `fun addIntegration(integration: PostHogIntegration)`: Adds a new integration
-- `fun PostHogConfig.logIntegrationFailure(integrationName: String, error: Throwable)`: Reports why an integration named integrationName is not available. A missing class means the host build excludes an artifact that the SDK needs, so that case becomes a warning: a debug-only message hides a whole feature, such as session replay, that stays off for the rest of the process.
 - `fun removeBeforeSend(beforeSend: PostHogBeforeSend)`: Removes the PostHogBeforeSend
 - `fun removeIntegration(integration: PostHogIntegration)`: Removes the integration
 
@@ -1559,7 +1506,6 @@ class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.Un
 #### Functions
 
 - `@Synchronizedopen override fun install(postHog: PostHogInterface)`: Install the Integration after the SDK is setup that requires a posthog instance to capture events
-- `@Synchronizedfun installWith(target: PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget)`: Installs the handler delivering captures to target. Used by SDK layers whose client is not a core PostHogInterface (e.g. the server SDK).
 - `fun onChange()`: Invalidates pending observations when identity, consent, screen, session or close state changes. Called synchronously on the caller's thread; calls may be nested or concurrent. This is a one-shot notification, not a pause/resume boundary. Uninstall must independently clean up.
 - `fun onRemoteConfig(loaded: Boolean)`: Called when the remote config attempt for the current identity resolves. Each integration is responsible for enabling or disabling features based on the state of the remote config.
 - `fun uncaughtException(thread: Thread, throwable: Throwable)`
@@ -1662,15 +1608,13 @@ For `reloadFeatureFlags`, it runs on a background thread, or right away on the c
 
 Example:
 
-```
-val subscription = PostHog.onFeatureFlags { loaded ->  
-    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) {  
-        // The flag is enabled  
-    }  
+```kotlin
+val subscription = PostHog.onFeatureFlags { loaded ->
+    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) {
+        // The flag is enabled
+    }
 }
 ```
-
-Content copied to clipboard
 
 #### Functions
 
@@ -1679,7 +1623,7 @@ Content copied to clipboard
 ### `PostHogFeatureFlagsLoaded`
 
 ```kotlin
-class PostHogFeatureFlagsLoaded constructor(featureFlags: Map<String, Any?>, val errorsLoading: Boolean)
+class PostHogFeatureFlagsLoaded @PostHogInternal constructor(featureFlags: Map<String, Any?>, val errorsLoading: Boolean)
 ```
 
 The feature flags passed to a PostHogFeatureFlagsCallback callback.
@@ -1688,18 +1632,16 @@ It holds the enabled flags as they were when the callback was invoked, and wheth
 
 Example:
 
-```
-PostHog.reloadFeatureFlags { loaded ->  
-    if (loaded.errorsLoading) {  
-        // The values are the last known (cached) flags  
-    }  
-    if (loaded.variants["new-checkout"] == "test") {  
-        // Show the test variant  
-    }  
+```kotlin
+PostHog.reloadFeatureFlags { loaded ->
+    if (loaded.errorsLoading) {
+        // The values are the last known (cached) flags
+    }
+    if (loaded.variants["new-checkout"] == "test") {
+        // Show the test variant
+    }
 }
 ```
-
-Content copied to clipboard
 
 #### Parameters
 
@@ -1714,7 +1656,7 @@ Content copied to clipboard
 ### `PostHogFeatureFlagsSubscription`
 
 ```kotlin
-class PostHogFeatureFlagsSubscription constructor(onUnsubscribe: () -> Unit)
+class PostHogFeatureFlagsSubscription @PostHogInternal constructor(onUnsubscribe: () -> Unit)
 ```
 
 A registration returned by `onFeatureFlags`.
@@ -1723,16 +1665,14 @@ The callback stays registered until you call unsubscribe. You don't need to keep
 
 Example:
 
-```
-val subscription = PostHog.onFeatureFlags { loaded ->  
-    // React to the new flags  
-}  
-  
-// Later, stop listening  
+```kotlin
+val subscription = PostHog.onFeatureFlags { loaded ->
+    // React to the new flags
+}
+
+// Later, stop listening
 subscription.unsubscribe()
 ```
-
-Content copied to clipboard
 
 #### Functions
 
@@ -1767,18 +1707,16 @@ A captured log entry queued for delivery to PostHog's logs ingestion.
 
 You don't construct these directly under normal use — call com.posthog.PostHog.logger methods instead. The record is surfaced as the input to PostHogBeforeSendLog hooks so you can inspect or rewrite it before it ships.
 
-```
-config.logs.addBeforeSend { record: PostHogLogRecord ->  
-    // Inspect:  
-    val severity = record.level  
-    val body = record.body  
-  
-    // Rewrite via copy() (data class):  
-    record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))  
+```kotlin
+config.logs.addBeforeSend { record: PostHogLogRecord ->
+    // Inspect:
+    val severity = record.level
+    val body = record.body
+
+    // Rewrite via copy() (data class):
+    record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))
 }
 ```
-
-Content copied to clipboard
 
 #### Properties
 
@@ -1810,21 +1748,19 @@ Maps to OpenTelemetry severity numbers (`TRACE=1`, `DEBUG=5`, `INFO=9`, `WARN=13
 
 #### Usage
 
-```
-// Direct use with the generic logger entry point:  
-PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)  
-  
-// Map a string from an external logger (e.g. Timber, slf4j):  
-val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO  
-  
-// Filter inside a beforeSend hook:  
-config.logs.addBeforeSend { record ->  
-    if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null  
-    else record  
+```kotlin
+// Direct use with the generic logger entry point:
+PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)
+
+// Map a string from an external logger (e.g. Timber, slf4j):
+val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO
+
+// Filter inside a beforeSend hook:
+config.logs.addBeforeSend { record ->
+    if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null
+    else record
 }
 ```
-
-Content copied to clipboard
 
 #### Properties
 
@@ -1852,40 +1788,36 @@ Obtain via com.posthog.PostHog.logger (static, recommended) or com.posthog.PostH
 
 #### Kotlin usage
 
-```
-import com.posthog.PostHog  
-import com.posthog.logs.PostHogLogSeverity  
-  
-// Severity-specific shortcuts:  
-PostHog.logger.info("checkout opened")  
-PostHog.logger.error(  
-    "payment failed",  
-    attributes = mapOf("amount_cents" to 1999, "currency" to "USD"),  
-)  
-  
-// Generic entry point with a runtime severity:  
+```kotlin
+import com.posthog.PostHog
+import com.posthog.logs.PostHogLogSeverity
+
+// Severity-specific shortcuts:
+PostHog.logger.info("checkout opened")
+PostHog.logger.error(
+    "payment failed",
+    attributes = mapOf("amount_cents" to 1999, "currency" to "USD"),
+)
+
+// Generic entry point with a runtime severity:
 PostHog.logger.log("rendered cart", severity = PostHogLogSeverity.DEBUG)
 ```
-
-Content copied to clipboard
 
 #### Java usage
 
 ```
-import com.posthog.PostHog;  
-import com.posthog.logs.PostHogLogSeverity;  
-  
-import java.util.Map;  
-  
-PostHog.Companion.getLogger().info("checkout opened");  
-PostHog.Companion.getLogger().error(  
-    "payment failed",  
-    Map.of("amount_cents", 1999, "currency", "USD")  
-);  
+import com.posthog.PostHog;
+import com.posthog.logs.PostHogLogSeverity;
+
+import java.util.Map;
+
+PostHog.Companion.getLogger().info("checkout opened");
+PostHog.Companion.getLogger().error(
+    "payment failed",
+    Map.of("amount_cents", 1999, "currency", "USD")
+);
 PostHog.Companion.getLogger().log("rendered cart", PostHogLogSeverity.DEBUG, null);
 ```
-
-Content copied to clipboard
 
 #### Attribute values
 
@@ -1925,39 +1857,35 @@ Mutate fields on the PostHogConfig.logs property **before** calling `PostHog.set
 
 #### Kotlin
 
-```
-val config = PostHogAndroidConfig(projectToken).apply {  
-    logs.serviceName = "checkout-android"  
-    logs.environment = "production"  
-    logs.resourceAttributes = mapOf("region" to "us-east-1")  
-  
-    // Redact PII before records leave the device:  
-    logs.addBeforeSend { record ->  
-        if (record.body.contains("@")) {  
-            record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))  
-        } else {  
-            record  
-        }  
-    }  
-}  
+```kotlin
+val config = PostHogAndroidConfig(projectToken).apply {
+    logs.serviceName = "checkout-android"
+    logs.environment = "production"
+    logs.resourceAttributes = mapOf("region" to "us-east-1")
+
+    // Redact PII before records leave the device:
+    logs.addBeforeSend { record ->
+        if (record.body.contains("@")) {
+            record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))
+        } else {
+            record
+        }
+    }
+}
 PostHogAndroid.setup(this, config)
 ```
-
-Content copied to clipboard
 
 #### Java
 
 ```
-PostHogAndroidConfig config = new PostHogAndroidConfig(projectToken);  
-config.getLogs().setServiceName("checkout-android");  
-config.getLogs().setEnvironment("production");  
-config.getLogs().addBeforeSend(record ->  
-    record.getBody().contains("@") ? null : record  
-);  
+PostHogAndroidConfig config = new PostHogAndroidConfig(projectToken);
+config.getLogs().setServiceName("checkout-android");
+config.getLogs().setEnvironment("production");
+config.getLogs().addBeforeSend(record ->
+    record.getBody().contains("@") ? null : record
+);
 PostHogAndroid.setup(context, config);
 ```
-
-Content copied to clipboard
 
 #### Properties
 
