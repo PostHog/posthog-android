@@ -121,12 +121,17 @@
     *** getHead$ui_release();
 }
 -keepnames class androidx.compose.ui.Modifier$Node
-# Session replay calls draw() with its own scope to record what a scrim paints. R8 otherwise narrows
-# the ContentDrawScope parameter to the one implementation it sees, and the call fails.
+# Session replay calls draw() with a Proxy ContentDrawScope. Pin the interface so R8 can't merge it
+# into its only compiled implementation or bind drawContent() to it, which would fail the call.
 -keepnames interface androidx.compose.ui.node.DrawModifierNode
 -keepclassmembers interface androidx.compose.ui.node.DrawModifierNode {
     void draw(androidx.compose.ui.graphics.drawscope.ContentDrawScope);
 }
+-keep,allowobfuscation interface androidx.compose.ui.graphics.drawscope.ContentDrawScope {
+    void drawContent();
+}
+# A delegate's drawing can't be recorded, so session replay looks for this class by name.
+-keepnames class androidx.compose.ui.node.DelegatingNode
 -keepnames class androidx.compose.ui.graphics.painter.BrushPainter
 -keepclassmembers class androidx.compose.ui.Modifier$Node {
     *** getChild$ui();

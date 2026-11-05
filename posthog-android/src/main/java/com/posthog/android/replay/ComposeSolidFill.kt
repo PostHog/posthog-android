@@ -20,10 +20,15 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
 
-// DrawModifierNode is newer than our Compose compile floor, so look it up by name.
+// These nodes are newer than our Compose compile floor, so look them up by name.
 private val drawModifierNode by lazy(LazyThreadSafetyMode.NONE) {
     Class.forName("androidx.compose.ui.node.DrawModifierNode")
+}
+private val delegatingNode by lazy(LazyThreadSafetyMode.NONE) {
+    Class.forName("androidx.compose.ui.node.DelegatingNode")
 }
 private val drawModifierNodeDraw by lazy(LazyThreadSafetyMode.NONE) {
     drawModifierNode.getMethod("draw", ContentDrawScope::class.java)
@@ -32,25 +37,41 @@ private val drawModifierNodeDraw by lazy(LazyThreadSafetyMode.NONE) {
 /**
  * Replays this node's draw modifiers into a recorder to see what they paint, since a Canvas keeps
  * its drawing in a lambda. Callers must treat a thrown error as not solid, which keeps the node masked.
- * That includes a StackOverflowError: newer Compose adds a drawImage overload whose default calls
- * itself, and this scope compiles against a Compose without it, so it can't override it.
  */
 internal fun LayoutInfo.paintsSolidFill(density: Density): Boolean {
     val chain = nodeChain() ?: return false
     val nodes = generateSequence(chain.head.invoke(chain.nodes.invoke(this))) { chain.child.invoke(it) }.toList()
+    // A delegate draws outside the chain, so the recorder can't see what it paints.
+    if (nodes.any { delegatingNode.isInstance(it) }) return false
     val recorder = SolidFillRecorder(width.toFloat(), height.toFloat())
     CanvasDrawScope().draw(density, LayoutDirection.Ltr, recorder, Size(recorder.width, recorder.height)) {
-        val scope =
-            object : ContentDrawScope, DrawScope by this {
-                override fun drawContent() = Unit
-            }
+        val scope = withoutContent()
         nodes.filter { drawModifierNode.isInstance(it) }.forEach { drawModifierNodeDraw.invoke(it, scope) }
     }
     return recorder.isSolidFill
 }
 
+// A compiled implementation would miss DrawScope members added after our Compose compile floor, and
+// their defaults can call themselves. R8 renames drawContent, so match it by its declaring interface.
+private fun DrawScope.withoutContent(): ContentDrawScope =
+    Proxy.newProxyInstance(
+        ContentDrawScope::class.java.classLoader,
+        arrayOf(ContentDrawScope::class.java),
+    ) { _, method, args ->
+        if (method.declaringClass == ContentDrawScope::class.java) {
+            null
+        } else {
+            try {
+                method.invoke(this, *args.orEmpty())
+            } catch (e: InvocationTargetException) {
+                throw e.targetException
+            }
+        }
+    } as ContentDrawScope
+
 // Solid means exactly one plain rectangle over the whole node. A shader can paint a bitmap through a
-// rectangle, and several rectangles can draw a picture.
+// rectangle, and several rectangles can draw a picture. Paint.shader doesn't see a shader set on the
+// framework paint.
 private class SolidFillRecorder(val width: Float, val height: Float) : Canvas {
     private var filled = false
     private var otherDrawing = false
@@ -64,7 +85,10 @@ private class SolidFillRecorder(val width: Float, val height: Float) : Canvas {
         bottom: Float,
         paint: Paint,
     ) {
-        if (!filled && left <= 0f && top <= 0f && right >= width && bottom >= height && paint.shader == null) {
+        if (
+            !filled && left <= 0f && top <= 0f && right >= width && bottom >= height &&
+            paint.shader == null && paint.asFrameworkPaint().shader == null
+        ) {
             filled = true
         } else {
             otherDrawing = true

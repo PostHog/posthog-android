@@ -1,12 +1,15 @@
 package com.posthog.android.replay
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Rect
+import android.graphics.Shader
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,11 +37,14 @@ import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
@@ -82,6 +88,8 @@ import kotlin.test.assertTrue
 internal class PostHogReplayComposeImageMaskTest {
     @get:Rule
     val compose = createAndroidComposeRule<InteractionActivity>()
+
+    private val logMessages = CopyOnWriteArrayList<String>()
 
     // Stands in for a loaded bitmap or Coil's AsyncImagePainter.
     private class PhotoPainter : Painter() {
@@ -448,6 +456,7 @@ internal class PostHogReplayComposeImageMaskTest {
         }
 
         assertWindowMasked()
+        assertTrue(logMessages.none { "paintsSolidFill failed" in it }, "$logMessages")
     }
 
     @Test
@@ -455,6 +464,33 @@ internal class PostHogReplayComposeImageMaskTest {
         val bitmap = testBitmap()
         setWindowContent {
             Canvas(Modifier.fillMaxSize().dismissTarget()) { drawRect(ShaderBrush(ImageShader(bitmap))) }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `masks a window-filling canvas that sets a shader on the framework paint`() {
+        val shader = BitmapShader(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        setWindowContent {
+            Canvas(Modifier.fillMaxSize().dismissTarget()) {
+                drawIntoCanvas {
+                    it.drawRect(0f, 0f, size.width, size.height, Paint().apply { asFrameworkPaint().shader = shader })
+                }
+            }
+        }
+
+        assertWindowMasked()
+    }
+
+    @Test
+    fun `masks a window-filling solid canvas with a bitmap border`() {
+        val bitmap = testBitmap()
+        setWindowContent {
+            Canvas(
+                Modifier.fillMaxSize().dismissTarget().border(2.dp, ShaderBrush(ImageShader(bitmap)), RectangleShape),
+            ) { drawRect(Color.Black) }
         }
 
         assertWindowMasked()
@@ -601,13 +637,12 @@ internal class PostHogReplayComposeImageMaskTest {
         maskAllImages: Boolean = true,
         root: View = compose.activity.window.decorView,
     ): List<Rect> {
-        val messages = CopyOnWriteArrayList<String>()
         val config =
             PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 logger =
                     object : PostHogLogger {
                         override fun log(message: String) {
-                            messages.add(message)
+                            logMessages.add(message)
                         }
 
                         override fun isEnabled(): Boolean = true
@@ -620,7 +655,7 @@ internal class PostHogReplayComposeImageMaskTest {
             // On the main thread the Compose traversal runs inline.
             sut.findMaskableWidgets(findComposeView(root)!!, walk)
         }
-        assertFalse(walk.poisoned, "The Compose traversal failed: $messages")
+        assertFalse(walk.poisoned, "The Compose traversal failed: $logMessages")
         return walk.rects
     }
 
