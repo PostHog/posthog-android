@@ -3,54 +3,45 @@
 'posthog-android': major
 ---
 
-- **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories; use `projectToken` instead
-- **Breaking:** remove the deprecated `propertiesSanitizer` config option and the `PostHogPropertiesSanitizer` interface; use `addBeforeSend` instead
-- **Breaking:** remove the deprecated `evaluationEnvironments` config option; use `evaluationContexts` instead
-- **Breaking:** remove the deprecated `getFeatureFlagPayload()`; use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload` instead to keep not sending `$feature_flag_called`
-- **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a flag with no value or a disabled SDK, so use `getFeatureFlag(key) ?: default` instead; a positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback from `getFeatureFlag()` or `isFeatureEnabled()` as the flag's value
-- **Breaking:** remove the deprecated `PostHogSessionReplayConfig.debouncerDelayMs`; use `throttleDelayMs` instead
-- **Breaking:** remove wireframe session replay; replay always records masked screenshots, the mode `screenshot = true` already used. `PostHogSessionReplayConfig.screenshot` is removed, and so are `drawableConverter` and `PostHogDrawableConverter`, which only wireframe capture read
-  - Apps that relied on the default now upload screenshots. Masking still covers text inputs, images, `WebView`s, Compose semantics and `ph-no-capture` views and `Modifier.postHogMask()`, but custom-drawn views and other content the SDK doesn't recognize (for example maps or video) can now appear; mask them, or turn replay off with `sessionReplay = false`
-  - Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded
-  - Apply `Modifier.postHogMask()` and `Modifier.postHogUnmask()` only to the element and its children, not to siblings merged into the same clickable row
-  - Compose text that draws past its layout box is masked in full, and nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on; use `Modifier.postHogUnmask()` to show them
-  - `$sdk_debug_replay_capture_mode` is always `screenshot`
-  - Activity and dialog windows are composed into one scene; a dialog's dim and a dialog masked whole are sent as screenshot images
-  - Wrapper SDKs: the internal `RRWireframe` keeps only `id`, `x`, `y`, `width`, `height`, `type` and `base64`, and `RRStyle` is removed; screenshot frames no longer send an empty `style`
-- **Breaking:** return `null` instead of the raw string for a malformed, empty, whitespace-only or lenient-only (unquoted or single-quoted) feature flag payload from `getFeatureFlagResult(key)?.payload`; payloads must be valid JSON (a JSON `null` payload now also reads as `null` instead of the string `"null"`)
-- **Breaking:** make SDK-internal helpers in the `com.posthog.internal`, `com.posthog.android.internal` and `com.posthog.android.replay.internal` packages non-public
-- **Breaking:** remove the deprecated `remoteConfig` config option; the SDK now always loads remote config at setup
-- **Breaking:** remove `PostHogConfig.onFeatureFlags`; call `PostHog.onFeatureFlags(callback)` before `setup()` instead, which also covers the first load
-- **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`; it receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values, and `errorsLoading`
-- **Breaking:** add the abstract `onFeatureFlags()` method to `PostHogInterface`; classes that implement it must add the method
-- **Breaking:** send events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header; if you use a reverse proxy or self-host PostHog, make sure the path is served, because events stay queued and are retried on a 404, with a warning printed once even when `debug` is off, and authenticate your proxy with a header other than `Authorization`, which capture requests replace
-- **Breaking:** stop retrying 3xx responses for events, retry 404 responses, and cap a `Retry-After` pause at 30 seconds for events, session replay and logs
-- **Breaking:** add up to 25% random jitter to the wait after a failed send, which still doubles from 1 second to 30 seconds, and treat a `Retry-After` as a minimum wait instead of replacing the backoff, for events, session replay and logs; queued records are still kept until they're delivered
-- **Breaking:** follow only a 307 or 308 redirect of a capture request to the same origin as `host`, at most 5 times; any other redirect drops the events, so point `host` at the final host
-- **Breaking:** send the `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` properties as capture options (`PostHogEvent.options`, a new property; the constructor and `copy` are unchanged, and an event `beforeSend` returns with null options keeps the incoming ones), where PostHog drops an event whose option value it can't read
-- **Breaking:** rename `PostHogConfig.maxRetries` to `pushNotificationSubscriptionMaxRetries`, because it only limits push-notification subscription retries
-- **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header; a value set in properties, super properties or `beforeSend` is removed before sending
-- **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields; a non-string value is dropped, with a log when `debug` is on
-- **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token, and print a warning for both even when `debug` is off
-- **Breaking:** add an `options` argument to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException` for per-event capture options such as `cookieless_mode`, sent apart from the properties and editable in `beforeSend` through `PostHogEvent.options`; Java callers pass the trailing argument or `null`, and classes that implement `PostHogInterface` add the parameter
-- **Breaking:** move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; `PostHogInterface` declares `identify` with the trailing `options` parameter
-- **Breaking:** registered super properties now override the properties the SDK sets itself, such as `$os_name`; super and event properties also override `$is_identified`, `$process_person_profile` and the session replay debug properties, which the SDK no longer re-applies after the caller's values
-- **Breaking:** the SDK sets the `process_person_profile` option to `false` only when person processing is off, and no longer adds a `$process_person_profile` property to every event
-- **Breaking:** keep the uuid of its own capture on the event `beforeSend` returns, so a uuid set in `beforeSend`, for example with `copy(uuid = …)`, is replaced
-- **Breaking:** add `captureAi` to send AI events such as `$ai_generation` to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts events whose properties are up to 8 MiB, on its own disk queue; it returns the event uuid, or `null` when the event isn't queued; past `captureAiMaxQueueSize` AI events or 50 MiB, including events still waiting to be written to disk, the oldest are dropped, and classes that implement `PostHogInterface` add the method
-- use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
-- **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event, so a link can't set a PostHog property such as `$process_person_profile`
-- stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
-- debug logs for capture requests name the event count and the response status instead of printing the request and response bodies, and count the events PostHog drops, the duplicate copies it drops and the events it asks to retry, in one line per batch, and log the status when PostHog rejects a whole batch
-- **Breaking:** drop an event whose name is empty before sending it, including one `beforeSend` renames to `""`
-- **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps passed in the same call's properties, instead of being replaced by them, and merge a `$groups` map in properties into the groups set with `group()`
-- add `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` to `PostHogConfig` to tune AI requests separately from other events; the defaults are gzip, 100 queued events (and at most 50 MiB), 60 seconds and 8 MiB + 64 KiB per serialized event
-- cap a request at about 5 MiB of events, for analytics and AI events, and send as soon as that much is queued; an event larger than that is sent on its own
-- **Breaking:** change `$locale` to the first language in the device settings, as a full language tag such as `zh-Hant-TW`, instead of the app-influenced `Locale.getDefault()`
-- **Breaking:** add the abstract `setAppLanguage()` method to `PostHogInterface`; classes that implement it must add the method
-- Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
-- Add `onFeatureFlags()` to get notified after every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
-- add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event before it's sent
-- Fix losing an event whose properties hold a nested map with non-string keys
-- Give `beforeSend` its own copy of nested properties and options, so an edit never changes your objects
 - See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/docs/migration-3.x-to-4.0.md) for upgrade steps
+- **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`; self-hosted instances and reverse proxies must serve the path, and a 404 keeps events queued, retries them and prints one warning even when `debug` is off
+- **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times); retry 404, 408, 429, 500, 502, 503 and 504
+- **Breaking:** cap a `Retry-After` wait at 30 seconds, read it as a minimum wait and accept an HTTP date, and add up to 25% random jitter to the backoff, which still doubles from 1 to 30 seconds, for events, session replay and logs
+- **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`; PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
+- **Breaking:** set `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header, removing any value set in properties, super properties or `beforeSend`
+- **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, dropping non-string values
+- **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties; PostHog drops an event whose option value it can't read
+- **Breaking:** set the `process_person_profile` option to `false` only when person processing is off, instead of adding a `$process_person_profile` property to every event
+- **Breaking:** let registered super properties override properties the SDK sets, such as `$os_name`, and let super and event properties override `$is_identified`, `$process_person_profile` and the session replay debug properties
+- **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps in the same call's properties, and merge a `$groups` map in properties into the groups set with `group()`
+- **Breaking:** keep the event's own uuid when `beforeSend` returns an event with another uuid
+- **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token, and print a warning for both even when `debug` is off
+- **Breaking:** add an `options` parameter to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException`; Java callers pass `null` for it
+- **Breaking:** add `onFeatureFlags()`, `setAppLanguage()`, `captureAi()` and the `options` parameters to `PostHogInterface`, and move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; classes that implement these interfaces must add them
+- **Breaking:** rename `PostHogConfig.maxRetries` to `pushNotificationSubscriptionMaxRetries`
+- **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories; use `projectToken`
+- **Breaking:** remove the deprecated `propertiesSanitizer` option and `PostHogPropertiesSanitizer`; use `addBeforeSend`
+- **Breaking:** remove the deprecated `evaluationEnvironments` option; use `evaluationContexts`
+- **Breaking:** remove the deprecated `remoteConfig` option; the SDK always loads remote config at setup
+- **Breaking:** remove the deprecated `getFeatureFlagPayload()`; use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`
+- **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a missing flag or a disabled SDK; a positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback as the flag's value
+- **Breaking:** remove `PostHogConfig.onFeatureFlags`; call `PostHog.onFeatureFlags(callback)` before `setup()` instead
+- **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`, which receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values and `errorsLoading`
+- **Breaking:** return `null` from `getFeatureFlagResult(key)?.payload` for a payload that isn't valid JSON, such as plain text, a malformed or empty string, or a JSON `null`
+- **Breaking:** remove wireframe session replay and the `screenshot`, `drawableConverter` and `debouncerDelayMs` options of `PostHogSessionReplayConfig` (use `throttleDelayMs` for the last); replay always records masked screenshots, so apps that relied on the default now upload screenshots and should mask custom-drawn views, maps and video, or turn replay off
+- **Breaking:** apply `Modifier.postHogMask()` and `Modifier.postHogUnmask()` only to the element and its children, mask Compose text that draws past its layout box in full, and mask nodes using `Modifier.clearAndSetSemantics` while text or image masking is on
+- **Breaking:** send a dialog's dim and a dialog masked whole as screenshot images instead of styled wireframe shapes
+- **Breaking:** change `$locale` to the first language in the device settings as a full language tag, such as `zh-Hant-TW`, instead of `Locale.getDefault()`
+- **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event
+- **Breaking:** make SDK-internal helpers in `com.posthog.internal`, `com.posthog.android.internal` and `com.posthog.android.replay.internal` non-public
+- Add `captureAi()` to send AI events such as `$ai_generation` to `/i/v1/ai/events` on their own disk queue, returning the event uuid or `null` when the event isn't queued, with the `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` options
+- Add `onFeatureFlags()` to listen for every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
+- Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
+- Add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event
+- Send events queued on disk by 3.x through capture v1 after the update
+- Cap a capture request at about 5 MiB of events and send as soon as that much is queued
+- Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
+- Stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
+- Stop printing request and response bodies, property values and `beforeSend` exception messages in debug logs, and log per-batch drop and retry counts instead
+- Fix losing an event whose properties hold a nested map with non-string keys; number, boolean and `null` keys are converted to strings
+- Fix `beforeSend` edits reaching the caller's nested maps and lists, by giving each hook its own copy
