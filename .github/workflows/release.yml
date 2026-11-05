@@ -127,6 +127,7 @@ jobs:
                   GH_TOKEN: ${{ steps.releaser.outputs.token }}
               run: |
                   gh repo clone PostHog/sdk-specs "$RUNNER_TEMP/sdk-specs" -- --depth 1
+                  python3 -m pip install --quiet -r bin/docs_scripts/requirements.txt
                   python3 bin/docs_scripts/generate_markdown.py --sdk-specs "$RUNNER_TEMP/sdk-specs"
 
             - name: Check for version bump changes
