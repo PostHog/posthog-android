@@ -232,6 +232,8 @@ The flag's value, enabled state, variant and any other flag's payload aren't aff
 
 If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
 
+Apps upgrading from 3.13 or older didn't cache flag details, so until the app's first `/flags` response, a malformed payload cached by 3.x still reads as the raw string, as it did in 3.x.
+
 ### Session replay records screenshots
 
 4.0 removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did.
