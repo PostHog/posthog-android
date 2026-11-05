@@ -356,6 +356,7 @@ The SDK follows a 307 or 308 redirect only to the origin of `host` (same scheme,
 Any other redirect is not followed and the events are dropped.
 In 3.x, OkHttp followed redirects to any host.
 If a proxy redirects capture requests to another host, point `host` at the final host.
+This also applies when you set your own `httpClient`: for capture requests, the SDK turns off its redirect following and OkHttp's connection retries, and keeps your other settings. Other requests, such as session replay and logs, behave as in 3.x.
 
 ## Event validation
 
