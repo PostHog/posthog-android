@@ -49,7 +49,7 @@ You need to change code if your app does any of these:
 | --- | --- |
 | `com.posthog:posthog-android` | 3.x to 4.0 |
 | `com.posthog:posthog` (core) | 6.x to 7.0 |
-| `com.posthog:posthog-android-surveys-compose` | keep your version, and declare `com.posthog:posthog-android:4.+` in your build so Gradle resolves 4.0 instead of the 3.x version it pulls in |
+| `com.posthog:posthog-android-surveys-compose` | keep your version, and declare `com.posthog:posthog-android` 4.0.0 or later in your build so Gradle resolves 4.x instead of the 3.x version it pulls in |
 | `com.posthog:posthog-server` | see [`posthog-server`](#posthog-server) |
 
 These are unchanged, so you don't need to change your build for them:
@@ -269,9 +269,9 @@ A payload that isn't valid JSON now reads as `null` from `getFeatureFlagResult(k
 
 The flag's value, enabled state, variant and any other flag's payload aren't affected.
 
-If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
+If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`. PostHog no longer saves a new payload that isn't valid JSON, so only payloads saved earlier are affected.
 
-A malformed payload cached by 3.x can still read as the raw string after the upgrade, until the app's first `/flags` response replaces it.
+Apps upgrading from 3.13 or older didn't cache flag details, so until the app's first `/flags` response, a malformed payload cached by 3.x still reads as the raw string, as it did in 3.x.
 
 ### `$locale` and `$app_language`
 
@@ -284,6 +284,8 @@ The new `$app_language` property is the language your app shows. Android has no 
 | 13+ with `android:localeConfig` declared (by hand or with AGP `generateLocaleConfig`) | The per-app language or, without one, the first device language, as you declare it. If you don't declare that language, your `android:defaultLocale` (Android 15+) or your language if you only declare one. Not sent if several of your declared languages could match, such as `pt` and `pt-PT` for a `pt-MZ` device, or if nothing matches and you declare several languages without a default. |
 | 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
 | 6–12 | Not sent. |
+
+The SDK reads both languages in the background, so the first event after a language change can still carry the previous value.
 
 Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
 

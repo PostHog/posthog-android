@@ -23,9 +23,6 @@ tableOfContents:
   - value: "Alias"
     url: alias
     depth: 0
-  - value: "Capture AI"
-    url: capture-ai
-    depth: 0
   - value: "Capture exception"
     url: capture-exception
     depth: 0
@@ -123,6 +120,7 @@ tableOfContents:
 
 ## Getting started
 
+
 Add the SDK to your app's `build.gradle.kts`:
 
 ```kotlin
@@ -164,12 +162,11 @@ fun <T : PostHogAndroidConfig> setup(context: Context, config: T)
 
 Sets up the SDK and stores it as the global singleton.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| context | Android context; the application context is retained internally. |
-| config | Android SDK configuration. |
+- `context`: Android context; the application context is retained internally.
+- `config`: Android SDK configuration.
 
 ### `PostHogAndroid.with`
 
@@ -181,16 +178,15 @@ Creates and returns a configured SDK instance that you can hold and pass around.
 
 Default PostHog integrations are installed only on the first instance created by either setup or with. The first instance in the host app owns those integrations, so setup order matters.
 
+
 #### Return
 
 The configured PostHog client instance.
 
 #### Parameters
 
-| | |
-|---|---|
-| context | Android context; the application context is retained internally. |
-| config | Android SDK configuration. |
+- `context`: Android context; the application context is retained internally.
+- `config`: Android SDK configuration.
 
 ### `PostHog.setup`
 
@@ -200,11 +196,10 @@ fun <T : PostHogConfig> setup(config: T)
 
 Setup the SDK
 
+
 #### Parameters
 
-| | |
-|---|---|
-| config | the SDK configuration |
+- `config`: the SDK configuration
 
 ### `PostHog.with`
 
@@ -214,15 +209,14 @@ fun <T : PostHogConfig> with(config: T): PostHogInterface
 
 Sets up the SDK and returns an instance that you can hold and pass around.
 
+
 #### Return
 
 The configured PostHog client instance.
 
 #### Parameters
 
-| | |
-|---|---|
-| config | SDK configuration. |
+- `config`: SDK configuration.
 
 ## Capture
 
@@ -238,22 +232,23 @@ The event's properties are merged in this order, and later values win: propertie
 
 Example:
 
-```kotlin
+```
 PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
 ```
 
+Content copied to clipboard
+
+
 #### Parameters
 
-| | |
-|---|---|
-| event | the event name |
-| distinctId | the distinctId, the generated distinctId is used if not given or blank |
-| properties | the custom properties |
-| userProperties | the user properties, set as a &quot;$set&quot; property, Docs https://posthog.com/docs/product-analytics/user-properties |
-| userPropertiesSetOnce | the user properties to set only once, set as a &quot;$set_once&quot; property, Docs https://posthog.com/docs/product-analytics/user-properties |
-| groups | the groups, set as a &quot;$groups&quot; property, Docs https://posthog.com/docs/product-analytics/group-analytics |
-| timestamp | the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used |
-| options | settings that tell PostHog how to process this event, sent apart from its properties. Known keys are `process_person_profile`, `cookieless_mode`, `disable_skew_correction` and `product_tour_id`; unknown keys are sent unchanged and ignored by PostHog. An option wins over its legacy property (`$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at`, `$product_tour_id`) when the event is sent. The map is copied, and `beforeSend` can change it through PostHogEvent.options |
+- `event`: the event name
+- `distinctId`: the distinctId, the generated distinctId is used if not given or blank
+- `properties`: the custom properties
+- `userProperties`: the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+- `userPropertiesSetOnce`: the user properties to set only once, set as a "$set\_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+- `groups`: the groups, set as a "$groups" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+- `timestamp`: the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+- `options`: settings that tell PostHog how to process this event, sent apart from its properties. Known keys are `process_person_profile`, `cookieless_mode`, `disable_skew_correction` and `product_tour_id`; unknown keys are sent unchanged and ignored by PostHog. An option wins over its legacy property (`$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at`, `$product_tour_id`) when the event is sent. The map is copied, and `beforeSend` can change it through PostHogEvent.options
 
 ## Identify
 
@@ -265,14 +260,13 @@ fun identify(distinctId: String, userProperties: Map<String, Any>? = null, userP
 
 Identifies the user Docs https://posthog.com/docs/product-analytics/identify
 
+
 #### Parameters
 
-| | |
-|---|---|
-| distinctId | the distinctId |
-| userProperties | the user properties, set as a &quot;$set&quot; property, Docs https://posthog.com/docs/product-analytics/user-properties |
-| userPropertiesSetOnce | the user properties to set only once, set as a &quot;$set_once&quot; property, Docs https://posthog.com/docs/product-analytics/user-properties |
-| options | settings that tell PostHog how to process the `$identify` or `$set` event this call sends, see `options` in capture |
+- `distinctId`: the distinctId
+- `userProperties`: the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
+- `userPropertiesSetOnce`: the user properties to set only once, set as a "$set\_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
+- `options`: settings that tell PostHog how to process the `$identify` or `$set` event this call sends, see `options` in capture
 
 ## Logs
 
@@ -286,27 +280,28 @@ Captures a single log record into PostHog's logs product, with optional W3C dist
 
 Prefer the logger facade (logger.info, .error, …) for everyday logging. Reach for this entry point when you need to correlate a log with a distributed trace by attaching traceId / spanId / traceFlags.
 
-```kotlin
-posthog.captureLog(
-    "payment failed",
-    severity = PostHogLogSeverity.ERROR,
-    attributes = mapOf("code" to "PAY_3001"),
-    traceId = "4bf92f3577b34da6a3ce929d0e0e4736",
-    spanId = "00f067aa0ba902b7",
-    traceFlags = 0x01,
+```
+posthog.captureLog(  
+    "payment failed",  
+    severity = PostHogLogSeverity.ERROR,  
+    attributes = mapOf("code" to "PAY_3001"),  
+    traceId = "4bf92f3577b34da6a3ce929d0e0e4736",  
+    spanId = "00f067aa0ba902b7",  
+    traceFlags = 0x01,  
 )
 ```
 
+Content copied to clipboard
+
+
 #### Parameters
 
-| | |
-|---|---|
-| message | the log message body; blank messages are dropped |
-| severity | the log severity, defaults to PostHogLogSeverity.INFO |
-| attributes | optional structured attributes; values must be JSON-serializable (`String`, `Number`, `Boolean`, `Date`, lists or maps of the same) |
-| traceId | optional 32-character lowercase hex W3C trace id. The ingestion service zeroes ids that are not exactly 16 bytes. |
-| spanId | optional 16-character lowercase hex W3C span id. The ingestion service zeroes ids that are not exactly 8 bytes. |
-| traceFlags | optional W3C trace flags bitfield (bit 0 is the `sampled` flag); emitted on the wire as `flags`. |
+- `message`: the log message body; blank messages are dropped
+- `severity`: the log severity, defaults to PostHogLogSeverity.INFO
+- `attributes`: optional structured attributes; values must be JSON-serializable (`String`, `Number`, `Boolean`, `Date`, lists or maps of the same)
+- `traceId`: optional 32-character lowercase hex W3C trace id. The ingestion service zeroes ids that are not exactly 16 bytes.
+- `spanId`: optional 16-character lowercase hex W3C span id. The ingestion service zeroes ids that are not exactly 8 bytes.
+- `traceFlags`: optional W3C trace flags bitfield (bit 0 is the `sampled` flag); emitted on the wire as `flags`.
 
 ### `PostHog.logger`
 
@@ -316,10 +311,12 @@ val logger: PostHogLogger
 
 Captures application log records into PostHog's logs product (separate from product analytics events). Use the severity-specific helpers (PostHogLogger.trace, debug, info, warn, error, fatal) or the generic PostHogLogger.log.
 
-```kotlin
-posthog.logger.info("checkout opened")
+```
+posthog.logger.info("checkout opened")  
 posthog.logger.error("payment failed", mapOf("code" to "PAY_3001"))
 ```
+
+Content copied to clipboard
 
 Not to be confused with the internal `config.logger` debug sink.
 
@@ -333,52 +330,11 @@ fun alias(alias: String, options: Map<String, Any?>? = null)
 
 Creates an alias for the user Docs https://posthog.com/docs/product-analytics/identify#alias-assigning-multiple-distinct-ids-to-the-same-user
 
-#### Parameters
-
-| | |
-|---|---|
-| alias | the alias |
-| options | settings that tell PostHog how to process the `$create_alias` event, see `options` in capture |
-
-## Capture AI
-
-### `PostHog.captureAi`
-
-```kotlin
-fun captureAi(event: String, distinctId: String? = null, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, userPropertiesSetOnce: Map<String, Any>? = null, groups: Map<String, String>? = null, timestamp: Date? = null, options: Map<String, Any?>? = null): UUID?
-```
-
-Captures an AI observability event, such as `$ai_generation`, `$ai_span`, `$ai_trace` or `$ai_embedding`, and sends it to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts much larger events than capture.
-
-Takes the same arguments as capture, merges properties in the same order and goes through the same `beforeSend` hooks. The event is queued on disk separately from other events and sent unchanged: the SDK doesn't redact or truncate prompts, outputs or media. PostHog drops an event sent here whose name doesn't start with `$ai_`, and the SDK logs a debug message when it's given one. capture never sends events here, even ones named `$ai_*`.
-
-AI events use PostHogConfig.flushAt, PostHogConfig.maxBatchSize and PostHogConfig.flushIntervalSeconds, like other events, and PostHogConfig.captureAiCompression, PostHogConfig.captureAiMaxQueueSize and PostHogConfig.captureAiTimeout instead of `compression`, `maxQueueSize` and the default timeouts. A serialized event over PostHogConfig.captureAiMaxEventBytes (8 MiB + 64 KiB by default) is dropped, with a log line naming the event and the limit. Requests carry up to about 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events are kept on disk; beyond that, the oldest are dropped.
-
-Example:
-
-```kotlin
-PostHog.captureAi(
-    "\$ai_generation",
-    properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),
-)
-```
-
-#### Return
-
-the event's uuid once it's handed to the queue, or null when it isn't: the SDK is disabled or opted out, the event name is empty, `beforeSend` dropped it, or it's over the size limit
 
 #### Parameters
 
-| | |
-|---|---|
-| event | the AI event name, such as `$ai_generation` |
-| distinctId | the distinctId, the generated distinctId is used if not given or blank |
-| properties | the custom properties |
-| userProperties | the user properties, set as a &quot;$set&quot; property |
-| userPropertiesSetOnce | the user properties to set only once, set as a &quot;$set_once&quot; property |
-| groups | the groups, set as a &quot;$groups&quot; property |
-| timestamp | the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used |
-| options | settings that tell PostHog how to process this event, see `options` in capture |
+- `alias`: the alias
+- `options`: settings that tell PostHog how to process the `$create_alias` event, see `options` in capture
 
 ## Capture exception
 
@@ -390,13 +346,12 @@ fun captureException(throwable: Throwable, properties: Map<String, Any>? = null,
 
 Captures exceptions
 
+
 #### Parameters
 
-| | |
-|---|---|
-| throwable | the Throwable error |
-| properties | the custom properties |
-| options | settings that tell PostHog how to process the `$exception` event, see `options` in capture |
+- `throwable`: the Throwable error
+- `properties`: the custom properties
+- `options`: settings that tell PostHog how to process the `$exception` event, see `options` in capture
 
 ## Debug
 
@@ -408,11 +363,10 @@ fun debug(enable: Boolean = true)
 
 Enables or disables the debug mode
 
+
 #### Parameters
 
-| | |
-|---|---|
-| enable | true to enable SDK debug logging, false to disable it. |
+- `enable`: true to enable SDK debug logging, false to disable it.
 
 ## Exception steps
 
@@ -430,12 +384,11 @@ Recording never throws into the host app: an empty message is ignored with a war
 
 Recording is synchronous: the `$timestamp` is captured at call time and the step is normalized, byte-budget enforced, and buffered before this method returns, so a step recorded immediately before an exception or crash is present when it is captured. The work is bounded and cheap, adding negligible latency to the caller.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| message | a non-empty description of the step |
-| properties | optional user-supplied properties (the reserved keys `$message` and `$timestamp` are stripped) |
+- `message`: a non-empty description of the step
+- `properties`: optional user-supplied properties (the reserved keys `$message` and `$timestamp` are stripped)
 
 ## Flush
 
@@ -459,6 +412,7 @@ Returns the anonymous ID generated for this device before any identify call.
 
 Unlike distinctId, this value does not change after identify — it always reflects the pre-identification anonymous identifier. Useful for linking anonymous sessions to identified users in downstream systems.
 
+
 #### Return
 
 The anonymous ID, or an empty string if the SDK is not enabled.
@@ -473,6 +427,7 @@ fun distinctId(): String
 
 Returns the registered distinctId property
 
+
 #### Return
 
 The current distinct ID.
@@ -485,13 +440,16 @@ The current distinct ID.
 fun getFeatureFlag(key: String, sendFeatureFlagEvent: Boolean? = null): Any?
 ```
 
-Returns the feature flag value, or null if the flag has no value or the SDK is disabled. Use `?:` for a fallback; it is never reported in the $feature_flag_called event.
+Returns the feature flag value, or null if the flag has no value or the SDK is disabled. Use `?:` for a fallback; it is never reported in the $feature\_flag\_called event.
 
-```kotlin
+```
 val variant = PostHog.getFeatureFlag("my-flag") ?: "control"
 ```
 
+Content copied to clipboard
+
 Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
 
 #### Return
 
@@ -499,10 +457,8 @@ The feature flag value, or null if not found.
 
 #### Parameters
 
-| | |
-|---|---|
-| key | the Key |
-| sendFeatureFlagEvent | (optional) If false, we won't send an $feature_flag_called event to PostHog. Defaults to PostHogConfig.sendFeatureFlagEvent. |
+- `key`: the Key
+- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog. Defaults to PostHogConfig.sendFeatureFlagEvent.
 
 ## Get feature flag result
 
@@ -516,16 +472,15 @@ Returns the feature flag result containing both value and payload. This is the r
 
 Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
+
 #### Return
 
 FeatureFlagResult if the flag exists, null otherwise
 
 #### Parameters
 
-| | |
-|---|---|
-| key | The feature flag key |
-| sendFeatureFlagEvent | If false, won't send $feature_flag_called event to PostHog |
+- `key`: The feature flag key
+- `sendFeatureFlagEvent`: If false, won't send $feature\_flag\_called event to PostHog
 
 ## Get feature flags
 
@@ -536,6 +491,7 @@ fun getAllFeatureFlags(): List<FeatureFlagResult>?
 ```
 
 Returns list of all feature flag result containing both value and payload. Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+
 
 #### Return
 
@@ -551,6 +507,7 @@ fun getSessionId(): UUID?
 
 Returns the session Id if a session is active
 
+
 #### Return
 
 The current session ID, or null if no session is active.
@@ -565,14 +522,13 @@ fun group(type: String, key: String, groupProperties: Map<String, Any>? = null, 
 
 Creates a group Docs https://posthog.com/docs/product-analytics/group-analytics
 
+
 #### Parameters
 
-| | |
-|---|---|
-| type | the Group type |
-| key | the Group key |
-| groupProperties | the Group properties, set as a &quot;$group_set&quot; property, Docs https://posthog.com/docs/product-analytics/group-analytics |
-| options | settings that tell PostHog how to process the `$groupidentify` event, see `options` in capture |
+- `type`: the Group type
+- `key`: the Group key
+- `groupProperties`: the Group properties, set as a "$group\_set" property, Docs https://posthog.com/docs/product-analytics/group-analytics
+- `options`: settings that tell PostHog how to process the `$groupidentify` event, see `options` in capture
 
 ## Is feature enabled
 
@@ -584,17 +540,16 @@ fun isFeatureEnabled(key: String, defaultValue: Boolean = false, sendFeatureFlag
 
 Returns if a feature flag is enabled, the feature flag must be a Boolean Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
+
 #### Return
 
 Whether the feature flag is enabled.
 
 #### Parameters
 
-| | |
-|---|---|
-| key | the Key |
-| defaultValue | the default value if not found, false if not given |
-| sendFeatureFlagEvent | (optional) If false, we won't send an $feature_flag_called event to PostHog. |
+- `key`: the Key
+- `defaultValue`: the default value if not found, false if not given
+- `sendFeatureFlagEvent`: (optional) If false, we won't send an $feature\_flag\_called event to PostHog.
 
 ## Is opt out
 
@@ -615,6 +570,7 @@ fun isSessionReplayActive(): Boolean
 ```
 
 Returns if Session Replay is Active Android only.
+
 
 #### Return
 
@@ -638,14 +594,13 @@ Enables the SDK to capture events
 fun register(key: String, value: Any)
 ```
 
-Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by the SDK only.
+Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
+
 
 #### Parameters
 
-| | |
-|---|---|
-| key | the Key |
-| value | the Value |
+- `key`: the Key
+- `value`: the Value
 
 ## Reload feature flags
 
@@ -659,19 +614,20 @@ Reloads the feature flags
 
 The callback is invoked when the reload finishes, on a background thread. If the request fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
 
-```kotlin
-PostHog.reloadFeatureFlags { loaded ->
-    if (loaded.errorsLoading) {
-        // The reload failed. loaded.variants holds the last known flags.
-    }
-}
 ```
+PostHog.reloadFeatureFlags &#123; loaded ->  
+    if (loaded.errorsLoading) &#123;  
+        // The reload failed. loaded.variants holds the last known flags.  
+    &#125;  
+&#125;
+```
+
+Content copied to clipboard
+
 
 #### Parameters
 
-| | |
-|---|---|
-| onFeatureFlags | the callback to get notified once the reload finishes, defaults to none |
+- `onFeatureFlags`: the callback to get notified once the reload finishes, defaults to none
 
 ## Reset
 
@@ -693,12 +649,11 @@ fun resetGroupPropertiesForFlags(type: String? = null, reloadFeatureFlags: Boole
 
 Clears group properties for feature flag evaluation.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| type | Optional group type to clear. If null, clears all group properties. |
-| reloadFeatureFlags | Whether to automatically reload feature flags after resetting properties |
+- `type`: Optional group type to clear. If null, clears all group properties.
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
 
 ## Reset person properties for flags
 
@@ -710,11 +665,10 @@ fun resetPersonPropertiesForFlags(reloadFeatureFlags: Boolean = true)
 
 Resets all person properties that were set for feature flag evaluation.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| reloadFeatureFlags | Whether to automatically reload feature flags after resetting properties |
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after resetting properties
 
 ## Screen
 
@@ -726,13 +680,12 @@ fun screen(screenTitle: String, properties: Map<String, Any>? = null, options: M
 
 Captures a screen view event
 
+
 #### Parameters
 
-| | |
-|---|---|
-| screenTitle | the screen title. It takes precedence over a `$screen_name` key in properties. |
-| properties | the custom properties |
-| options | settings that tell PostHog how to process the `$screen` event, see `options` in capture |
+- `screenTitle`: the screen title. It takes precedence over a `$screen_name` key in properties.
+- `properties`: the custom properties
+- `options`: settings that tell PostHog how to process the `$screen` event, see `options` in capture
 
 ## Set group properties for flags
 
@@ -744,13 +697,12 @@ fun setGroupPropertiesForFlags(type: String, groupProperties: Map<String, Any>, 
 
 Sets properties for a specific group type to include when evaluating feature flags.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| type | The group type identifier (e.g., &quot;organization&quot;, &quot;team&quot;) |
-| groupProperties | Dictionary of properties to set for this group type |
-| reloadFeatureFlags | Whether to automatically reload feature flags after setting properties |
+- `type`: The group type identifier (e.g., "organization", "team")
+- `groupProperties`: Dictionary of properties to set for this group type
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
 
 ## Set person properties
 
@@ -760,19 +712,18 @@ Sets properties for a specific group type to include when evaluating feature fla
 fun setPersonProperties(userPropertiesToSet: Map<String, Any>? = null, userPropertiesToSetOnce: Map<String, Any>? = null, options: Map<String, Any?>? = null)
 ```
 
-Sets properties on the person profile associated with the current distinct_id. Learn more about identifying users
+Sets properties on the person profile associated with the current distinct\_id. Learn more about identifying users
 
 Updates user properties that are stored with the person profile in PostHog. If `personProfiles` is set to `IDENTIFIED_ONLY` and no profile exists, this will create one.
 
 This method sends a `$set` event to PostHog.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| userPropertiesToSet | Optional: Properties to store about the user. These will overwrite existing values. |
-| userPropertiesToSetOnce | Optional: Properties to store about the user only if not previously set. Note: For feature flag evaluations, if the same key is present in both parameters, the value from userPropertiesToSet will take precedence. |
-| options | settings that tell PostHog how to process the `$set` event, see `options` in capture |
+- `userPropertiesToSet`: Optional: Properties to store about the user. These will overwrite existing values.
+- `userPropertiesToSetOnce`: Optional: Properties to store about the user only if not previously set. Note: For feature flag evaluations, if the same key is present in both parameters, the value from userPropertiesToSet will take precedence.
+- `options`: settings that tell PostHog how to process the `$set` event, see `options` in capture
 
 ## Set person properties for flags
 
@@ -784,12 +735,11 @@ fun setPersonPropertiesForFlags(userProperties: Map<String, Any>, reloadFeatureF
 
 Sets person properties that will be included in feature flag evaluation requests.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| userProperties | Dictionary of person properties to include in flag evaluation |
-| reloadFeatureFlags | Whether to automatically reload feature flags after setting properties |
+- `userProperties`: Dictionary of person properties to include in flag evaluation
+- `reloadFeatureFlags`: Whether to automatically reload feature flags after setting properties
 
 ## Shutdown
 
@@ -815,11 +765,10 @@ Note: This method respects ingestion controls configured in your project setting
 
 Android only.
 
+
 #### Parameters
 
-| | |
-|---|---|
-| resumeCurrent | Whether to resume session replay of current session (true) or start a new session (false). |
+- `resumeCurrent`: Whether to resume session replay of current session (true) or start a new session (false).
 
 ## Stop session recording
 
@@ -843,13 +792,50 @@ fun unregister(key: String)
 
 Unregisters the previously set property to be sent with all the following events
 
+
 #### Parameters
 
-| | |
-|---|---|
-| key | the Key |
+- `key`: the Key
 
 ## SDK utils
+
+### `PostHog.captureAi`
+
+```kotlin
+fun captureAi(event: String, distinctId: String? = null, properties: Map<String, Any>? = null, userProperties: Map<String, Any>? = null, userPropertiesSetOnce: Map<String, Any>? = null, groups: Map<String, String>? = null, timestamp: Date? = null, options: Map<String, Any?>? = null): UUID?
+```
+
+Captures an AI observability event, such as `$ai_generation`, `$ai_span`, `$ai_trace` or `$ai_embedding`, and sends it to PostHog's AI endpoint (`/i/v1/ai/events`), which accepts much larger events than capture.
+
+Takes the same arguments as capture, merges properties in the same order and goes through the same `beforeSend` hooks. The event is queued on disk separately from other events and sent unchanged: the SDK doesn't redact or truncate prompts, outputs or media. PostHog drops an event sent here whose name doesn't start with `$ai_`, and the SDK logs a debug message when it's given one. capture never sends events here, even ones named `$ai_*`.
+
+AI events use PostHogConfig.flushAt, PostHogConfig.maxBatchSize and PostHogConfig.flushIntervalSeconds, like other events, and PostHogConfig.captureAiCompression, PostHogConfig.captureAiMaxQueueSize and PostHogConfig.captureAiTimeout instead of `compression`, `maxQueueSize` and the default timeouts. A serialized event over PostHogConfig.captureAiMaxEventBytes (8 MiB + 64 KiB by default) is dropped, with a log line naming the event and the limit. Requests carry up to about 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events are kept on disk; beyond that, the oldest are dropped.
+
+Example:
+
+```
+PostHog.captureAi(  
+    "\$ai_generation",  
+    properties = mapOf("\$ai_model" to "gpt-5", "\$ai_trace_id" to traceId),  
+)
+```
+
+Content copied to clipboard
+
+#### Return
+
+the event's uuid once it's handed to the queue, or null when it isn't: the SDK is disabled or opted out, the event name is empty, `beforeSend` dropped it, or it's over the size limit
+
+#### Parameters
+
+- `event`: the AI event name, such as `$ai_generation`
+- `distinctId`: the distinctId, the generated distinctId is used if not given or blank
+- `properties`: the custom properties
+- `userProperties`: the user properties, set as a "$set" property
+- `userPropertiesSetOnce`: the user properties to set only once, set as a "$set\_once" property
+- `groups`: the groups, set as a "$groups" property
+- `timestamp`: the event timestamp override. UTC is preferred; the equivalent instant is serialized in UTC. If omitted, the current time is used
+- `options`: settings that tell PostHog how to process this event, see `options` in capture
 
 ### `PostHog.captureFeatureInteraction`
 
@@ -861,10 +847,8 @@ Captures a feature interaction event when a user interacts with a feature.
 
 #### Parameters
 
-| | |
-|---|---|
-| flag | The feature flag key |
-| flagVariant | Optional variant key. |
+- `flag`: The feature flag key
+- `flagVariant`: Optional variant key.
 
 ### `PostHog.captureFeatureView`
 
@@ -876,10 +860,8 @@ Captures a feature view event when a user sees a feature in the UI.
 
 #### Parameters
 
-| | |
-|---|---|
-| flag | The feature flag key. |
-| flagVariant | Optional variant key. |
+- `flag`: The feature flag key.
+- `flagVariant`: Optional variant key.
 
 ### `PostHog.capturePushNotificationOpened`
 
@@ -899,12 +881,10 @@ A rerun of that workflow, or a loop back to its push step, sends the pair again 
 
 #### Parameters
 
-| | |
-|---|---|
-| title | the notification title, attached as `$notification_title` when non-empty |
-| body | the notification body, attached as `$notification_body` when non-empty |
-| payload | the notification data payload; its `posthog` entry is spread into `$notification_*` props |
-| action | the tapped notification action identifier, attached as `$notification_action`; leave `null` for a plain tap/open (the default action carries no identifier) |
+- `title`: the notification title, attached as `$notification_title` when non-empty
+- `body`: the notification body, attached as `$notification_body` when non-empty
+- `payload`: the notification data payload; its `posthog` entry is spread into `$notification_*` props
+- `action`: the tapped notification action identifier, attached as `$notification_action`; leave `null` for a plain tap/open (the default action carries no identifier)
 
 ### `PostHog.endSession`
 
@@ -954,18 +934,20 @@ Registers a callback that's invoked whenever feature flags are loaded or updated
 
 On Android, the callback runs on the main thread, after the getters already return the new values. On the JVM, it runs on the SDK's background remote config thread. It's invoked after the SDK loads flags at startup (including from bootstrap values), after reloadFeatureFlags, and after calls that reload flags such as identify, group or reset. If a load fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If flags have already loaded when you register, it's also invoked with the current values shortly afterwards.
 
-You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as &quot;flags may have changed&quot;, not as an exactly-once event.
+You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
 
-```kotlin
-val subscription = PostHog.onFeatureFlags { loaded ->
-    if (loaded.variants["new-checkout"] == "test") {
-        // Show the test variant
-    }
-}
-
-// Later, stop listening
+```
+val subscription = PostHog.onFeatureFlags &#123; loaded ->  
+    if (loaded.variants["new-checkout"] == "test") &#123;  
+        // Show the test variant  
+    &#125;  
+&#125;  
+  
+// Later, stop listening  
 subscription.unsubscribe()
 ```
+
+Content copied to clipboard
 
 #### Return
 
@@ -973,9 +955,7 @@ a subscription; call PostHogFeatureFlagsSubscription.unsubscribe to stop receivi
 
 #### Parameters
 
-| | |
-|---|---|
-| callback | receives the enabled flags, their values, and whether loading failed |
+- `callback`: receives the enabled flags, their values, and whether loading failed
 
 ### `PostHog.optOut`
 
@@ -997,10 +977,8 @@ The token is persisted and (re)sent with the current distinctId; transient failu
 
 #### Parameters
 
-| | |
-|---|---|
-| deviceToken | the device push token or Firebase Installation ID (FID) |
-| appId | the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS |
+- `deviceToken`: the device push token or Firebase Installation ID (FID)
+- `appId`: the app identifier — the Firebase `project_id` on Android, the APNS `bundle_id` on iOS
 
 ### `PostHog.setAppLanguage`
 
@@ -1014,15 +992,15 @@ Call it at startup and whenever the language changes, because the value is kept 
 
 Default: on Android 13+ the SDK detects the language from your `localeConfig` declaration, and on Android 6-12 it sends no `$app_language` unless you call this. Compare `$locale`, which is the device language whichever language your app displays.
 
-```kotlin
+```
 PostHog.setAppLanguage("de")
 ```
 
+Content copied to clipboard
+
 #### Parameters
 
-| | |
-|---|---|
-| language | a BCP 47 language tag, such as `de` or `pt-BR`. Pass `null` to go back to the detected language |
+- `language`: a BCP 47 language tag, such as `de` or `pt-BR`. Pass `null` to go back to the detected language
 
 ### `PostHog.startSession`
 
@@ -1052,9 +1030,7 @@ Excludes this element and its descendants from automatic interaction events. Cha
 
 #### Parameters
 
-| | |
-|---|---|
-| isEnabled | Whether to exclude the subtree. Defaults to true; false has no effect. |
+- `isEnabled`: Whether to exclude the subtree. Defaults to true; false has no effect.
 
 ## PostHogAndroid
 
@@ -1086,19 +1062,15 @@ The result of evaluating a feature flag.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| enabled | `val enabled: Boolean`<br />whether the feature flag is enabled |
-| key | `val key: String`<br />the key of the feature flag |
-| payload | `val payload: Any?`<br />the payload associated with the feature flag (if any) |
-| value | `val value: Any`<br />Returns the effective value of the feature flag. For multivariate flags, returns the variant string. For boolean flags, returns the enabled boolean. |
-| variant | `val variant: String?`<br />the variant of the feature flag (null for boolean flags) |
+- `val enabled: Boolean`: whether the feature flag is enabled
+- `val key: String`: the key of the feature flag
+- `val payload: Any?`: the payload associated with the feature flag (if any)
+- `val value: Any`: Returns the effective value of the feature flag. For multivariate flags, returns the variant string. For boolean flags, returns the enabled boolean.
+- `val variant: String?`: the variant of the feature flag (null for boolean flags)
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| getPayloadAs | `inline fun <T> getPayloadAs(): T?`<br />Returns the payload deserialized as the specified type.<br /><br />`fun <T> getPayloadAs(clazz: Class<T>): T?`<br />Returns the payload deserialized as the specified class. |
+- `inline fun <T> getPayloadAs(): T?`: Returns the payload deserialized as the specified type.
 
 ### `LinkSurveyQuestion`
 
@@ -1108,19 +1080,17 @@ data class LinkSurveyQuestion(val link: String?) : SurveyQuestion
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| id | `val id: String? = null` |
-| link | `val link: String?` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val id: String? = null`
+- `val link: String?`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
 
 ### `MultipleSurveyQuestion`
 
@@ -1130,21 +1100,19 @@ data class MultipleSurveyQuestion(val choices: List<String>?, val hasOpenChoice:
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| choices | `val choices: List<String>?` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| hasOpenChoice | `val hasOpenChoice: Boolean?` |
-| id | `val id: String? = null` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| shuffleOptions | `val shuffleOptions: Boolean?` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val choices: List<String>?`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val hasOpenChoice: Boolean?`
+- `val id: String? = null`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val shuffleOptions: Boolean?`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
 
 ### `OnPostHogSurveyClosed`
 
@@ -1156,9 +1124,7 @@ To be called when a survey is dismissed
 
 #### Parameters
 
-| | |
-|---|---|
-| survey | The survey that was closed |
+- `survey`: The survey that was closed
 
 ### `OnPostHogSurveyResponse`
 
@@ -1174,11 +1140,9 @@ The next question state (next question index and completion flag)
 
 #### Parameters
 
-| | |
-|---|---|
-| survey | The current survey being displayed |
-| index | The index of the question being answered |
-| response | The user's response to the question |
+- `survey`: The current survey being displayed
+- `index`: The index of the question being answered
+- `response`: The user's response to the question
 
 ### `OnPostHogSurveyShown`
 
@@ -1190,9 +1154,7 @@ To be called when a survey is successfully shown to the user
 
 #### Parameters
 
-| | |
-|---|---|
-| survey | The survey that was displayed |
+- `survey`: The survey that was displayed
 
 ### `OpenSurveyQuestion`
 
@@ -1202,64 +1164,56 @@ class OpenSurveyQuestion : SurveyQuestion
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| id | `val id: String? = null` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val id: String? = null`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
 
 ### `PersonProfiles`
 
 ```kotlin
-enum PersonProfiles : Enum<PersonProfiles> 
+enum PersonProfiles : Enum<PersonProfiles>
 ```
 
 Controls when captured events should create or update PostHog person profiles.
 
 #### Entries
 
-| | |
-|---|---|
-| NEVER | `NEVER`<br />Never process person profile data. Anonymous users are not merged when they identify. |
-| ALWAYS | `ALWAYS`<br />Process person profile data for all captured events. |
-| IDENTIFIED_ONLY | `IDENTIFIED_ONLY`<br />Process person profile data only after `identify`, `alias`, or `group` calls. |
+- `NEVER`: Never process person profile data. Anonymous users are not merged when they identify.
+- `ALWAYS`: Process person profile data for all captured events.
+- `IDENTIFIED_ONLY`: Process person profile data only after `identify`, `alias`, or `group` calls.
 
 ### `PostHogAndroidConfig`
 
 ```kotlin
-class PostHogAndroidConfig @JvmOverloads constructor(projectToken: String, host: String = DEFAULT_HOST, var captureApplicationLifecycleEvents: Boolean = true, var captureDeepLinks: Boolean = true, var captureScreenViews: Boolean = true, var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(), var capturePushNotificationSubscriptions: Boolean = true, var capturePushNotificationOpened: Boolean = true) : PostHogConfig
+class PostHogAndroidConfig @JvmOverloads constructor(projectToken: String, host: String = DEFAULT_HOST, var captureApplicationLifecycleEvents: Boolean = true, var captureDeepLinks: Boolean = true, var captureScreenViews: Boolean = true, var sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(), var capturePushNotificationSubscriptions: Boolean = true, var capturePushNotificationOpened: Boolean = true) : PostHogConfig
 ```
 
 Android SDK configuration.
 
 #### Parameters
 
-| | |
-|---|---|
-| projectToken | Your PostHog project token, which starts with `phc_`. Required, no default. Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace is trimmed. Formerly named `apiKey`. Example: `PostHogAndroidConfig(projectToken = "phc_your_project_token")`. |
-| host | PostHog ingestion host. Defaults to DEFAULT_HOST. |
+- `projectToken`: Your PostHog project token, which starts with `phc_`. Required, no default. Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace is trimmed. Formerly named `apiKey`. Example: `PostHogAndroidConfig(projectToken = "phc_your_project_token")`.
+- `host`: PostHog ingestion host. Defaults to DEFAULT\_HOST.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| captureApplicationLifecycleEvents | `var captureApplicationLifecycleEvents: Boolean`<br />Whether to capture application lifecycle events automatically, including app installed, app updated, app opened, and app backgrounded. |
-| captureDeadClicks | `var captureDeadClicks: Boolean`<br />Captures `$dead_click` when a supported target has no observed meaningful UI response for three seconds. Default: false. Bounded local View/Compose change detection may transiently process unmasked UI text; raw text is not retained and neither text nor its ephemeral digest is sent. Unsupported/incomplete observations are skipped. Independent of semantic capture and replay; shares interaction exclusions. |
-| captureDeepLinks | `var captureDeepLinks: Boolean`<br />Whether to capture `Deep Link Opened` events automatically. For warm links delivered to `singleTop` or `singleTask` activities, call `setIntent(intent)` in `Activity.onNewIntent` after `super.onNewIntent(intent)`. The SDK checks the current intent on resume and captures each new Intent instance, even if its URL is unchanged. Ordinary resumes do not recapture the same intent. Creation capture, including activity recreation, is unchanged. Default: `true`. |
-| captureElementInteractions | `var captureElementInteractions: Boolean`<br />Captures `$autocapture` for actionable View and Compose taps. Default: false. Configure before setup. Independent of session replay; sends types and resource IDs/test tags and window-local touch coordinates in dp, never text, content descriptions or input values. Use only non-sensitive test tags. Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_no_capture` set to true, or use postHogAutocaptureNoCapture for Compose. |
-| capturePushNotificationOpened | `var capturePushNotificationOpened: Boolean`<br />Whether to auto-capture `$push_notification_opened` for cold-start taps on a tray notification (detected via the launch intent's `google.message_id` extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here — forward that intent to PostHogAndroid.capturePushNotificationOpened, which is deduped against this path. Foreground data messages and push delivered outside FCM need PostHog.capturePushNotificationOpened, which dedupes only notifications sent by PostHog. Also gates PostHogAndroid.capturePushNotificationOpened. Default: `true`. |
-| capturePushNotificationSubscriptions | `var capturePushNotificationSubscriptions: Boolean`<br />Whether to auto-register this device's push token at startup. When enabled and Firebase Messaging is on the classpath, the SDK fetches the FCM token + Firebase `project_id` and registers them so PostHog Workflows can deliver push notifications. When the manifest enables `firebase_messaging_installation_id_enabled`, the Firebase Installation ID is registered instead. No effect when Firebase is absent (a single debug log). Instant token refresh still needs the app to forward `onNewToken` (or, in installation ID mode, `onRegistered`) to `registerPushNotificationToken(...)`. Default: `true`. |
-| captureRageClicks | `var captureRageClicks: Boolean`<br />Captures `$rageclick` after four nearby taps on the same target within one second. Default: false. Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties. |
-| captureScreenViews | `var captureScreenViews: Boolean`<br />Whether to capture a `$screen` event whenever a foreground Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most recent screen name is also attached as `$screen_name` to every subsequent event captured by the SDK. To opt out of `$screen_name` stamping entirely, set this to `false` and avoid calling `PostHog.screen(...)` manually. Default: `true`. |
-| detectAppLanguage | `var detectAppLanguage: Boolean`<br />Whether the SDK detects `$app_language` itself. Wrappers that translate outside of native resources, such as Flutter, turn this off and report the language they resolved. |
-| sessionReplayConfig | `var sessionReplayConfig: PostHogSessionReplayConfig`<br />Android-specific session replay capture options. |
+- `var captureApplicationLifecycleEvents: Boolean`: Whether to capture application lifecycle events automatically, including app installed, app updated, app opened, and app backgrounded.
+- `var captureDeadClicks: Boolean`: Captures `$dead_click` when a supported target has no observed meaningful UI response for three seconds. Default: false. Bounded local View/Compose change detection may transiently process unmasked UI text; raw text is not retained and neither text nor its ephemeral digest is sent. Unsupported/incomplete observations are skipped. Independent of semantic capture and replay; shares interaction exclusions.
+- `var captureDeepLinks: Boolean`: Whether to capture `Deep Link Opened` events automatically. For warm links delivered to `singleTop` or `singleTask` activities, call `setIntent(intent)` in `Activity.onNewIntent` after `super.onNewIntent(intent)`. The SDK checks the current intent on resume and captures each new Intent instance, even if its URL is unchanged. Ordinary resumes do not recapture the same intent. Creation capture, including activity recreation, is unchanged. Default: `true`.
+- `var captureElementInteractions: Boolean`: Captures `$autocapture` for actionable View and Compose taps. Default: false. Configure before setup. Independent of session replay; sends types and resource IDs/test tags and window-local touch coordinates in dp, never text, content descriptions or input values. Use only non-sensitive test tags. Exclude a View subtree with `com.posthog.android.R.id.posthog_autocapture_no_capture` set to true, or use postHogAutocaptureNoCapture for Compose.
+- `var capturePushNotificationOpened: Boolean`: Whether to auto-capture `$push_notification_opened` for cold-start taps on a tray notification (detected via the launch intent's `google.message_id` extra). A warm-start tap arrives at `Activity.onNewIntent`, which is not observable here — forward that intent to PostHogAndroid.capturePushNotificationOpened, which is deduped against this path. Foreground data messages and push delivered outside FCM need PostHog.capturePushNotificationOpened, which dedupes only notifications sent by PostHog. Also gates PostHogAndroid.capturePushNotificationOpened. Default: `true`.
+- `var capturePushNotificationSubscriptions: Boolean`: Whether to auto-register this device's push token at startup. When enabled and Firebase Messaging is on the classpath, the SDK fetches the FCM token + Firebase `project_id` and registers them so PostHog Workflows can deliver push notifications. When the manifest enables `firebase_messaging_installation_id_enabled`, the Firebase Installation ID is registered instead. No effect when Firebase is absent (a single debug log). Instant token refresh still needs the app to forward `onNewToken` (or, in installation ID mode, `onRegistered`) to `registerPushNotificationToken(...)`. Default: `true`.
+- `var captureRageClicks: Boolean`: Captures `$rageclick` after four nearby taps on the same target within one second. Default: false. Independent of semantic capture and replay; shares their interaction exclusions and privacy-safe properties.
+- `var captureScreenViews: Boolean`: Whether to capture a `$screen` event whenever a foreground Activity starts (via `ActivityLifecycleCallbacks.onActivityStarted`). When enabled, the most recent screen name is also attached as `$screen_name` to every subsequent event captured by the SDK. To opt out of `$screen_name` stamping entirely, set this to `false` and avoid calling `PostHog.screen(...)` manually. Default: `true`.
+- `var detectAppLanguage: Boolean`: Whether the SDK detects `$app_language` itself. Wrappers that translate outside of native resources, such as Flutter, turn this off and report the language they resolved.
+- `var sessionReplayConfig: PostHogSessionReplayConfig`: Android-specific session replay capture options.
 
 ### `PostHogBeforeSend`
 
@@ -1273,9 +1227,7 @@ Return the same or a modified PostHogEvent to continue, or `null` to drop the ev
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| run | `fun run(event: PostHogEvent): PostHogEvent?`<br />Runs the hook for event. |
+- `fun run(event: PostHogEvent): PostHogEvent?`: Runs the hook for event.
 
 ### `PostHogBeforeSendLog`
 
@@ -1291,38 +1243,38 @@ Runs synchronously on the thread that called the logger — keep work fast (no n
 
 #### Kotlin (SAM)
 
-```kotlin
-config.logs.addBeforeSend { record ->
-    if (record.level == PostHogLogSeverity.TRACE) null else record
-}
 ```
+config.logs.addBeforeSend &#123; record ->  
+    if (record.level == PostHogLogSeverity.TRACE) null else record  
+&#125;
+```
+
+Content copied to clipboard
 
 #### Java
 
-```java
-config.getLogs().addBeforeSend(record -> {
-    if (record.getLevel() == PostHogLogSeverity.TRACE) return null;
-    return record;
-});
 ```
+config.getLogs().addBeforeSend(record -> &#123;  
+    if (record.getLevel() == PostHogLogSeverity.TRACE) return null;  
+    return record;  
+&#125;);
+```
+
+Content copied to clipboard
 
 #### See also
 
-| |
-|---|
-| PostHogLogsConfig.addBeforeSend |
-| PostHogLogsConfig.removeBeforeSend |
+- `PostHogLogsConfig.addBeforeSend`:
+- `PostHogLogsConfig.removeBeforeSend`:
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| run | `fun run(record: PostHogLogRecord): PostHogLogRecord?`<br />Called once per captured record. Return the record (possibly with a mutated copy via PostHogLogRecord.copy) to keep it, or `null` to drop it. |
+- `fun run(record: PostHogLogRecord): PostHogLogRecord?`: Called once per captured record. Return the record (possibly with a mutated copy via PostHogLogRecord.copy) to keep it, or `null` to drop it.
 
 ### `PostHogBootstrapConfig`
 
 ```kotlin
-class PostHogBootstrapConfig @JvmOverloads constructor(val distinctId: String? = null, val isIdentifiedId: Boolean = false, val featureFlags: Map<String, Any>? = null, val featureFlagPayloads: Map<String, Any?>? = null)
+class PostHogBootstrapConfig @JvmOverloads constructor(val distinctId: String? = null, val isIdentifiedId: Boolean = false, val featureFlags: Map<String, Any>? = null, val featureFlagPayloads: Map<String, Any?>? = null)
 ```
 
 Pre-seeded identity and feature-flag state applied before any network request completes: identity only on the very first SDK launch, and the feature-flag base layer on every launch until `reset()`.
@@ -1333,27 +1285,23 @@ Bootstrap identity applies to the very first session. An anonymous bootstrap (is
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| distinctId | `val distinctId: String? = null`<br />The distinct id to seed on first launch. |
-| featureFlagPayloads | `val featureFlagPayloads: Map<String, Any?>? = null`<br />JSON payloads paired with featureFlags, keyed by flag key. Each value is the already-decoded payload (map, list, string, number, ...). |
-| featureFlags | `val featureFlags: Map<String, Any>? = null`<br />Feature flag values served until the first `/flags` response arrives, keyed by flag key. Each value is a Boolean for boolean flags or a String for multivariate flags. Only enabled values are served — `true` or a non-empty String; a `false` or empty-string entry is treated as not bootstrapped (matching posthog-js's `!!value` check) and dropped, indistinguishable from a key that was never provided. Values must be JSON-serializable; any non-serializable entry (e.g. NaN) is dropped with a logged warning rather than surfaced. |
-| isIdentifiedId | `val isIdentifiedId: Boolean = false`<br />Whether distinctId represents an already-identified user. |
+- `val distinctId: String? = null`: The distinct id to seed on first launch.
+- `val featureFlagPayloads: Map<String, Any?>? = null`: JSON payloads paired with featureFlags, keyed by flag key. Each value is the already-decoded payload (map, list, string, number, ...).
+- `val featureFlags: Map<String, Any>? = null`: Feature flag values served until the first `/flags` response arrives, keyed by flag key. Each value is a Boolean for boolean flags or a String for multivariate flags. Only enabled values are served — `true` or a non-empty String; a `false` or empty-string entry is treated as not bootstrapped (matching posthog-js's `!!value` check) and dropped, indistinguishable from a key that was never provided. Values must be JSON-serializable; any non-serializable entry (e.g. NaN) is dropped with a logged warning rather than surfaced.
+- `val isIdentifiedId: Boolean = false`: Whether distinctId represents an already-identified user.
 
 ### `PostHogCompression`
 
 ```kotlin
-enum PostHogCompression : Enum<PostHogCompression> 
+enum PostHogCompression : Enum<PostHogCompression>
 ```
 
 Controls whether request bodies are compressed before being sent to the PostHog API.
 
 #### Entries
 
-| | |
-|---|---|
-| GZIP | `GZIP`<br />Gzip request bodies. |
-| NONE | `NONE`<br />Send request bodies uncompressed. |
+- `GZIP`: Gzip request bodies.
+- `NONE`: Send request bodies uncompressed.
 
 ### `PostHogConfig`
 
@@ -1365,87 +1313,81 @@ The SDK Config
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| aiStoragePrefix | `var aiStoragePrefix: String?` |
-| beforeSendList | `val beforeSendList: List<PostHogBeforeSend>`<br />The beforeSend list |
-| bootstrap | `var bootstrap: PostHogBootstrapConfig?`<br />Optional bootstrap configuration that seeds identity and feature-flag state before any network request completes. Identity is seeded only on the very first launch, when nothing has been persisted yet. The feature-flag snapshot is applied on every launch as the initial layer — served immediately and taking precedence over any persisted flag cache — until the first `/flags` response replaces it (a complete response drops bootstrapped-only keys; a partial or errored one keeps the keys it did not recompute) or `reset()` drops it. See PostHogBootstrapConfig for the precedence rules. |
-| captureAiCompression | `var captureAiCompression: PostHogCompression`<br />How the SDK compresses PostHog.captureAi request bodies, separately from compression. |
-| captureAiMaxEventBytes | `var captureAiMaxEventBytes: Int`<br />Maximum size, in bytes, of a serialized PostHog.captureAi event, measured before encryption. The SDK drops a larger event; then `captureAi` returns null and logs only the event name and the limit. |
-| captureAiMaxQueueSize | `var captureAiMaxQueueSize: Int`<br />Maximum number of PostHog.captureAi events kept in their on-disk queue before the oldest are dropped. |
-| captureAiTimeout | `var captureAiTimeout: Int`<br />How long, in seconds, a PostHog.captureAi request can go without network activity before it times out: its HTTP client's read and write timeouts. |
-| compression | `var compression: PostHogCompression`<br />How the SDK compresses request bodies before sending them to the PostHog API. |
-| debug | `var debug: Boolean`<br />Logs the debug logs to the logger if enabled Defaults to false |
-| encryption | `var encryption: PostHogEncryption?`<br />Hook for encrypt and decrypt events Devices are sandbox so likely not needed Defaults to no encryption |
-| errorTrackingConfig | `val errorTrackingConfig: PostHogErrorTrackingConfig`<br />Configuration for PostHog Error Tracking feature. |
-| evaluationContexts | `var evaluationContexts: List<String>?`<br />Optional list of evaluation context tags for feature flag evaluation When specified, only feature flags that have at least one matching evaluation tag will be evaluated Feature flags with no evaluation tags will always be evaluated for backward compatibility Example: listOf(&quot;production&quot;, &quot;web&quot;, &quot;checkout&quot;) Defaults to null (evaluate all flags) |
-| featureFlagCalledCacheSize | `var featureFlagCalledCacheSize: Int`<br />Maximum number of distinct feature flag calls to cache for deduplication When the cache is full, the least recently used entries are evicted Defaults to 1000 |
-| featureFlagRequestMaxRetries | `var featureFlagRequestMaxRetries: Int`<br />Maximum number of retries for feature flag requests after transient network errors. Defaults to 1. Set to 0 to disable feature flag request retries. |
-| featureFlagsListenerExecutor | `var featureFlagsListenerExecutor: Executor?`<br />Runs the PostHog.onFeatureFlags listeners. Set by platform-specific modules (e.g., Android) to deliver them on the main thread. When null, they run on the SDK's remote config thread. |
-| flushAt | `var flushAt: Int`<br />Number of minimum events before they are sent over the wire Defaults to 20 |
-| flushIntervalSeconds | `var flushIntervalSeconds: Int`<br />Interval in seconds for sending events over the wire The lower the number, most likely more battery is used Defaults to 30s |
-| getAnonymousId | `var getAnonymousId: (UUID) -> UUID`<br />Hook that allows for modification of the default mechanism for generating anonymous id (which as of now is just random UUID v7) |
-| host | `val host: String`<br />The PostHog Host Defaults to https://us.i.posthog.com EU Host: https://eu.i.posthog.com |
-| httpClient | `var httpClient: OkHttpClient?`<br />Optional custom OkHttpClient for HTTP requests. |
-| integrations | `val integrations: List<PostHogIntegration>`<br />The integrations list |
-| logs | `var logs: PostHogLogsConfig`<br />Configuration for the logs subsystem. See PostHogLogsConfig for per-field mutability semantics — resource attributes and the `flushAt` / `maxBatchSize` knobs are snapshotted at setup; the `beforeSend` chain, `maxBufferSize`, and `flushIntervalSeconds` remain live. |
-| maxBatchSize | `var maxBatchSize: Int`<br />Number of maximum events in a batch call Defaults to 50 |
-| maxQueueSize | `var maxQueueSize: Int`<br />Number of maximum events in memory and disk, when the maximum is exceed, the oldest event is deleted and the new one takes place Defaults to 1000 |
-| optOut | `@Volatile`<br />var optOut: Boolean<br />This flag prevents capturing any data if enabled You can overwrite this value at runtime by calling PostHog.optIn or PostHog.optOut Defaults to false |
-| persistOptOut | `@Volatile`<br />var persistOptOut: Boolean<br />Whether the SDK stores the opt-out state itself and restores it on the next setup. |
-| personProfiles | `var personProfiles: PersonProfiles`<br />Determines the behavior for processing user profiles. |
-| preloadFeatureFlags | `var preloadFeatureFlags: Boolean`<br />Preload feature flags automatically Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments Defaults to true |
-| projectToken | `val projectToken: String`<br />Your PostHog project token, trimmed of leading and trailing whitespace. |
-| proxy | `var proxy: Proxy?`<br />Configures an optional HTTP proxy for the PostHog API client. |
-| pushIdentityProvider | `var pushIdentityProvider: (distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit?`<br />Hook that supplies a signed identity token for push subscription requests, enabling the optional identity verification of the push subscriptions API. |
-| pushNotificationSubscriptionMaxRetries | `var pushNotificationSubscriptionMaxRetries: Int`<br />Maximum number of retries for push subscription registration failures. |
-| queueProvider | `val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface<PostHogEvent>`<br />Factory to instantiate a custom queue implementation. |
-| releaseIdentifier | `var releaseIdentifier: String?`<br />The release identifier used to identify the correct proguard mappings (mapping.txt) in order to make minified stack traces into human readable stack traces |
-| remoteConfigHolder | `var remoteConfigHolder: PostHogRemoteConfig?`<br />Reference to the PostHogRemoteConfig instance, set during setup. Used by integrations to check remote config values. |
-| remoteConfigProvider | `val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService, PostHogDefaultPersonPropertiesProvider?, PostHogOnRemoteConfigLoaded?, PostHogFeatureFlagCalledProvider?) -> PostHogFeatureFlagsInterface`<br />Factory to instantiate a custom com.posthog.internal.PostHogRemoteConfigInterface implementation. |
-| requestHeaders | `@Volatile`<br />var requestHeaders: Map&lt;String, String&gt;<br />Custom headers to send with every request to the PostHog API. |
-| reuseAnonymousId | `var reuseAnonymousId: Boolean`<br />Flag to reuse the anonymous id. If enabled, the anonymous id will be reused across `identify()` and `reset()` calls. |
-| sampleRateProvider | `var sampleRateProvider: () -> Double??`<br />Provider for the local session recording sample rate. Set by platform-specific modules (e.g., Android) to supply the sample rate from the session replay config without duplicating the field. |
-| sendFeatureFlagEvent | `var sendFeatureFlagEvent: Boolean`<br />Send a $feature_flag_called event when a feature flag is used automatically Used by experiments |
-| sessionReplay | `var sessionReplay: Boolean`<br />Enable Recording of Session Replays for Android Requires Record user sessions to be enabled in the PostHog Project Settings Defaults to false |
-| setDefaultPersonProperties | `var setDefaultPersonProperties: Boolean`<br />Automatically set common device and app properties as person properties for feature flag evaluation. |
-| surveys | `var surveys: Boolean`<br />Enable Surveys for Android (Intended for internal use only) |
-| surveysConfig | `var surveysConfig: PostHogSurveysConfig`<br />Configuration for PostHog Surveys feature. (Intended for internal use only) |
-| tracingHeaders | `var tracingHeaders: List<String>?`<br />When set, PostHog injects tracing headers into OkHttp requests whose destination hostname exactly matches one of the configured hostnames. |
+- `var aiStoragePrefix: String?`
+- `val beforeSendList: List<PostHogBeforeSend>`: The beforeSend list
+- `var bootstrap: PostHogBootstrapConfig?`: Optional bootstrap configuration that seeds identity and feature-flag state before any network request completes. Identity is seeded only on the very first launch, when nothing has been persisted yet. The feature-flag snapshot is applied on every launch as the initial layer — served immediately and taking precedence over any persisted flag cache — until the first `/flags` response replaces it (a complete response drops bootstrapped-only keys; a partial or errored one keeps the keys it did not recompute) or `reset()` drops it. See PostHogBootstrapConfig for the precedence rules.
+- `var captureAiCompression: PostHogCompression`: How the SDK compresses PostHog.captureAi request bodies, separately from compression.
+- `var captureAiMaxEventBytes: Int`: Maximum size, in bytes, of a serialized PostHog.captureAi event, measured before encryption. The SDK drops a larger event; then `captureAi` returns null and logs only the event name and the limit.
+- `var captureAiMaxQueueSize: Int`: Maximum number of PostHog.captureAi events kept in their on-disk queue before the oldest are dropped.
+- `var captureAiTimeout: Int`: How long, in seconds, a PostHog.captureAi request can go without network activity before it times out: its HTTP client's read and write timeouts.
+- `var compression: PostHogCompression`: How the SDK compresses request bodies before sending them to the PostHog API.
+- `var debug: Boolean`: Logs the debug logs to the logger if enabled Defaults to false
+- `var encryption: PostHogEncryption?`: Hook for encrypt and decrypt events Devices are sandbox so likely not needed Defaults to no encryption
+- `val errorTrackingConfig: PostHogErrorTrackingConfig`: Configuration for PostHog Error Tracking feature.
+- `var evaluationContexts: List<String>?`: Optional list of evaluation context tags for feature flag evaluation When specified, only feature flags that have at least one matching evaluation tag will be evaluated Feature flags with no evaluation tags will always be evaluated for backward compatibility Example: listOf("production", "web", "checkout") Defaults to null (evaluate all flags)
+- `var featureFlagCalledCacheSize: Int`: Maximum number of distinct feature flag calls to cache for deduplication When the cache is full, the least recently used entries are evicted Defaults to 1000
+- `var featureFlagRequestMaxRetries: Int`: Maximum number of retries for feature flag requests after transient network errors. Defaults to 1. Set to 0 to disable feature flag request retries.
+- `var featureFlagsListenerExecutor: Executor?`: Runs the PostHog.onFeatureFlags listeners. Set by platform-specific modules (e.g., Android) to deliver them on the main thread. When null, they run on the SDK's remote config thread.
+- `var flushAt: Int`: Number of minimum events before they are sent over the wire Defaults to 20
+- `var flushIntervalSeconds: Int`: Interval in seconds for sending events over the wire The lower the number, most likely more battery is used Defaults to 30s
+- `var getAnonymousId: (UUID) -> UUID`: Hook that allows for modification of the default mechanism for generating anonymous id (which as of now is just random UUID v7)
+- `val host: String`: The PostHog Host Defaults to https://us.i.posthog.com EU Host: https://eu.i.posthog.com
+- `var httpClient: OkHttpClient?`: Optional custom OkHttpClient for HTTP requests.
+- `val integrations: List<PostHogIntegration>`: The integrations list
+- `var logs: PostHogLogsConfig`: Configuration for the logs subsystem. See PostHogLogsConfig for per-field mutability semantics — resource attributes and the `flushAt` / `maxBatchSize` knobs are snapshotted at setup; the `beforeSend` chain, `maxBufferSize`, and `flushIntervalSeconds` remain live.
+- `var maxBatchSize: Int`: Number of maximum events in a batch call Defaults to 50
+- `var maxQueueSize: Int`: Number of maximum events in memory and disk, when the maximum is exceed, the oldest event is deleted and the new one takes place Defaults to 1000
+- `@Volatilevar optOut: Boolean`: This flag prevents capturing any data if enabled You can overwrite this value at runtime by calling PostHog.optIn or PostHog.optOut Defaults to false
+- `@Volatilevar persistOptOut: Boolean`: Whether the SDK stores the opt-out state itself and restores it on the next setup.
+- `var personProfiles: PersonProfiles`: Determines the behavior for processing user profiles.
+- `var preloadFeatureFlags: Boolean`: Preload feature flags automatically Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments Defaults to true
+- `val projectToken: String`: Your PostHog project token, trimmed of leading and trailing whitespace.
+- `var proxy: Proxy?`: Configures an optional HTTP proxy for the PostHog API client.
+- `var pushIdentityProvider: (distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit?`: Hook that supplies a signed identity token for push subscription requests, enabling the optional identity verification of the push subscriptions API.
+- `var pushNotificationSubscriptionMaxRetries: Int`: Maximum number of retries for push subscription registration failures.
+- `val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface<PostHogEvent>`: Factory to instantiate a custom queue implementation.
+- `var releaseIdentifier: String?`: The release identifier used to identify the correct proguard mappings (mapping.txt) in order to make minified stack traces into human readable stack traces
+- `var remoteConfigHolder: PostHogRemoteConfig?`: Reference to the PostHogRemoteConfig instance, set during setup. Used by integrations to check remote config values.
+- `val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService, PostHogDefaultPersonPropertiesProvider?, PostHogOnRemoteConfigLoaded?, PostHogFeatureFlagCalledProvider?) -> PostHogFeatureFlagsInterface`: Factory to instantiate a custom com.posthog.internal.PostHogRemoteConfigInterface implementation.
+- `@Volatilevar requestHeaders: Map<String, String>`: Custom headers to send with every request to the PostHog API.
+- `var reuseAnonymousId: Boolean`: Flag to reuse the anonymous id. If enabled, the anonymous id will be reused across `identify()` and `reset()` calls.
+- `var sampleRateProvider: () -> Double??`: Provider for the local session recording sample rate. Set by platform-specific modules (e.g., Android) to supply the sample rate from the session replay config without duplicating the field.
+- `var sendFeatureFlagEvent: Boolean`: Send a $feature\_flag\_called event when a feature flag is used automatically Used by experiments
+- `var sessionReplay: Boolean`: Enable Recording of Session Replays for Android Requires Record user sessions to be enabled in the PostHog Project Settings Defaults to false
+- `var setDefaultPersonProperties: Boolean`: Automatically set common device and app properties as person properties for feature flag evaluation.
+- `var surveys: Boolean`: Enable Surveys for Android (Intended for internal use only)
+- `var surveysConfig: PostHogSurveysConfig`: Configuration for PostHog Surveys feature. (Intended for internal use only)
+- `var tracingHeaders: List<String>?`: When set, PostHog injects tracing headers into OkHttp requests whose destination hostname exactly matches one of the configured hostnames.
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| addBeforeSend | `fun addBeforeSend(beforeSend: PostHogBeforeSend)`<br />Adds a new PostHogBeforeSend |
-| addIntegration | `fun addIntegration(integration: PostHogIntegration)`<br />Adds a new integration |
-| logIntegrationFailure | `fun PostHogConfig.logIntegrationFailure(integrationName: String, error: Throwable)`<br />Reports why an integration named integrationName is not available. A missing class means the host build excludes an artifact that the SDK needs, so that case becomes a warning: a debug-only message hides a whole feature, such as session replay, that stays off for the rest of the process. |
-| removeBeforeSend | `fun removeBeforeSend(beforeSend: PostHogBeforeSend)`<br />Removes the PostHogBeforeSend |
-| removeIntegration | `fun removeIntegration(integration: PostHogIntegration)`<br />Removes the integration |
+- `fun addBeforeSend(beforeSend: PostHogBeforeSend)`: Adds a new PostHogBeforeSend
+- `fun addIntegration(integration: PostHogIntegration)`: Adds a new integration
+- `fun PostHogConfig.logIntegrationFailure(integrationName: String, error: Throwable)`: Reports why an integration named integrationName is not available. A missing class means the host build excludes an artifact that the SDK needs, so that case becomes a warning: a debug-only message hides a whole feature, such as session replay, that stays off for the rest of the process.
+- `fun removeBeforeSend(beforeSend: PostHogBeforeSend)`: Removes the PostHogBeforeSend
+- `fun removeIntegration(integration: PostHogIntegration)`: Removes the integration
 
 ### `PostHogDisplayChoiceQuestion`
 
 ```kotlin
-class PostHogDisplayChoiceQuestion @JvmOverloads constructor(val id: String, val question: String, val questionDescription: String?, val questionDescriptionContentType: PostHogDisplaySurveyTextContentType, val isOptional: Boolean, val buttonText: String?, val choices: List<String>, val hasOpenChoice: Boolean, val shuffleOptions: Boolean, val isMultipleChoice: Boolean, val skipSubmitButton: Boolean = false) : PostHogDisplaySurveyQuestion
+class PostHogDisplayChoiceQuestion @JvmOverloads constructor(val id: String, val question: String, val questionDescription: String?, val questionDescriptionContentType: PostHogDisplaySurveyTextContentType, val isOptional: Boolean, val buttonText: String?, val choices: List<String>, val hasOpenChoice: Boolean, val shuffleOptions: Boolean, val isMultipleChoice: Boolean, val skipSubmitButton: Boolean = false) : PostHogDisplaySurveyQuestion
 ```
 
 Represents a question where users can select one or more choices
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String?`<br />Optional custom text for the question's action button |
-| choices | `val choices: List<String>`<br />The list of options for the user to choose from |
-| hasOpenChoice | `val hasOpenChoice: Boolean`<br />Whether the question includes an &quot;other&quot; option for users to input free-form text |
-| id | `val id: String`<br />The main question id |
-| isMultipleChoice | `val isMultipleChoice: Boolean`<br />Whether the user can select multiple options |
-| isOptional | `val isOptional: Boolean`<br />Whether the question can be skipped |
-| question | `val question: String`<br />The main question text to display |
-| questionDescription | `val questionDescription: String?`<br />Optional additional description or context for the question |
-| questionDescriptionContentType | `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`<br />Content type for the question description (HTML or plain text) |
-| shuffleOptions | `val shuffleOptions: Boolean`<br />Whether the options should be shuffled when presented |
-| skipSubmitButton | `val skipSubmitButton: Boolean = false`<br />Whether to auto-submit single choices without an open-ended option |
+- `val buttonText: String?`: Optional custom text for the question's action button
+- `val choices: List<String>`: The list of options for the user to choose from
+- `val hasOpenChoice: Boolean`: Whether the question includes an "other" option for users to input free-form text
+- `val id: String`: The main question id
+- `val isMultipleChoice: Boolean`: Whether the user can select multiple options
+- `val isOptional: Boolean`: Whether the question can be skipped
+- `val question: String`: The main question text to display
+- `val questionDescription: String?`: Optional additional description or context for the question
+- `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`: Content type for the question description (HTML or plain text)
+- `val shuffleOptions: Boolean`: Whether the options should be shuffled when presented
+- `val skipSubmitButton: Boolean = false`: Whether to auto-submit single choices without an open-ended option
 
 ### `PostHogDisplayLinkQuestion`
 
@@ -1457,15 +1399,13 @@ Represents a question with a clickable link
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String?`<br />Optional custom text for the question's action button |
-| id | `val id: String`<br />The main question id |
-| isOptional | `val isOptional: Boolean`<br />Whether the question can be skipped |
-| link | `val link: String?`<br />The URL that will be opened when the link is clicked |
-| question | `val question: String`<br />The main question text to display |
-| questionDescription | `val questionDescription: String?`<br />Optional additional description or context for the question |
-| questionDescriptionContentType | `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`<br />Content type for the question description (HTML or plain text) |
+- `val buttonText: String?`: Optional custom text for the question's action button
+- `val id: String`: The main question id
+- `val isOptional: Boolean`: Whether the question can be skipped
+- `val link: String?`: The URL that will be opened when the link is clicked
+- `val question: String`: The main question text to display
+- `val questionDescription: String?`: Optional additional description or context for the question
+- `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`: Content type for the question description (HTML or plain text)
 
 ### `PostHogDisplayOpenQuestion`
 
@@ -1477,39 +1417,35 @@ Represents an open-ended question where users can input free-form text
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String?`<br />Optional custom text for the question's action button |
-| id | `val id: String`<br />The main question id |
-| isOptional | `val isOptional: Boolean`<br />Whether the question can be skipped |
-| question | `val question: String`<br />The main question text to display |
-| questionDescription | `val questionDescription: String?`<br />Optional additional description or context for the question |
-| questionDescriptionContentType | `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`<br />Content type for the question description (HTML or plain text) |
+- `val buttonText: String?`: Optional custom text for the question's action button
+- `val id: String`: The main question id
+- `val isOptional: Boolean`: Whether the question can be skipped
+- `val question: String`: The main question text to display
+- `val questionDescription: String?`: Optional additional description or context for the question
+- `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`: Content type for the question description (HTML or plain text)
 
 ### `PostHogDisplayRatingQuestion`
 
 ```kotlin
-class PostHogDisplayRatingQuestion @JvmOverloads constructor(val id: String, val question: String, val questionDescription: String?, val questionDescriptionContentType: PostHogDisplaySurveyTextContentType, val isOptional: Boolean, val buttonText: String?, val ratingType: PostHogDisplaySurveyRatingType, val scaleLowerBound: Int, val scaleUpperBound: Int, val lowerBoundLabel: String, val upperBoundLabel: String, val skipSubmitButton: Boolean = false) : PostHogDisplaySurveyQuestion
+class PostHogDisplayRatingQuestion @JvmOverloads constructor(val id: String, val question: String, val questionDescription: String?, val questionDescriptionContentType: PostHogDisplaySurveyTextContentType, val isOptional: Boolean, val buttonText: String?, val ratingType: PostHogDisplaySurveyRatingType, val scaleLowerBound: Int, val scaleUpperBound: Int, val lowerBoundLabel: String, val upperBoundLabel: String, val skipSubmitButton: Boolean = false) : PostHogDisplaySurveyQuestion
 ```
 
 Represents a rating question where users can select a rating from a scale
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String?`<br />Optional custom text for the question's action button |
-| id | `val id: String`<br />The main question id |
-| isOptional | `val isOptional: Boolean`<br />Whether the question can be skipped |
-| lowerBoundLabel | `val lowerBoundLabel: String`<br />The label for the lower bound of the rating scale |
-| question | `val question: String`<br />The main question text to display |
-| questionDescription | `val questionDescription: String?`<br />Optional additional description or context for the question |
-| questionDescriptionContentType | `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`<br />Content type for the question description (HTML or plain text) |
-| ratingType | `val ratingType: PostHogDisplaySurveyRatingType`<br />The type of rating scale (numbers, emoji) |
-| scaleLowerBound | `val scaleLowerBound: Int`<br />The lower bound of the rating scale |
-| scaleUpperBound | `val scaleUpperBound: Int`<br />The upper bound of the rating scale |
-| skipSubmitButton | `val skipSubmitButton: Boolean = false`<br />Whether selecting a rating submits without an extra submit tap |
-| upperBoundLabel | `val upperBoundLabel: String`<br />The label for the upper bound of the rating scale |
+- `val buttonText: String?`: Optional custom text for the question's action button
+- `val id: String`: The main question id
+- `val isOptional: Boolean`: Whether the question can be skipped
+- `val lowerBoundLabel: String`: The label for the lower bound of the rating scale
+- `val question: String`: The main question text to display
+- `val questionDescription: String?`: Optional additional description or context for the question
+- `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`: Content type for the question description (HTML or plain text)
+- `val ratingType: PostHogDisplaySurveyRatingType`: The type of rating scale (numbers, emoji)
+- `val scaleLowerBound: Int`: The lower bound of the rating scale
+- `val scaleUpperBound: Int`: The upper bound of the rating scale
+- `val skipSubmitButton: Boolean = false`: Whether selecting a rating submits without an extra submit tap
+- `val upperBoundLabel: String`: The label for the upper bound of the rating scale
 
 ### `PostHogDisplaySurvey`
 
@@ -1521,14 +1457,12 @@ Represents a survey that is ready to be displayed to the user. Contains all the 
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| appearance | `val appearance: PostHogDisplaySurveyAppearance? = null`<br />The appearance configuration for the survey |
-| endDate | `val endDate: Date? = null`<br />Optional date indicating when the survey should stop being shown |
-| id | `val id: String`<br />The unique identifier of the survey |
-| initialQuestionIndex | `val initialQuestionIndex: Int = 0`<br />The question to show when restoring unfinished progress; zero for a new survey. |
-| questions | `val questions: List<PostHogDisplaySurveyQuestion>`<br />The list of questions in the survey |
-| startDate | `val startDate: Date? = null`<br />Optional date indicating when the survey should start being shown |
+- `val appearance: PostHogDisplaySurveyAppearance? = null`: The appearance configuration for the survey
+- `val endDate: Date? = null`: Optional date indicating when the survey should stop being shown
+- `val id: String`: The unique identifier of the survey
+- `val initialQuestionIndex: Int = 0`: The question to show when restoring unfinished progress; zero for a new survey.
+- `val questions: List<PostHogDisplaySurveyQuestion>`: The list of questions in the survey
+- `val startDate: Date? = null`: Optional date indicating when the survey should start being shown
 
 ### `PostHogDisplaySurveyAppearance`
 
@@ -1540,32 +1474,30 @@ Represents the appearance configuration for a survey.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| backgroundColor | `val backgroundColor: String? = null`<br />Optional background color as web color (e.g. &quot;#FFFFFF&quot; or &quot;white&quot;) |
-| borderColor | `val borderColor: String? = null`<br />Optional border color as web color |
-| descriptionTextColor | `val descriptionTextColor: String? = null`<br />Optional color for description text as web color |
-| displayIntroScreen | `val displayIntroScreen: Boolean = false`<br />Whether to show an intro screen before the first question |
-| displayThankYouMessage | `val displayThankYouMessage: Boolean = false`<br />Whether to show a thank you message after survey completion |
-| fontFamily | `val fontFamily: String? = null`<br />Optional font family to use throughout the survey |
-| inputBackground | `val inputBackground: String? = null`<br />Optional background color for input fields as web color |
-| inputTextColor | `val inputTextColor: String? = null`<br />Optional text color for input fields as web color |
-| introScreenButtonText | `val introScreenButtonText: String? = null`<br />Optional custom text for the button that advances past the intro screen |
-| introScreenDescription | `val introScreenDescription: String? = null`<br />Optional description text for the intro screen |
-| introScreenDescriptionContentType | `val introScreenDescriptionContentType: PostHogDisplaySurveyTextContentType? = null`<br />Optional content type for the intro screen description |
-| introScreenHeader | `val introScreenHeader: String? = null`<br />Optional header text for the intro screen |
-| placeholder | `val placeholder: String? = null`<br />Optional placeholder text for input fields |
-| ratingButtonActiveColor | `val ratingButtonActiveColor: String? = null`<br />Optional color for active/selected rating buttons as web color |
-| ratingButtonColor | `val ratingButtonColor: String? = null`<br />Optional color for rating buttons as web color |
-| submitButtonColor | `val submitButtonColor: String? = null`<br />Optional background color for the submit button as web color |
-| submitButtonText | `val submitButtonText: String? = null`<br />Optional custom text for the submit button |
-| submitButtonTextColor | `val submitButtonTextColor: String? = null`<br />Optional text color for the submit button as web color |
-| surveyPopupDelaySeconds | `val surveyPopupDelaySeconds: Double? = null`<br />Optional delay, in seconds, before the survey is shown after it is triggered |
-| textColor | `val textColor: String? = null`<br />Optional primary text color as web color |
-| thankYouMessageCloseButtonText | `val thankYouMessageCloseButtonText: String? = null`<br />Optional custom text for the thank you message close button |
-| thankYouMessageDescription | `val thankYouMessageDescription: String? = null`<br />Optional description text for the thank you message |
-| thankYouMessageDescriptionContentType | `val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null`<br />Optional content type for the thank you message description |
-| thankYouMessageHeader | `val thankYouMessageHeader: String? = null`<br />Optional header text for the thank you message |
+- `val backgroundColor: String? = null`: Optional background color as web color (e.g. "#FFFFFF" or "white")
+- `val borderColor: String? = null`: Optional border color as web color
+- `val descriptionTextColor: String? = null`: Optional color for description text as web color
+- `val displayIntroScreen: Boolean = false`: Whether to show an intro screen before the first question
+- `val displayThankYouMessage: Boolean = false`: Whether to show a thank you message after survey completion
+- `val fontFamily: String? = null`: Optional font family to use throughout the survey
+- `val inputBackground: String? = null`: Optional background color for input fields as web color
+- `val inputTextColor: String? = null`: Optional text color for input fields as web color
+- `val introScreenButtonText: String? = null`: Optional custom text for the button that advances past the intro screen
+- `val introScreenDescription: String? = null`: Optional description text for the intro screen
+- `val introScreenDescriptionContentType: PostHogDisplaySurveyTextContentType? = null`: Optional content type for the intro screen description
+- `val introScreenHeader: String? = null`: Optional header text for the intro screen
+- `val placeholder: String? = null`: Optional placeholder text for input fields
+- `val ratingButtonActiveColor: String? = null`: Optional color for active/selected rating buttons as web color
+- `val ratingButtonColor: String? = null`: Optional color for rating buttons as web color
+- `val submitButtonColor: String? = null`: Optional background color for the submit button as web color
+- `val submitButtonText: String? = null`: Optional custom text for the submit button
+- `val submitButtonTextColor: String? = null`: Optional text color for the submit button as web color
+- `val surveyPopupDelaySeconds: Double? = null`: Optional delay, in seconds, before the survey is shown after it is triggered
+- `val textColor: String? = null`: Optional primary text color as web color
+- `val thankYouMessageCloseButtonText: String? = null`: Optional custom text for the thank you message close button
+- `val thankYouMessageDescription: String? = null`: Optional description text for the thank you message
+- `val thankYouMessageDescriptionContentType: PostHogDisplaySurveyTextContentType? = null`: Optional content type for the thank you message description
+- `val thankYouMessageHeader: String? = null`: Optional header text for the thank you message
 
 ### `PostHogDisplaySurveyQuestion`
 
@@ -1575,58 +1507,55 @@ class PostHogDisplaySurveyQuestion(val id: String, val question: String, val que
 
 Base class for all survey question types
 
+#### Inheritors
+
+- `PostHogDisplayOpenQuestion`:
+- `PostHogDisplayLinkQuestion`:
+- `PostHogDisplayRatingQuestion`:
+- `PostHogDisplayChoiceQuestion`:
+
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String?`<br />Optional custom text for the question's action button |
-| id | `val id: String`<br />The main question id |
-| isOptional | `val isOptional: Boolean`<br />Whether the question can be skipped |
-| question | `val question: String`<br />The main question text to display |
-| questionDescription | `val questionDescription: String?`<br />Optional additional description or context for the question |
-| questionDescriptionContentType | `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`<br />Content type for the question description (HTML or plain text) |
+- `val buttonText: String?`: Optional custom text for the question's action button
+- `val id: String`: The main question id
+- `val isOptional: Boolean`: Whether the question can be skipped
+- `val question: String`: The main question text to display
+- `val questionDescription: String?`: Optional additional description or context for the question
+- `val questionDescriptionContentType: PostHogDisplaySurveyTextContentType`: Content type for the question description (HTML or plain text)
 
 ### `PostHogDisplaySurveyRatingType`
 
 ```kotlin
-enum PostHogDisplaySurveyRatingType : Enum<PostHogDisplaySurveyRatingType> 
+enum PostHogDisplaySurveyRatingType : Enum<PostHogDisplaySurveyRatingType>
 ```
 
 Type of rating display for survey rating questions
 
-#### Entries
-
-| | |
-|---|---|
-| NUMBER | `NUMBER`<br />Display numeric rating options |
-| EMOJI | `EMOJI`<br />Display emoji rating options |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: Int` |
+- `val value: Int`
+
+#### Entries
+
+- `NUMBER`: Display numeric rating options
+- `EMOJI`: Display emoji rating options
 
 ### `PostHogDisplaySurveyTextContentType`
 
 ```kotlin
-enum PostHogDisplaySurveyTextContentType : Enum<PostHogDisplaySurveyTextContentType> 
+enum PostHogDisplaySurveyTextContentType : Enum<PostHogDisplaySurveyTextContentType>
 ```
 
 Content type for text-based survey elements (e.g Question description, Thank you message description)
 
-#### Entries
-
-| | |
-|---|---|
-| HTML | `HTML`<br />Content should be rendered as HTML |
-| TEXT | `TEXT`<br />Content should be rendered as plain text |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: Int` |
+- `val value: Int`
+
+#### Entries
+
+- `HTML`: Content should be rendered as HTML
+- `TEXT`: Content should be rendered as plain text
 
 ### `PostHogEncryption`
 
@@ -1638,10 +1567,8 @@ Interface for encrypt and decrypt events, by default there's no encrypt since An
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| decrypt | `fun decrypt(inputStream: InputStream): InputStream`<br />Decrypts data read from inputStream. |
-| encrypt | `fun encrypt(outputStream: OutputStream): OutputStream`<br />Encrypts data written to outputStream. |
+- `fun decrypt(inputStream: InputStream): InputStream`: Decrypts data read from inputStream.
+- `fun encrypt(outputStream: OutputStream): OutputStream`: Encrypts data written to outputStream.
 
 ### `PostHogErrorTrackingAutoCaptureIntegration`
 
@@ -1649,41 +1576,31 @@ Interface for encrypt and decrypt events, by default there's no encrypt since An
 class PostHogErrorTrackingAutoCaptureIntegration : PostHogIntegration, Thread.UncaughtExceptionHandler
 ```
 
-#### Types
-
-| Name | Summary |
-|---|---|
-| CaptureTarget | `interface CaptureTarget`<br />Minimal capture surface the uncaught handler needs. Both the core client and the stateless server client can satisfy it, without sharing a public supertype. capture and flush are separate so the handler can ask for everything pending to be sent as its last act. |
-
 #### Functions
 
-| Name | Summary |
-|---|---|
-| install | `@Synchronized`<br />open override fun install(postHog: PostHogInterface)<br />Install the Integration after the SDK is setup that requires a posthog instance to capture events |
-| installWith | `@Synchronized`<br />fun installWith(target: PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget)<br />Installs the handler delivering captures to target. Used by SDK layers whose client is not a core PostHogInterface (e.g. the server SDK). |
-| onChange | `fun onChange()`<br />Invalidates pending observations when identity, consent, screen, session or close state changes. Called synchronously on the caller's thread; calls may be nested or concurrent. This is a one-shot notification, not a pause/resume boundary. Uninstall must independently clean up. |
-| onRemoteConfig | `fun onRemoteConfig(loaded: Boolean)`<br />Called when the remote config attempt for the current identity resolves. Each integration is responsible for enabling or disabling features based on the state of the remote config. |
-| uncaughtException | `fun uncaughtException(thread: Thread, throwable: Throwable)` |
-| uninstall | `@Synchronized`<br />open override fun uninstall()<br />Uninstall the Integration after the SDK is closed |
+- `@Synchronizedopen override fun install(postHog: PostHogInterface)`: Install the Integration after the SDK is setup that requires a posthog instance to capture events
+- `@Synchronizedfun installWith(target: PostHogErrorTrackingAutoCaptureIntegration.CaptureTarget)`: Installs the handler delivering captures to target. Used by SDK layers whose client is not a core PostHogInterface (e.g. the server SDK).
+- `fun onChange()`: Invalidates pending observations when identity, consent, screen, session or close state changes. Called synchronously on the caller's thread; calls may be nested or concurrent. This is a one-shot notification, not a pause/resume boundary. Uninstall must independently clean up.
+- `fun onRemoteConfig(loaded: Boolean)`: Called when the remote config attempt for the current identity resolves. Each integration is responsible for enabling or disabling features based on the state of the remote config.
+- `fun uncaughtException(thread: Thread, throwable: Throwable)`
+- `@Synchronizedopen override fun uninstall()`: Uninstall the Integration after the SDK is closed
 
 ### `PostHogErrorTrackingConfig`
 
 ```kotlin
-class PostHogErrorTrackingConfig @JvmOverloads constructor(var autoCapture: Boolean = false, val inAppIncludes: MutableList<String> = mutableListOf(), val exceptionSteps: PostHogExceptionStepsConfig = PostHogExceptionStepsConfig(), val ignoredExceptionTypes: MutableList<Class<out Throwable>> = mutableListOf())
+class PostHogErrorTrackingConfig @JvmOverloads constructor(var autoCapture: Boolean = false, val inAppIncludes: MutableList<String> = mutableListOf(), val exceptionSteps: PostHogExceptionStepsConfig = PostHogExceptionStepsConfig(), val ignoredExceptionTypes: MutableList<Class<out Throwable>> = mutableListOf())
 ```
 
 Configuration for PostHog error tracking.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| autoCapture | `var autoCapture: Boolean`<br />Enable autocapture of exceptions This feature installs an uncaught exception handler (Thread.UncaughtExceptionHandler) that will capture exceptions |
-| captureNativeCrashes | `var captureNativeCrashes: Boolean`<br />Capture native (NDK) crashes from previous runs of the app. |
-| exceptionSteps | `val exceptionSteps: PostHogExceptionStepsConfig`<br />Configuration for exception steps (breadcrumb-style context records attached to every captured `$exception` event as `$exception_steps`). |
-| ignoredExceptionTypes | `val ignoredExceptionTypes: MutableList<Class<out Throwable>>`<br />Throwable classes to drop during capture. The throwable and every cause in its chain are matched via Class.isInstance. Also applies to `$exception` events sent through the generic capture path (matched by class name). |
-| inAppExcludes | `val inAppExcludes: MutableList<String>`<br />List of package names to be excluded from inApp frames for error tracking |
-| inAppIncludes | `val inAppIncludes: MutableList<String>`<br />List of package names to be considered inApp frames for error tracking |
+- `var autoCapture: Boolean`: Enable autocapture of exceptions This feature installs an uncaught exception handler (Thread.UncaughtExceptionHandler) that will capture exceptions
+- `var captureNativeCrashes: Boolean`: Capture native (NDK) crashes from previous runs of the app.
+- `val exceptionSteps: PostHogExceptionStepsConfig`: Configuration for exception steps (breadcrumb-style context records attached to every captured `$exception` event as `$exception_steps`).
+- `val ignoredExceptionTypes: MutableList<Class<out Throwable>>`: Throwable classes to drop during capture. The throwable and every cause in its chain are matched via Class.isInstance. Also applies to `$exception` events sent through the generic capture path (matched by class name).
+- `val inAppExcludes: MutableList<String>`: List of package names to be excluded from inApp frames for error tracking
+- `val inAppIncludes: MutableList<String>`: List of package names to be considered inApp frames for error tracking
 
 ### `PostHogEvent`
 
@@ -1695,25 +1612,21 @@ The PostHog event data structure sent to capture
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| apiKey | `@SerializedName(value = "api_key")`<br />var apiKey: String? |
-| distinctId | `@SerializedName(value = "distinct_id")`<br />val distinctId: String<br />The distinct Id |
-| event | `val event: String`<br />The event name |
-| messageId | `@SerializedName(value = "message_id")`<br />val ~~messageId~~: UUID? = null |
-| options | `var options: MutableMap<String, Any?>?`<br />Options that tell PostHog how to process this event, separate from its properties. |
-| properties | `val properties: MutableMap<String, Any>? = null`<br />All the event properties |
-| set | `@SerializedName(value = "$set")`<br />val ~~set~~: Map&lt;String, Any&gt;? = null |
-| timestamp | `val timestamp: Date`<br />The event timestamp. UTC is preferred; the equivalent instant is serialized in UTC |
-| type | `val type: String? = null` |
-| uuid | `val uuid: UUID?`<br />the UUID v7 is automatically generated and used for deduplication |
+- `@SerializedName(value = "api_key")var apiKey: String?`
+- `@SerializedName(value = "distinct_id")val distinctId: String`: The distinct Id
+- `val event: String`: The event name
+- `@SerializedName(value = "message_id")val messageId: UUID? = null`
+- `var options: MutableMap<String, Any?>?`: Options that tell PostHog how to process this event, separate from its properties.
+- `val properties: MutableMap<String, Any>? = null`: All the event properties
+- `@SerializedName(value = "$set")val set: Map<String, Any>? = null`
+- `val timestamp: Date`: The event timestamp. UTC is preferred; the equivalent instant is serialized in UTC
+- `val type: String? = null`
+- `val uuid: UUID?`: the UUID v7 is automatically generated and used for deduplication
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| isExceptionEvent | `fun isExceptionEvent(): Boolean`<br />Checks if the event is an exception event ($exception) |
-| isFatalExceptionEvent | `fun isFatalExceptionEvent(): Boolean`<br />Checks if the event is a fatal exception event ($exception) and properties ($exception_level=fatal) |
+- `fun isExceptionEvent(): Boolean`: Checks if the event is an exception event ($exception)
+- `fun isFatalExceptionEvent(): Boolean`: Checks if the event is a fatal exception event ($exception) and properties ($exception\_level=fatal)
 
 ### `PostHogEventName`
 
@@ -1721,31 +1634,27 @@ The PostHog event data structure sent to capture
 enum PostHogEventName : Enum<PostHogEventName>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| SNAPSHOT | `SNAPSHOT`<br />Session replay snapshot event. |
-| SET | `SET`<br />Sets person properties. |
-| IDENTIFY | `IDENTIFY`<br />Identifies a user. |
-| SCREEN | `SCREEN`<br />A screen view. |
-| GROUP_IDENTIFY | `GROUP_IDENTIFY`<br />Sets group properties. |
-| CREATE_ALIAS | `CREATE_ALIAS`<br />Aliases one distinct ID to another. |
-| FEATURE_FLAG_CALLED | `FEATURE_FLAG_CALLED`<br />A feature flag was evaluated. |
-| FEATURE_VIEW | `FEATURE_VIEW`<br />A feature was viewed. |
-| FEATURE_INTERACTION | `FEATURE_INTERACTION`<br />A feature was interacted with. |
-| EXCEPTION | `EXCEPTION`<br />A captured exception. |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| event | `val event: String`<br />The event name sent to PostHog. |
+- `val event: String`: The event name sent to PostHog.
+
+#### Entries
+
+- `SNAPSHOT`: Session replay snapshot event.
+- `SET`: Sets person properties.
+- `IDENTIFY`: Identifies a user.
+- `SCREEN`: A screen view.
+- `GROUP_IDENTIFY`: Sets group properties.
+- `CREATE_ALIAS`: Aliases one distinct ID to another.
+- `FEATURE_FLAG_CALLED`: A feature flag was evaluated.
+- `FEATURE_VIEW`: A feature was viewed.
+- `FEATURE_INTERACTION`: A feature was interacted with.
+- `EXCEPTION`: A captured exception.
 
 ### `PostHogExceptionStepsConfig`
 
 ```kotlin
-class PostHogExceptionStepsConfig @JvmOverloads constructor(var enabled: Boolean = true, var maxBytes: Int = 32768)
+class PostHogExceptionStepsConfig @JvmOverloads constructor(var enabled: Boolean = true, var maxBytes: Int = 32768)
 ```
 
 Configuration for exception steps: breadcrumb-style context records that are attached to every captured `$exception` event as `$exception_steps`.
@@ -1754,10 +1663,8 @@ Record steps with com.posthog.PostHog.addExceptionStep.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| enabled | `var enabled: Boolean`<br />Enable recording and attaching exception steps. |
-| maxBytes | `var maxBytes: Int`<br />Total UTF-8 byte budget for the rolling step buffer. When adding a step would exceed the budget, the oldest steps are evicted until the total fits. A single step larger than the budget is rejected outright. |
+- `var enabled: Boolean`: Enable recording and attaching exception steps.
+- `var maxBytes: Int`: Total UTF-8 byte budget for the rolling step buffer. When adding a step would exceed the budget, the oldest steps are evicted until the total fits. A single step larger than the budget is rejected outright.
 
 ### `PostHogFeatureFlagsCallback`
 
@@ -1775,24 +1682,24 @@ For `reloadFeatureFlags`, it runs on a background thread, or right away on the c
 
 Example:
 
-```kotlin
-val subscription = PostHog.onFeatureFlags { loaded ->
-    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) {
-        // The flag is enabled
-    }
-}
 ```
+val subscription = PostHog.onFeatureFlags &#123; loaded ->  
+    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) &#123;  
+        // The flag is enabled  
+    &#125;  
+&#125;
+```
+
+Content copied to clipboard
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| loaded | `fun loaded(result: PostHogFeatureFlagsLoaded)`<br />Called when feature flags are loaded, or loading them failed. |
+- `fun loaded(result: PostHogFeatureFlagsLoaded)`: Called when feature flags are loaded, or loading them failed.
 
 ### `PostHogFeatureFlagsLoaded`
 
 ```kotlin
-class PostHogFeatureFlagsLoadedconstructor(featureFlags: Map<String, Any?>, val errorsLoading: Boolean)
+class PostHogFeatureFlagsLoaded constructor(featureFlags: Map<String, Any?>, val errorsLoading: Boolean)
 ```
 
 The feature flags passed to a PostHogFeatureFlagsCallback callback.
@@ -1801,35 +1708,33 @@ It holds the enabled flags as they were when the callback was invoked, and wheth
 
 Example:
 
-```kotlin
-PostHog.reloadFeatureFlags { loaded ->
-    if (loaded.errorsLoading) {
-        // The values are the last known (cached) flags
-    }
-    if (loaded.variants["new-checkout"] == "test") {
-        // Show the test variant
-    }
-}
 ```
+PostHog.reloadFeatureFlags &#123; loaded ->  
+    if (loaded.errorsLoading) &#123;  
+        // The values are the last known (cached) flags  
+    &#125;  
+    if (loaded.variants["new-checkout"] == "test") &#123;  
+        // Show the test variant  
+    &#125;  
+&#125;
+```
+
+Content copied to clipboard
 
 #### Parameters
 
-| | |
-|---|---|
-| featureFlags | the flag values, keyed by flag key; disabled flags and non-flag values are dropped |
+- `featureFlags`: the flag values, keyed by flag key; disabled flags and non-flag values are dropped
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| errorsLoading | `val errorsLoading: Boolean`<br />`true` if the latest attempt to load feature flags failed. When it did, flags and variants hold the last known values, which can be empty. It's also `true`, with no values, when the SDK isn't set up or is disabled and `reloadFeatureFlags` is called. |
-| flags | `val flags: List<String>`<br />The keys of the enabled feature flags. |
-| variants | `val variants: Map<String, Any>`<br />The values of the enabled feature flags, keyed by flag key. |
+- `val errorsLoading: Boolean`: `true` if the latest attempt to load feature flags failed. When it did, flags and variants hold the last known values, which can be empty. It's also `true`, with no values, when the SDK isn't set up or is disabled and `reloadFeatureFlags` is called.
+- `val flags: List<String>`: The keys of the enabled feature flags.
+- `val variants: Map<String, Any>`: The values of the enabled feature flags, keyed by flag key.
 
 ### `PostHogFeatureFlagsSubscription`
 
 ```kotlin
-class PostHogFeatureFlagsSubscriptionconstructor(onUnsubscribe: () -> Unit)
+class PostHogFeatureFlagsSubscription constructor(onUnsubscribe: () -> Unit)
 ```
 
 A registration returned by `onFeatureFlags`.
@@ -1838,20 +1743,20 @@ The callback stays registered until you call unsubscribe. You don't need to keep
 
 Example:
 
-```kotlin
-val subscription = PostHog.onFeatureFlags { loaded ->
-    // React to the new flags
-}
-
-// Later, stop listening
+```
+val subscription = PostHog.onFeatureFlags &#123; loaded ->  
+    // React to the new flags  
+&#125;  
+  
+// Later, stop listening  
 subscription.unsubscribe()
 ```
 
+Content copied to clipboard
+
 #### Functions
 
-| Name | Summary |
-|---|---|
-| unsubscribe | `fun unsubscribe()`<br />Stops the callback from being invoked. Calling it more than once has no effect. |
+- `fun unsubscribe()`: Stops the callback from being invoked. Calling it more than once has no effect.
 
 ### `PostHogIntegration`
 
@@ -1861,14 +1766,16 @@ interface PostHogIntegration
 
 Integration interface for capturing events automatically or adding plugins to the PostHog SDK
 
+#### Inheritors
+
+- `PostHogErrorTrackingAutoCaptureIntegration`:
+
 #### Functions
 
-| Name | Summary |
-|---|---|
-| install | `fun install(postHog: PostHogInterface)`<br />Install the Integration after the SDK is setup that requires a posthog instance to capture events |
-| onChange | `fun onChange()`<br />Invalidates pending observations when identity, consent, screen, session or close state changes. Called synchronously on the caller's thread; calls may be nested or concurrent. This is a one-shot notification, not a pause/resume boundary. Uninstall must independently clean up. |
-| onRemoteConfig | `fun onRemoteConfig(loaded: Boolean = true)`<br />Called when the remote config attempt for the current identity resolves. Each integration is responsible for enabling or disabling features based on the state of the remote config. |
-| uninstall | `fun uninstall()`<br />Uninstall the Integration after the SDK is closed |
+- `fun install(postHog: PostHogInterface)`: Install the Integration after the SDK is setup that requires a posthog instance to capture events
+- `fun onChange()`: Invalidates pending observations when identity, consent, screen, session or close state changes. Called synchronously on the caller's thread; calls may be nested or concurrent. This is a one-shot notification, not a pause/resume boundary. Uninstall must independently clean up.
+- `fun onRemoteConfig(loaded: Boolean = true)`: Called when the remote config attempt for the current identity resolves. Each integration is responsible for enabling or disabling features based on the state of the remote config.
+- `fun uninstall()`: Uninstall the Integration after the SDK is closed
 
 ### `PostHogLogRecord`
 
@@ -1880,80 +1787,78 @@ A captured log entry queued for delivery to PostHog's logs ingestion.
 
 You don't construct these directly under normal use — call com.posthog.PostHog.logger methods instead. The record is surfaced as the input to PostHogBeforeSendLog hooks so you can inspect or rewrite it before it ships.
 
-```kotlin
-config.logs.addBeforeSend { record: PostHogLogRecord ->
-    // Inspect:
-    val severity = record.level
-    val body = record.body
-
-    // Rewrite via copy() (data class):
-    record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))
-}
 ```
+config.logs.addBeforeSend &#123; record: PostHogLogRecord ->  
+    // Inspect:  
+    val severity = record.level  
+    val body = record.body  
+  
+    // Rewrite via copy() (data class):  
+    record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))  
+&#125;
+```
+
+Content copied to clipboard
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| appState | `val appState: String? = null`<br />`"foreground"` or `"background"` at capture time. |
-| attributes | `val attributes: Map<String, Any>`<br />Structured per-record attributes attached by the caller. |
-| body | `val body: String`<br />Log message body. Blank records are dropped after `beforeSend`. |
-| distinctId | `val distinctId: String? = null`<br />Snapshot of the active PostHog distinct id at capture time. |
-| featureFlagKeys | `val featureFlagKeys: List<String>`<br />Snapshot of feature flag keys that evaluated to active (truthy boolean or any multivariant value) at capture time. Use this to filter logs by flag state in the PostHog UI. |
-| level | `val level: PostHogLogSeverity`<br />Severity; defaults to PostHogLogSeverity.INFO. |
-| observedTimeUnixNano | `val observedTimeUnixNano: String`<br />Advanced/observability field. Defaults to timeUnixNano; differs only when the SDK observes a record after the original timestamp (e.g. replay from persisted storage). |
-| screenName | `val screenName: String? = null`<br />Last screen name reported via com.posthog.PostHog.screen. |
-| sessionId | `val sessionId: String? = null`<br />Snapshot of the active session id at capture time. |
-| spanId | `val spanId: String? = null`<br />W3C span id paired with traceId. |
-| timeUnixNano | `val timeUnixNano: String`<br />Advanced/observability field. Capture time as nanoseconds since epoch, encoded as a string to avoid i64 overflow on the JSON wire. |
-| traceFlags | `val traceFlags: Int? = null`<br />W3C trace flags byte (e.g. `0x01` for sampled). |
-| traceId | `val traceId: String? = null`<br />W3C trace id, when capture is part of a distributed trace. |
+- `val appState: String? = null`: `"foreground"` or `"background"` at capture time.
+- `val attributes: Map<String, Any>`: Structured per-record attributes attached by the caller.
+- `val body: String`: Log message body. Blank records are dropped after `beforeSend`.
+- `val distinctId: String? = null`: Snapshot of the active PostHog distinct id at capture time.
+- `val featureFlagKeys: List<String>`: Snapshot of feature flag keys that evaluated to active (truthy boolean or any multivariant value) at capture time. Use this to filter logs by flag state in the PostHog UI.
+- `val level: PostHogLogSeverity`: Severity; defaults to PostHogLogSeverity.INFO.
+- `val observedTimeUnixNano: String`: Advanced/observability field. Defaults to timeUnixNano; differs only when the SDK observes a record after the original timestamp (e.g. replay from persisted storage).
+- `val screenName: String? = null`: Last screen name reported via com.posthog.PostHog.screen.
+- `val sessionId: String? = null`: Snapshot of the active session id at capture time.
+- `val spanId: String? = null`: W3C span id paired with traceId.
+- `val timeUnixNano: String`: Advanced/observability field. Capture time as nanoseconds since epoch, encoded as a string to avoid i64 overflow on the JSON wire.
+- `val traceFlags: Int? = null`: W3C trace flags byte (e.g. `0x01` for sampled).
+- `val traceId: String? = null`: W3C trace id, when capture is part of a distributed trace.
 
 ### `PostHogLogSeverity`
 
 ```kotlin
-enum PostHogLogSeverity : Enum<PostHogLogSeverity> 
+enum PostHogLogSeverity : Enum<PostHogLogSeverity>
 ```
 
 Severity level for a captured log record.
 
-Constants are declared in severity order so `>=` comparisons on severityNumber give the expected result — for example, &quot;warn and worse&quot; is `severity.severityNumber >= PostHogLogSeverity.WARN.severityNumber`.
+Constants are declared in severity order so `>=` comparisons on severityNumber give the expected result — for example, "warn and worse" is `severity.severityNumber >= PostHogLogSeverity.WARN.severityNumber`.
 
 Maps to OpenTelemetry severity numbers (`TRACE=1`, `DEBUG=5`, `INFO=9`, `WARN=13`, `ERROR=17`, `FATAL=21`) for the OTLP wire format.
 
 #### Usage
 
-```kotlin
-// Direct use with the generic logger entry point:
-PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)
-
-// Map a string from an external logger (e.g. Timber, slf4j):
-val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO
-
-// Filter inside a beforeSend hook:
-config.logs.addBeforeSend { record ->
-    if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null
-    else record
-}
+```
+// Direct use with the generic logger entry point:  
+PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)  
+  
+// Map a string from an external logger (e.g. Timber, slf4j):  
+val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO  
+  
+// Filter inside a beforeSend hook:  
+config.logs.addBeforeSend &#123; record ->  
+    if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null  
+    else record  
+&#125;
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| TRACE | `TRACE`<br />Fine-grained tracing detail. |
-| DEBUG | `DEBUG`<br />Debugging detail. |
-| INFO | `INFO`<br />Normal operation. |
-| WARN | `WARN`<br />Something unexpected that is not an error. |
-| ERROR | `ERROR`<br />An error. |
-| FATAL | `FATAL`<br />An unrecoverable error. |
+Content copied to clipboard
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| severityNumber | `val severityNumber: Int`<br />OTLP `severityNumber` (1, 5, 9, 13, 17, 21). |
-| severityText | `val severityText: String`<br />OTLP `severityText` (lower-case). |
+- `val severityNumber: Int`: OTLP `severityNumber` (1, 5, 9, 13, 17, 21).
+- `val severityText: String`: OTLP `severityText` (lower-case).
+
+#### Entries
+
+- `TRACE`: Fine-grained tracing detail.
+- `DEBUG`: Debugging detail.
+- `INFO`: Normal operation.
+- `WARN`: Something unexpected that is not an error.
+- `ERROR`: An error.
+- `FATAL`: An unrecoverable error.
 
 ### `PostHogLogger`
 
@@ -1967,36 +1872,40 @@ Obtain via com.posthog.PostHog.logger (static, recommended) or com.posthog.PostH
 
 #### Kotlin usage
 
-```kotlin
-import com.posthog.PostHog
-import com.posthog.logs.PostHogLogSeverity
-
-// Severity-specific shortcuts:
-PostHog.logger.info("checkout opened")
-PostHog.logger.error(
-    "payment failed",
-    attributes = mapOf("amount_cents" to 1999, "currency" to "USD"),
-)
-
-// Generic entry point with a runtime severity:
+```
+import com.posthog.PostHog  
+import com.posthog.logs.PostHogLogSeverity  
+  
+// Severity-specific shortcuts:  
+PostHog.logger.info("checkout opened")  
+PostHog.logger.error(  
+    "payment failed",  
+    attributes = mapOf("amount_cents" to 1999, "currency" to "USD"),  
+)  
+  
+// Generic entry point with a runtime severity:  
 PostHog.logger.log("rendered cart", severity = PostHogLogSeverity.DEBUG)
 ```
 
+Content copied to clipboard
+
 #### Java usage
 
-```java
-import com.posthog.PostHog;
-import com.posthog.logs.PostHogLogSeverity;
-
-import java.util.Map;
-
-PostHog.Companion.getLogger().info("checkout opened");
-PostHog.Companion.getLogger().error(
-    "payment failed",
-    Map.of("amount_cents", 1999, "currency", "USD")
-);
+```
+import com.posthog.PostHog;  
+import com.posthog.logs.PostHogLogSeverity;  
+  
+import java.util.Map;  
+  
+PostHog.Companion.getLogger().info("checkout opened");  
+PostHog.Companion.getLogger().error(  
+    "payment failed",  
+    Map.of("amount_cents", 1999, "currency", "USD")  
+);  
 PostHog.Companion.getLogger().log("rendered cart", PostHogLogSeverity.DEBUG, null);
 ```
+
+Content copied to clipboard
 
 #### Attribute values
 
@@ -2010,23 +1919,19 @@ Register a PostHogBeforeSendLog via PostHogLogsConfig.addBeforeSend to drop or r
 
 #### See also
 
-| |
-|---|
-| PostHogLogSeverity |
-| PostHogLogsConfig |
-| PostHogBeforeSendLog |
+- `PostHogLogSeverity`:
+- `PostHogLogsConfig`:
+- `PostHogBeforeSendLog`:
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| debug | `fun debug(message: String, attributes: Map<String, Any>? = null)`<br />Captures a debug-level record. Diagnostic detail useful during development. |
-| error | `fun error(message: String, attributes: Map<String, Any>? = null)`<br />Captures an error-level record. An operation failed; the app may continue. |
-| fatal | `fun fatal(message: String, attributes: Map<String, Any>? = null)`<br />Captures a fatal-level record. An unrecoverable failure; the app likely cannot continue. Logged records still ship asynchronously, so consider calling com.posthog.PostHog.flush before the process exits. |
-| info | `fun info(message: String, attributes: Map<String, Any>? = null)`<br />Captures an info-level record. Default level for regular runtime events. |
-| log | `fun log(message: String, severity: PostHogLogSeverity = PostHogLogSeverity.INFO, attributes: Map<String, Any>? = null)`<br />Captures a log record at the given severity. |
-| trace | `fun trace(message: String, attributes: Map<String, Any>? = null)`<br />Captures a finest-grained trace-level record. Usually only enabled while diagnosing — high-volume; will trip the PostHogLogsConfig.rateCapMaxLogs cap quickly in production. |
-| warn | `fun warn(message: String, attributes: Map<String, Any>? = null)`<br />Captures a warn-level record. Something unexpected happened but the operation continued. |
+- `fun debug(message: String, attributes: Map<String, Any>? = null)`: Captures a debug-level record. Diagnostic detail useful during development.
+- `fun error(message: String, attributes: Map<String, Any>? = null)`: Captures an error-level record. An operation failed; the app may continue.
+- `fun fatal(message: String, attributes: Map<String, Any>? = null)`: Captures a fatal-level record. An unrecoverable failure; the app likely cannot continue. Logged records still ship asynchronously, so consider calling com.posthog.PostHog.flush before the process exits.
+- `fun info(message: String, attributes: Map<String, Any>? = null)`: Captures an info-level record. Default level for regular runtime events.
+- `fun log(message: String, severity: PostHogLogSeverity = PostHogLogSeverity.INFO, attributes: Map<String, Any>? = null)`: Captures a log record at the given severity.
+- `fun trace(message: String, attributes: Map<String, Any>? = null)`: Captures a finest-grained trace-level record. Usually only enabled while diagnosing — high-volume; will trip the PostHogLogsConfig.rateCapMaxLogs cap quickly in production.
+- `fun warn(message: String, attributes: Map<String, Any>? = null)`: Captures a warn-level record. Something unexpected happened but the operation continued.
 
 ### `PostHogLogsConfig`
 
@@ -2040,58 +1945,58 @@ Mutate fields on the PostHogConfig.logs property **before** calling `PostHog.set
 
 #### Kotlin
 
-```kotlin
-val config = PostHogAndroidConfig(projectToken).apply {
-    logs.serviceName = "checkout-android"
-    logs.environment = "production"
-    logs.resourceAttributes = mapOf("region" to "us-east-1")
-
-    // Redact PII before records leave the device:
-    logs.addBeforeSend { record ->
-        if (record.body.contains("@")) {
-            record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))
-        } else {
-            record
-        }
-    }
-}
+```
+val config = PostHogAndroidConfig(projectToken).apply &#123;  
+    logs.serviceName = "checkout-android"  
+    logs.environment = "production"  
+    logs.resourceAttributes = mapOf("region" to "us-east-1")  
+  
+    // Redact PII before records leave the device:  
+    logs.addBeforeSend &#123; record ->  
+        if (record.body.contains("@")) &#123;  
+            record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))  
+        &#125; else &#123;  
+            record  
+        &#125;  
+    &#125;  
+&#125;  
 PostHogAndroid.setup(this, config)
 ```
 
+Content copied to clipboard
+
 #### Java
 
-```java
-PostHogAndroidConfig config = new PostHogAndroidConfig(projectToken);
-config.getLogs().setServiceName("checkout-android");
-config.getLogs().setEnvironment("production");
-config.getLogs().addBeforeSend(record ->
-    record.getBody().contains("@") ? null : record
-);
+```
+PostHogAndroidConfig config = new PostHogAndroidConfig(projectToken);  
+config.getLogs().setServiceName("checkout-android");  
+config.getLogs().setEnvironment("production");  
+config.getLogs().addBeforeSend(record ->  
+    record.getBody().contains("@") ? null : record  
+);  
 PostHogAndroid.setup(context, config);
 ```
 
+Content copied to clipboard
+
 #### Properties
 
-| Name | Summary |
-|---|---|
-| beforeSendList | `val beforeSendList: List<PostHogBeforeSendLog>`<br />Snapshot of the currently registered `beforeSend` hooks, in registration order. Useful for diagnostics and test assertions; the returned list is an immutable copy. |
-| environment | `var environment: String?`<br />Environment the app is running in. Lets you separate production logs from staging/development noise in the PostHog UI. Common values: `"production"`, `"staging"`, `"development"`. Omitted from the payload entirely when `null`. |
-| flushAt | `var flushAt: Int`<br />Threshold at which the queue triggers a flush automatically. |
-| flushIntervalSeconds | `var flushIntervalSeconds: Int`<br />How often the queue checks for records to flush, in seconds. |
-| maxBatchSize | `var maxBatchSize: Int`<br />Initial maximum number of records sent in a single request. |
-| maxBufferSize | `var maxBufferSize: Int`<br />Maximum number of records held on disk before the oldest is dropped (FIFO). |
-| rateCapMaxLogs | `var rateCapMaxLogs: Int`<br />Maximum number of log records accepted per rateCapWindowSeconds before subsequent records in the same window are dropped at capture time. |
-| rateCapWindowSeconds | `var rateCapWindowSeconds: Int`<br />Tumbling window in seconds used by rateCapMaxLogs. The counter resets when wall-clock time advances past the window. Set to `0` (or any non-positive value) to disable the cap entirely. |
-| resourceAttributes | `var resourceAttributes: Map<String, Any>`<br />Additional metadata attached to every batch of records — anything you'd want to filter or segment by in the PostHog UI that isn't record-specific (e.g. region, build flavor, device model). |
-| serviceName | `var serviceName: String?`<br />Name of the application sending logs. Used to group records in the PostHog UI when multiple apps report to the same project, and to match values used by other observability tooling. |
-| serviceVersion | `var serviceVersion: String?`<br />Version of the application sending logs, typically your release version string. Lets you filter and segment log records by app version in the PostHog UI. |
+- `val beforeSendList: List<PostHogBeforeSendLog>`: Snapshot of the currently registered `beforeSend` hooks, in registration order. Useful for diagnostics and test assertions; the returned list is an immutable copy.
+- `var environment: String?`: Environment the app is running in. Lets you separate production logs from staging/development noise in the PostHog UI. Common values: `"production"`, `"staging"`, `"development"`. Omitted from the payload entirely when `null`.
+- `var flushAt: Int`: Threshold at which the queue triggers a flush automatically.
+- `var flushIntervalSeconds: Int`: How often the queue checks for records to flush, in seconds.
+- `var maxBatchSize: Int`: Initial maximum number of records sent in a single request.
+- `var maxBufferSize: Int`: Maximum number of records held on disk before the oldest is dropped (FIFO).
+- `var rateCapMaxLogs: Int`: Maximum number of log records accepted per rateCapWindowSeconds before subsequent records in the same window are dropped at capture time.
+- `var rateCapWindowSeconds: Int`: Tumbling window in seconds used by rateCapMaxLogs. The counter resets when wall-clock time advances past the window. Set to `0` (or any non-positive value) to disable the cap entirely.
+- `var resourceAttributes: Map<String, Any>`: Additional metadata attached to every batch of records — anything you'd want to filter or segment by in the PostHog UI that isn't record-specific (e.g. region, build flavor, device model).
+- `var serviceName: String?`: Name of the application sending logs. Used to group records in the PostHog UI when multiple apps report to the same project, and to match values used by other observability tooling.
+- `var serviceVersion: String?`: Version of the application sending logs, typically your release version string. Lets you filter and segment log records by app version in the PostHog UI.
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| addBeforeSend | `fun addBeforeSend(hook: PostHogBeforeSendLog)`<br />Adds a `beforeSend` hook that can mutate or drop log records before they reach the queue. |
-| removeBeforeSend | `fun removeBeforeSend(hook: PostHogBeforeSendLog)`<br />Removes a previously-added `beforeSend` hook. Pass the same lambda reference you originally registered. |
+- `fun addBeforeSend(hook: PostHogBeforeSendLog)`: Adds a `beforeSend` hook that can mutate or drop log records before they reach the queue.
+- `fun removeBeforeSend(hook: PostHogBeforeSendLog)`: Removes a previously-added `beforeSend` hook. Pass the same lambda reference you originally registered.
 
 ### `PostHogMaskModifier`
 
@@ -2103,10 +2008,8 @@ Jetpack Compose modifiers for controlling masking in Android session replay capt
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| postHogMask | `fun Modifier.postHogMask(isEnabled: Boolean = true): Modifier`<br />Modifier to mask elements in the session replay. |
-| postHogUnmask | `fun Modifier.postHogUnmask(isEnabled: Boolean = true): Modifier`<br />Modifier to explicitly unmask elements in the session replay. |
+- `fun Modifier.postHogMask(isEnabled: Boolean = true): Modifier`: Modifier to mask elements in the session replay.
+- `fun Modifier.postHogUnmask(isEnabled: Boolean = true): Modifier`: Modifier to explicitly unmask elements in the session replay.
 
 ### `PostHogNextSurveyQuestion`
 
@@ -2118,10 +2021,8 @@ Represents the next state after a user responds to a survey question.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| isSurveyCompleted | `val isSurveyCompleted: Boolean = false`<br />Whether all questions have been answered and the survey is complete. Depending on the survey appearance configuration, you may want to show the &quot;Thank you&quot; message or dismiss the survey at this point |
-| questionIndex | `val questionIndex: Int`<br />The index of the next question to be displayed (0-based) |
+- `val isSurveyCompleted: Boolean = false`: Whether all questions have been answered and the survey is complete. Depending on the survey appearance configuration, you may want to show the "Thank you" message or dismiss the survey at this point
+- `val questionIndex: Int`: The index of the next question to be displayed (0-based)
 
 ### `PostHogOkHttpInterceptor`
 
@@ -2135,36 +2036,30 @@ Install this interceptor on each okhttp3.OkHttpClient whose requests should be c
 
 #### Parameters
 
-| | |
-|---|---|
-| captureNetworkTelemetry | Whether to capture network timing telemetry for session replay. |
-| postHog | Optional SDK instance to use; when omitted, the global PostHog singleton is used. |
+- `captureNetworkTelemetry`: Whether to capture network timing telemetry for session replay.
+- `postHog`: Optional SDK instance to use; when omitted, the global PostHog singleton is used.
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| intercept | `fun intercept(chain: Interceptor.Chain): Response` |
+- `fun intercept(chain: Interceptor.Chain): Response`
 
 ### `PostHogScreenshotColorMode`
 
 ```kotlin
-enum PostHogScreenshotColorMode : Enum<PostHogScreenshotColorMode> 
+enum PostHogScreenshotColorMode : Enum<PostHogScreenshotColorMode>
 ```
 
 Pixel format for session replay screenshot captures, independent of resolution and compression.
 
 #### Entries
 
-| | |
-|---|---|
-| ARGB_8888 | `ARGB_8888`<br />Four bytes per pixel, preserving alpha and eight bits per color channel before encoding. |
-| RGB_565 | `RGB_565`<br />Two bytes per pixel, with reduced color precision and no alpha channel. |
+- `ARGB_8888`: Four bytes per pixel, preserving alpha and eight bits per color channel before encoding.
+- `RGB_565`: Two bytes per pixel, with reduced color precision and no alpha channel.
 
 ### `PostHogSessionReplayConfig`
 
 ```kotlin
-class PostHogSessionReplayConfig @JvmOverloads constructor(var maskAllTextInputs: Boolean = true, var maskAllImages: Boolean = true, var captureLogcat: Boolean = true, var throttleDelayMs: Long = 1000, var sampleRate: Double? = null)
+class PostHogSessionReplayConfig @JvmOverloads constructor(var maskAllTextInputs: Boolean = true, var maskAllImages: Boolean = true, var captureLogcat: Boolean = true, var throttleDelayMs: Long = 1000, var sampleRate: Double? = null)
 ```
 
 Android session replay capture options.
@@ -2175,18 +2070,16 @@ Windows that set `FLAG_SECURE` are recorded as a solid black frame, and their to
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| captureLogcat | `var captureLogcat: Boolean`<br />Enable capturing of logcat as console events Defaults to true |
-| captureTouches | `var captureTouches: Boolean`<br />Capture touch coordinates in session replay. Defaults to true. Set before SDK setup. Runtime changes are not supported. Screenshot and view capture are unaffected. Touches inside views marked `ph-no-capture` or `postHogMask()` nodes are never recorded. Disable this when other touch positions could reveal sensitive input, such as taps on fields masked only by `maskAllTextInputs`. |
-| maskAllImages | `var maskAllImages: Boolean`<br />Enable masking of all images to a placeholder Defaults to true |
-| maskAllTextInputs | `var maskAllTextInputs: Boolean`<br />Enable masking of all text and text input fields Defaults to true |
-| sampleRate | `var sampleRate: Double?`<br />Local sample rate for session recording, a value between 0.0 and 1.0. When set, this takes precedence over the remote config sample rate. `null` means no local override, so the SDK uses the remote config value. Defaults to `null`. |
-| screenshotColorMode | `@Volatile`<br />var screenshotColorMode: PostHogScreenshotColorMode<br />Pixel format used for screenshot captures. Defaults to PostHogScreenshotColorMode.ARGB_8888 to preserve alpha and color precision before lossy WebP compression. PostHogScreenshotColorMode.RGB_565 uses less bitmap memory but reduces color precision and removes alpha, making transparent activity window regions appear black. In composed scenes, dialogs use ARGB_8888 to preserve transparency. Devices that reject RGB_565 fall back to ARGB_8888. |
-| screenshotCompressionQuality | `@Volatile`<br />var screenshotCompressionQuality: Int<br />WebP compression quality for screenshots, clamped to 0..100. Defaults to 30. Higher values generally retain more detail and produce larger payloads. Compression is lossy, except on Android 10 (API 29), where the platform's legacy WebP encoder uses lossless compression at quality 100. Does not change screenshot resolution. |
-| screenshotScale | `@Volatile`<br />var screenshotScale: Float?<br />Multiplier for the physical width and height of screenshot captures, clamped to 0.1..1.0. `null` (default) captures one pixel per dp (1/density), so screens with a density of 1 or less capture at full resolution. For example, 0.5 captures half the width and height. Dimensions are rounded up to at least one pixel; the logical replay viewport is unchanged. NaN and infinite values reset the scale to `null`. Does not change compression quality or color mode. |
-| throttleDelayMs | `var throttleDelayMs: Long`<br />Throttling delay used to reduce the number of snapshots captured and reduce performance impact. The lower the number, the more snapshots are captured and the higher the performance impact. Defaults to 1000ms = 1s. |
-| verifyScreenshotMaskAlignment | `var verifyScreenshotMaskAlignment: Boolean`<br />Verifies mask alignment for session replay screenshots. This can preserve screenshots during pixel-only redraws, including continuously animated content, but performs additional view hierarchy walks while a screenshot is captured. Defaults to false. Windows with a Compose root always use the verified path regardless of this flag, so setting it to false does not disable verification for them. |
+- `var captureLogcat: Boolean`: Enable capturing of logcat as console events Defaults to true
+- `var captureTouches: Boolean`: Capture touch coordinates in session replay. Defaults to true. Set before SDK setup. Runtime changes are not supported. Screenshot and view capture are unaffected. Touches inside views marked `ph-no-capture` or `postHogMask()` nodes are never recorded. Disable this when other touch positions could reveal sensitive input, such as taps on fields masked only by `maskAllTextInputs`.
+- `var maskAllImages: Boolean`: Enable masking of all images to a placeholder Defaults to true
+- `var maskAllTextInputs: Boolean`: Enable masking of all text and text input fields Defaults to true
+- `var sampleRate: Double?`: Local sample rate for session recording, a value between 0.0 and 1.0. When set, this takes precedence over the remote config sample rate. `null` means no local override, so the SDK uses the remote config value. Defaults to `null`.
+- `@Volatilevar screenshotColorMode: PostHogScreenshotColorMode`: Pixel format used for screenshot captures. Defaults to PostHogScreenshotColorMode.ARGB\_8888 to preserve alpha and color precision before lossy WebP compression. PostHogScreenshotColorMode.RGB\_565 uses less bitmap memory but reduces color precision and removes alpha, making transparent activity window regions appear black. In composed scenes, dialogs use ARGB\_8888 to preserve transparency. Devices that reject RGB\_565 fall back to ARGB\_8888.
+- `@Volatilevar screenshotCompressionQuality: Int`: WebP compression quality for screenshots, clamped to 0..100. Defaults to 30. Higher values generally retain more detail and produce larger payloads. Compression is lossy, except on Android 10 (API 29), where the platform's legacy WebP encoder uses lossless compression at quality 100. Does not change screenshot resolution.
+- `@Volatilevar screenshotScale: Float?`: Multiplier for the physical width and height of screenshot captures, clamped to 0.1..1.0. `null` (default) captures one pixel per dp (1/density), so screens with a density of 1 or less capture at full resolution. For example, 0.5 captures half the width and height. Dimensions are rounded up to at least one pixel; the logical replay viewport is unchanged. NaN and infinite values reset the scale to `null`. Does not change compression quality or color mode.
+- `var throttleDelayMs: Long`: Throttling delay used to reduce the number of snapshots captured and reduce performance impact. The lower the number, the more snapshots are captured and the higher the performance impact. Defaults to 1000ms = 1s.
+- `var verifyScreenshotMaskAlignment: Boolean`: Verifies mask alignment for session replay screenshots. This can preserve screenshots during pixel-only redraws, including continuously animated content, but performs additional view hierarchy walks while a screenshot is captured. Defaults to false. Windows with a Compose root always use the verified path regardless of this flag, so setting it to false does not disable verification for them.
 
 ### `PostHogSurveyResponse`
 
@@ -2196,21 +2089,17 @@ sealed class PostHogSurveyResponse
 
 Represents a user's response to a survey question.
 
-#### Types
+#### Inheritors
 
-| Name | Summary |
-|---|---|
-| Link | `data class Link(val clicked: Boolean) : PostHogSurveyResponse`<br />Response for a link question. |
-| MultipleChoice | `data class MultipleChoice(val selectedChoices: List<String>?) : PostHogSurveyResponse`<br />Response for a multiple choice question. |
-| Rating | `data class Rating(val rating: Int?) : PostHogSurveyResponse`<br />Response for a rating question. |
-| SingleChoice | `data class SingleChoice(val selectedChoice: String?) : PostHogSurveyResponse`<br />Response for a single choice question. |
-| Text | `data class Text(val text: String?) : PostHogSurveyResponse`<br />Response for an open text question. |
+- `Text`:
+- `SingleChoice`:
+- `MultipleChoice`:
+- `Rating`:
+- `Link`:
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| toResponseValue | `fun toResponseValue(): Any?`<br />Creates a response value for sending to the PostHog API. |
+- `fun toResponseValue(): Any?`: Creates a response value for sending to the PostHog API.
 
 ### `PostHogSurveysConfig`
 
@@ -2222,10 +2111,8 @@ Configuration for PostHog Surveys feature.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| overrideDisplayLanguage | `var overrideDisplayLanguage: String?`<br />Optional explicit override for the language used when rendering surveys. |
-| surveysDelegate | `var surveysDelegate: PostHogSurveysDelegate`<br />Delegate responsible for managing survey presentation in your app. Handles survey rendering, response collection, and lifecycle events. You can provide your own delegate for a custom survey presentation. |
+- `var overrideDisplayLanguage: String?`: Optional explicit override for the language used when rendering surveys.
+- `var surveysDelegate: PostHogSurveysDelegate`: Delegate responsible for managing survey presentation in your app. Handles survey rendering, response collection, and lifecycle events. You can provide your own delegate for a custom survey presentation.
 
 ### `PostHogSurveysDefaultDelegate`
 
@@ -2239,10 +2126,8 @@ Users should implement their own delegate to handle survey rendering.
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| cleanupSurveys | `fun cleanupSurveys()`<br />Called when surveys should be cleaned up. This default implementation only logs that cleanup was requested. |
-| renderSurvey | `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`<br />Called when a survey should be rendered. This default implementation only logs that a survey was requested to be shown. |
+- `fun cleanupSurveys()`: Called when surveys should be cleaned up. This default implementation only logs that cleanup was requested.
+- `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`: Called when a survey should be rendered. This default implementation only logs that a survey was requested to be shown.
 
 ### `PostHogSurveysDelegate`
 
@@ -2252,12 +2137,15 @@ interface PostHogSurveysDelegate
 
 Delegate responsible for managing survey presentation in your app. Handles survey rendering, response collection, and lifecycle events. You can provide your own delegate for a custom survey presentation.
 
+#### Inheritors
+
+- `PostHogSurveysDefaultDelegate`:
+- `PostHogSurveysResumeAwareDelegate`:
+
 #### Functions
 
-| Name | Summary |
-|---|---|
-| cleanupSurveys | `fun cleanupSurveys()`<br />Called when surveys are stopped to clean up any UI elements and reset the survey display state. This method should handle the dismissal of any active surveys and cleanup of associated resources. |
-| renderSurvey | `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`<br />Called when an activated PostHog survey needs to be rendered on the app's UI |
+- `fun cleanupSurveys()`: Called when surveys are stopped to clean up any UI elements and reset the survey display state. This method should handle the dismissal of any active surveys and cleanup of associated resources.
+- `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`: Called when an activated PostHog survey needs to be rendered on the app's UI
 
 ### `PostHogSurveysResumeAwareDelegate`
 
@@ -2273,16 +2161,12 @@ For example, a renderer that honors the initial question can declare: `override 
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| supportsSurveyResume | `val supportsSurveyResume: Boolean`<br />Whether this delegate honors PostHogDisplaySurvey.initialQuestionIndex, so the SDK resumes surveys. |
+- `val supportsSurveyResume: Boolean`: Whether this delegate honors PostHogDisplaySurvey.initialQuestionIndex, so the SDK resumes surveys.
 
 #### Functions
 
-| Name | Summary |
-|---|---|
-| cleanupSurveys | `fun cleanupSurveys()`<br />Called when surveys are stopped to clean up any UI elements and reset the survey display state. This method should handle the dismissal of any active surveys and cleanup of associated resources. |
-| renderSurvey | `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`<br />Called when an activated PostHog survey needs to be rendered on the app's UI |
+- `fun cleanupSurveys()`: Called when surveys are stopped to clean up any UI elements and reset the survey display state. This method should handle the dismissal of any active surveys and cleanup of associated resources.
+- `fun renderSurvey(survey: PostHogDisplaySurvey, onSurveyShown: OnPostHogSurveyShown, onSurveyResponse: OnPostHogSurveyResponse, onSurveyClosed: OnPostHogSurveyClosed)`: Called when an activated PostHog survey needs to be rendered on the app's UI
 
 ### `RatingSurveyQuestion`
 
@@ -2292,22 +2176,20 @@ class RatingSurveyQuestion(val display: SurveyRatingDisplayType?, val scale: Int
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| display | `val display: SurveyRatingDisplayType?` |
-| id | `val id: String? = null` |
-| lowerBoundLabel | `val lowerBoundLabel: String?` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| scale | `val scale: Int?` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
-| upperBoundLabel | `val upperBoundLabel: String?` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val display: SurveyRatingDisplayType?`
+- `val id: String? = null`
+- `val lowerBoundLabel: String?`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val scale: Int?`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
+- `val upperBoundLabel: String?`
 
 ### `SingleSurveyQuestion`
 
@@ -2317,21 +2199,19 @@ data class SingleSurveyQuestion(val choices: List<String>?, val hasOpenChoice: B
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| choices | `val choices: List<String>?` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| hasOpenChoice | `val hasOpenChoice: Boolean?` |
-| id | `val id: String? = null` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| shuffleOptions | `val shuffleOptions: Boolean?` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val choices: List<String>?`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val hasOpenChoice: Boolean?`
+- `val id: String? = null`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val shuffleOptions: Boolean?`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
 
 ### `Survey`
 
@@ -2341,25 +2221,23 @@ data class Survey(val id: String, val name: String, val type: SurveyType, val qu
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| appearance | `val appearance: SurveyAppearance?` |
-| conditions | `val conditions: SurveyConditions?` |
-| currentIteration | `@SerializedName(value = "current_iteration")`<br />val currentIteration: Int? |
-| currentIterationStartDate | `@SerializedName(value = "current_iteration_start_date")`<br />val currentIterationStartDate: Date? |
-| description | `val description: String?` |
-| enablePartialResponses | `@SerializedName(value = "enable_partial_responses")`<br />val enablePartialResponses: Boolean? = null |
-| endDate | `@SerializedName(value = "end_date")`<br />val endDate: Date? |
-| featureFlagKeys | `@SerializedName(value = "feature_flag_keys")`<br />val featureFlagKeys: List&lt;SurveyFeatureFlagKeyValue&gt;? |
-| id | `val id: String` |
-| internalTargetingFlagKey | `@SerializedName(value = "internal_targeting_flag_key")`<br />val internalTargetingFlagKey: String? |
-| linkedFlagKey | `@SerializedName(value = "linked_flag_key")`<br />val linkedFlagKey: String? |
-| questions | `val questions: List<SurveyQuestion>` |
-| schedule | `val schedule: SurveySchedule?` |
-| startDate | `@SerializedName(value = "start_date")`<br />val startDate: Date? |
-| targetingFlagKey | `@SerializedName(value = "targeting_flag_key")`<br />val targetingFlagKey: String? |
-| translations | `val translations: Map<String, SurveyTranslation>? = null` |
-| type | `val type: SurveyType` |
+- `val appearance: SurveyAppearance?`
+- `val conditions: SurveyConditions?`
+- `@SerializedName(value = "current_iteration")val currentIteration: Int?`
+- `@SerializedName(value = "current_iteration_start_date")val currentIterationStartDate: Date?`
+- `val description: String?`
+- `@SerializedName(value = "enable_partial_responses")val enablePartialResponses: Boolean? = null`
+- `@SerializedName(value = "end_date")val endDate: Date?`
+- `@SerializedName(value = "feature_flag_keys")val featureFlagKeys: List<SurveyFeatureFlagKeyValue>?`
+- `val id: String`
+- `@SerializedName(value = "internal_targeting_flag_key")val internalTargetingFlagKey: String?`
+- `@SerializedName(value = "linked_flag_key")val linkedFlagKey: String?`
+- `val questions: List<SurveyQuestion>`
+- `val schedule: SurveySchedule?`
+- `@SerializedName(value = "start_date")val startDate: Date?`
+- `@SerializedName(value = "targeting_flag_key")val targetingFlagKey: String?`
+- `val translations: Map<String, SurveyTranslation>? = null`
+- `val type: SurveyType`
 
 ### `SurveyAppearance`
 
@@ -2369,41 +2247,39 @@ data class SurveyAppearance(val position: SurveyAppearancePosition?, val fontFam
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| autoDisappear | `val autoDisappear: Boolean?` |
-| backgroundColor | `val backgroundColor: String?` |
-| borderColor | `val borderColor: String` |
-| descriptionTextColor | `val descriptionTextColor: String?` |
-| displayIntroScreen | `val displayIntroScreen: Boolean? = null` |
-| displayThankYouMessage | `val displayThankYouMessage: Boolean?` |
-| fontFamily | `val fontFamily: String?` |
-| inputBackground | `val inputBackground: String?` |
-| inputTextColor | `val inputTextColor: String?` |
-| introScreenButtonText | `val introScreenButtonText: String? = null` |
-| introScreenDescription | `val introScreenDescription: String? = null` |
-| introScreenDescriptionContentType | `val introScreenDescriptionContentType: SurveyTextContentType? = null` |
-| introScreenHeader | `val introScreenHeader: String? = null` |
-| placeholder | `val placeholder: String?` |
-| position | `val position: SurveyAppearancePosition?` |
-| ratingButtonActiveColor | `val ratingButtonActiveColor: String?` |
-| ratingButtonColor | `val ratingButtonColor: String?` |
-| ratingButtonHoverColor | `val ratingButtonHoverColor: String?` |
-| shuffleQuestions | `val shuffleQuestions: Boolean?` |
-| submitButtonColor | `val submitButtonColor: String?` |
-| submitButtonText | `val submitButtonText: String?` |
-| submitButtonTextColor | `val submitButtonTextColor: String?` |
-| surveyPopupDelaySeconds | `val surveyPopupDelaySeconds: Double?` |
-| textColor | `val textColor: String?` |
-| thankYouMessageCloseButtonText | `val thankYouMessageCloseButtonText: String?` |
-| thankYouMessageDescription | `val thankYouMessageDescription: String?` |
-| thankYouMessageDescriptionContentType | `val thankYouMessageDescriptionContentType: SurveyTextContentType?` |
-| thankYouMessageHeader | `val thankYouMessageHeader: String?` |
-| whiteLabel | `val whiteLabel: Boolean?` |
-| widgetColor | `val widgetColor: String?` |
-| widgetLabel | `val widgetLabel: String?` |
-| widgetSelector | `val widgetSelector: String?` |
-| widgetType | `val widgetType: SurveyAppearanceWidgetType?` |
+- `val autoDisappear: Boolean?`
+- `val backgroundColor: String?`
+- `val borderColor: String`
+- `val descriptionTextColor: String?`
+- `val displayIntroScreen: Boolean? = null`
+- `val displayThankYouMessage: Boolean?`
+- `val fontFamily: String?`
+- `val inputBackground: String?`
+- `val inputTextColor: String?`
+- `val introScreenButtonText: String? = null`
+- `val introScreenDescription: String? = null`
+- `val introScreenDescriptionContentType: SurveyTextContentType? = null`
+- `val introScreenHeader: String? = null`
+- `val placeholder: String?`
+- `val position: SurveyAppearancePosition?`
+- `val ratingButtonActiveColor: String?`
+- `val ratingButtonColor: String?`
+- `val ratingButtonHoverColor: String?`
+- `val shuffleQuestions: Boolean?`
+- `val submitButtonColor: String?`
+- `val submitButtonText: String?`
+- `val submitButtonTextColor: String?`
+- `val surveyPopupDelaySeconds: Double?`
+- `val textColor: String?`
+- `val thankYouMessageCloseButtonText: String?`
+- `val thankYouMessageDescription: String?`
+- `val thankYouMessageDescriptionContentType: SurveyTextContentType?`
+- `val thankYouMessageHeader: String?`
+- `val whiteLabel: Boolean?`
+- `val widgetColor: String?`
+- `val widgetLabel: String?`
+- `val widgetSelector: String?`
+- `val widgetType: SurveyAppearanceWidgetType?`
 
 ### `SurveyAppearancePosition`
 
@@ -2411,19 +2287,15 @@ data class SurveyAppearance(val position: SurveyAppearancePosition?, val fontFam
 enum SurveyAppearancePosition : Enum<SurveyAppearancePosition>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| LEFT | `LEFT` |
-| RIGHT | `RIGHT` |
-| CENTER | `CENTER` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `LEFT`
+- `RIGHT`
+- `CENTER`
 
 ### `SurveyAppearanceWidgetType`
 
@@ -2431,38 +2303,32 @@ enum SurveyAppearancePosition : Enum<SurveyAppearancePosition>
 enum SurveyAppearanceWidgetType : Enum<SurveyAppearanceWidgetType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| BUTTON | `BUTTON` |
-| TAB | `TAB` |
-| SELECTOR | `SELECTOR` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `BUTTON`
+- `TAB`
+- `SELECTOR`
 
 ### `SurveyConditions`
 
 ```kotlin
-data class SurveyConditions @JvmOverloads constructor(val url: String?, val urlMatchType: SurveyMatchType?, val selector: String?, val deviceTypes: List<String>?, val deviceTypesMatchType: SurveyMatchType?, val seenSurveyWaitPeriodInDays: Int?, val events: SurveyEventConditions?, val linkedFlagVariant: String? = null)
+data class SurveyConditions @JvmOverloads constructor(val url: String?, val urlMatchType: SurveyMatchType?, val selector: String?, val deviceTypes: List<String>?, val deviceTypesMatchType: SurveyMatchType?, val seenSurveyWaitPeriodInDays: Int?, val events: SurveyEventConditions?, val linkedFlagVariant: String? = null)
 ```
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| deviceTypes | `val deviceTypes: List<String>?` |
-| deviceTypesMatchType | `val deviceTypesMatchType: SurveyMatchType?` |
-| events | `val events: SurveyEventConditions?` |
-| linkedFlagVariant | `val linkedFlagVariant: String? = null`<br />Required variant of the linked flag; &quot;any&quot; accepts any enabled value. |
-| seenSurveyWaitPeriodInDays | `val seenSurveyWaitPeriodInDays: Int?` |
-| selector | `val selector: String?` |
-| url | `val url: String?` |
-| urlMatchType | `val urlMatchType: SurveyMatchType?` |
+- `val deviceTypes: List<String>?`
+- `val deviceTypesMatchType: SurveyMatchType?`
+- `val events: SurveyEventConditions?`
+- `val linkedFlagVariant: String? = null`: Required variant of the linked flag; "any" accepts any enabled value.
+- `val seenSurveyWaitPeriodInDays: Int?`
+- `val selector: String?`
+- `val url: String?`
+- `val urlMatchType: SurveyMatchType?`
 
 ### `SurveyEventCondition`
 
@@ -2472,9 +2338,7 @@ data class SurveyEventCondition(val name: String, val propertyFilters: Map<Strin
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| propertyFilters | `val propertyFilters: Map<String, SurveyPropertyFilter>? = null` |
+- `val propertyFilters: Map<String, SurveyPropertyFilter>? = null`
 
 ### `SurveyEventConditions`
 
@@ -2484,9 +2348,7 @@ data class SurveyEventConditions(val repeatedActivation: Boolean?, val values: L
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| repeatedActivation | `val repeatedActivation: Boolean?` |
+- `val repeatedActivation: Boolean?`
 
 ### `SurveyFeatureFlagKeyValue`
 
@@ -2496,10 +2358,8 @@ data class SurveyFeatureFlagKeyValue(val key: String, val value: String?)
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| key | `val key: String` |
-| value | `val value: String?` |
+- `val key: String`
+- `val value: String?`
 
 ### `SurveyMatchType`
 
@@ -2507,24 +2367,20 @@ data class SurveyFeatureFlagKeyValue(val key: String, val value: String?)
 enum SurveyMatchType : Enum<SurveyMatchType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| REGEX | `REGEX` |
-| NOT_REGEX | `NOT_REGEX` |
-| EXACT | `EXACT` |
-| IS_NOT | `IS_NOT` |
-| I_CONTAINS | `I_CONTAINS` |
-| NOT_I_CONTAINS | `NOT_I_CONTAINS` |
-| GT | `GT` |
-| LT | `LT` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `REGEX`
+- `NOT_REGEX`
+- `EXACT`
+- `IS_NOT`
+- `I_CONTAINS`
+- `NOT_I_CONTAINS`
+- `GT`
+- `LT`
 
 ### `SurveyPropertyFilter`
 
@@ -2534,9 +2390,7 @@ class SurveyPropertyFilter(val values: List<String>, val operator: SurveyMatchTy
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| operator | `val operator: SurveyMatchType` |
+- `val operator: SurveyMatchType`
 
 ### `SurveyQuestion`
 
@@ -2544,20 +2398,26 @@ class SurveyPropertyFilter(val values: List<String>, val operator: SurveyMatchTy
 class SurveyQuestion
 ```
 
+#### Inheritors
+
+- `OpenSurveyQuestion`:
+- `LinkSurveyQuestion`:
+- `RatingSurveyQuestion`:
+- `SingleSurveyQuestion`:
+- `MultipleSurveyQuestion`:
+
 #### Properties
 
-| Name | Summary |
-|---|---|
-| branching | `val branching: SurveyQuestionBranching? = null` |
-| buttonText | `val buttonText: String? = null` |
-| description | `val description: String? = null` |
-| descriptionContentType | `val descriptionContentType: SurveyTextContentType? = null` |
-| id | `val id: String? = null` |
-| optional | `val optional: Boolean? = null` |
-| question | `val question: String? = null` |
-| skipSubmitButton | `val skipSubmitButton: Boolean? = null` |
-| translations | `val translations: Map<String, SurveyQuestionTranslation>? = null` |
-| type | `val type: SurveyQuestionType? = null` |
+- `val branching: SurveyQuestionBranching? = null`
+- `val buttonText: String? = null`
+- `val description: String? = null`
+- `val descriptionContentType: SurveyTextContentType? = null`
+- `val id: String? = null`
+- `val optional: Boolean? = null`
+- `val question: String? = null`
+- `val skipSubmitButton: Boolean? = null`
+- `val translations: Map<String, SurveyQuestionTranslation>? = null`
+- `val type: SurveyQuestionType? = null`
 
 ### `SurveyQuestionBranching`
 
@@ -2565,14 +2425,12 @@ class SurveyQuestion
 sealed class SurveyQuestionBranching
 ```
 
-#### Types
+#### Inheritors
 
-| Name | Summary |
-|---|---|
-| End | `object End : SurveyQuestionBranching` |
-| Next | `object Next : SurveyQuestionBranching` |
-| ResponseBased | `class ResponseBased(val responseValues: Map<String, Any>) : SurveyQuestionBranching` |
-| SpecificQuestion | `class SpecificQuestion(val index: Int) : SurveyQuestionBranching` |
+- `Next`:
+- `End`:
+- `ResponseBased`:
+- `SpecificQuestion`:
 
 ### `SurveyQuestionBranchingType`
 
@@ -2580,20 +2438,16 @@ sealed class SurveyQuestionBranching
 enum SurveyQuestionBranchingType : Enum<SurveyQuestionBranchingType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| NEXT_QUESTION | `NEXT_QUESTION` |
-| END | `END` |
-| RESPONSE_BASED | `RESPONSE_BASED` |
-| SPECIFIC_QUESTION | `SPECIFIC_QUESTION` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `NEXT_QUESTION`
+- `END`
+- `RESPONSE_BASED`
+- `SPECIFIC_QUESTION`
 
 ### `SurveyQuestionTranslation`
 
@@ -2607,15 +2461,13 @@ Fields are a superset across question types: `link` only applies to link questio
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| buttonText | `val buttonText: String? = null` |
-| choices | `val choices: List<String>? = null` |
-| description | `val description: String? = null` |
-| link | `val link: String? = null` |
-| lowerBoundLabel | `val lowerBoundLabel: String? = null` |
-| question | `val question: String? = null` |
-| upperBoundLabel | `val upperBoundLabel: String? = null` |
+- `val buttonText: String? = null`
+- `val choices: List<String>? = null`
+- `val description: String? = null`
+- `val link: String? = null`
+- `val lowerBoundLabel: String? = null`
+- `val question: String? = null`
+- `val upperBoundLabel: String? = null`
 
 ### `SurveyQuestionType`
 
@@ -2623,21 +2475,17 @@ Fields are a superset across question types: `link` only applies to link questio
 enum SurveyQuestionType : Enum<SurveyQuestionType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| OPEN | `OPEN` |
-| LINK | `LINK` |
-| RATING | `RATING` |
-| MULTIPLE_CHOICE | `MULTIPLE_CHOICE` |
-| SINGLE_CHOICE | `SINGLE_CHOICE` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `OPEN`
+- `LINK`
+- `RATING`
+- `MULTIPLE_CHOICE`
+- `SINGLE_CHOICE`
 
 ### `SurveyRatingDisplayType`
 
@@ -2645,18 +2493,14 @@ enum SurveyQuestionType : Enum<SurveyQuestionType>
 enum SurveyRatingDisplayType : Enum<SurveyRatingDisplayType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| NUMBER | `NUMBER` |
-| EMOJI | `EMOJI` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `NUMBER`
+- `EMOJI`
 
 ### `SurveySchedule`
 
@@ -2664,19 +2508,15 @@ enum SurveyRatingDisplayType : Enum<SurveyRatingDisplayType>
 enum SurveySchedule : Enum<SurveySchedule>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| ONCE | `ONCE` |
-| RECURRING | `RECURRING` |
-| ALWAYS | `ALWAYS` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `ONCE`
+- `RECURRING`
+- `ALWAYS`
 
 ### `SurveyTextContentType`
 
@@ -2684,18 +2524,14 @@ enum SurveySchedule : Enum<SurveySchedule>
 enum SurveyTextContentType : Enum<SurveyTextContentType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| HTML | `HTML` |
-| TEXT | `TEXT` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `HTML`
+- `TEXT`
 
 ### `SurveyTranslation`
 
@@ -2703,20 +2539,18 @@ enum SurveyTextContentType : Enum<SurveyTextContentType>
 data class SurveyTranslation(val name: String? = null, val thankYouMessageHeader: String? = null, val thankYouMessageDescription: String? = null, val thankYouMessageCloseButtonText: String? = null, val introScreenHeader: String? = null, val introScreenDescription: String? = null, val introScreenButtonText: String? = null)
 ```
 
-Localized overrides for a survey, keyed by language code (e.g. &quot;fr&quot;, &quot;pt-BR&quot;).
+Localized overrides for a survey, keyed by language code (e.g. "fr", "pt-BR").
 
 The survey-level `description` is intentionally NOT translatable — it is only used for internal previews and never rendered to end users.
 
 #### Properties
 
-| Name | Summary |
-|---|---|
-| introScreenButtonText | `val introScreenButtonText: String? = null` |
-| introScreenDescription | `val introScreenDescription: String? = null` |
-| introScreenHeader | `val introScreenHeader: String? = null` |
-| thankYouMessageCloseButtonText | `val thankYouMessageCloseButtonText: String? = null` |
-| thankYouMessageDescription | `val thankYouMessageDescription: String? = null` |
-| thankYouMessageHeader | `val thankYouMessageHeader: String? = null` |
+- `val introScreenButtonText: String? = null`
+- `val introScreenDescription: String? = null`
+- `val introScreenHeader: String? = null`
+- `val thankYouMessageCloseButtonText: String? = null`
+- `val thankYouMessageDescription: String? = null`
+- `val thankYouMessageHeader: String? = null`
 
 ### `SurveyType`
 
@@ -2724,16 +2558,12 @@ The survey-level `description` is intentionally NOT translatable — it is only 
 enum SurveyType : Enum<SurveyType>
 ```
 
-#### Entries
-
-| | |
-|---|---|
-| POPOVER | `POPOVER` |
-| API | `API` |
-| WIDGET | `WIDGET` |
-
 #### Properties
 
-| Name | Summary |
-|---|---|
-| value | `val value: String` |
+- `val value: String`
+
+#### Entries
+
+- `POPOVER`
+- `API`
+- `WIDGET`
