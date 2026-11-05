@@ -85,9 +85,12 @@ def markdown(node, level: int) -> str:
     lists(node)
     for h in node.find_all(["h2", "h3", "h4"]):
         h.name = f"h{min(level, 6)}"
+    for text in node.find_all(string=True):  # braces in prose only; code keeps them
+        if not text.find_parent(["code", "pre"]):
+            text.replace_with(str(text).translate(MDX))
     md = markdownify(str(node), strip=["a"], heading_style="ATX", bullets="-")
     lines = [l for l in md.split("\n") if not l.strip().startswith(TAG)]
-    return "\n".join(lines).strip().translate(MDX).replace("<br>", "<br />")
+    return "\n".join(lines).strip().replace("<br>", "<br />")
 
 
 def tag(node) -> str | None:
