@@ -97,9 +97,9 @@ private fun DrawScope.withoutContent(): ContentDrawScope =
         }
     } as ContentDrawScope
 
-// Solid means exactly one plain rectangle over the whole node. A shader can paint a bitmap through a
-// rectangle, and several rectangles can draw a picture. Paint.shader doesn't see a shader set on the
-// framework paint.
+// Solid means exactly one rectangle over the whole node with no shader, whatever its color, alpha or
+// style. A shader can paint a bitmap through a rectangle, and several rectangles can draw a picture.
+// Paint.shader doesn't see a shader set on the framework paint.
 private class SolidFillRecorder(val width: Float, val height: Float) : Canvas {
     private var filled = false
     private var otherDrawing = false
