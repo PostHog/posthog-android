@@ -615,11 +615,11 @@ Reloads the feature flags
 The callback is invoked when the reload finishes, on a background thread. If the request fails, PostHogFeatureFlagsLoaded.errorsLoading is `true` and the values are the last known flags. If the SDK isn't set up, it's invoked right away with no flags and `errorsLoading` set to `true`.
 
 ```
-PostHog.reloadFeatureFlags &#123; loaded ->  
-    if (loaded.errorsLoading) &#123;  
+PostHog.reloadFeatureFlags { loaded ->  
+    if (loaded.errorsLoading) {  
         // The reload failed. loaded.variants holds the last known flags.  
-    &#125;  
-&#125;
+    }  
+}
 ```
 
 Content copied to clipboard
@@ -937,11 +937,11 @@ On Android, the callback runs on the main thread, after the getters already retu
 You can register before `setup()`, and the callback stays registered across `close()` and `setup()`. Treat each invocation as "flags may have changed", not as an exactly-once event.
 
 ```
-val subscription = PostHog.onFeatureFlags &#123; loaded ->  
-    if (loaded.variants["new-checkout"] == "test") &#123;  
+val subscription = PostHog.onFeatureFlags { loaded ->  
+    if (loaded.variants["new-checkout"] == "test") {  
         // Show the test variant  
-    &#125;  
-&#125;  
+    }  
+}  
   
 // Later, stop listening  
 subscription.unsubscribe()
@@ -1244,9 +1244,9 @@ Runs synchronously on the thread that called the logger — keep work fast (no n
 #### Kotlin (SAM)
 
 ```
-config.logs.addBeforeSend &#123; record ->  
+config.logs.addBeforeSend { record ->  
     if (record.level == PostHogLogSeverity.TRACE) null else record  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1254,10 +1254,10 @@ Content copied to clipboard
 #### Java
 
 ```
-config.getLogs().addBeforeSend(record -> &#123;  
+config.getLogs().addBeforeSend(record -> {  
     if (record.getLevel() == PostHogLogSeverity.TRACE) return null;  
     return record;  
-&#125;);
+});
 ```
 
 Content copied to clipboard
@@ -1683,11 +1683,11 @@ For `reloadFeatureFlags`, it runs on a background thread, or right away on the c
 Example:
 
 ```
-val subscription = PostHog.onFeatureFlags &#123; loaded ->  
-    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) &#123;  
+val subscription = PostHog.onFeatureFlags { loaded ->  
+    if (!loaded.errorsLoading && "new-checkout" in loaded.flags) {  
         // The flag is enabled  
-    &#125;  
-&#125;
+    }  
+}
 ```
 
 Content copied to clipboard
@@ -1709,14 +1709,14 @@ It holds the enabled flags as they were when the callback was invoked, and wheth
 Example:
 
 ```
-PostHog.reloadFeatureFlags &#123; loaded ->  
-    if (loaded.errorsLoading) &#123;  
+PostHog.reloadFeatureFlags { loaded ->  
+    if (loaded.errorsLoading) {  
         // The values are the last known (cached) flags  
-    &#125;  
-    if (loaded.variants["new-checkout"] == "test") &#123;  
+    }  
+    if (loaded.variants["new-checkout"] == "test") {  
         // Show the test variant  
-    &#125;  
-&#125;
+    }  
+}
 ```
 
 Content copied to clipboard
@@ -1744,9 +1744,9 @@ The callback stays registered until you call unsubscribe. You don't need to keep
 Example:
 
 ```
-val subscription = PostHog.onFeatureFlags &#123; loaded ->  
+val subscription = PostHog.onFeatureFlags { loaded ->  
     // React to the new flags  
-&#125;  
+}  
   
 // Later, stop listening  
 subscription.unsubscribe()
@@ -1788,14 +1788,14 @@ A captured log entry queued for delivery to PostHog's logs ingestion.
 You don't construct these directly under normal use — call com.posthog.PostHog.logger methods instead. The record is surfaced as the input to PostHogBeforeSendLog hooks so you can inspect or rewrite it before it ships.
 
 ```
-config.logs.addBeforeSend &#123; record: PostHogLogRecord ->  
+config.logs.addBeforeSend { record: PostHogLogRecord ->  
     // Inspect:  
     val severity = record.level  
     val body = record.body  
   
     // Rewrite via copy() (data class):  
     record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1838,10 +1838,10 @@ PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)
 val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO  
   
 // Filter inside a beforeSend hook:  
-config.logs.addBeforeSend &#123; record ->  
+config.logs.addBeforeSend { record ->  
     if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null  
     else record  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1946,20 +1946,20 @@ Mutate fields on the PostHogConfig.logs property **before** calling `PostHog.set
 #### Kotlin
 
 ```
-val config = PostHogAndroidConfig(projectToken).apply &#123;  
+val config = PostHogAndroidConfig(projectToken).apply {  
     logs.serviceName = "checkout-android"  
     logs.environment = "production"  
     logs.resourceAttributes = mapOf("region" to "us-east-1")  
   
     // Redact PII before records leave the device:  
-    logs.addBeforeSend &#123; record ->  
-        if (record.body.contains("@")) &#123;  
+    logs.addBeforeSend { record ->  
+        if (record.body.contains("@")) {  
             record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))  
-        &#125; else &#123;  
+        } else {  
             record  
-        &#125;  
-    &#125;  
-&#125;  
+        }  
+    }  
+}  
 PostHogAndroid.setup(this, config)
 ```
 

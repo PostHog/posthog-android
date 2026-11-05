@@ -1149,9 +1149,9 @@ Runs synchronously on the thread that called the logger — keep work fast (no n
 #### Kotlin (SAM)
 
 ```
-config.logs.addBeforeSend &#123; record ->  
+config.logs.addBeforeSend { record ->  
     if (record.level == PostHogLogSeverity.TRACE) null else record  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1159,10 +1159,10 @@ Content copied to clipboard
 #### Java
 
 ```
-config.getLogs().addBeforeSend(record -> &#123;  
+config.getLogs().addBeforeSend(record -> {  
     if (record.getLevel() == PostHogLogSeverity.TRACE) return null;  
     return record;  
-&#125;);
+});
 ```
 
 Content copied to clipboard
@@ -1599,14 +1599,14 @@ A captured log entry queued for delivery to PostHog's logs ingestion.
 You don't construct these directly under normal use — call com.posthog.PostHog.logger methods instead. The record is surfaced as the input to PostHogBeforeSendLog hooks so you can inspect or rewrite it before it ships.
 
 ```
-config.logs.addBeforeSend &#123; record: PostHogLogRecord ->  
+config.logs.addBeforeSend { record: PostHogLogRecord ->  
     // Inspect:  
     val severity = record.level  
     val body = record.body  
   
     // Rewrite via copy() (data class):  
     record.copy(body = body.replace(SECRET_REGEX, "[redacted]"))  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1649,10 +1649,10 @@ PostHog.logger.log("loading", severity = PostHogLogSeverity.DEBUG)
 val sev = PostHogLogSeverity.from("WARN") ?: PostHogLogSeverity.INFO  
   
 // Filter inside a beforeSend hook:  
-config.logs.addBeforeSend &#123; record ->  
+config.logs.addBeforeSend { record ->  
     if (record.level.severityNumber < PostHogLogSeverity.INFO.severityNumber) null  
     else record  
-&#125;
+}
 ```
 
 Content copied to clipboard
@@ -1757,20 +1757,20 @@ Mutate fields on the PostHogConfig.logs property **before** calling `PostHog.set
 #### Kotlin
 
 ```
-val config = PostHogAndroidConfig(projectToken).apply &#123;  
+val config = PostHogAndroidConfig(projectToken).apply {  
     logs.serviceName = "checkout-android"  
     logs.environment = "production"  
     logs.resourceAttributes = mapOf("region" to "us-east-1")  
   
     // Redact PII before records leave the device:  
-    logs.addBeforeSend &#123; record ->  
-        if (record.body.contains("@")) &#123;  
+    logs.addBeforeSend { record ->  
+        if (record.body.contains("@")) {  
             record.copy(body = record.body.replace(EMAIL_REGEX, "[redacted]"))  
-        &#125; else &#123;  
+        } else {  
             record  
-        &#125;  
-    &#125;  
-&#125;  
+        }  
+    }  
+}  
 PostHogAndroid.setup(this, config)
 ```
 
