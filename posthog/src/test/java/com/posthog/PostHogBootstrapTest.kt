@@ -15,6 +15,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -49,6 +50,7 @@ internal class PostHogBootstrapTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         logger: TestLogger? = null,
         optOut: Boolean = false,
+        featureFlagsListenerExecutor: Executor? = null,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -60,6 +62,7 @@ internal class PostHogBootstrapTest {
                 this.cachePreferences = cachePreferences
                 this.bootstrap = bootstrap
                 this.optOut = optOut
+                this.featureFlagsListenerExecutor = featureFlagsListenerExecutor
                 if (logger != null) {
                     this.logger = logger
                 }
@@ -368,24 +371,79 @@ internal class PostHogBootstrapTest {
         http.shutdown()
     }
 
+    private fun heldFlagsServer(release: CountDownLatch): MockWebServer {
+        val http = MockWebServer()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    release.await(10, TimeUnit.SECONDS)
+                    if (request.path!!.contains("/flags")) {
+                        return MockResponse().setBody("""{"featureFlags":{"beta-ui":"test"}}""")
+                    }
+                    return MockResponse().setBody("""{"hasFeatureFlags":true}""")
+                }
+            }
+        http.start()
+        return http
+    }
+
     @Test
-    fun `onFeatureFlags replays bootstrapped flags to a listener registered after setup`() {
+    fun `onFeatureFlags replays bootstrapped flags to a late listener while setup's load is in flight`() {
+        val release = CountDownLatch(1)
+        val http = heldFlagsServer(release)
+        val listenerExecutor = Executors.newSingleThreadExecutor()
         val sut =
             getSut(
-                host = "http://127.0.0.1:1",
-                // the replay comes from setup's flag loading, before /config answers
-                reloadFeatureFlags = true,
+                host = http.url("/").toString(),
+                preloadFeatureFlags = true,
                 bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
+                featureFlagsListenerExecutor = listenerExecutor,
             )
+        http.takeRequest(5, TimeUnit.SECONDS)!!
 
         val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
         sut.onFeatureFlags { updates.add(it) }
 
-        // setup's load to the unreachable host may already have failed, which keeps the bootstrapped flags
-        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
-        assertEquals(mapOf<String, Any>("beta-ui" to true), loaded.variants)
+        val replayed = updates.poll(2, TimeUnit.SECONDS)
+        assertEquals(mapOf<String, Any>("beta-ui" to true), replayed?.variants)
+        assertFalse(replayed!!.errorsLoading)
+
+        release.countDown()
+        val loaded = updates.poll(5, TimeUnit.SECONDS)
+        assertEquals(mapOf<String, Any>("beta-ui" to "test"), loaded?.variants)
+        assertFalse(loaded!!.errorsLoading)
+        assertNull(updates.poll(1, TimeUnit.SECONDS))
 
         sut.close()
+        listenerExecutor.shutdownAndAwaitTermination()
+        http.shutdown()
+    }
+
+    @Test
+    fun `onFeatureFlags delivers a load that lands before a late listener's replay runs once`() {
+        val release = CountDownLatch(1)
+        val http = heldFlagsServer(release)
+        val queued = LinkedBlockingQueue<Runnable>()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                preloadFeatureFlags = true,
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("beta-ui" to true)),
+                featureFlagsListenerExecutor = Executor { queued.add(it) },
+            )
+        http.takeRequest(5, TimeUnit.SECONDS)!!
+
+        val updates = mutableListOf<PostHogFeatureFlagsLoaded>()
+        sut.onFeatureFlags { updates.add(it) }
+        release.countDown()
+        http.takeRequest(5, TimeUnit.SECONDS)!!
+        remoteConfigExecutor.submit {}.get(5, TimeUnit.SECONDS)
+        generateSequence { queued.poll() }.forEach { it.run() }
+
+        assertEquals(listOf<Map<String, Any>>(mapOf("beta-ui" to "test")), updates.map { it.variants })
+
+        sut.close()
+        http.shutdown()
     }
 
     @Test
