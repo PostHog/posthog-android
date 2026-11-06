@@ -582,6 +582,7 @@ internal class PostHogStatelessTest {
         val mockQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()
         mockFeatureFlags.setFlag("test_flag", true)
+        mockFeatureFlags.setFlag("empty_variant_flag", "")
 
         sut = createStatelessInstance()
         config = createConfig(sendFeatureFlagEvent = true)
@@ -596,6 +597,7 @@ internal class PostHogStatelessTest {
         assertEquals(1, mockQueue.events.size)
         val event = mockQueue.events.first()
         assertEquals(true, event.properties!!["\$feature/test_flag"])
+        assertEquals("", event.properties!!["\$feature/empty_variant_flag"])
         assertEquals(listOf("test_flag"), event.properties!!["\$active_feature_flags"])
     }
 

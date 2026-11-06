@@ -269,7 +269,7 @@ Apps upgrading from 3.13 or older didn't cache flag details, so until the app's 
 
 ### Empty variants read as disabled
 
-A flag whose variant is an empty string now reads as disabled everywhere, as it already did from `isFeatureEnabled()`, with or without `defaultValue`. `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it, where 3.x returned `true`, and `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`. `variant` and `getFeatureFlag()` still return `""`.
+A flag whose variant is an empty string now reads as disabled everywhere, as it already did from `isFeatureEnabled()`, with or without `defaultValue`. `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it, where 3.x returned `true`, `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`, and captured events leave it out of `$active_feature_flags`. `variant`, `getFeatureFlag()` and the event's `$feature/<key>` property still return `""`.
 
 PostHog no longer accepts an empty variant for new flags, so only flags created earlier through the API, MCP or Terraform are affected.
 
