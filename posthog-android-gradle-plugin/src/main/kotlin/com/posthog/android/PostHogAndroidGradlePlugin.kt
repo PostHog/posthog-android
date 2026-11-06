@@ -37,6 +37,8 @@ internal abstract class PostHogAndroidGradlePlugin
             val extension = project.extensions.create("posthog", PostHogPluginExtension::class.java)
             extension.uploadNativeSymbols.convention(false)
             extension.includeNativeSymbolSources.convention(false)
+            extension.skipOnConflict.convention(false)
+            extension.force.convention(false)
 
             warnIfDeprecatedReleaseModeSet(project)
 
@@ -108,6 +110,8 @@ internal abstract class PostHogAndroidGradlePlugin
                         project.layout.buildDirectory
                             .dir("intermediates/merged_native_libs/${variant.name}"),
                     includeSource = extension.includeNativeSymbolSources,
+                    skipOnConflict = extension.skipOnConflict,
+                    force = extension.force,
                     taskSuffix = variant.name.capitalizeUS(),
                     releaseName = variant.applicationId,
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },

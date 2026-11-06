@@ -33,4 +33,21 @@ public abstract class PostHogPluginExtension {
      * or an explicit task invocation.
      */
     public abstract val includeNativeSymbolSources: Property<Boolean>
+
+    /**
+     * Skip native symbol sets that already exist with different content instead of failing
+     * the upload. Existing symbol sets are left unchanged. Off by default.
+     *
+     * Mutually exclusive with [force]. Only affects native symbol uploads.
+     */
+    public abstract val skipOnConflict: Property<Boolean>
+
+    /**
+     * Overwrite native symbol sets that already exist with different content instead of
+     * failing the upload. Off by default. Including native sources already overwrites
+     * existing symbols unless [skipOnConflict] is enabled.
+     *
+     * Mutually exclusive with [skipOnConflict]. Only affects native symbol uploads.
+     */
+    public abstract val force: Property<Boolean>
 }

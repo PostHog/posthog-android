@@ -61,6 +61,8 @@ internal class NativeSymbolsUploadFunctionalTest(
         uploadNativeSymbols: Boolean,
         includeNativeSymbolSources: Boolean = false,
         minifyEnabled: Boolean = false,
+        skipOnConflict: Boolean? = null,
+        force: Boolean? = null,
     ): File {
         val fakeCliLog = File(projectDir.root, "fake-cli-args.txt")
         val fakeCli = File(projectDir.root, "fake-posthog-cli")
@@ -152,6 +154,8 @@ internal class NativeSymbolsUploadFunctionalTest(
             posthog {
                 uploadNativeSymbols = $uploadNativeSymbols
                 includeNativeSymbolSources = $includeNativeSymbolSources
+                ${skipOnConflict?.let { "skipOnConflict = $it" }.orEmpty()}
+                ${force?.let { "force = $it" }.orEmpty()}
             }
 
             tasks.withType(com.posthog.android.PostHogCliExecTask).configureEach {
@@ -180,9 +184,73 @@ internal class NativeSymbolsUploadFunctionalTest(
         val cliArgs = fakeCliLog.readText()
         assertTrue(cliArgs.contains("symbol-sets upload --directory"), "got: $cliArgs")
         assertTrue(cliArgs.contains("--include-source"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--skip-on-conflict"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--force"), "got: $cliArgs")
         val directory = cliArgs.substringAfter("--directory ").trim().split(" ").first()
         val mergedLibs = File(directory).walkTopDown().filter { it.extension == "so" }.toList()
         assertTrue(mergedLibs.any { it.name == "libfake.so" }, "merged dir $directory had: $mergedLibs")
+    }
+
+    @Test
+    fun `native symbol uploads forward skip on conflict`() {
+        val fakeCliLog =
+            setUpProject(
+                uploadNativeSymbols = false,
+                includeNativeSymbolSources = true,
+                skipOnConflict = true,
+            )
+
+        val result = runner(":app:uploadPostHogNativeSymbolsRelease").build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        val cliArgs = fakeCliLog.readText()
+        assertTrue(cliArgs.contains("--include-source"), "got: $cliArgs")
+        assertTrue(cliArgs.contains("--skip-on-conflict"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--force"), "got: $cliArgs")
+    }
+
+    @Test
+    fun `native symbol uploads forward force`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = false, force = true)
+
+        val result = runner(":app:uploadPostHogNativeSymbolsRelease").build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        val cliArgs = fakeCliLog.readText()
+        assertTrue(cliArgs.contains("--force"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--skip-on-conflict"), "got: $cliArgs")
+    }
+
+    @Test
+    fun `native symbol upload task properties can override the extension`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = false, skipOnConflict = true)
+        File(projectDir.root, "app/build.gradle").appendText(
+            """
+
+            tasks.withType(com.posthog.android.PostHogUploadNativeSymbolsTask).configureEach {
+                skipOnConflict = false
+                force = true
+            }
+            """.trimIndent(),
+        )
+
+        val result = runner(":app:uploadPostHogNativeSymbolsRelease").build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        val cliArgs = fakeCliLog.readText()
+        assertTrue(cliArgs.contains("--force"), "got: $cliArgs")
+        assertFalse(cliArgs.contains("--skip-on-conflict"), "got: $cliArgs")
+    }
+
+    @Test
+    fun `native symbol uploads reject conflicting flags`() {
+        val fakeCliLog = setUpProject(uploadNativeSymbols = false, skipOnConflict = true, force = true)
+
+        val result = runner(":app:uploadPostHogNativeSymbolsRelease").buildAndFail()
+
+        assertEquals(TaskOutcome.FAILED, result.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
+        assertTrue(result.output.contains("skipOnConflict and force cannot both be set"), result.output)
+        assertFalse(fakeCliLog.exists(), "the CLI must not run with conflicting flags")
     }
 
     @Test
@@ -234,7 +302,7 @@ internal class NativeSymbolsUploadFunctionalTest(
 
     @Test
     fun `supports the configuration cache on the hooked release path`() {
-        val fakeCliLog = setUpProject(uploadNativeSymbols = true)
+        val fakeCliLog = setUpProject(uploadNativeSymbols = true, skipOnConflict = true)
         // a non-cache warm-up stabilizes AGP's TestKit android.lock creation,
         // which can otherwise invalidate the first stored entry
         runner(":app:tasks").build()
@@ -262,6 +330,7 @@ internal class NativeSymbolsUploadFunctionalTest(
         assertTrue(second.output.contains("Reusing configuration cache"), second.output)
         assertEquals(TaskOutcome.SUCCESS, second.task(":app:uploadPostHogNativeSymbolsRelease")?.outcome)
         assertEquals(2, fakeCliLog.readLines().size, "changed native libraries must upload on the reused configuration")
+        assertTrue(fakeCliLog.readLines().all { it.contains("--skip-on-conflict") }, fakeCliLog.readText())
     }
 
     @Test
