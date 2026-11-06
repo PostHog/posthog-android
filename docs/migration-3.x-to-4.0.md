@@ -279,7 +279,7 @@ The new `$app_language` property is the language your app shows. Android has no 
 | 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
 | 6–12 | Not sent. |
 
-The SDK reads both languages in the background, so the first event after a language change can still carry the previous value.
+The SDK reads both languages in the background when an event is captured and uses them from the next event on, so the first event after a language change carries the previous value. Changing only the runtime override (`LocaleManager.setOverrideLocaleConfig`) isn't picked up until the device or per-app language changes; call `PostHog.setAppLanguage()` if your app changes it.
 
 Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
 
