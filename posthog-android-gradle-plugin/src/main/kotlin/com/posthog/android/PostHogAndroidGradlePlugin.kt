@@ -68,7 +68,7 @@ internal abstract class PostHogAndroidGradlePlugin
                     // TODO: skip variants, skip autoUpload, release info, allow failure, debug mode
 
                     val paths = OutputPaths(project, variant.name)
-                    val generateMapIdTask = generateMapIdTask(project, variant, paths, failureTracker)
+                    val generateMapIdTask = generateMapIdTask(project, extension, variant, paths, failureTracker)
                     tasksGeneratingProperties.add(generateMapIdTask)
 
                     variant.apply {
@@ -159,6 +159,7 @@ internal abstract class PostHogAndroidGradlePlugin
 
         private fun generateMapIdTask(
             project: Project,
+            extension: PostHogPluginExtension,
             variant: ApplicationVariant,
             paths: OutputPaths,
             failureTracker: Provider<PostHogTaskFailureTracker>,
@@ -174,6 +175,7 @@ internal abstract class PostHogAndroidGradlePlugin
             val uploadMapIdTask =
                 uploadMapIdTask(
                     project = project,
+                    extension = extension,
                     generateMapIdTask = generateMapIdTask,
                     variant = variant,
                     mappingFiles = variant.mappingFileProvider(project),
@@ -188,6 +190,7 @@ internal abstract class PostHogAndroidGradlePlugin
 
         private fun uploadMapIdTask(
             project: Project,
+            extension: PostHogPluginExtension,
             generateMapIdTask: Provider<PostHogGenerateMapIdTask>,
             variant: ApplicationVariant,
             mappingFiles: Provider<FileCollection>,
@@ -198,6 +201,8 @@ internal abstract class PostHogAndroidGradlePlugin
                     project = project,
                     generateMapIdTask = generateMapIdTask,
                     mappingFiles = mappingFiles,
+                    skipOnConflict = extension.skipOnConflict,
+                    force = extension.force,
                     taskSuffix = variant.name.capitalizeUS(),
                     releaseName = variant.applicationId,
                     releaseVersion = primaryOutput?.versionName?.map { it.orEmpty() },

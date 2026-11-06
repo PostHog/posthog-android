@@ -2,4 +2,4 @@
 "posthog-android-gradle-plugin": minor
 ---
 
-Add skipOnConflict and force options for native symbol uploads.
+Add shared skipOnConflict and force defaults for native symbol and ProGuard mapping uploads.
