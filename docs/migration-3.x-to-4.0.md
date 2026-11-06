@@ -306,7 +306,13 @@ Compose masking also changed, including for apps that already set `screenshot = 
 - Text that draws past its layout box is masked in full.
 - Nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
 
+A dialog's dim, and a dialog masked whole on Android 8.1 and lower, are sent as screenshot images instead of styled wireframe shapes.
+
 The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
+
+### Deep link query parameters
+
+The `Deep Link Opened` event leaves out query parameters whose name starts with `$`, such as `$process_person_profile`, so a link can't set PostHog's own properties. Other parameters and the `url` property are sent as in 3.x.
 
 ### Other changes that don't fail the build
 
