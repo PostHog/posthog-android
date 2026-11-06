@@ -12,7 +12,7 @@ Read the checklist first, then the sections that apply to you.
 
 For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
-For the full list of 4.0 changes, see the [changelog](../posthog-android/CHANGELOG.md).
+For the full list of 4.0 changes, see the [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-android/CHANGELOG.md).
 
 ## Checklist
 
@@ -20,12 +20,12 @@ You need to change code if your app does any of these:
 
 - sends events to a self-hosted PostHog or a reverse proxy that doesn't serve `/i/v1/analytics/events`
 - authenticates its proxy with an `Authorization` header in `requestHeaders`
+- sends events through a reverse proxy set up from PostHog's proxy guides before 29 October 2026, which strips `Authorization`
 - sends events through a proxy that redirects capture requests, other than with a 307 or 308 to the same origin as `host`
 - captures events with an empty event name, or with an event name or distinct ID over 200 bytes
 - sets an empty distinct ID in `beforeSend`
 - assigns a new map to `event.options` in `beforeSend` (see [Event options](#event-options))
 - sets `projectToken` to a personal API key (`phx_...`)
-- sets `$lib` or `$lib_version` and expects PostHog to store that value
 - reads `$session_id` or `$window_id` from the raw request body, for example in a proxy
 - sets `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` or `$product_tour_id` to a value PostHog can't read, such as `"maybe"`
 - registers a super property, or passes an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expects the SDK's value to win
@@ -285,7 +285,7 @@ The new `$app_language` property is the language your app shows. Android has no 
 | 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
 | 6–12 | Not sent. |
 
-The SDK reads both languages in the background, so the first event after a language change can still carry the previous value.
+The SDK reads both languages in the background when an event is captured and uses them from the next event on, so the first event after a language change carries the previous value. Changing only the runtime override (`LocaleManager.setOverrideLocaleConfig`) isn't picked up until the device or per-app language changes; call `PostHog.setAppLanguage()` if your app changes it.
 
 Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
 
@@ -312,7 +312,13 @@ Compose masking also changed, including for apps that already set `screenshot = 
 - Text that draws past its layout box is masked in full.
 - Nodes using `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
 
+A dialog's dim, and a dialog masked whole on Android 8.1 and lower, are sent as screenshot images instead of styled wireframe shapes.
+
 The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
+
+### Deep link query parameters
+
+The `Deep Link Opened` event leaves out query parameters whose name starts with `$`, such as `$process_person_profile`, so a link can't set PostHog's own properties. Other parameters and the `url` property are sent as in 3.x.
 
 ### Other changes that don't fail the build
 
@@ -352,7 +358,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 - Accept request bodies up to 20 MB. AI requests are often larger than 1 MB, the default limit in nginx and ingress-nginx. A `413` from the proxy makes the SDK halve the batch until it fits, and drops an event that doesn't fit on its own.
 - Pass PostHog's response body through unchanged. A 2xx response whose body isn't PostHog's `{"results": {...}}` drops the events instead of retrying them.
 
-PostHog's managed reverse proxy already does this. See the [proxy guides](https://posthog.com/docs/advanced/proxy).
+PostHog's managed reverse proxy already does this and needs no change. A proxy set up from PostHog's [proxy guides](https://posthog.com/docs/advanced/proxy) before 29 October 2026 strips `Authorization`, so PostHog answers `401` and the events are dropped. Update it from the current guide.
 
 The SDK doesn't fall back to `/batch`. A 404 is retried, so the events stay queued until the path is served, and the SDK prints one warning, even with `debug` off. Any other error status that isn't retried, such as 403 or 405, drops the events.
 
@@ -362,6 +368,7 @@ The SDK follows a 307 or 308 redirect only to the origin of `host` (same scheme,
 Any other redirect is not followed and the events are dropped.
 In 3.x, OkHttp followed redirects to any host.
 If a proxy redirects capture requests to another host, point `host` at the final host.
+This also applies when you set your own `httpClient`: for capture requests, the SDK turns off its redirect following and OkHttp's connection retries, and keeps your other settings. Other requests, such as session replay and logs, behave as in 3.x.
 
 ## Event validation
 
@@ -393,13 +400,6 @@ A map key in the properties that isn't a string is converted to one when it's a 
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
 `identify()` with an empty or whitespace-only distinct ID is still ignored, as in 3.x.
-
-## SDK identity
-
-PostHog sets `$lib` and `$lib_version` from the `PostHog-Sdk-Info` request header, for example `posthog-android/4.0.0`.
-The SDK removes `$lib` and `$lib_version` from the properties it sends to capture v1.
-A value you set in properties, in a super property or in `beforeSend` doesn't reach PostHog.
-The SDK removes them when it sends the event, so `beforeSend` still sees them.
 
 ## Property precedence
 
