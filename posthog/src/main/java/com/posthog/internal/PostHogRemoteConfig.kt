@@ -1344,7 +1344,7 @@ public class PostHogRemoteConfig(
             val (enabled, variant) =
                 when (value) {
                     is Boolean -> value to null
-                    is String -> true to value
+                    is String -> value.isNotEmpty() to value
                     else -> return null
                 }
 
