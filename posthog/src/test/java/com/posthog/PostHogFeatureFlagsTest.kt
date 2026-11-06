@@ -404,6 +404,26 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `an empty variant reads as disabled`() {
+        val flags =
+            File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+                .replace("\"variant\": \"SplashV2\"", "\"variant\": \"\"")
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+
+        sut.reloadFeatureFlags { updates.add(it) }
+        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
+
+        assertFalse(sut.isFeatureEnabled("splashScreenName"))
+        assertFalse(sut.isFeatureEnabled("splashScreenName", defaultValue = true))
+        val result = sut.getFeatureFlagResult("splashScreenName")!!
+        assertFalse(result.enabled)
+        assertEquals("", result.variant)
+        assertEquals(listOf("4535-funnel-bar-viz"), loaded.flags)
+    }
+
+    @Test
     fun `disabled SDK returns null from getFeatureFlag and the default from isFeatureEnabled`() {
         val http =
             mockHttp(

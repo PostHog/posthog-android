@@ -27,6 +27,7 @@
 - **Breaking:** remove `PostHogConfig.onFeatureFlags`; call `PostHog.onFeatureFlags(callback)` before `setup()` instead
 - **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`, which receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values and `errorsLoading`
 - **Breaking:** return `null` from `getFeatureFlagResult(key)?.payload` for a payload that isn't valid JSON, such as plain text, a malformed or empty string, or a JSON `null`
+- **Breaking:** return `enabled = false` from `getFeatureFlagResult()` and leave the flag out of `PostHogFeatureFlagsLoaded` and `$active_feature_flags` for a feature flag whose variant is an empty string, as `isFeatureEnabled()` already does
 - **Breaking:** remove wireframe session replay and the `screenshot`, `drawableConverter` and `debouncerDelayMs` options of `PostHogSessionReplayConfig` (use `throttleDelayMs` for the last); replay always records masked screenshots, so apps that relied on the default now upload screenshots and should mask custom-drawn views, maps and video, or turn replay off
 - **Breaking:** apply `Modifier.postHogMask()` and `Modifier.postHogUnmask()` only to the element and its children, mask Compose text that draws past its layout box in full, and mask nodes using `Modifier.clearAndSetSemantics` while text or image masking is on
 - **Breaking:** send a dialog's dim and a dialog masked whole as screenshot images instead of styled wireframe shapes

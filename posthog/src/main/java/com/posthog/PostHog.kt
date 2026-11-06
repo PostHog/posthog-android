@@ -908,8 +908,8 @@ public class PostHog private constructor(
                         for (entry in it.entries) {
                             props["\$feature/${entry.key}"] = entry.value
 
-                            // only add active feature flags
-                            val active = entry.value as? Boolean ?: true
+                            // only add active feature flags; an empty variant reads as disabled
+                            val active = entry.value != false && entry.value != ""
 
                             if (active) {
                                 keys.add(entry.key)
