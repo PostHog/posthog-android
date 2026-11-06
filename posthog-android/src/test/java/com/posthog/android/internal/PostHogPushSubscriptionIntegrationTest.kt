@@ -2,10 +2,13 @@ package com.posthog.android.internal
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.OnCompleteListener
 import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.TaskCompletionSource
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.installations.FirebaseInstallations
@@ -254,6 +257,79 @@ internal class PostHogPushSubscriptionIntegrationTest {
                     // getToken() fails in this mode, so it must not be called.
                     verify(messaging, never()).token
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `FirebasePushTokenFetcher handles asynchronous completion of a real Task implementation`() {
+        val completion = TaskCompletionSource<String>()
+        var receivedToken: String? = null
+        var receivedAppId: String? = null
+        fetchTokenWithTask(completion.task, PostHogAndroidConfig(PROJECT_TOKEN)) { token, appId ->
+            receivedToken = token
+            receivedAppId = appId
+        }
+        assertNull(receivedToken)
+
+        completion.setResult("fcm-token")
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("fcm-token", receivedToken)
+        assertEquals("firebase-project", receivedAppId)
+    }
+
+    @Test
+    fun `FirebasePushTokenFetcher skips blank and failed Task results`() {
+        for ((task, expectedLog) in listOf(
+            Tasks.forResult("") to "blank push token",
+            Tasks.forException<String>(IllegalStateException("token fetch failed")) to "token fetch failed",
+        )) {
+            val logger = CapturingLogger()
+            val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
+            var called = false
+
+            fetchTokenWithTask(task, config) { _, _ -> called = true }
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertEquals(false, called)
+            assertTrue(logger.messages.any { it.contains(expectedLog) }, logger.messages.toString())
+        }
+    }
+
+    @Test
+    fun `FirebasePushTokenFetcher catches exceptions from asynchronous registration`() {
+        val completion = TaskCompletionSource<String>()
+        val logger = CapturingLogger()
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
+        fetchTokenWithTask(completion.task, config) { _, _ -> throw IllegalStateException("registration failed") }
+
+        completion.setResult("fcm-token")
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(logger.messages.any { it.contains("Failed to handle Firebase push token completion") })
+        assertTrue(logger.messages.any { it.contains("registration failed") })
+    }
+
+    @Suppress("DEPRECATION")
+    private fun fetchTokenWithTask(
+        task: Task<String>,
+        config: PostHogAndroidConfig,
+        onToken: (String, String) -> Unit,
+    ) {
+        val options = mock<FirebaseOptions>()
+        whenever(options.projectId).thenReturn("firebase-project")
+        val firebaseApp = mock<FirebaseApp>()
+        whenever(firebaseApp.options).thenReturn(options)
+        whenever(firebaseApp.applicationContext).thenReturn(ApplicationProvider.getApplicationContext<Context>())
+        val messaging = mock<FirebaseMessaging>()
+        whenever(messaging.token).thenReturn(task)
+
+        mockStatic(FirebaseApp::class.java).use { staticApp ->
+            staticApp.`when`<FirebaseApp> { FirebaseApp.getInstance() }.thenReturn(firebaseApp)
+            mockStatic(FirebaseMessaging::class.java).use { staticMessaging ->
+                staticMessaging.`when`<FirebaseMessaging> { FirebaseMessaging.getInstance() }.thenReturn(messaging)
+                FirebasePushTokenFetcher(config).fetchToken(onToken)
             }
         }
     }

@@ -153,16 +153,34 @@
 
 ##---------------End: proguard configuration for okhttp3  ----------
 
-##---------------Begin: proguard configuration for Firebase Messaging (compileOnly)  ----------
--dontwarn com.google.firebase.messaging.**
--dontwarn com.google.firebase.installations.**
--dontwarn com.google.firebase.FirebaseApp
--dontwarn com.google.firebase.FirebaseOptions
--dontwarn com.google.android.gms.tasks.**
-
-# used in reflection to check if Firebase Messaging is available at runtime
--keepnames class com.google.firebase.messaging.FirebaseMessaging
-##---------------End: proguard configuration for Firebase Messaging (compileOnly)  ----------
+##---------------Begin: proguard configuration for optional Firebase Messaging  ----------
+# Only present when the host app includes Firebase; accessed reflectively for push registration.
+-keep class com.google.firebase.FirebaseApp {
+    public static com.google.firebase.FirebaseApp getInstance();
+    public com.google.firebase.FirebaseOptions getOptions();
+    public android.content.Context getApplicationContext();
+}
+-keep class com.google.firebase.FirebaseOptions {
+    public java.lang.String getProjectId();
+}
+-keep class com.google.firebase.messaging.FirebaseMessaging {
+    public static com.google.firebase.messaging.FirebaseMessaging getInstance();
+    public com.google.android.gms.tasks.Task getToken();
+}
+-keep class com.google.firebase.installations.FirebaseInstallations {
+    public static com.google.firebase.installations.FirebaseInstallations getInstance(com.google.firebase.FirebaseApp);
+    public com.google.android.gms.tasks.Task getId();
+}
+-keep class com.google.android.gms.tasks.Task {
+    public com.google.android.gms.tasks.Task addOnCompleteListener(com.google.android.gms.tasks.OnCompleteListener);
+    public boolean isSuccessful();
+    public java.lang.Object getResult();
+    public java.lang.Exception getException();
+}
+-keep interface com.google.android.gms.tasks.OnCompleteListener {
+    public void onComplete(com.google.android.gms.tasks.Task);
+}
+##---------------End: proguard configuration for optional Firebase Messaging  ----------
 
 # Dead-tap response observation classifies only these known library View implementations.
 # Preserve names, not members or unused classes; app-defined custom drawing still fails closed.

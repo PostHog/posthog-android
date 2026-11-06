@@ -67,7 +67,7 @@ testReport:
 
 # Include debug-only Compose interactions even when invoked in CI.
 test:
-	./gradlew -PenableDebugTests=true test :posthog-android:testWithoutCompose :posthog-android-gradle-plugin:test :posthog-android-gradle-plugin:functionalTest
+	./gradlew -PenableDebugTests=true test :posthog-android:testWithoutCompose :posthog-android:testWithoutFirebase :posthog-android-gradle-plugin:test :posthog-android-gradle-plugin:functionalTest
 
 # compile already runs the tests (tests only java)
 testJava:

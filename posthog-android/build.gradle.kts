@@ -180,8 +180,31 @@ val testWithoutCompose by tasks.registering(Test::class) {
     filter.includeTestsMatching("com.posthog.android.replay.PostHogReplayTouchWithoutComposeTest")
 }
 
+val testWithoutFirebase by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs push token registration without Firebase or Play Services on the runtime classpath."
+    val source = tasks.named<Test>("testReleaseUnitTest").get()
+    testClassesDirs = source.testClassesDirs
+    classpath =
+        source.classpath.filter { file ->
+            !file.isFile || file.extension != "jar" ||
+                ZipFile(file).use { jar ->
+                    jar.entries().asSequence().none { entry ->
+                        entry.name.endsWith(".class") &&
+                            (entry.name.startsWith("com/google/firebase/") || entry.name.startsWith("com/google/android/gms/"))
+                    }
+                }
+        }
+    javaLauncher.set(source.javaLauncher)
+    systemProperties(source.systemProperties)
+    maxHeapSize = "1g"
+    useJUnit()
+    systemProperty("posthog.test.noFirebase", "true")
+    filter.includeTestsMatching("com.posthog.android.internal.FirebasePushTokenFetcherWithoutFirebaseTest")
+}
+
 tasks.named("check") {
-    dependsOn(testWithoutCompose)
+    dependsOn(testWithoutCompose, testWithoutFirebase)
 }
 
 project.publishingAndroidConfig()
