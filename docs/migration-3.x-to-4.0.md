@@ -6,7 +6,7 @@ Read the checklist first, then the sections that apply to you.
 
 For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
-For the full list of 4.0 changes, see the [changelog](../posthog-android/CHANGELOG.md).
+For the full list of 4.0 changes, see the [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-android/CHANGELOG.md).
 
 ## Checklist
 
