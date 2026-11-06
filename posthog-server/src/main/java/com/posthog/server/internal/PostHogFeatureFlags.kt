@@ -810,9 +810,9 @@ internal class PostHogFeatureFlags(
      * warned about at their current definition, grouped by reason, and remembers them. Also tells
      * the snapshot's evaluator which flags passed the check.
      *
-     * Only keys absent from the loaded definitions are forgotten, which keeps the map bounded. A
-     * flag that is inactive or resolvable for a while keeps its entry, so it warns again only when
-     * it returns with a different definition.
+     * Keys absent from the loaded definitions or restricted to client runtime are forgotten. Other
+     * flags that are inactive or resolvable for a while keep their entry, so they warn again only
+     * when they return with a different definition.
      */
     private fun recordUnresolvableFlags(snapshot: DefinitionSnapshot): Map<PostHogUnresolvedFlagReason, List<String>> {
         val flagsByKey = snapshot.flagsByKey.orEmpty()
@@ -823,6 +823,8 @@ internal class PostHogFeatureFlags(
         synchronized(warnedUnresolvableFlags) {
             warnedUnresolvableFlags.keys.retainAll(flagsByKey.keys)
             for ((key, flag) in flagsByKey) {
+                val isClientOnly = flag.evaluationRuntime == "client"
+                if (isClientOnly) warnedUnresolvableFlags.remove(key)
                 val reason =
                     try {
                         snapshot.evaluator.definitionUnresolvedReason(flag, flagsByKey, groupTypeMapping, cohorts)
@@ -835,6 +837,7 @@ internal class PostHogFeatureFlags(
                     if (flag.active) flagsWithSupportedFilters.add(key)
                     continue
                 }
+                if (isClientOnly) continue
                 val fingerprint = definitionFingerprint(flag)
                 if (warnedUnresolvableFlags.put(key, fingerprint) != fingerprint) {
                     unresolvable.getOrPut(reason) { mutableListOf() }.add(key)
