@@ -1,5 +1,11 @@
 ## Next
 
+## 2.24.1
+
+### Patch Changes
+
+- 2ac11e1: Suppress local-evaluation definition warnings for client-only flags and reset their warning history when the runtime changes.
+
 ## 2.24.0
 
 ### Minor Changes
