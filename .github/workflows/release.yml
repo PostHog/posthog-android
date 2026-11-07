@@ -116,6 +116,34 @@ jobs:
                   sed -i "s/^serverOpenFeatureVersion=.*/serverOpenFeatureVersion=$SERVER_OPENFEATURE_VERSION/" gradle.properties
                   sed -i "s/^androidPluginVersion=.*/androidPluginVersion=$PLUGIN_VERSION/" posthog-android-gradle-plugin/gradle.properties
 
+            - name: 'Set up Java 17'
+              uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+              with:
+                  java-version: '17'
+                  distribution: 'temurin'
+
+            - name: 'Set up Python'
+              uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+              with:
+                  python-version: '3.13'
+
+            # Best-effort: a failure never blocks the release. Run generate-references.yml to retry.
+            - name: Regenerate the SDK reference
+              id: reference
+              continue-on-error: true
+              env:
+                  GH_TOKEN: ${{ steps.releaser.outputs.token }}
+              run: |
+                  gh repo clone PostHog/sdk-specs "$RUNNER_TEMP/sdk-specs" -- --depth 1
+                  python3 -m pip install --quiet -r bin/docs_scripts/requirements.txt
+                  python3 bin/docs_scripts/generate_markdown.py --sdk-specs "$RUNNER_TEMP/sdk-specs"
+                  # Stage the pages, so a new page shows in git status as a file, not as an untracked folder.
+                  git add references
+
+            - name: Warn if the SDK reference didn't regenerate
+              if: steps.reference.outcome == 'failure'
+              run: echo "::warning::The SDK reference didn't regenerate. Run generate-references.yml to retry."
+
             - name: Check for version bump changes
               id: check-changes
               run: |
