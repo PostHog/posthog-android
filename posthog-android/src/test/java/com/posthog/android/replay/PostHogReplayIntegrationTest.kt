@@ -102,6 +102,7 @@ import org.robolectric.annotation.LooperMode
 import org.robolectric.shadows.ShadowLegacyBitmap
 import org.robolectric.shadows.ShadowPixelCopy
 import org.robolectric.util.ReflectionHelpers
+import java.lang.ref.Reference
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.Date
@@ -4235,6 +4236,7 @@ internal class PostHogReplayIntegrationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val decorView = View(context)
+        val window = mock<Window>()
         fx.config.logger =
             object : PostHogLogger {
                 override fun log(message: String) {
@@ -4259,7 +4261,7 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.decorViews[decorView] = ViewTreeSnapshotStatus(mock<NextDrawListener>())
 
             repeat(3) {
-                fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(mock<Window>()))
+                fx.sut.captureSnapshot(WeakReference(decorView), WeakReference(window))
             }
 
             assertEquals(3, ThrowingShadowBitmap.allocationFailures)
@@ -4272,6 +4274,8 @@ internal class PostHogReplayIntegrationTest {
             fx.sut.uninstall()
             if (decorView.isAttachedToWindow) windowManager.removeViewImmediate(decorView)
             ThrowingShadowBitmap.allocationFailures = 0
+            // Capture runs on a worker and only receives a weak reference to this mock.
+            Reference.reachabilityFence(window)
         }
     }
 
