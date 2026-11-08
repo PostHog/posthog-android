@@ -242,7 +242,8 @@ public interface PostHogInterface : PostHogCoreInterface {
     public fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription
 
     /**
-     * Returns if a feature flag is enabled, the feature flag must be a Boolean
+     * Returns whether a feature flag is enabled: a boolean flag returns its value, and a multivariate
+     * flag is enabled when its variant isn't empty
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param key the Key
      * @param defaultValue the default value if not found, false if not given
