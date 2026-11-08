@@ -2705,8 +2705,8 @@ public class PostHog private constructor(
 
                     val props = mutableMapOf<String, Any>()
                     props["\$feature_flag"] = key
-                    // value should never be nullabe anyway
-                    props["\$feature_flag_response"] = value ?: ""
+                    // omit for a missing flag: "" means an empty variant
+                    value?.let { props["\$feature_flag_response"] = it }
                     requestId?.let { props["\$feature_flag_request_id"] = it }
                     evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
                     flagDetails?.let {

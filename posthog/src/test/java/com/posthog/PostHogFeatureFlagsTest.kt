@@ -369,7 +369,7 @@ internal class PostHogFeatureFlagsTest {
         val theEvent = batch.batch.first()
         assertEquals("\$feature_flag_called", theEvent.event)
         assertEquals("nonExistentFlag", theEvent.properties!!["\$feature_flag"])
-        assertEquals("", theEvent.properties!!["\$feature_flag_response"])
+        assertFalse(theEvent.properties!!.containsKey("\$feature_flag_response"))
         sut.close()
     }
 
