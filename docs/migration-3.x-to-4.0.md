@@ -296,9 +296,10 @@ config.sessionReplayConfig.screenshot = true
 
 Apps that relied on the default now upload screenshots:
 
-- Masking still covers text inputs, images, `WebView`s, Compose semantics, `ph-no-capture` views and `Modifier.postHogMask()`.
+- Masking still covers text inputs, images, Compose semantics, `ph-no-capture` views and `Modifier.postHogMask()`. `WebView`s are masked whole while `maskAllTextInputs` or `maskAllImages` is on.
 - Custom-drawn views and other content the SDK doesn't recognize, such as maps or video, can now appear in recordings. Mask them, or turn replay off with `sessionReplay = false`.
-- Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded.
+- Jetpack Compose screens, which wireframe captured as empty boxes, are now recorded. That can count against your replay quota and may need a consent or privacy disclosure update.
+- Each frame uses more bandwidth and CPU than a wireframe.
 
 Compose masking also changed, including for apps that already set `screenshot = true`:
 
@@ -528,7 +529,7 @@ On Android, listeners run on the main thread. On the JVM, they run on a backgrou
 
 ## `posthog-server`
 
-`posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it. `PostHogEvent`, which `beforeSend` gets, keeps its 3.x constructor and `copy`, and gains an `options` property that `posthog-server` doesn't use.
+`posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it. `PostHogEvent`, which `beforeSend` gets, keeps its 3.x constructor and `copy`, and gains an `options` property; `posthog-server` still sends to `/batch`, which doesn't use it, so a value set in `beforeSend` is sent but has no effect.
 
 It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
 

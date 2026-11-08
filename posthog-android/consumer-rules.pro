@@ -132,12 +132,32 @@
     java.util.List getChildrenInfo();
     *** getNodes$ui();
     *** getNodes$ui_release();
+    *** getLayoutDirection();
+    *** getDensity();
 }
 -keepclassmembers class androidx.compose.ui.node.NodeChain {
     *** getHead$ui();
     *** getHead$ui_release();
 }
 -keepnames class androidx.compose.ui.Modifier$Node
+# Session replay calls draw() with a Proxy ContentDrawScope. Pin the interface so R8 can't merge it
+# into its only compiled implementation or bind drawContent() to it, which would fail the call.
+-keepnames interface androidx.compose.ui.node.DrawModifierNode
+-keepclassmembers interface androidx.compose.ui.node.DrawModifierNode {
+    void draw(androidx.compose.ui.graphics.drawscope.ContentDrawScope);
+}
+-keep,allowobfuscation interface androidx.compose.ui.graphics.drawscope.ContentDrawScope {
+    void drawContent();
+}
+# A delegate's drawing can't be recorded, so session replay looks for this class by name.
+-keepnames class androidx.compose.ui.node.DelegatingNode
+# Session replay looks for drawBehind by name, the only draw it replays.
+-keepnames class androidx.compose.ui.draw.DrawBackgroundModifier
+# Session replay reads this node's element to skip old-style modifiers that don't draw.
+-keepnames class androidx.compose.ui.node.BackwardsCompatNode
+-keepclassmembers class androidx.compose.ui.node.BackwardsCompatNode {
+    public androidx.compose.ui.Modifier$Element getElement();
+}
 -keepnames class androidx.compose.ui.graphics.painter.BrushPainter
 -keepclassmembers class androidx.compose.ui.Modifier$Node {
     *** getChild$ui();

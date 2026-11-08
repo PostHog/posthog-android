@@ -1,5 +1,11 @@
 ## Next
 
+## 3.76.1
+
+### Patch Changes
+
+- 85142d6: Fix Compose modal scrims masking the whole window as an image, which recorded a `ModalBottomSheet` as a solid black frame
+
 ## 3.76.0
 
 ### Minor Changes
