@@ -1879,7 +1879,7 @@ public class PostHogReplayIntegration(
                                         maskableWidgets.add(node.maskBounds())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages -> {
+                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(view.rootView) -> {
                                         maskableWidgets.add(node.maskBounds())
                                     }
 
@@ -2066,6 +2066,30 @@ public class PostHogReplayIntegration(
         }
         return false
     }
+
+    // A scrim's content description is its dismiss label, not an image, so masking it blacks out the
+    // window. Semantics only find candidates, what the node paints decides. A child layout paints
+    // outside that check, and merging can drop its image role, so require none.
+    private fun SemanticsNode.isScrim(window: View): Boolean {
+        if (!this.config.contains(SemanticsActions.OnClick) || this.config.contains(SemanticsProperties.Role)) {
+            return false
+        }
+        val bounds = boundsInWindow
+        return bounds.left <= 0f &&
+            bounds.top <= 0f &&
+            bounds.right >= window.width &&
+            bounds.bottom >= window.height &&
+            !layoutInfo.hasChildLayouts() &&
+            paintsSolidFill()
+    }
+
+    private fun SemanticsNode.paintsSolidFill(): Boolean =
+        try {
+            layoutInfo.paintsSolidFill()
+        } catch (e: Throwable) {
+            this@PostHogReplayIntegration.config.logger.log("Session Replay paintsSolidFill failed: ${e.cause ?: e}")
+            false
+        }
 
     private fun View.isComposeView(): Boolean {
         return isComposeAvailable && this.javaClass.name.contains(ANDROID_COMPOSE_VIEW)

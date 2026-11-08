@@ -4240,6 +4240,7 @@ internal class PostHogFeatureFlagsTest {
         active: Boolean = true,
         version: Int = 1,
         rolloutPercentage: Int = 100,
+        runtimeJson: String? = null,
     ): String =
         """
         {
@@ -4248,6 +4249,7 @@ internal class PostHogFeatureFlagsTest {
             "key": "$key",
             "active": $active,
             "ensure_experience_continuity": $continuity,
+            ${runtimeJson?.let { "\"evaluation_runtime\": $it," } ?: ""}
             "filters": {"groups": [{"properties": $properties, "rollout_percentage": $rolloutPercentage}]},
             "version": $version
         }
@@ -4544,6 +4546,168 @@ internal class PostHogFeatureFlagsTest {
         key: String,
         reason: PostHogUnresolvedFlagReason,
     ): Int = warnings.count { it.contains(key) && it.contains("(reason: ${reason.value})") }
+
+    @Test
+    fun `client runtime warnings exclude only client on API loads`() {
+        checkRuntimeWarnings(fromCache = false)
+    }
+
+    @Test
+    fun `client runtime warnings exclude only client on serialized cache loads`() {
+        checkRuntimeWarnings(fromCache = true)
+    }
+
+    private val warningRuntimes =
+        linkedMapOf("client" to "\"client\"", "server" to "\"server\"", "all" to "\"all\"", "null" to "null", "absent" to null)
+
+    private val warningReasons =
+        listOf(PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY, PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION)
+
+    private fun runtimeWarningFlag(
+        key: String,
+        reason: PostHogUnresolvedFlagReason,
+        runtimeJson: String?,
+        active: Boolean = true,
+    ): String =
+        unresolvedTestFlag(
+            key,
+            properties = if (reason == PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION) "[$staticCohort]" else "[]",
+            continuity = reason == PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+            runtimeJson = runtimeJson,
+            active = active,
+        )
+
+    private fun serializedDefinitions(json: String): Map<String, Any?> {
+        val config = createTestConfig()
+        return roundTripFlagDefinitionCacheData(config, config.serializer.deserialize<Map<String, Any?>>(StringReader(json)))!!
+    }
+
+    private fun checkRuntimeWarnings(fromCache: Boolean) {
+        val flags =
+            warningReasons.flatMap { reason ->
+                warningRuntimes.map { (runtime, json) -> runtimeWarningFlag("${reason.value}-$runtime", reason, json) }
+            } +
+                listOf(
+                    unresolvedTestFlag("client-value", runtimeJson = "\"client\""),
+                    unresolvedTestFlag("client-context", "[$planIsPro]", runtimeJson = "\"client\""),
+                    unresolvedTestFlag("client-inactive", "[$staticCohort]", active = false, runtimeJson = "\"client\""),
+                )
+        val definitions = createLocalEvaluationResponseFrom(*flags.toTypedArray())
+        val logger = TestLogger()
+        val server =
+            createMockHttp(
+                jsonResponseWithEtag(definitions, "\"runtime-v1\""),
+                jsonResponseWithEtag(definitions, "\"runtime-v1\""),
+                notModifiedResponse("\"runtime-v1\""),
+            )
+        val provider = TestFlagDefinitionCacheProvider(cacheData = serializedDefinitions(definitions), shouldFetch = !fromCache)
+        val featureFlags = localFeatureFlags(server, logger, provider)
+
+        repeat(3) { featureFlags.loadFeatureFlagDefinitions() }
+
+        assertEquals(2, logger.warnings.size)
+        for (reason in warningReasons) {
+            val marker = "(reason: ${reason.value}): "
+            val warning = logger.warnings.single { marker in it }
+            val expected = warningRuntimes.keys.filter { it != "client" }.map { "${reason.value}-$it" }.toSet()
+            assertEquals(expected, warning.substringAfter(marker).substringBefore(". ").split(", ").toSet())
+            assertTrue("4 flag(s)" in warning)
+        }
+
+        val result = featureFlags.evaluate(onlyEvaluateLocally = true)
+        assertEquals(true, result.flags["client-value"]?.enabled)
+        assertEquals(false, result.flags["client-inactive"]?.enabled)
+        for (reason in warningReasons) {
+            for (runtime in warningRuntimes.keys) {
+                assertEquals(reason, result.unresolvedFlags["${reason.value}-$runtime"])
+            }
+        }
+        assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, result.unresolvedFlags["client-context"])
+
+        // The warning scan also preclassifies supported filters, including client-only flags.
+        val snapshotField = PostHogFeatureFlags::class.java.getDeclaredField("definitionSnapshot").apply { isAccessible = true }
+        val snapshot = snapshotField.get(featureFlags)
+        val evaluatorField = snapshot.javaClass.getDeclaredField("evaluator").apply { isAccessible = true }
+        val evaluator = evaluatorField.get(snapshot) as FlagEvaluator
+        assertEquals(setOf("client-value", "client-context"), evaluator.flagsWithSupportedFilters)
+
+        if (!fromCache) {
+            // Hydrate a fresh follower from the serialized API publication, not the original JSON.
+            provider.cacheData = roundTripFlagDefinitionCacheData(createTestConfig(), provider.lastReceivedData)
+            provider.shouldFetch = false
+            val warningsBeforeCacheLoad = logger.warnings.toList()
+            repeat(2) { featureFlags.loadFeatureFlagDefinitions() }
+            assertEquals(warningsBeforeCacheLoad, logger.warnings, "the API loader also deduplicates shared-cache refreshes")
+            val followerLogger = TestLogger()
+            val followerServer = MockWebServer().apply { start() }
+            val follower = localFeatureFlags(followerServer, followerLogger, provider)
+            repeat(2) { follower.loadFeatureFlagDefinitions() }
+            assertEquals(logger.warnings, followerLogger.warnings)
+            assertEquals(result.unresolvedFlags, follower.evaluate(onlyEvaluateLocally = true).unresolvedFlags)
+            assertEquals(true, follower.evaluate(onlyEvaluateLocally = true).flags["client-value"]?.enabled)
+            assertEquals(0, followerServer.requestCount, "cache follower makes no requests")
+        }
+        assertEquals(if (fromCache) 0 else 3, server.requestCount, "only definition requests, never /flags")
+        repeat(server.requestCount) {
+            assertTrue(server.takeRequest().path!!.startsWith("/api/feature_flag/local_evaluation"))
+        }
+    }
+
+    @Test
+    fun `client runtime warning history resets on API transitions without version changes`() {
+        checkRuntimeWarningHistory(fromCache = false)
+    }
+
+    @Test
+    fun `client runtime warning history resets on serialized cache transitions without version changes`() {
+        checkRuntimeWarningHistory(fromCache = true)
+    }
+
+    private fun checkRuntimeWarningHistory(fromCache: Boolean) {
+        for ((runtime, runtimeJson) in warningRuntimes.filterKeys { it != "client" }) {
+            for (clientForm in listOf("unresolvable", "resolvable", "inactive")) {
+                val original =
+                    createLocalEvaluationResponseFrom(
+                        *warningReasons.map { runtimeWarningFlag(it.value, it, runtimeJson) }.toTypedArray(),
+                    )
+                val serverDefinitions =
+                    createLocalEvaluationResponseFrom(
+                        *warningReasons.map { runtimeWarningFlag(it.value, it, "\"server\"") }.toTypedArray(),
+                    )
+                val clientDefinitions =
+                    createLocalEvaluationResponseFrom(
+                        *warningReasons.map {
+                            if (clientForm == "resolvable") {
+                                unresolvedTestFlag(it.value, runtimeJson = "\"client\"")
+                            } else {
+                                runtimeWarningFlag(it.value, it, "\"client\"", active = clientForm != "inactive")
+                            }
+                        }.toTypedArray(),
+                    )
+                val definitions = listOf(original, serverDefinitions, clientDefinitions, original, original)
+                val server = createMockHttp(*definitions.map { jsonResponse(it) }.toTypedArray(), notModifiedResponse())
+                val logger = TestLogger()
+                val provider = TestFlagDefinitionCacheProvider(shouldFetch = !fromCache)
+                val featureFlags = localFeatureFlags(server, logger, provider)
+                val beforeClient = if (runtime == "server") 1 else 2
+                val expectedCounts = listOf(1, beforeClient, beforeClient, beforeClient + 1, beforeClient + 1)
+                for ((index, json) in definitions.withIndex()) {
+                    if (fromCache) provider.cacheData = serializedDefinitions(json)
+                    featureFlags.loadFeatureFlagDefinitions()
+                    for (reason in warningReasons) {
+                        assertEquals(
+                            expectedCounts[index],
+                            logger.unresolvableWarnings(reason.value, reason),
+                            "$runtime / $clientForm / load $index / $reason",
+                        )
+                    }
+                }
+                featureFlags.loadFeatureFlagDefinitions()
+                assertEquals(2 * (beforeClient + 1), logger.warnings.size, "unchanged cache or 304 does not repeat warnings")
+                assertEquals(if (fromCache) 0 else 6, server.requestCount, "no remote evaluation from the scan")
+            }
+        }
+    }
 
     @Test
     fun `loading a definition local evaluation never resolves logs one warning`() {
