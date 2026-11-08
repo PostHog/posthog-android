@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -431,20 +432,27 @@ internal class PostHogReplaySceneSchedulingTest {
             assertEquals(listOf(0, 0, 320, 400), listOf(dim.x, dim.y, dim.width, dim.height))
             val dimBytes = Base64.decode(assertNotNull(dim.base64).substringAfter(','), Base64.DEFAULT)
             val dimImage = assertNotNull(BitmapFactory.decodeByteArray(dimBytes, 0, dimBytes.size))
-            try {
-                assertEquals(Color.argb(102, 0, 0, 0), dimImage.getPixel(0, 0))
-            } finally {
-                dimImage.recycle()
-            }
+            val dimColor =
+                try {
+                    dimImage.getPixel(0, 0)
+                } finally {
+                    dimImage.recycle()
+                }
+            assertEquals(Color.argb(102, 0, 0, 0), dimColor)
             val bitmap = Bitmap.createBitmap(metadata["width"] as Int, metadata["height"] as Int, Bitmap.Config.ARGB_8888)
             try {
                 val canvas = Canvas(bitmap)
-                // Rasterize the emitted screenshots, dim included, in their emitted order and
-                // geometry. This checks producer output, not rrweb playback.
-                for (frame in scene) {
+                // Rasterize the emitted screenshots in their emitted order and geometry. This checks
+                // producer output, not rrweb playback. The dim is one solid color, so it is filled as a
+                // rect: stretching its bitmap blends text edges differently across Skia backends.
+                scene.forEachIndexed { index, frame ->
                     val x = assertNotNull(frame.x)
                     val y = assertNotNull(frame.y)
                     val rect = Rect(x, y, x + assertNotNull(frame.width), y + assertNotNull(frame.height))
+                    if (index == 2) {
+                        canvas.drawRect(rect, Paint().apply { color = dimColor })
+                        return@forEachIndexed
+                    }
                     val bytes = Base64.decode(assertNotNull(frame.base64).substringAfter(','), Base64.DEFAULT)
                     val image = assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
                     try {
