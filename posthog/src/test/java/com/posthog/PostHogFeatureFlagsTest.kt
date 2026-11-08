@@ -388,6 +388,44 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `getFeatureFlag reports an empty string for an empty variant`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """
+                        {
+                            "flags": {
+                                "emptyVariant": {
+                                    "key": "emptyVariant",
+                                    "enabled": true,
+                                    "variant": "",
+                                    "metadata": {"id": 1, "version": 1, "payload": null}
+                                }
+                            }
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+        http.enqueue(MockResponse().setBody(""))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest()
+
+        assertEquals("", sut.getFeatureFlag("emptyVariant"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals("emptyVariant", theEvent.properties!!["\$feature_flag"])
+        assertEquals("", theEvent.properties!!["\$feature_flag_response"])
+        sut.close()
+    }
+
+    @Test
     fun `isFeatureEnabled prefers a false flag value over the default`() {
         val http =
             mockHttp(
