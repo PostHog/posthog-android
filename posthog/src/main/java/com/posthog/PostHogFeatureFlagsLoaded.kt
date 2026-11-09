@@ -37,7 +37,7 @@ public class PostHogFeatureFlagsLoaded
          */
         public val variants: Map<String, Any> =
             featureFlags.entries
-                .mapNotNull { (key, value) -> if (value == true || value is String) key to value else null }
+                .mapNotNull { (key, value) -> if (value == true || (value is String && value.isNotEmpty())) key to value else null }
                 .toMap()
 
         /**

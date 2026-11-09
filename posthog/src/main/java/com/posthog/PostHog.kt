@@ -908,8 +908,8 @@ public class PostHog private constructor(
                         for (entry in it.entries) {
                             props["\$feature/${entry.key}"] = entry.value
 
-                            // only add active feature flags
-                            val active = entry.value as? Boolean ?: true
+                            // only add active feature flags; an empty variant reads as disabled
+                            val active = entry.value != false && entry.value != ""
 
                             if (active) {
                                 keys.add(entry.key)
@@ -2592,11 +2592,16 @@ public class PostHog private constructor(
         val listener = FeatureFlagsListener(callback)
         featureFlagsListeners.add(listener)
 
-        remoteConfigExecutor.executeSafely {
-            runFeatureFlagsListener {
-                // Read at delivery time so a delivery already queued can't be followed by an older value.
-                lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) }
-            }
+        // Read at delivery time so a delivery already queued can't be followed by an older value.
+        val replay = { lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) } }
+        // Post straight to the listener executor (the main thread on Android), so the replay doesn't
+        // wait behind a flags request in flight on the remote config thread. Without one, listeners
+        // run on the remote config thread, so the replay queues there.
+        val executor = config?.featureFlagsListenerExecutor
+        if (executor != null) {
+            executor.executeSafely { replay() }
+        } else {
+            remoteConfigExecutor.executeSafely { runFeatureFlagsListener { replay() } }
         }
 
         return PostHogFeatureFlagsSubscription {
@@ -2705,8 +2710,8 @@ public class PostHog private constructor(
 
                     val props = mutableMapOf<String, Any>()
                     props["\$feature_flag"] = key
-                    // value should never be nullabe anyway
-                    props["\$feature_flag_response"] = value ?: ""
+                    // omit for a missing flag: "" means an empty variant
+                    value?.let { props["\$feature_flag_response"] = it }
                     requestId?.let { props["\$feature_flag_request_id"] = it }
                     evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
                     flagDetails?.let {

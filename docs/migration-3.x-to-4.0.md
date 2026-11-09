@@ -144,7 +144,7 @@ The second parameter is now `sendFeatureFlagEvent`, which affects code that stil
 
 - `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
 - A disabled SDK now returns `null`, not your default.
-- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event reports an empty response.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response`, because an empty string now means an empty variant.
 
 Classes that implement `PostHogInterface` update the signature.
 
@@ -266,6 +266,12 @@ The flag's value, enabled state, variant and any other flag's payload aren't aff
 If you read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`, update it in PostHog to valid JSON before you upgrade, or your code gets `null`. PostHog no longer saves a new payload that isn't valid JSON, so only payloads saved earlier are affected.
 
 Apps upgrading from 3.13 or older didn't cache flag details, so until the app's first `/flags` response, a malformed payload cached by 3.x still reads as the raw string, as it did in 3.x.
+
+### Empty variants read as disabled
+
+A flag whose variant is an empty string now reads as disabled everywhere, as it already did from `isFeatureEnabled()`, with or without `defaultValue`. `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it, where 3.x returned `true`, `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`, and captured events leave it out of `$active_feature_flags`. `variant`, `getFeatureFlag()` and the event's `$feature/<key>` property still return `""`.
+
+PostHog no longer accepts an empty variant for new flags, so only flags created earlier through the API, MCP or Terraform are affected.
 
 ### `$locale` and `$app_language`
 

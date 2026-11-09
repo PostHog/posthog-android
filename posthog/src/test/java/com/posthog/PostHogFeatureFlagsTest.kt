@@ -369,7 +369,7 @@ internal class PostHogFeatureFlagsTest {
         val theEvent = batch.batch.first()
         assertEquals("\$feature_flag_called", theEvent.event)
         assertEquals("nonExistentFlag", theEvent.properties!!["\$feature_flag"])
-        assertEquals("", theEvent.properties!!["\$feature_flag_response"])
+        assertFalse(theEvent.properties!!.containsKey("\$feature_flag_response"))
         sut.close()
     }
 
@@ -388,6 +388,44 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `getFeatureFlag reports an empty string for an empty variant`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """
+                        {
+                            "flags": {
+                                "emptyVariant": {
+                                    "key": "emptyVariant",
+                                    "enabled": true,
+                                    "variant": "",
+                                    "metadata": {"id": 1, "version": 1, "payload": null}
+                                }
+                            }
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+        http.enqueue(MockResponse().setBody(""))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, sendFeatureFlagEvent = true)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest()
+
+        assertEquals("", sut.getFeatureFlag("emptyVariant"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val theEvent = batch.batch.first()
+        assertEquals("\$feature_flag_called", theEvent.event)
+        assertEquals("emptyVariant", theEvent.properties!!["\$feature_flag"])
+        assertEquals("", theEvent.properties!!["\$feature_flag_response"])
+        sut.close()
+    }
+
+    @Test
     fun `isFeatureEnabled prefers a false flag value over the default`() {
         val http =
             mockHttp(
@@ -401,6 +439,26 @@ internal class PostHogFeatureFlagsTest {
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertFalse(sut.isFeatureEnabled("IAmInactive", defaultValue = true))
+    }
+
+    @Test
+    fun `an empty variant reads as disabled`() {
+        val flags =
+            File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+                .replace("\"variant\": \"SplashV2\"", "\"variant\": \"\"")
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+        val updates = LinkedBlockingQueue<PostHogFeatureFlagsLoaded>()
+
+        sut.reloadFeatureFlags { updates.add(it) }
+        val loaded = updates.poll(5, TimeUnit.SECONDS)!!
+
+        assertFalse(sut.isFeatureEnabled("splashScreenName"))
+        assertFalse(sut.isFeatureEnabled("splashScreenName", defaultValue = true))
+        val result = sut.getFeatureFlagResult("splashScreenName")!!
+        assertFalse(result.enabled)
+        assertEquals("", result.variant)
+        assertEquals(listOf("4535-funnel-bar-viz"), loaded.flags)
     }
 
     @Test
