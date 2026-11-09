@@ -293,7 +293,8 @@ internal class PostHogSerializerTest {
         sut.serialize(event, serialized)
         val actualJson = serialized.toString()
 
-        // The result should preserve the nested "bad" map but only drop the unserializable leaf value
+        // The result should preserve the nested "bad" map but only drop the unserializable leaf value;
+        // in an array it becomes null so later elements keep their index
         val expectedJson =
             """
             {
@@ -305,7 +306,8 @@ internal class PostHogSerializerTest {
                         "good": "yes"
                     },
                     "in_an_array": [
-                        "good"
+                        "good",
+                        null
                     ]
                 },
                 "timestamp": "2009-02-13T23:31:30.000Z",

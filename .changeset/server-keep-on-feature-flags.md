@@ -10,4 +10,5 @@
 - Merge `userProperties`, `userPropertiesSetOnce` and `groups` key by key over a `$set`, `$set_once` or `$groups` map in `properties`
 - Stop printing unserializable property values and `beforeSend` exception messages in debug logs
 - Fix losing an event whose properties hold a nested map with non-string keys; number, boolean and `null` keys are converted to strings
+- Fix removing `null` elements from lists and arrays in event properties, which moved later elements to lower indexes; they're sent as JSON `null` at their position, as is an element that can't be serialized
 - Fix `beforeSend` edits reaching the caller's nested maps and lists, by giving each hook its own copy

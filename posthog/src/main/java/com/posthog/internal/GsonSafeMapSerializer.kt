@@ -2,6 +2,7 @@ package com.posthog.internal
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
+import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
@@ -14,7 +15,8 @@ import java.lang.reflect.Type
  * unserializable values instead of throwing exceptions.
  *
  * Performs depth-first serialization to ensure only unserializable leaf values
- * are dropped, not entire branches containing them.
+ * are dropped, not entire branches containing them. Null-valued map members are
+ * omitted; list elements keep their indices (see [safeSerializeList]).
  *
  * @property config the Config
  */
@@ -66,6 +68,7 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
         targetValue: Any?,
         key: String,
         context: JsonSerializationContext,
+        inList: Boolean = false,
     ): JsonElement? {
         return when (targetValue) {
             null -> null
@@ -82,7 +85,8 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
                     // the value's type only: properties can hold prompts and other user content
                     config.logger.log(
                         "Property '$key' of type ${targetValue.javaClass.name} cannot be serialized to JSON " +
-                            "(${e.javaClass.simpleName}). This property will be ignored.",
+                            "(${e.javaClass.simpleName}). " +
+                            (if (inList) "It will be sent as null." else "This property will be ignored."),
                     )
                     null
                 }
@@ -91,7 +95,8 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
     }
 
     /**
-     * Safely serializes a list, filtering out unserializable elements.
+     * Safely serializes a list, keeping every element at its index: a null element is written as
+     * JSON `null`, and so is an element that can't be serialized, so the array is never compacted.
      */
     private fun safeSerializeList(
         list: List<*>,
@@ -100,12 +105,7 @@ internal class GsonSafeMapSerializer(private val config: PostHogConfig) : JsonSe
         val jsonArray = JsonArray()
 
         list.forEach { element ->
-            if (element != null) {
-                val serialized = safeSerializeValue(element, "list-element", context)
-                if (serialized != null) {
-                    jsonArray.add(serialized)
-                }
-            }
+            jsonArray.add(safeSerializeValue(element, "list-element", context, inList = true) ?: JsonNull.INSTANCE)
         }
 
         return jsonArray
