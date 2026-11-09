@@ -534,7 +534,7 @@ Creates a group Docs https://posthog.com/docs/product-analytics/group-analytics
 fun isFeatureEnabled(key: String, defaultValue: Boolean = false, sendFeatureFlagEvent: Boolean? = null): Boolean
 ```
 
-Returns if a feature flag is enabled, the feature flag must be a Boolean Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+Returns whether a feature flag is enabled: a boolean flag returns its value, and a multivariate flag is enabled when its variant isn't empty Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
 
 #### Return
 
