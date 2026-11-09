@@ -528,6 +528,23 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
+    fun `an explicit null option over a registered one doesn't mark a personless $set as processed`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("process_person_profile" to true))
+        sut.register("\$process_person_profile", false)
+
+        sut.setPersonProperties(mapOf("plan" to "pro"), null, mapOf("process_person_profile" to null))
+        queueExecutor.awaitExecution()
+        val personless = events(takeRequest(http)).single()
+        sut.setPersonProperties(mapOf("plan" to "pro"), null, null)
+        queueExecutor.awaitExecution()
+
+        assertEquals(false, personless.options()?.get("process_person_profile"))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
     fun `unregister and reset remove registered options`() {
         val http = httpServers.mockHttp()
         val sut = getSut(http)

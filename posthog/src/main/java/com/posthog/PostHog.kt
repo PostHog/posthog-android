@@ -1143,7 +1143,13 @@ public class PostHog private constructor(
      * neither stores nor matches the person-properties hash.
      */
     private fun isPersonProcessed(options: Map<String, Any?>?): Boolean {
-        val option = options?.get("process_person_profile") ?: getRegisteredOptions()["process_person_profile"]
+        // An explicit null in [options] replaces the registered option, as in optionsForEvent.
+        val option =
+            if (options?.containsKey("process_person_profile") == true) {
+                options["process_person_profile"]
+            } else {
+                getRegisteredOptions()["process_person_profile"]
+            }
         if (option != null) {
             return !isFalseOptionValue(option)
         }
