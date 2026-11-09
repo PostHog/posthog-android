@@ -6,7 +6,7 @@ import android.content.Context
 /**
  * Persists the timestamp of the newest native crash record already captured.
  *
- * Deliberately its own file rather than the shared
+ * Deliberately in the native-crash preferences file rather than the shared
  * [com.posthog.internal.PostHogPreferences] store: that store doubles as the
  * registered-properties store (any non-internal key rides along on events) and
  * is cleared by `reset()`, while this watermark is device-level dedup state

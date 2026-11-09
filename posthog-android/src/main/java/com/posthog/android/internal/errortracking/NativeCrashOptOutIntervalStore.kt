@@ -37,8 +37,8 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
     fun close(nowMs: Long) {
         synchronized(lock) {
             val since = openSince() ?: return
-            val interval = minOf(since, nowMs) to maxOf(since, nowMs)
-            val intervals = (closedIntervals() + interval).takeLast(MAX_INTERVALS)
+            val interval = minOf(since, nowMs)..maxOf(since, nowMs)
+            val intervals = (closedIntervals() + listOf(interval)).takeLast(MAX_INTERVALS)
             commitOrThrow(
                 preferences.edit()
                     .putString(CLOSED_KEY, serialize(intervals))
@@ -56,7 +56,7 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
     /** Every opt-out interval, with an open one extended to [nowMs]. */
     fun intervals(nowMs: Long): List<LongRange> {
         synchronized(lock) {
-            val closed = closedIntervals().map { (start, end) -> start..end }
+            val closed = closedIntervals()
             val open = openSince() ?: return closed
             // the clock can move back while still opted out
             return closed + listOf(minOf(open, nowMs)..maxOf(open, nowMs))
@@ -67,7 +67,7 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
     fun prune(watermarkMs: Long) {
         synchronized(lock) {
             val intervals = closedIntervals()
-            val kept = intervals.filter { it.second > watermarkMs }
+            val kept = intervals.filter { it.last > watermarkMs }
             if (kept.size != intervals.size) {
                 preferences.edit().putString(CLOSED_KEY, serialize(kept)).apply()
             }
@@ -77,18 +77,18 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
     private fun openSince(): Long? = if (preferences.contains(OPEN_KEY)) preferences.getLong(OPEN_KEY, 0L) else null
 
     // oldest first
-    private fun closedIntervals(): List<Pair<Long, Long>> =
+    private fun closedIntervals(): List<LongRange> =
         preferences.getString(CLOSED_KEY, null)
             ?.split(';')
             ?.mapNotNull { entry ->
                 val parts = entry.split(':')
                 val start = parts.getOrNull(0)?.toLongOrNull()
                 val end = parts.getOrNull(1)?.toLongOrNull()
-                if (start != null && end != null) start to end else null
+                if (start != null && end != null) start..end else null
             }
             ?: emptyList()
 
-    private fun serialize(intervals: List<Pair<Long, Long>>): String = intervals.joinToString(";") { "${it.first}:${it.second}" }
+    private fun serialize(intervals: List<LongRange>): String = intervals.joinToString(";") { "${it.first}:${it.last}" }
 
     private companion object {
         private const val OPEN_KEY = "optOutSince"

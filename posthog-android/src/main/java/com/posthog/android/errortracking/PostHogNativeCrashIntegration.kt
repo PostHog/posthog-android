@@ -46,7 +46,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Requires Android 12 (API 31), where native crash records carry a tombstone.
  * Enable with `errorTrackingConfig.captureNativeCrashes`; error tracking
- * autocapture must also be enabled in the project settings.
+ * autocapture must also be enabled in the project settings. The integration is
+ * registered even when capture is off, so opt-out intervals are recorded and
+ * crashes from those intervals are never sent once capture is enabled.
  */
 public class PostHogNativeCrashIntegration : PostHogIntegration {
     private val context: Context
@@ -166,8 +168,8 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     }
 
     override fun uninstall() {
-        // optOut() sets config.optOut before uninstalling, close() does not. Stamped before the
-        // early return and the scanner wait.
+        // Stamps whenever config.optOut is set: optOut() sets it before uninstalling, and close() on an
+        // already opted-out client re-stamps idempotently. Runs before the early return and the scanner wait.
         if (config.optOut) {
             recordOptedOutStart()
         }
