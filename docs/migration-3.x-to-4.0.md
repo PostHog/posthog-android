@@ -407,6 +407,8 @@ A `NaN` or infinite number in the properties is dropped from the event, and the 
 
 A map key in the properties that isn't a string is converted to one when it's a number, a boolean or `null`. Any other key is dropped with its value, and the rest of the event is sent. With `debug` on, the SDK logs the key's type. In 3.x, a nested map with a non-string key lost the whole event.
 
+A `null` element in a list or array in the properties is now sent as JSON `null` at its position, and so is an element that can't be serialized, such as `NaN`. In 3.x, both were removed, which moved the later elements to lower indexes. A property or map entry whose value is `null` is still left out.
+
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
 `identify()` with an empty or whitespace-only distinct ID is still ignored, as in 3.x.
@@ -552,7 +554,7 @@ It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, re
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
-Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`.
+Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`. A `null` element in a list or array in the properties is sent as JSON `null` at its position instead of being removed.
 
 `posthog-server` 2.25.0 depends on core 7.0, so upgrade it and `posthog-android` together:
 
