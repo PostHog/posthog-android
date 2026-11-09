@@ -130,6 +130,12 @@ tableOfContents:
 ## Getting started
 
 
+The Android SDK runs in Android apps.
+
+To send your first event, add the dependency, then call `PostHogAndroid.setup` once in `Application.onCreate` with your project token and host from your [project settings](https://app.posthog.com/project/settings).
+
+After `setup`, PostHog captures app lifecycle events, such as `Application Opened`, by itself. Use `capture` for your own events.
+
 Add the SDK to your app's `build.gradle.kts`:
 
 ```kotlin
