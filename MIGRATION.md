@@ -432,6 +432,12 @@ A registered `$session_id` now overrides the SDK's session ID, which can detach 
 A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
 In 3.x, a `$set`, `$set_once` or `$groups` map in properties replaced the per-call values and the groups set with `group()`. A `$set` or `$set_once` you pass, or `userProperties`, still replaces a registered one whole.
 
+`$lib` and `$lib_version` name the library that produced the event, and the SDK fills them last, as a pair, only where nothing above named the library.
+When neither is set, or only `$lib_version` is, the SDK sends its own `$lib` and `$lib_version`.
+When `$lib` is the SDK's own name without a version, the SDK adds its version.
+When `$lib` names another library, the SDK leaves both as they are and never adds its own version, so set both keys together.
+In 3.x, a registered `$lib` or `$lib_version` was replaced by the SDK's, and a `$lib` you passed was sent with the SDK's `$lib_version`.
+
 ### Session and window IDs
 
 Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, not as properties.

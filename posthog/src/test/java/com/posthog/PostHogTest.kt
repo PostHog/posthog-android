@@ -2903,6 +2903,66 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `fills the SDK library identity as a pair over a registered half`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), flushAt = 2, preloadFeatureFlags = false, context = TestPostHogContext())
+
+        sut.register("\$lib", "custom-wrapper")
+        sut.capture(EVENT, DISTINCT_ID)
+        sut.unregister("\$lib")
+        sut.register("\$lib_version", "orphan-version")
+        sut.capture(EVENT, DISTINCT_ID)
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val identities = batch.batch.map { it.properties!!["\$lib"] to it.properties!!["\$lib_version"] }
+        assertEquals(
+            listOf<Pair<Any?, Any?>>(
+                // another library's name never gets this SDK's version
+                "custom-wrapper" to null,
+                // a lone version doesn't replace the SDK's own pair
+                "posthog-android" to "1.2.3",
+            ),
+            identities,
+        )
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
+    fun `fills the SDK library identity as a pair over a per-call half`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val sut = getSut(url.toString(), flushAt = 4, preloadFeatureFlags = false, context = TestPostHogContext())
+
+        sut.capture(EVENT, DISTINCT_ID, mapOf("\$lib" to "custom-wrapper"))
+        sut.capture(EVENT, DISTINCT_ID, mapOf("\$lib_version" to "orphan-version"))
+        sut.capture(EVENT, DISTINCT_ID, mapOf("\$lib" to "posthog-android"))
+        sut.capture(EVENT, DISTINCT_ID, mapOf("\$lib" to "custom-wrapper", "\$lib_version" to "9.9.9"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val identities = batch.batch.map { it.properties!!["\$lib"] to it.properties!!["\$lib_version"] }
+        assertEquals(
+            listOf<Pair<Any?, Any?>>(
+                "custom-wrapper" to null,
+                "posthog-android" to "1.2.3",
+                // this SDK's own name only gets the missing version
+                "posthog-android" to "1.2.3",
+                "custom-wrapper" to "9.9.9",
+            ),
+            identities,
+        )
+
+        sut.close()
+        http.shutdown()
+    }
+
+    @Test
     fun `setAppLanguage sends the normalized language, survives reset and clears`() {
         val http = mockHttp()
         val url = http.url("/")

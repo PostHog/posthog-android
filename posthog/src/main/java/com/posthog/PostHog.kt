@@ -38,6 +38,7 @@ import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.captureAiMaxStoredEventBytes
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
 import com.posthog.internal.executeSafely
+import com.posthog.internal.fillLibraryIdentity
 import com.posthog.internal.isFalseOptionValue
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
@@ -889,7 +890,8 @@ public class PostHog private constructor(
         val props = mutableMapOf<String, Any>()
 
         // Values the SDK sets itself. Registered super properties and then the caller's properties
-        // override them below, and beforeSend has the final say.
+        // override them below, and beforeSend has the final say. `$lib` and `$lib_version` are the
+        // exception: they're filled last, as a pair (see fillLibraryIdentity).
         if (appendSharedProps) {
             config?.context?.getStaticContext()?.let {
                 props.putAll(it)
@@ -928,11 +930,6 @@ public class PostHog private constructor(
             // No `$process_person_profile`: person processing is sent as the `process_person_profile`
             // option, only when it's off (see optionsForEvent). A registered or caller
             // `$process_person_profile` wins over it when the send hoists the property.
-        }
-
-        // Session replay should have the SDK info as well
-        config?.context?.getSdkInfo()?.let {
-            props.putAll(it)
         }
 
         val isSessionReplayActive = isSessionReplayActive()
@@ -1005,6 +1002,9 @@ public class PostHog private constructor(
             // distinctId is already validated hence not empty or blank
             props["distinct_id"] = distinctId
         }
+
+        // Last, so it fills only what every layer above left unset. Session replay needs it too.
+        config?.context?.getSdkInfo()?.let { fillLibraryIdentity(props, it) }
 
         return props
     }
