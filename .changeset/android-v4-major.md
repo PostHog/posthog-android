@@ -3,7 +3,7 @@
 'posthog-android': major
 ---
 
-- See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/docs/migration-3.x-to-4.0.md) for upgrade steps
+- See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/MIGRATION.md) for upgrade steps
 - **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`; self-hosted instances and reverse proxies must serve the path, and a 404 keeps events queued, retries them and prints one warning even when `debug` is off
 - **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times); retry 404, 408, 429, 500, 502, 503 and 504
 - **Breaking:** cap a `Retry-After` wait at 30 seconds, read it as a minimum wait and accept an HTTP date, and add up to 25% random jitter to the backoff, which still doubles from 1 to 30 seconds, for events, session replay and logs
@@ -11,6 +11,7 @@
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, dropping non-string values
 - **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties; PostHog drops an event whose option value it can't read
 - **Breaking:** set the `process_person_profile` option to `false` only when person processing is off, instead of adding a `$process_person_profile` property to every event
+- **Breaking:** let a `process_person_profile` option or `$process_person_profile` property set to `true` turn person processing on for an event even with `PersonProfiles.NEVER`
 - **Breaking:** let registered super properties override properties the SDK sets, such as `$os_name`, and let super and event properties override `$is_identified`, `$process_person_profile` and the session replay debug properties
 - **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps in the same call's properties, and merge a `$groups` map in properties into the groups set with `group()`
 - **Breaking:** keep the event's own uuid when `beforeSend` returns an event with another uuid
@@ -29,18 +30,14 @@
 - **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`, which receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values and `errorsLoading`
 - **Breaking:** return `null` from `getFeatureFlagResult(key)?.payload` for a payload that isn't valid JSON, such as plain text, a malformed or empty string, or a JSON `null`
 - **Breaking:** return `enabled = false` from `getFeatureFlagResult()` and leave the flag out of `PostHogFeatureFlagsLoaded` and `$active_feature_flags` for a feature flag whose variant is an empty string, as `isFeatureEnabled()` already does
-- **Breaking:** remove wireframe session replay and the `screenshot`, `drawableConverter` and `debouncerDelayMs` options of `PostHogSessionReplayConfig` (use `throttleDelayMs` for the last); replay always records masked screenshots, so apps that relied on the default now upload screenshots and should mask custom-drawn views, maps and video, or turn replay off
-- **Breaking:** apply `Modifier.postHogMask()` and `Modifier.postHogUnmask()` only to the element and its children, mask Compose text that draws past its layout box in full, and mask nodes using `Modifier.clearAndSetSemantics` while text or image masking is on
-- **Breaking:** send a dialog's dim and a dialog masked whole as screenshot images instead of styled wireframe shapes
-- **Breaking:** change `$locale` to the first language in the device settings as a full language tag, such as `zh-Hant-TW`, instead of `Locale.getDefault()`
-- **Breaking:** skip deep link query parameters whose name starts with `$` in the `Deep Link Opened` event
-- **Breaking:** make SDK-internal helpers in `com.posthog.internal`, `com.posthog.android.internal` and `com.posthog.android.replay.internal` non-public
+- **Breaking:** make SDK-internal helpers in `com.posthog.internal` non-public
 - Add `captureAi()` to send AI events such as `$ai_generation` to `/i/v1/ai/events` on their own disk queue, returning the event uuid or `null` when the event isn't queued, with the `captureAiCompression`, `captureAiMaxQueueSize`, `captureAiTimeout` and `captureAiMaxEventBytes` options
 - Add `onFeatureFlags()` to listen for every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
 - Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
 - Add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event
 - Add internal APIs so wrapper SDKs can register capture options sent with every event
 - Send events queued on disk by 3.x through capture v1 after the update
+- Send a `PostHog-Request-Id` header with each capture request, which reverse proxies must pass through
 - Cap a capture request at about 5 MiB of events and send as soon as that much is queued
 - Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - Stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`

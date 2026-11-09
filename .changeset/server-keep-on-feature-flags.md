@@ -2,6 +2,7 @@
 'posthog-server': minor
 ---
 
+- Require `posthog-android` 4.0 in the same project, since core 7.0 fails at runtime with `posthog-android` 3.x; stay on 2.24.x until you upgrade (see the [migration guide](https://github.com/PostHog/posthog-android/blob/main/MIGRATION.md#posthog-server))
 - Bump the `posthog` core dependency to 7.0; `posthog-server` keeps its API, `/batch` endpoint and retry behavior
 - Move `PostHogOnFeatureFlags` into `posthog-server` with the same name and API
 - Add an `options` property to `PostHogEvent`, which `beforeSend` can read; `posthog-server` still sends to `/batch`, which doesn't use it, so setting it in `beforeSend` has no effect
