@@ -3,6 +3,7 @@ package com.posthog.android.errortracking
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Looper
 import android.os.Process
@@ -37,6 +38,7 @@ import org.robolectric.shadows.ShadowActivityManager
 import org.robolectric.shadows.ShadowApplication
 import java.io.ByteArrayInputStream
 import java.util.Date
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -606,6 +608,35 @@ internal class PostHogNativeCrashIntegrationTest {
 
         assertEquals(1, consentExecutor.submitted)
         assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `a failing system service probe does not escape the opted-out start`() {
+        val throwing =
+            object : ContextWrapper(context) {
+                override fun getSystemService(name: String): Any? =
+                    if (name == Context.USER_SERVICE) throw IllegalStateException("binder died") else super.getSystemService(name)
+            }
+        val integration = PostHogNativeCrashIntegration(throwing, config, { DirectExecutorService() }, { wallClockMs })
+
+        integration.recordOptedOutStart()
+
+        assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `a rejected opt-in write skips the scan and keeps the watermark`() {
+        NativeCrashOptOutIntervalStore(context).open(500)
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 1_500, trace = tombstoneBytes())
+        val rejecting =
+            object : DirectExecutorService() {
+                override fun execute(command: Runnable) = throw RejectedExecutionException("test")
+            }
+
+        install(consentExecutor = rejecting)
+
+        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(0L, watermark())
     }
 
     @Test

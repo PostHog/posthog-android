@@ -151,8 +151,11 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
             val executor = executorFactory()
             this.executor = executor
             executor.submit {
-                awaitConsentRecorded(optInRecorded)
-                scanSafely(postHog)
+                if (awaitConsentRecorded(optInRecorded)) {
+                    scanSafely(postHog)
+                } else {
+                    config.logger.log("Native crash scan skipped until the opt-in is recorded.")
+                }
             }
             registerTimeChangedReceiver(executor)
         } catch (e: Throwable) {
@@ -209,17 +212,18 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
     private fun canRecordConsent(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isMainProcess() && isUserUnlocked()
 
-    // Stamped on the caller thread so the bound is the consent change itself; I/O runs on the consent executor.
+    // Stamped on the caller thread so the bound is the consent change itself; I/O runs on the consent
+    // executor. Runs from setup()/with() on the host thread, so the system-service probes are caught too.
     private fun recordConsent(
         change: String,
         write: NativeCrashOptOutIntervalStore.(nowMs: Long) -> Unit,
     ): Future<*>? {
-        if (!canRecordConsent()) {
-            return null
-        }
-        val nowMs = wallClockMs()
         val fail = { e: Throwable -> config.logger.log("Recording the $change failed: $e.") }
         return runCatching {
+            if (!canRecordConsent()) {
+                return@runCatching null
+            }
+            val nowMs = wallClockMs()
             consentExecutor.value.submit {
                 try {
                     optOutIntervalStore.write(nowMs)
@@ -233,15 +237,22 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
     }
 
-    // The scan must see the interval the opt-in closed, or it would drop
-    // consented crashes recorded after it.
-    private fun awaitConsentRecorded(recorded: Future<*>?) {
-        try {
-            recorded?.get(CONSENT_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    // The scan must see the interval the opt-in closed, or it would drop consented crashes
+    // recorded after it. An unconfirmed close skips this scan; the watermark stays put, so the
+    // next launch retries.
+    private fun awaitConsentRecorded(recorded: Future<*>?): Boolean {
+        if (recorded == null) {
+            return false
+        }
+        return try {
+            recorded.get(CONSENT_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            true
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
+            false
         } catch (e: Throwable) {
             config.logger.log("Waiting for the opt-in to be recorded failed: $e.")
+            false
         }
     }
 

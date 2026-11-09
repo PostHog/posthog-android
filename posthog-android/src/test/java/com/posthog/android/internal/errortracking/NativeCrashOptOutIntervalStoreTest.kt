@@ -7,10 +7,12 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -139,10 +141,23 @@ internal class NativeCrashOptOutIntervalStoreTest {
     }
 
     @Test
-    fun `open commits so a crash before the flush keeps the interval, close and prune apply`() {
+    fun `a failed commit throws so the caller can log it`() {
         val editor = mock<SharedPreferences.Editor>()
         val preferences = mock<SharedPreferences>()
         whenever(preferences.edit()).thenReturn(editor)
+        whenever(editor.putLong(any(), any())).thenReturn(editor)
+        whenever(editor.commit()).thenReturn(false)
+        whenever(context.getSharedPreferences(anyOrNull(), any())).thenReturn(preferences)
+
+        assertFailsWith<IllegalStateException> { NativeCrashOptOutIntervalStore(context).open(100L) }
+    }
+
+    @Test
+    fun `open and close commit so a crash before the flush keeps the interval, prune applies`() {
+        val editor = mock<SharedPreferences.Editor>()
+        val preferences = mock<SharedPreferences>()
+        whenever(preferences.edit()).thenReturn(editor)
+        whenever(editor.commit()).thenReturn(true)
         whenever(editor.putLong(any(), any())).thenReturn(editor)
         whenever(editor.putString(any(), anyOrNull())).thenReturn(editor)
         whenever(editor.remove(any())).thenReturn(editor)
@@ -158,7 +173,13 @@ internal class NativeCrashOptOutIntervalStoreTest {
         verify(editor).putString("optOutIntervals", "100:200")
         verify(editor).remove("optOutSince")
 
+        verify(editor, times(2)).commit()
+        verify(editor, never()).apply()
+
+        whenever(preferences.contains("optOutSince")).thenReturn(false)
+        whenever(preferences.getString("optOutIntervals", null)).thenReturn("100:200")
+        NativeCrashOptOutIntervalStore(context).prune(200L)
+        verify(editor).putString("optOutIntervals", "")
         verify(editor, times(1)).apply()
-        verify(editor, times(1)).commit()
     }
 }

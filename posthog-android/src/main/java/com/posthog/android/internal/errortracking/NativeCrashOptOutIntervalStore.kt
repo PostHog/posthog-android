@@ -2,6 +2,7 @@ package com.posthog.android.internal.errortracking
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.SharedPreferences
 
 /**
  * Remembers the wall-clock intervals during which the user was opted out, so
@@ -15,7 +16,8 @@ import android.content.Context
 internal class NativeCrashOptOutIntervalStore(context: Context) {
     private val preferences = context.nativeCrashPreferences()
 
-    // commit() rather than apply(): a native crash kills the process before apply() flushes, which would lose the interval.
+    // open() and close() commit() rather than apply(): a native crash kills the process before apply()
+    // flushes, which would lose the interval or leave it open over consented crashes.
     @SuppressLint("ApplySharedPref")
     fun open(nowMs: Long) {
         synchronized(lock) {
@@ -27,20 +29,28 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
                 // clock moved back: keep the span to the old start covered
                 close(nowMs)
             }
-            preferences.edit().putLong(OPEN_KEY, nowMs).commit()
+            commitOrThrow(preferences.edit().putLong(OPEN_KEY, nowMs))
         }
     }
 
+    @SuppressLint("ApplySharedPref")
     fun close(nowMs: Long) {
         synchronized(lock) {
             val since = openSince() ?: return
             val interval = minOf(since, nowMs) to maxOf(since, nowMs)
             val intervals = (closedIntervals() + interval).takeLast(MAX_INTERVALS)
-            preferences.edit()
-                .putString(CLOSED_KEY, serialize(intervals))
-                .remove(OPEN_KEY)
-                .apply()
+            commitOrThrow(
+                preferences.edit()
+                    .putString(CLOSED_KEY, serialize(intervals))
+                    .remove(OPEN_KEY),
+            )
         }
+    }
+
+    // a false commit() is as lost as an exception, so surface it to the caller's failure log
+    @SuppressLint("ApplySharedPref")
+    private fun commitOrThrow(editor: SharedPreferences.Editor) {
+        check(editor.commit()) { "the native crash preferences could not be written" }
     }
 
     /** Every opt-out interval, with an open one extended to [nowMs]. */
