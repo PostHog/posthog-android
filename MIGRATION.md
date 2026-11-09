@@ -1,14 +1,18 @@
-# Migrating from PostHog Android 3.x to 4.0
+# Migration guide
+
+## posthog-android 3.x → 4.0 and posthog (core) 7.0
 
 4.0 sends analytics events to capture v1 (`/i/v1/analytics/events`) instead of `/batch`, removes APIs deprecated in 3.x and changes the feature flags callback.
 Most removals are compile errors with a direct replacement. [Behavior changes](#behavior-changes) won't show up at build time.
 Read the checklist first, then the sections that apply to you.
 
+If you use core `posthog` 7.0 on the JVM without `posthog-android`, the API, endpoint, event and retry changes apply, but these don't: [`$locale` and `$app_language`](#locale-and-app_language), [Session replay records screenshots](#session-replay-records-screenshots), [Deep link query parameters](#deep-link-query-parameters) and the AI events disk queue (core keeps AI events in memory). `onFeatureFlags()` listeners run on a background thread.
+
 For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
 For the full list of 4.0 changes, see the [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-android/CHANGELOG.md).
 
-## Checklist
+### Checklist
 
 You need to change code if your app does any of these:
 
@@ -30,21 +34,22 @@ You need to change code if your app does any of these:
 - uses `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, `drawableConverter` or `remoteConfig`
 - passes `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position
 - calls `getFeatureFlagPayload()`, or passes a default value to `getFeatureFlag()`
+- filters insights, cohorts or actions on the `$feature_flag_response` of `$feature_flag_called`, such as `""` or `false` for a missing flag (see [`$feature_flag_response` for a missing flag](#feature_flag_response-for-a-missing-flag))
 - sets `PostHogConfig.onFeatureFlags` or `PostHogOnFeatureFlags`, or passes a callback to `reloadFeatureFlags()`
 - uses session replay (see [Session replay records screenshots](#session-replay-records-screenshots))
 - reads a feature flag payload that isn't valid JSON, such as plain text saved as `hello`
 - breaks down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6–12)
 - reads event content or request bodies from the SDK's debug log, or matches its log text
-- depends only on `posthog-android-surveys-compose`, or uses `posthog-server`
+- depends only on `posthog-android-surveys-compose`, or uses `posthog-server` (2.25.0 and later need `posthog-android` 4.0 in the same project)
 
-## Requirements and versions
+### Requirements and versions
 
 | Artifact | Upgrade |
 | --- | --- |
 | `com.posthog:posthog-android` | 3.x to 4.0 |
 | `com.posthog:posthog` (core) | 6.x to 7.0 |
 | `com.posthog:posthog-android-surveys-compose` | keep your version, and declare `com.posthog:posthog-android` 4.0.0 or later in your build so Gradle resolves 4.x instead of the 3.x version it pulls in |
-| `com.posthog:posthog-server` | see [`posthog-server`](#posthog-server) |
+| `com.posthog:posthog-server` | 2.25.0, together with `posthog-android` 4.0; see [`posthog-server`](#posthog-server) |
 
 These are unchanged, so you don't need to change your build for them:
 
@@ -55,7 +60,7 @@ These are unchanged, so you don't need to change your build for them:
 
 Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. A mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
-## Removed APIs
+### Removed APIs
 
 All of these are compile errors. Calling them from an already-compiled library that you haven't updated fails at runtime.
 
@@ -75,7 +80,7 @@ All of these are compile errors. Calling them from an already-compiled library t
 
 The constructor parameters of `PostHogConfig` and `PostHogSessionReplayConfig` move up where these were removed. If you pass arguments by position, check them, or switch to named arguments.
 
-### `apiKey`
+#### `apiKey`
 
 ```kotlin
 // 3.x
@@ -89,7 +94,7 @@ val token = config.projectToken
 
 `PostHogAndroidConfig("phc_your_project_token")`, with no parameter name, still works. From Java, replace `getApiKey()` with `getProjectToken()`.
 
-### `propertiesSanitizer`
+#### `propertiesSanitizer`
 
 ```kotlin
 // 3.x
@@ -106,7 +111,7 @@ config.addBeforeSend { event ->
 
 `addBeforeSend` gets the whole `PostHogEvent`. Return `null` to drop the event. If the hook throws, the event is dropped.
 
-### `evaluationEnvironments`
+#### `evaluationEnvironments`
 
 ```kotlin
 // 3.x
@@ -116,7 +121,7 @@ config.evaluationEnvironments = listOf("production")
 config.evaluationContexts = listOf("production")
 ```
 
-### `getFeatureFlagPayload()`
+#### `getFeatureFlagPayload()`
 
 `getFeatureFlagPayload()` never sent `$feature_flag_called`. `getFeatureFlagResult()` sends it by default, following `sendFeatureFlagEvent`, so pass `sendFeatureFlagEvent = false` to keep your event volume and experiment exposures unchanged. If you drop that argument, nothing fails, but you'll send new events.
 
@@ -130,7 +135,7 @@ val payload = PostHog.getFeatureFlagPayload("checkout", defaultValue = "fallback
 val payload = PostHog.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false)?.payload ?: "fallback"
 ```
 
-### `getFeatureFlag()` default value
+#### `getFeatureFlag()` default value
 
 ```kotlin
 // 3.x
@@ -144,11 +149,11 @@ The second parameter is now `sendFeatureFlagEvent`, which affects code that stil
 
 - `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
 - A disabled SDK now returns `null`, not your default.
-- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response`, because an empty string now means an empty variant.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response` (see [`$feature_flag_response` for a missing flag](#feature_flag_response-for-a-missing-flag)).
 
 Classes that implement `PostHogInterface` update the signature.
 
-### `debouncerDelayMs`
+#### `debouncerDelayMs`
 
 ```kotlin
 // 3.x
@@ -158,7 +163,7 @@ PostHogSessionReplayConfig(debouncerDelayMs = 500)
 PostHogSessionReplayConfig(throttleDelayMs = 500)
 ```
 
-### `remoteConfig`
+#### `remoteConfig`
 
 Delete the option. Apps that left it at its default of `true` see no behavior change.
 
@@ -175,9 +180,9 @@ If you set it to `false`, your app's behavior changes:
 - The settings in `/config` now apply, including the session replay, surveys, error tracking and push settings from your project.
 - With `preloadFeatureFlags = true`, the SDK requests `/flags` only if `/config` reports that the project has feature flags. In 3.x it always requested `/flags`. If the project has none, the cached flags are cleared.
 
-## Feature flags callback
+### Feature flags callback
 
-`PostHogConfig.onFeatureFlags` is removed. Call `PostHog.onFeatureFlags()` before `setup()` instead, which also covers the first load. `reloadFeatureFlags()` now takes a `PostHogFeatureFlagsCallback`. Both callbacks receive a `PostHogFeatureFlagsLoaded`:
+`PostHogConfig.onFeatureFlags` is removed. Call `PostHog.onFeatureFlags()` before `setup()` instead, which also covers the first load. An instance from `PostHogAndroid.with()` is set up as it's created, so call `onFeatureFlags()` on it right after `with()`; if flags have already loaded, the listener gets the current values shortly after it registers. `reloadFeatureFlags()` now takes a `PostHogFeatureFlagsCallback`. Both callbacks receive a `PostHogFeatureFlagsLoaded`:
 
 - `flags`: the keys of the enabled flags
 - `variants`: their values, either `true` or the variant string
@@ -203,6 +208,8 @@ The listener differs from the removed option in three ways:
 - Bootstrapped flags arrive just after `setup()` is called, not synchronously inside it.
 - A reload on a disabled SDK doesn't call listeners. `reloadFeatureFlags(callback)` still gets `errorsLoading = true` in that case.
 
+From Java, the `reloadFeatureFlags()` lambda now takes the `PostHogFeatureFlagsLoaded` argument:
+
 ```java
 // 3.x
 PostHog.Companion.reloadFeatureFlags(() -> refreshUi());
@@ -217,7 +224,7 @@ A Kotlin trailing lambda such as `PostHog.reloadFeatureFlags { refreshUi() }` co
 
 The `reloadFeatureFlags()` callback still runs on a background thread, or right away on the calling thread when no load is attempted, so switch to the main thread before touching UI.
 
-## `PostHogInterface` implementations
+### `PostHogInterface` implementations
 
 `PostHogInterface` lost `getFeatureFlagPayload()`, gained the abstract `onFeatureFlags()` and `setAppLanguage()`, and changed the callback type of `reloadFeatureFlags()`. Classes that implement it, such as hand-written fakes for tests, no longer compile until they're updated. They also add the `options` parameter and `captureAi()` (see [Event options](#event-options) and [AI events](#ai-events)).
 
@@ -225,16 +232,16 @@ The `reloadFeatureFlags()` callback still runs on a background thread, or right 
 class FakePostHog : PostHogInterface {
     override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {}
 
-    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription =
-        TODO("Return a subscription from your own fake")
+    // mock() from mockito-kotlin, or your mocking library's equivalent
+    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription = mock()
 
     // ...
 }
 ```
 
-`PostHogFeatureFlagsSubscription` and `PostHogFeatureFlagsLoaded` have constructors marked `@PostHogInternal`, which aren't intended for app code, so prefer a mocking library for these types if you can.
+`PostHogFeatureFlagsSubscription` and `PostHogFeatureFlagsLoaded` have constructors marked `@PostHogInternal`, which aren't intended for app code, so create them with a mocking library.
 
-## Internal APIs
+### Internal APIs
 
 These helpers were public only by accident and were marked `@PostHogInternal`. They're no longer visible outside the SDK and have no replacement. Apps that don't use `@PostHogInternal` APIs aren't affected.
 
@@ -247,9 +254,9 @@ These helpers were public only by accident and were marked `@PostHogInternal`. T
 
 If you call `PostHogRemoteConfig.loadFeatureFlags()` or `loadRemoteConfig()`, their callback parameters changed too. The internal callback is now `(errorsLoading: Boolean) -> Unit`, and the other is a `PostHogFeatureFlagsCallback`.
 
-## Behavior changes
+### Behavior changes
 
-### Feature flag payloads must be valid JSON
+#### Feature flag payloads must be valid JSON
 
 A payload that isn't valid JSON now reads as `null` from `getFeatureFlagResult(key)?.payload` and `getAllFeatureFlags()`, instead of the raw string. With `debug` on, the SDK logs the flag key.
 
@@ -267,13 +274,19 @@ If you read a payload as plain text, such as a payload saved as `hello` rather t
 
 Apps upgrading from 3.13 or older didn't cache flag details, so until the app's first `/flags` response, a malformed payload cached by 3.x still reads as the raw string, as it did in 3.x.
 
-### Empty variants read as disabled
+#### Empty variants read as disabled
 
 A flag whose variant is an empty string now reads as disabled everywhere, as it already did from `isFeatureEnabled()`, with or without `defaultValue`. `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it, where 3.x returned `true`, `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`, and captured events leave it out of `$active_feature_flags`. `variant`, `getFeatureFlag()` and the event's `$feature/<key>` property still return `""`.
 
-PostHog no longer accepts an empty variant for new flags, so only flags created earlier through the API, MCP or Terraform are affected.
+PostHog no longer accepts empty variants for new flags, so only flags created earlier through the API, MCP or Terraform are affected. `/flags` still returns `enabled: true` for them, and other PostHog SDKs can still report them as enabled, so rename the variant before you upgrade.
 
-### `$locale` and `$app_language`
+#### `$feature_flag_response` for a missing flag
+
+When a flag is missing, `$feature_flag_called` now leaves out `$feature_flag_response`. 3.x sent `""` from `getFeatureFlag()` and `false` from `isFeatureEnabled()`, or your default value when you passed one. In 4.0 an empty string means a flag with an empty variant, so a missing flag no longer reports one.
+
+Insights, cohorts and actions that filter on `$feature_flag_response = ""` or `false` to find missing flags stop matching new events without any error. Use an `is not set` filter on `$feature_flag_response` instead. Events already stored keep their old values.
+
+#### `$locale` and `$app_language`
 
 `$locale` now means the first language in the device settings, as a full language tag such as `de-CH` or `zh-Hant-TW`. In 3.x it came from `Locale.getDefault()`, which could be a secondary language, a per-app language or a value your app set with `Locale.setDefault()`, and it dropped the script (`zh-TW`). It's left out when the device reports no language. On older Android versions, 3.x also sent the legacy codes `iw`, `in` and `ji`, so Hebrew, Indonesian and Yiddish values change, such as `in-ID` to `id-ID`. Update filters that match those. Other values mostly stay the same, so otherwise only check filters if your users change these settings.
 
@@ -289,7 +302,7 @@ The SDK reads both languages in the background when an event is captured and use
 
 Strings you don't translate fall back per string, so the value is the app's language, not a guarantee for every string. Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes to send it on every version, or if you translate some other way, such as with an in-app language setting. It's kept in memory only.
 
-### Session replay records screenshots
+#### Session replay records screenshots
 
 4.0 removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did.
 
@@ -317,18 +330,18 @@ A dialog's dim, and a dialog masked whole on Android 8.1 and lower, are sent as 
 
 The `$sdk_debug_replay_capture_mode` property is now always `screenshot`.
 
-### Deep link query parameters
+#### Deep link query parameters
 
 The `Deep Link Opened` event leaves out query parameters whose name starts with `$`, such as `$process_person_profile`, so a link can't set PostHog's own properties. Other parameters and the `url` property are sent as in 3.x.
 
-### Other changes that don't fail the build
+#### Other changes that don't fail the build
 
 The code you end up with after these two migrations compiles, so they're easy to miss:
 
 - [`getFeatureFlagResult()` sends `$feature_flag_called` by default](#getfeatureflagpayload), unlike `getFeatureFlagPayload()`.
 - [Apps that set `remoteConfig = false` now load `/config`](#remoteconfig) and apply its settings.
 
-## Endpoints
+### Endpoints
 
 | Data | 3.x | 4.0 |
 | --- | --- | --- |
@@ -347,7 +360,7 @@ Analytics requests are gzipped unless you set `compression` to `PostHogCompressi
 A personal API key (`phx_...`) in `projectToken` now disables the SDK at setup, as an empty or whitespace-only token does. Both print why, even when `debug` is off. To turn the SDK off in tests, use an empty token.
 In 3.x, the SDK started and PostHog rejected every event with a 401. Use your project token (`phc_...`).
 
-### Hosts without capture v1
+#### Hosts without capture v1
 
 If you self-host PostHog, make sure `/i/v1/analytics/events` is served before you upgrade, and `/i/v1/ai/events` if you use `captureAi`.
 PostHog Cloud (`us.i.posthog.com`, `eu.i.posthog.com`) serves it.
@@ -363,7 +376,7 @@ PostHog's managed reverse proxy already does this and needs no change. A proxy s
 
 The SDK doesn't fall back to `/batch`. A 404 is retried, so the events stay queued until the path is served, and the SDK prints one warning, even with `debug` off. Any other error status that isn't retried, such as 403 or 405, drops the events.
 
-### Redirects
+#### Redirects
 
 The SDK follows a 307 or 308 redirect only to the origin of `host` (same scheme, host and port), at most 5 times, and resends the same body and headers.
 Any other redirect is not followed and the events are dropped.
@@ -371,7 +384,7 @@ In 3.x, OkHttp followed redirects to any host.
 If a proxy redirects capture requests to another host, point `host` at the final host.
 This also applies when you set your own `httpClient`: for capture requests, the SDK turns off its redirect following and OkHttp's connection retries, and keeps your other settings. Other requests, such as session replay and logs, behave as in 3.x.
 
-## Event validation
+### Event validation
 
 Capture v1 checks each event on its own and drops only the invalid ones, so the rest of the batch is delivered.
 
@@ -398,11 +411,13 @@ A `NaN` or infinite number in the properties is dropped from the event, and the 
 
 A map key in the properties that isn't a string is converted to one when it's a number, a boolean or `null`. Any other key is dropped with its value, and the rest of the event is sent. With `debug` on, the SDK logs the key's type. In 3.x, a nested map with a non-string key lost the whole event.
 
+A `null` element in a list or array in the properties is now sent as JSON `null` at its position, and so is an element that can't be serialized, such as `NaN`. In 3.x, both were removed, which moved the later elements to lower indexes. A property or map entry whose value is `null` is still left out.
+
 The distinct ID can come from `identify()`, the `distinctId` argument of `capture` or `beforeSend`.
 If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
 `identify()` with an empty or whitespace-only distinct ID is still ignored, as in 3.x.
 
-## Property precedence
+### Property precedence
 
 An event's properties are merged in this order, and later values win:
 
@@ -417,7 +432,7 @@ A registered `$session_id` now overrides the SDK's session ID, which can detach 
 A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
 In 3.x, a `$set`, `$set_once` or `$groups` map in properties replaced the per-call values and the groups set with `group()`. A `$set` or `$set_once` you pass, or `userProperties`, still replaces a registered one whole.
 
-## Session and window IDs
+### Session and window IDs
 
 Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, not as properties.
 The SDK moves them out of `properties` for you.
@@ -426,14 +441,14 @@ Any other value is removed and not sent. With `debug` on, the SDK logs the key a
 A null value counts as unset and is removed without a log.
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters and session replay work as before.
 
-## Timestamps and IDs
+### Timestamps and IDs
 
 The SDK sends every timestamp in UTC with 3 fractional digits, for example `2026-01-01T00:00:00.000Z`, as 3.x did.
 It doesn't check for future timestamps. PostHog replaces a timestamp more than 23 hours ahead with the time it received the event.
 Event uuids and anonymous distinct IDs are UUID v7, as in 3.x. An anonymous ID you change with `getAnonymousId` is sent as you return it.
 Each capture request also sends a UUID v7 request ID in the `PostHog-Request-Id` header, which 3.x didn't send.
 
-## Event options
+### Event options
 
 Capture v1 reads processing settings from an `options` object sent next to `properties`.
 `capture` takes a new `options` argument, and `beforeSend` can read and change `PostHogEvent.options`.
@@ -466,7 +481,9 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - An option you pass to any of these methods or set in `beforeSend` wins over its legacy property. An option set to `null` counts as unset, so the legacy property fills it.
 - To change person processing in `beforeSend`, edit `event.options`. A `$process_person_profile` property the hook adds only fills an option that is still unset, so it doesn't override the `false` the SDK set for an anonymous event.
 - When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither, because PostHog processes person profiles by default. In 3.x, every event carried a `$process_person_profile` property. To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property. A registered `$process_person_profile` changes it for every event.
+- This also applies with `personProfiles = PersonProfiles.NEVER`: a `process_person_profile` option or `$process_person_profile` property set to `true`, passed or registered, turns person processing on for that event. In 3.x, `NEVER` always won. If you rely on `NEVER` to keep events personless, make sure neither is set to `true`, or remove it in `beforeSend`.
 - Review your `beforeSend` hooks for the new event shape. In 3.x, the SDK marked person processing with the `$process_person_profile` property. In 4.0, it's the `process_person_profile` option, and the property isn't set. A hook that assigns a new map to `event.options` without keeping that key loses the `false` the SDK set. That turns person processing on for anonymous users, overriding `personProfiles`. Editing `event.options` in place keeps it.
+- `beforeSend` gets its own copy of the event's nested maps, lists and arrays, in `properties` and `options`. Changes a hook makes no longer reach the objects you passed to `capture` or registered, and identity checks against them (`===`) no longer match. In 3.x, hooks edited the caller's objects.
 - `options` is a property of `PostHogEvent`, not a constructor parameter, so the constructor and `copy` are unchanged from 3.x. When `beforeSend` returns a different event whose `options` is `null`, such as one made with `event.copy(…)` or the constructor, it gets the options of the event the hook was given. To send an event with no options, set `options` to an empty map.
 - A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
@@ -479,7 +496,7 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
 
-## AI events
+### AI events
 
 4.0 adds `captureAi`, which sends AI events, such as `$ai_generation`, to PostHog's AI endpoint (`/i/v1/ai/events`) instead of the analytics endpoint.
 It takes the same arguments as `capture`, and the events go through the same `beforeSend` hooks.
@@ -495,13 +512,15 @@ PostHog.captureAi(
 - An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`. With `debug` on, it logs the event name and the limit, never the content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB, and with `debug` on the SDK logs that it did.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
-- AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
-- `flush()` and `close()` also send the AI queue, and AI events left on disk are sent at the next launch.
+- On Android, AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Core alone keeps them in memory. Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
+- `flush()` and `close()` also send the AI queue. On Android, AI events left on disk are sent at the next launch.
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
 - The SDK sends AI events unchanged. It doesn't redact or truncate prompts, outputs or media, so use `beforeSend` to remove anything you don't want to send.
 
-## Retries
+### Retries
+
+These apply to analytics and AI event requests, unless a bullet names session replay or logs. Session replay and logs keep their 3.x status handling: they still retry 3xx and don't retry 404.
 
 - The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. A product quota, such as for exceptions or AI events, drops only those events inside a 200 response. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
@@ -516,7 +535,7 @@ PostHog.captureAi(
 - A 413 still halves the batch until it fits, as in 3.x. An event that gets a 413 on its own is dropped.
 - `beforeSend` still runs when you capture the event, before it's queued, not when the batch is sent.
 
-## New: `onFeatureFlags()`
+### New: `onFeatureFlags()`
 
 `onFeatureFlags()` is now the way to listen for flag loads, for example from a screen or a library. You can remove the listener later:
 
@@ -533,7 +552,7 @@ subscription.unsubscribe()
 
 On Android, listeners run on the main thread. On the JVM, they run on a background thread. If flags have already loaded, a new listener also gets the current values shortly after it registers. You can register before `setup()`, and listeners stay registered across `close()` and `setup()`.
 
-## `posthog-server`
+### `posthog-server`
 
 `posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it. `PostHogEvent`, which `beforeSend` gets, keeps its 3.x constructor and `copy`, and gains an `options` property; `posthog-server` still sends to `/batch`, which doesn't use it, so a value set in `beforeSend` is sent but has no effect.
 
@@ -541,6 +560,9 @@ It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, re
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
-Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`.
+Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`. A `null` element in a list or array in the properties is sent as JSON `null` at its position instead of being removed. `beforeSend` gets its own copy of the event's nested maps, lists and arrays, so its changes no longer reach the objects you passed to `capture`.
 
-Its next release depends on core 7.0, so update it if your project also uses core 7.0 or `posthog-android` 4.0. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
+`posthog-server` 2.25.0 depends on core 7.0, so upgrade it and `posthog-android` together:
+
+- If your project uses `posthog-android` 4.0 or core 7.0, use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
+- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. Gradle resolves core 7.0 for both, and `posthog-android` 3.x fails at runtime against it with errors such as `NoSuchMethodError`.

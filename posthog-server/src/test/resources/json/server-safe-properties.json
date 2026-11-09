@@ -18,11 +18,14 @@
         },
         "ordered_array": [
           "alpha",
+          null,
           "omega"
         ],
         "ordered_list": [
           "first",
-          "third"
+          null,
+          "third",
+          null
         ]
       },
       "timestamp": "2023-09-20T11:58:49.000Z",

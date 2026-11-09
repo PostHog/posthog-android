@@ -1,5 +1,6 @@
 package com.posthog.internal
 
+import com.google.gson.JsonParser
 import com.posthog.BuildConfig
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
@@ -859,6 +860,48 @@ internal class PostHogCaptureV1Test {
         assertTrue(sut.dequeList.isEmpty())
         assertEquals(1, http.requestCount)
         assertFalse(logger.messages.any { it.contains("successfully") })
+    }
+
+    // The capture spec's example: null object members are dropped, null array elements keep their index.
+    private fun assertQueuedNullsMatchSpec(ai: Boolean) {
+        @Suppress("UNCHECKED_CAST")
+        val properties =
+            mutableMapOf<String, Any?>(
+                "test" to null,
+                "items" to listOf("1", null, 2, mapOf("drop" to null), listOf(null)),
+                "nested" to mapOf("drop" to null, "keep" to 1),
+                "top" to listOf(null),
+                "empty" to "",
+                "zero" to 0,
+                "enabled" to false,
+                "literal" to "null",
+                "emptyArray" to emptyList<Any>(),
+            ) as MutableMap<String, Any>
+        val event = event(if (ai) "\$ai_generation" else "event").copy(properties = properties)
+        val http = httpServers.mockHttp(response = resultsResponse(event.uuid!! to "ok"))
+        val sut = queue(http, ai = ai)
+
+        sut.add(event)
+        executor.awaitExecution()
+
+        val sent = JsonParser.parseString(http.takeRequest().body.unGzip()).asJsonObject["batch"].asJsonArray.single()
+        assertEquals(
+            JsonParser.parseString(
+                "{\"items\":[\"1\",null,2,{},[null]],\"nested\":{\"keep\":1},\"top\":[null]," +
+                    "\"empty\":\"\",\"zero\":0,\"enabled\":false,\"literal\":\"null\",\"emptyArray\":[]}",
+            ),
+            sent.asJsonObject["properties"],
+        )
+    }
+
+    @Test
+    fun `queued events keep null array elements at their index and drop null object members`() {
+        assertQueuedNullsMatchSpec(ai = false)
+    }
+
+    @Test
+    fun `queued AI events keep null array elements at their index and drop null object members`() {
+        assertQueuedNullsMatchSpec(ai = true)
     }
 
     @Test

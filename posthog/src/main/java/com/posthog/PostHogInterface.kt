@@ -700,4 +700,26 @@ public interface PostHogInterface : PostHogCoreInterface {
         event: PostHogEvent,
         ai: Boolean = false,
     ): UUID? = null
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); not for app code.
+     *
+     * Registers capture options sent with every later event, under each event's own options. New
+     * values overwrite existing ones for the same keys and persist across app restarts until removed
+     * with [unregisterOptionsForWrapper] or cleared by `reset()`.
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun registerOptionsForWrapper(options: Map<String, Any>) {}
+
+    /**
+     * For wrapper SDKs only (Flutter, React Native); not for app code.
+     *
+     * Removes an option registered with [registerOptionsForWrapper].
+     *
+     * @suppress
+     */
+    @PostHogInternal
+    public fun unregisterOptionsForWrapper(key: String) {}
 }
