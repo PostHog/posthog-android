@@ -30,12 +30,13 @@ You need to change code if your app does any of these:
 - uses `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, `drawableConverter` or `remoteConfig`
 - passes `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position
 - calls `getFeatureFlagPayload()`, or passes a default value to `getFeatureFlag()`
+- filters insights, cohorts or actions on the `$feature_flag_response` of `$feature_flag_called`, such as `""` or `false` for a missing flag (see [`$feature_flag_response` for a missing flag](#feature_flag_response-for-a-missing-flag))
 - sets `PostHogConfig.onFeatureFlags` or `PostHogOnFeatureFlags`, or passes a callback to `reloadFeatureFlags()`
 - uses session replay (see [Session replay records screenshots](#session-replay-records-screenshots))
 - reads a feature flag payload that isn't valid JSON, such as plain text saved as `hello`
 - breaks down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6–12)
 - reads event content or request bodies from the SDK's debug log, or matches its log text
-- depends only on `posthog-android-surveys-compose`, or uses `posthog-server`
+- depends only on `posthog-android-surveys-compose`, or uses `posthog-server` (2.25.0 and later need `posthog-android` 4.0 in the same project)
 
 ## Requirements and versions
 
@@ -44,7 +45,7 @@ You need to change code if your app does any of these:
 | `com.posthog:posthog-android` | 3.x to 4.0 |
 | `com.posthog:posthog` (core) | 6.x to 7.0 |
 | `com.posthog:posthog-android-surveys-compose` | keep your version, and declare `com.posthog:posthog-android` 4.0.0 or later in your build so Gradle resolves 4.x instead of the 3.x version it pulls in |
-| `com.posthog:posthog-server` | see [`posthog-server`](#posthog-server) |
+| `com.posthog:posthog-server` | 2.25.0, together with `posthog-android` 4.0; see [`posthog-server`](#posthog-server) |
 
 These are unchanged, so you don't need to change your build for them:
 
@@ -144,7 +145,7 @@ The second parameter is now `sendFeatureFlagEvent`, which affects code that stil
 
 - `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
 - A disabled SDK now returns `null`, not your default.
-- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response`, because an empty string now means an empty variant.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response` (see [`$feature_flag_response` for a missing flag](#feature_flag_response-for-a-missing-flag)).
 
 Classes that implement `PostHogInterface` update the signature.
 
@@ -203,6 +204,8 @@ The listener differs from the removed option in three ways:
 - Bootstrapped flags arrive just after `setup()` is called, not synchronously inside it.
 - A reload on a disabled SDK doesn't call listeners. `reloadFeatureFlags(callback)` still gets `errorsLoading = true` in that case.
 
+From Java, the `reloadFeatureFlags()` lambda now takes the `PostHogFeatureFlagsLoaded` argument:
+
 ```java
 // 3.x
 PostHog.Companion.reloadFeatureFlags(() -> refreshUi());
@@ -225,14 +228,14 @@ The `reloadFeatureFlags()` callback still runs on a background thread, or right 
 class FakePostHog : PostHogInterface {
     override fun reloadFeatureFlags(onFeatureFlags: PostHogFeatureFlagsCallback?) {}
 
-    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription =
-        TODO("Return a subscription from your own fake")
+    // mock() from mockito-kotlin, or your mocking library's equivalent
+    override fun onFeatureFlags(callback: PostHogFeatureFlagsCallback): PostHogFeatureFlagsSubscription = mock()
 
     // ...
 }
 ```
 
-`PostHogFeatureFlagsSubscription` and `PostHogFeatureFlagsLoaded` have constructors marked `@PostHogInternal`, which aren't intended for app code, so prefer a mocking library for these types if you can.
+`PostHogFeatureFlagsSubscription` and `PostHogFeatureFlagsLoaded` have constructors marked `@PostHogInternal`, which aren't intended for app code, so create them with a mocking library.
 
 ## Internal APIs
 
@@ -272,6 +275,12 @@ Apps upgrading from 3.13 or older didn't cache flag details, so until the app's 
 A flag whose variant is an empty string now reads as disabled everywhere, as it already did from `isFeatureEnabled()`, with or without `defaultValue`. `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it, where 3.x returned `true`, `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`, and captured events leave it out of `$active_feature_flags`. `variant`, `getFeatureFlag()` and the event's `$feature/<key>` property still return `""`.
 
 PostHog no longer accepts an empty variant for new flags, so only flags created earlier through the API, MCP or Terraform are affected.
+
+### `$feature_flag_response` for a missing flag
+
+When a flag is missing, `$feature_flag_called` now leaves out `$feature_flag_response`. 3.x sent `""` from `getFeatureFlag()` and `false` from `isFeatureEnabled()`, or your default value when you passed one. In 4.0 an empty string means a flag with an empty variant, so a missing flag no longer reports one.
+
+Insights, cohorts and actions that filter on `$feature_flag_response = ""` or `false` to find missing flags stop matching new events without any error. Use an `is not set` filter on `$feature_flag_response` instead. Events already stored keep their old values.
 
 ### `$locale` and `$app_language`
 
@@ -503,6 +512,8 @@ PostHog.captureAi(
 
 ## Retries
 
+These apply to analytics and AI event requests, unless a bullet names session replay or logs. Session replay and logs keep their 3.x status handling: they still retry 3xx and don't retry 404.
+
 - The SDK retries network errors and 404, 408, 429, 500, 502, 503 and 504 responses. Other statuses drop the events, including 3xx, and a 402 (billing limit) drops the whole batch. A product quota, such as for exceptions or AI events, drops only those events inside a 200 response. 3.x also retried 3xx responses, and didn't retry 404.
 - When the response asks to retry only some events, the SDK keeps those events queued and removes the rest.
 - A failed request is resent with the same events, request ID and `created_at`, and the next attempt number, before newer events are sent. The request ID and attempt number reset after an app restart. OkHttp doesn't retry capture requests on its own.
@@ -543,4 +554,7 @@ A personal API key (`phx_...`) in `projectToken` now disables the client at setu
 
 Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`.
 
-Its next release depends on core 7.0, so update it if your project also uses core 7.0 or `posthog-android` 4.0. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
+`posthog-server` 2.25.0 depends on core 7.0, so upgrade it and `posthog-android` together:
+
+- If your project uses `posthog-android` 4.0 or core 7.0, use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
+- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. Gradle resolves core 7.0 for both, and `posthog-android` 3.x fails at runtime against it with errors such as `NoSuchMethodError`.
