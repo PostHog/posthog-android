@@ -592,6 +592,30 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `captured events leave a flag with an empty variant out of active_feature_flags`() {
+        val flags =
+            File("src/test/resources/json/basic-flags-with-non-active-flags.json").readText()
+                .replace("\"variant\": \"SplashV2\"", "\"variant\": \"\"")
+        val http = mockHttp(response = MockResponse().setBody(flags))
+        http.enqueue(MockResponse().setBody(""))
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest()
+
+        sut.capture(EVENT, DISTINCT_ID)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val properties = batch.batch.first().properties!!
+        assertEquals("", properties["\$feature/splashScreenName"])
+        assertEquals(listOf("4535-funnel-bar-viz"), properties["\$active_feature_flags"])
+
+        sut.close()
+    }
+
+    @Test
     fun `feature flag called event reports has_experiment from flag metadata`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
