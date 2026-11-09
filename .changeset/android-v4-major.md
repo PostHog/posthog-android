@@ -24,6 +24,7 @@
 - **Breaking:** remove the deprecated `remoteConfig` option; the SDK always loads remote config at setup
 - **Breaking:** remove the deprecated `getFeatureFlagPayload()`; use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`
 - **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a missing flag or a disabled SDK; a positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback as the flag's value
+- **Breaking:** leave `$feature_flag_response` out of `$feature_flag_called` for a missing flag instead of sending an empty string
 - **Breaking:** remove `PostHogConfig.onFeatureFlags`; call `PostHog.onFeatureFlags(callback)` before `setup()` instead
 - **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`, which receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values and `errorsLoading`
 - **Breaking:** return `null` from `getFeatureFlagResult(key)?.payload` for a payload that isn't valid JSON, such as plain text, a malformed or empty string, or a JSON `null`

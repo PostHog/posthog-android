@@ -144,7 +144,7 @@ The second parameter is now `sendFeatureFlagEvent`, which affects code that stil
 
 - `getFeatureFlag("checkout", true)` compiles, but `true` now means `sendFeatureFlagEvent` rather than the default value.
 - A disabled SDK now returns `null`, not your default.
-- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event reports an empty response.
+- `$feature_flag_called` no longer reports a fallback as the flag's value. `isFeatureEnabled("missing", true)` still returns `true`, but its event leaves out `$feature_flag_response`, because an empty string now means an empty variant.
 
 Classes that implement `PostHogInterface` update the signature.
 
