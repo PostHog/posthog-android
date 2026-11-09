@@ -39,6 +39,7 @@
 - Add `onFeatureFlags()` to listen for every feature flags load (on the main thread on Android), returning a `PostHogFeatureFlagsSubscription` you can `unsubscribe()`
 - Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
 - Add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event
+- Add internal APIs so wrapper SDKs can register capture options sent with every event
 - Send events queued on disk by 3.x through capture v1 after the update
 - Cap a capture request at about 5 MiB of events and send as soon as that much is queued
 - Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
