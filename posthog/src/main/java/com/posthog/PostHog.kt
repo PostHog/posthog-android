@@ -21,6 +21,7 @@ import com.posthog.internal.PostHogPreferences.Companion.OPT_OUT
 import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_OPENED_MESSAGE_IDS
 import com.posthog.internal.PostHogPreferences.Companion.PUSH_SUBSCRIPTION_REJECTED
+import com.posthog.internal.PostHogPreferences.Companion.REGISTERED_OPTIONS
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.PostHogPreferences.Companion.VERSION
@@ -137,6 +138,7 @@ public class PostHog private constructor(
     private val deviceIdLock = Any()
     private val identifiedLock = Any()
     private val groupsLock = Any()
+    private val registeredOptionsLock = Any()
     private val personProcessingLock: Any = Any()
 
     private val featureFlagsCalledLock = Any()
@@ -924,7 +926,7 @@ public class PostHog private constructor(
 
             props["\$is_identified"] = isIdentified
             // No `$process_person_profile`: person processing is sent as the `process_person_profile`
-            // option, only when it's off (see personProcessingOptions). A registered or caller
+            // option, only when it's off (see optionsForEvent). A registered or caller
             // `$process_person_profile` wins over it when the send hoists the property.
         }
 
@@ -1104,19 +1106,25 @@ public class PostHog private constructor(
     }
 
     /**
-     * Adds `process_person_profile: false` when the SDK doesn't process person profiles for this
-     * event, unless the caller set that option or [properties] carry a non-null legacy
-     * `$process_person_profile` property (per call or registered). Nothing is added otherwise:
-     * PostHog processes person profiles by default. [personProcessingPending] counts a person
-     * processing change a wrapper build defers to its send. Returns a copy, so `beforeSend` edits
-     * never reach the caller's map.
+     * The event's [options] over the wrapper-registered ones, plus `process_person_profile: false`
+     * when the SDK doesn't process person profiles for this event, unless an option or a non-null
+     * legacy `$process_person_profile` property in [properties] (per call or registered) already
+     * says otherwise. Nothing is added otherwise: PostHog processes person profiles by default.
+     * [personProcessingPending] counts a person processing change a wrapper build defers to its
+     * send. Returns a copy, so `beforeSend` edits never reach the caller's map.
      */
-    private fun personProcessingOptions(
+    private fun optionsForEvent(
         options: Map<String, Any?>?,
         properties: Map<String, Any>,
         personProcessingPending: Boolean = false,
     ): MutableMap<String, Any?>? {
-        val eventOptions = options?.toMutableMap()
+        val registered = getRegisteredOptions()
+        val eventOptions =
+            if (registered.isEmpty()) {
+                options?.toMutableMap()
+            } else {
+                registered.toMutableMap<String, Any?>().apply { options?.let { putAll(it) } }
+            }
         if ((personProcessingPending && config?.personProfiles != PersonProfiles.NEVER) ||
             hasPersonProcessing() ||
             properties["\$process_person_profile"] != null
@@ -1135,7 +1143,13 @@ public class PostHog private constructor(
      * neither stores nor matches the person-properties hash.
      */
     private fun isPersonProcessed(options: Map<String, Any?>?): Boolean {
-        val option = options?.get("process_person_profile")
+        // An explicit null in [options] replaces the registered option, as in optionsForEvent.
+        val option =
+            if (options?.containsKey("process_person_profile") == true) {
+                options["process_person_profile"]
+            } else {
+                getRegisteredOptions()["process_person_profile"]
+            }
         if (option != null) {
             return !isFalseOptionValue(option)
         }
@@ -1412,7 +1426,7 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 options?.toMutableMap()
             } else {
-                personProcessingOptions(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing)
+                optionsForEvent(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing)
             }
 
         // This capture's identity, kept through beforeSend.
@@ -2946,6 +2960,34 @@ public class PostHog private constructor(
         getPreferences().remove(key)
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun getRegisteredOptions(): Map<String, Any> = getPreferences().getValue(REGISTERED_OPTIONS) as? Map<String, Any> ?: emptyMap()
+
+    @PostHogInternal
+    override fun registerOptionsForWrapper(options: Map<String, Any>) {
+        if (!isEnabled()) {
+            return
+        }
+        synchronized(registeredOptionsLock) {
+            getPreferences().setValue(REGISTERED_OPTIONS, getRegisteredOptions() + options)
+        }
+    }
+
+    @PostHogInternal
+    override fun unregisterOptionsForWrapper(key: String) {
+        if (!isEnabled()) {
+            return
+        }
+        synchronized(registeredOptionsLock) {
+            val remaining = getRegisteredOptions() - key
+            if (remaining.isEmpty()) {
+                getPreferences().remove(REGISTERED_OPTIONS)
+            } else {
+                getPreferences().setValue(REGISTERED_OPTIONS, remaining)
+            }
+        }
+    }
+
     public override fun setAppLanguage(language: String?) {
         appLanguage = language?.trim()?.replace('_', '-')?.ifEmpty { null }
     }
@@ -3623,6 +3665,16 @@ public class PostHog private constructor(
             event: PostHogEvent,
             ai: Boolean,
         ): UUID? = shared.sendBuiltEventForWrapper(event, ai)
+
+        @PostHogInternal
+        override fun registerOptionsForWrapper(options: Map<String, Any>) {
+            shared.registerOptionsForWrapper(options)
+        }
+
+        @PostHogInternal
+        override fun unregisterOptionsForWrapper(key: String) {
+            shared.unregisterOptionsForWrapper(key)
+        }
 
         override fun isSessionActive(): Boolean {
             return shared.isSessionActive()

@@ -479,4 +479,84 @@ internal class PostHogWrapperEventTest {
 
         assertEquals(false, assertNotNull(sut.buildEventForWrapper("tap")).options?.get("process_person_profile"))
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any?>.options(): Map<String, Any?>? = this["options"] as Map<String, Any?>?
+
+    @Test
+    fun `registered options are sent on every event, under the event's own options`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("cookieless_mode" to false, "disable_skew_correction" to true))
+
+        sut.capture("plain")
+        queueExecutor.awaitExecution()
+        val plain = events(takeRequest(http)).single()
+        sut.capture("own", options = mapOf("cookieless_mode" to true))
+        queueExecutor.awaitExecution()
+        val own = events(takeRequest(http)).single()
+
+        assertEquals(false, plain.options()?.get("cookieless_mode"))
+        assertEquals(true, plain.options()?.get("disable_skew_correction"))
+        assertEquals(true, own.options()?.get("cookieless_mode"))
+        assertEquals(true, own.options()?.get("disable_skew_correction"))
+        assertFalse(plain.properties().containsKey("registeredOptions"))
+    }
+
+    @Test
+    fun `a wrapper build carries the registered options, so the wrapper's beforeSend sees them`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("disable_skew_correction" to true, "cookieless_mode" to false))
+
+        val built = assertNotNull(sut.buildEventForWrapper("e", options = mapOf("cookieless_mode" to true)))
+
+        assertEquals(true, built.options?.get("disable_skew_correction"))
+        assertEquals(true, built.options?.get("cookieless_mode"))
+    }
+
+    @Test
+    fun `a registered process_person_profile replaces the SDK's personless default`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("process_person_profile" to true))
+
+        sut.capture("anonymous")
+        queueExecutor.awaitExecution()
+
+        assertEquals(true, events(takeRequest(http)).single().options()?.get("process_person_profile"))
+    }
+
+    @Test
+    fun `an explicit null option over a registered one doesn't mark a personless $set as processed`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("process_person_profile" to true))
+        sut.register("\$process_person_profile", false)
+
+        sut.setPersonProperties(mapOf("plan" to "pro"), null, mapOf("process_person_profile" to null))
+        queueExecutor.awaitExecution()
+        val personless = events(takeRequest(http)).single()
+        sut.setPersonProperties(mapOf("plan" to "pro"), null, null)
+        queueExecutor.awaitExecution()
+
+        assertEquals(false, personless.options()?.get("process_person_profile"))
+        assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `unregister and reset remove registered options`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("cookieless_mode" to true, "disable_skew_correction" to true))
+
+        sut.unregisterOptionsForWrapper("cookieless_mode")
+        val afterUnregister = assertNotNull(sut.buildEventForWrapper("e"))
+        assertNull(afterUnregister.options?.get("cookieless_mode"))
+        assertEquals(true, afterUnregister.options?.get("disable_skew_correction"))
+
+        sut.reset()
+        val afterReset = assertNotNull(sut.buildEventForWrapper("e"))
+        assertNull(afterReset.options?.get("disable_skew_correction"))
+    }
 }
