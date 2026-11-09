@@ -14,8 +14,7 @@ import android.content.Context
  * time: the wall clock can move backwards, so start times do not order runs.
  */
 internal class NativeCrashClockOffsetStore(context: Context) {
-    private val preferences =
-        context.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+    private val preferences = context.nativeCrashPreferences()
 
     /** The offset last recorded by the run with [pid], or null if none is known. */
     fun offsetFor(pid: Int): Long? = runs().lastOrNull { it.first == pid }?.second

@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Process
 import android.os.UserManager
+import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.annotation.RequiresApi
 import com.posthog.PostHogEventName
 import com.posthog.PostHogIntegration
@@ -16,6 +17,7 @@ import com.posthog.PostHogInterface
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.errortracking.NativeCrashClockOffsetStore
 import com.posthog.android.internal.errortracking.NativeCrashEventCoercer
+import com.posthog.android.internal.errortracking.NativeCrashOptOutIntervalStore
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TombstoneParser
 import com.posthog.android.internal.getActivityManager
@@ -25,6 +27,9 @@ import java.io.InputStream
 import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -48,6 +53,10 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     private val config: PostHogAndroidConfig
     private val executorFactory: () -> ExecutorService
     private val wallClockMs: () -> Long
+
+    // Not shut down by uninstall(), so a consent write queued just before it still lands.
+    private val consentExecutor: Lazy<ExecutorService>
+    private val optOutIntervalStore by lazy { NativeCrashOptOutIntervalStore(context) }
     private var executor: ExecutorService? = null
     private var postHog: PostHogInterface? = null
     private var timeChangedReceiver: BroadcastReceiver? = null
@@ -61,6 +70,11 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         context,
         config,
         { Executors.newSingleThreadExecutor(PostHogThreadFactory("PostHogNativeCrashThread")) },
+        consentExecutorFactory = {
+            // the thread exits when idle, since nothing ever shuts this executor down
+            ThreadPoolExecutor(1, 1, 1, TimeUnit.SECONDS, LinkedBlockingQueue(), PostHogThreadFactory("PostHogNativeCrashConsentThread"))
+                .apply { allowCoreThreadTimeOut(true) }
+        },
     )
 
     internal constructor(
@@ -68,11 +82,13 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         config: PostHogAndroidConfig,
         executorFactory: () -> ExecutorService,
         wallClockMs: () -> Long = System::currentTimeMillis,
+        consentExecutorFactory: () -> ExecutorService = executorFactory,
     ) {
         this.context = context
         this.config = config
         this.executorFactory = executorFactory
         this.wallClockMs = wallClockMs
+        this.consentExecutor = lazy(consentExecutorFactory)
     }
 
     private companion object {
@@ -83,6 +99,8 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         // Far above any tombstone the OS actually writes (KBs to low MBs), but
         // low enough that a single record cannot exhaust the heap.
         private const val MAX_TOMBSTONE_BYTES = 16 * 1024 * 1024
+
+        private const val CONSENT_WRITE_TIMEOUT_SECONDS = 5L
     }
 
     // Returns null for a stream larger than [MAX_TOMBSTONE_BYTES]: oversized is
@@ -109,26 +127,17 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     override fun install(postHog: PostHogInterface) {
         this.postHog = postHog
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        // install only runs while opted in, so any open opt-out interval has ended. Close it before
+        // the early returns so consent history stays intact.
+        val optInRecorded = recordConsent("opt-in") { close(it) }
+
+        if (!canRecordConsent()) {
+            return
+        }
+        if (!config.errorTrackingConfig.captureNativeCrashes) {
             return
         }
         if (config.remoteConfigHolder?.isNativeCrashCaptureEnabled() != true) {
-            return
-        }
-        // The exit history spans every process of the package, and the scanner
-        // guard and watermark are process-local, so scanning from more than
-        // one process would capture the same records twice. The application's
-        // default process scans on behalf of all of them, compared by the
-        // manifest-resolved name: android:process on <application> renames the
-        // default process away from the package name.
-        val mainProcessName = context.applicationInfo.processName ?: context.packageName
-        if (Application.getProcessName() != mainProcessName) {
-            return
-        }
-        // While the device is locked (Direct Boot) the watermark store is
-        // unreadable and scanning would re-capture already-reported crashes.
-        val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
-        if (userManager?.isUserUnlocked == false) {
             return
         }
         if (!integrationInstalled.compareAndSet(false, true)) {
@@ -141,7 +150,10 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
             // uninstall or a remote disable can be scheduled again later.
             val executor = executorFactory()
             this.executor = executor
-            executor.submit { scanSafely(postHog) }
+            executor.submit {
+                awaitConsentRecorded(optInRecorded)
+                scanSafely(postHog)
+            }
             registerTimeChangedReceiver(executor)
         } catch (e: Throwable) {
             config.logger.log("Native crash scan could not be scheduled: $e.")
@@ -151,6 +163,11 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
     }
 
     override fun uninstall() {
+        // optOut() sets config.optOut before uninstalling, close() does not. Stamped before the
+        // early return and the scanner wait.
+        if (config.optOut) {
+            recordOptedOutStart()
+        }
         if (!installedByThisInstance) {
             return
         }
@@ -172,6 +189,68 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
         }
         installedByThisInstance = false
         integrationInstalled.set(false)
+    }
+
+    // Integrations are not installed on an opted-out launch, so setup reports it here instead.
+    internal fun recordOptedOutStart() {
+        recordConsent("opt-out") { open(it) }
+    }
+
+    // The exit history spans every process, but the scanner guard and native crash preferences are
+    // process-local. The default process acts for all of them; compare the manifest-resolved name,
+    // since android:process on <application> renames it.
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun isMainProcess(): Boolean {
+        val mainProcessName = context.applicationInfo.processName ?: context.packageName
+        return Application.getProcessName() == mainProcessName
+    }
+
+    // consent state only matters where a scan can happen
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.S)
+    private fun canRecordConsent(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isMainProcess() && isUserUnlocked()
+
+    // Stamped on the caller thread so the bound is the consent change itself; I/O runs on the consent executor.
+    private fun recordConsent(
+        change: String,
+        write: NativeCrashOptOutIntervalStore.(nowMs: Long) -> Unit,
+    ): Future<*>? {
+        if (!canRecordConsent()) {
+            return null
+        }
+        val nowMs = wallClockMs()
+        val fail = { e: Throwable -> config.logger.log("Recording the $change failed: $e.") }
+        return runCatching {
+            consentExecutor.value.submit {
+                try {
+                    optOutIntervalStore.write(nowMs)
+                } catch (e: Throwable) {
+                    fail(e)
+                }
+            }
+        }.getOrElse {
+            fail(it)
+            null
+        }
+    }
+
+    // The scan must see the interval the opt-in closed, or it would drop
+    // consented crashes recorded after it.
+    private fun awaitConsentRecorded(recorded: Future<*>?) {
+        try {
+            recorded?.get(CONSENT_WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (e: Throwable) {
+            config.logger.log("Waiting for the opt-in to be recorded failed: $e.")
+        }
+    }
+
+    // While the device is locked (Direct Boot) the native crash preferences
+    // are unreadable.
+    @RequiresApi(Build.VERSION_CODES.N)
+    private fun isUserUnlocked(): Boolean {
+        val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
+        return userManager?.isUserUnlocked != false
     }
 
     override fun onRemoteConfig(loaded: Boolean) {
@@ -275,6 +354,9 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
             return
         }
 
+        optOutIntervalStore.prune(watermark)
+        val optOutIntervals = optOutIntervalStore.intervals(wallClockMs())
+
         val parser = TombstoneParser()
         val applicationInfo = context.applicationInfo
         val coercer =
@@ -287,6 +369,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                     ) + (applicationInfo.splitSourceDirs?.toList() ?: emptyList()),
             )
         var captured = 0
+        var droppedOptedOut = 0
 
         for ((index, exitInfo) in crashes.withIndex()) {
             // uninstall interrupts the scanner; stop before acknowledging more records
@@ -294,26 +377,34 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                 return
             }
 
-            // Reading the trace can fail transiently (I/O), so abort without
-            // acknowledging and retry on the next launch. A tombstone that
-            // read fully but does not parse, or that exceeds the size cap, is
-            // deterministic: acknowledge and skip it, because retrying forever
-            // would hold the watermark below it and block every newer crash
-            // behind it.
-            val tombstoneBytes =
-                try {
-                    exitInfo.traceInputStream?.use { stream -> readTombstone(stream) }
-                } catch (e: Throwable) {
-                    config.logger.log("Reading a tombstone failed, retrying on the next launch: $e.")
-                    return
-                }
-
+            // A crash recorded without consent is acknowledged and skipped, so
+            // it is never sent once the user opts back in.
             val properties =
-                try {
-                    tombstoneBytes?.let { coercer.toPostHogProperties(parser.parse(it)) }
-                } catch (e: Throwable) {
-                    config.logger.log("Skipping a tombstone that could not be parsed: $e.")
+                if (optOutIntervals.any { exitInfo.timestamp in it }) {
+                    config.logger.log("Skipping a native crash recorded while opted out.")
+                    droppedOptedOut++
                     null
+                } else {
+                    // Reading the trace can fail transiently (I/O), so abort without
+                    // acknowledging and retry on the next launch. A tombstone that
+                    // read fully but does not parse, or that exceeds the size cap, is
+                    // deterministic: acknowledge and skip it, because retrying forever
+                    // would hold the watermark below it and block every newer crash
+                    // behind it.
+                    val tombstoneBytes =
+                        try {
+                            exitInfo.traceInputStream?.use { stream -> readTombstone(stream) }
+                        } catch (e: Throwable) {
+                            config.logger.log("Reading a tombstone failed, retrying on the next launch: $e.")
+                            return
+                        }
+
+                    try {
+                        tombstoneBytes?.let { coercer.toPostHogProperties(parser.parse(it)) }
+                    } catch (e: Throwable) {
+                        config.logger.log("Skipping a tombstone that could not be parsed: $e.")
+                        null
+                    }
                 }
 
             properties?.let {
@@ -341,7 +432,8 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
 
         config.logger.log(
             "Captured $captured native crash record(s) from previous runs" +
-                " (${crashes.size - captured} record(s) skipped without a readable tombstone).",
+                " ($droppedOptedOut record(s) dropped as recorded while opted out," +
+                " ${crashes.size - captured - droppedOptedOut} record(s) skipped without a readable tombstone).",
         )
     }
 }

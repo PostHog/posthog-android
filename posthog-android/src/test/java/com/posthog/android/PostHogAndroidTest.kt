@@ -2,6 +2,7 @@ package com.posthog.android
 
 import android.content.Context
 import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
@@ -22,6 +23,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -290,14 +292,39 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `does not register the native crash integration by default`() {
+    @Config(sdk = [34])
+    fun `an opted-out setup opens the native crash opt-out interval`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
+                optOut = true
+                persistOptOut = false
+                preloadFeatureFlags = false
+                cachePreferences = PostHogMemoryPreferences()
+                storagePrefix = tmpDir.newFolder().absolutePath
+                replayStoragePrefix = tmpDir.newFolder().absolutePath
+            }
+
+        PostHogAndroid.setup(appContext, config)
+
+        // the write runs on the integration's consent thread
+        val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!preferences.contains("optOutSince") && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertTrue(preferences.contains("optOutSince"))
+    }
+
+    @Test
+    fun `registers the native crash integration when disabled so consent changes are recorded`() {
         val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
         PostHogAndroid.setup(context, config)
 
-        assertNull(
+        assertNotNull(
             config.integrations.find {
                 it is PostHogNativeCrashIntegration
             },

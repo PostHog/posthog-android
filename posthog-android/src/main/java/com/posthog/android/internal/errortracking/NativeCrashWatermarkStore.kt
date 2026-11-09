@@ -13,8 +13,7 @@ import android.content.Context
  * that must never appear on events and must survive identity changes.
  */
 internal class NativeCrashWatermarkStore(context: Context) {
-    private val preferences =
-        context.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+    private val preferences = context.nativeCrashPreferences()
 
     fun get(): Long = preferences.getLong(KEY, 0L)
 

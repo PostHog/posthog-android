@@ -116,7 +116,7 @@ public class PostHogAndroid private constructor() {
                 // config it rejected would gate and persist under a project nothing is sent to.
                 if (PostHog.getConfig<PostHogAndroidConfig>() === config) {
                     androidConfig = config
-                    recordAppVersionIfOptedOut(PostHog.isOptOut(), config)
+                    onOptedOutStart(PostHog.isOptOut(), config)
                 }
             }
         }
@@ -138,17 +138,19 @@ public class PostHogAndroid private constructor() {
         ): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
             val postHog = PostHog.with(config)
-            recordAppVersionIfOptedOut(postHog.isOptOut(), config)
+            onOptedOutStart(postHog.isOptOut(), config)
             return postHog
         }
 
-        // Integrations aren't installed while opted out, but version accounting must still run.
-        private fun recordAppVersionIfOptedOut(
+        // Integrations aren't installed while opted out, but version accounting and the native
+        // crash opt-out interval must still be recorded.
+        private fun onOptedOutStart(
             optedOut: Boolean,
             config: PostHogAndroidConfig,
         ) {
             if (optedOut) {
                 config.integrations.filterIsInstance<PostHogAppInstallIntegration>().forEach { it.recordAppVersion() }
+                config.integrations.filterIsInstance<PostHogNativeCrashIntegration>().forEach { it.recordOptedOutStart() }
             }
         }
 
@@ -272,10 +274,9 @@ public class PostHogAndroid private constructor() {
                     PostHogPushSubscriptionIntegration(config)
                 }
             }
-            if (config.errorTrackingConfig.captureNativeCrashes) {
-                config.addIntegrationSafely("PostHogNativeCrashIntegration") {
-                    PostHogNativeCrashIntegration(context, config)
-                }
+            // added even when captureNativeCrashes is off, so consent changes are still recorded
+            config.addIntegrationSafely("PostHogNativeCrashIntegration") {
+                PostHogNativeCrashIntegration(context, config)
             }
         }
 
