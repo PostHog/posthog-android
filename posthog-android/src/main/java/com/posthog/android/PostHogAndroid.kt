@@ -138,7 +138,10 @@ public class PostHogAndroid private constructor() {
         ): PostHogInterface {
             setAndroidConfig(context.appContext(), config)
             val postHog = PostHog.with(config)
-            onOptedOutStart(postHog.isOptOut(), config)
+            // a disabled instance (empty token) reports opted out without the user having opted out
+            if (config.projectToken.isNotEmpty()) {
+                onOptedOutStart(postHog.isOptOut(), config)
+            }
             return postHog
         }
 

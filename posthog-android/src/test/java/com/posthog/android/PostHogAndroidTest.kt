@@ -28,6 +28,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -314,6 +315,26 @@ internal class PostHogAndroidTest {
             Thread.sleep(10)
         }
         assertTrue(preferences.contains("optOutSince"))
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `a disabled with instance does not open the native crash opt-out interval`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config =
+            PostHogAndroidConfig("").apply {
+                cachePreferences = PostHogMemoryPreferences()
+                storagePrefix = tmpDir.newFolder().absolutePath
+                replayStoragePrefix = tmpDir.newFolder().absolutePath
+            }
+
+        val postHog = PostHogAndroid.with(appContext, config)
+
+        assertTrue(postHog.isOptOut())
+        Thread.sleep(300)
+        val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+        assertFalse(preferences.contains("optOutSince"))
+        postHog.close()
     }
 
     @Test
