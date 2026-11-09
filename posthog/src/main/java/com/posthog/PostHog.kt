@@ -2592,11 +2592,16 @@ public class PostHog private constructor(
         val listener = FeatureFlagsListener(callback)
         featureFlagsListeners.add(listener)
 
-        remoteConfigExecutor.executeSafely {
-            runFeatureFlagsListener {
-                // Read at delivery time so a delivery already queued can't be followed by an older value.
-                lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) }
-            }
+        // Read at delivery time so a delivery already queued can't be followed by an older value.
+        val replay = { lastFeatureFlagsLoaded?.let { deliverFeatureFlags(listener, it) } }
+        // Post straight to the listener executor (the main thread on Android), so the replay doesn't
+        // wait behind a flags request in flight on the remote config thread. Without one, listeners
+        // run on the remote config thread, so the replay queues there.
+        val executor = config?.featureFlagsListenerExecutor
+        if (executor != null) {
+            executor.executeSafely { replay() }
+        } else {
+            remoteConfigExecutor.executeSafely { runFeatureFlagsListener { replay() } }
         }
 
         return PostHogFeatureFlagsSubscription {
