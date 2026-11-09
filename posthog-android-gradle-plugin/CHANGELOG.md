@@ -1,5 +1,11 @@
 ## Next
 
+## 1.8.0
+
+### Minor Changes
+
+- 5440f25: Add shared skipOnConflict and force defaults for native symbol and ProGuard mapping uploads.
+
 ## 1.7.0
 
 ### Minor Changes
