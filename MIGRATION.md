@@ -564,6 +564,8 @@ On Android, listeners run on the main thread. On the JVM, they run on a backgrou
 
 It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
 
+Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
+
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
 Events with an empty name are dropped before sending. `userProperties`, `userPropertiesSetOnce` and `groups` now merge key by key over a `$set`, `$set_once` or `$groups` map in `properties`. A `null` element in a list or array in the properties is sent as JSON `null` at its position instead of being removed. `beforeSend` gets its own copy of the event's nested maps, lists and arrays, so its changes no longer reach the objects you passed to `capture`.
