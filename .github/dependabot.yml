@@ -8,6 +8,7 @@ updates:
       interval: weekly
     ignore:
       - dependency-name: "androidx.compose:compose-bom"
+      - dependency-name: "io.opentelemetry:*"
     groups:
       gradle-dependencies:
         patterns:
