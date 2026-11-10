@@ -58,7 +58,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
 
     // Not shut down by uninstall(), so a consent write queued just before it still lands.
     private val consentExecutor: Lazy<ExecutorService>
-    private val optOutIntervalStore by lazy { NativeCrashOptOutIntervalStore(context) }
+    private val optOutIntervalStore by lazy { NativeCrashOptOutIntervalStore(context, config.projectToken) }
     private var executor: ExecutorService? = null
     private var postHog: PostHogInterface? = null
     private var timeChangedReceiver: BroadcastReceiver? = null

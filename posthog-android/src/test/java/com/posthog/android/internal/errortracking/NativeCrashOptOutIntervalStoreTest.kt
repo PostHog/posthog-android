@@ -12,6 +12,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -23,6 +24,10 @@ internal class NativeCrashOptOutIntervalStoreTest {
             on { getSharedPreferences(anyOrNull(), any()) } doReturn sharedPreferences
         }
 
+    private companion object {
+        const val TOKEN = "A"
+    }
+
     private fun NativeCrashOptOutIntervalStore.covers(
         timestampMs: Long,
         nowMs: Long,
@@ -30,9 +35,9 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `an open interval persists across instances and extends to now`() {
-        NativeCrashOptOutIntervalStore(context).open(100L)
+        NativeCrashOptOutIntervalStore(context, TOKEN).open(100L)
 
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         assertTrue(store.covers(100L, nowMs = 500L))
         assertTrue(store.covers(500L, nowMs = 500L))
         assertFalse(store.covers(501L, nowMs = 500L))
@@ -40,7 +45,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `a timestamp before the open start is not contained`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
 
         assertFalse(store.covers(99L, nowMs = 500L))
@@ -48,7 +53,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `a second open keeps the earliest start`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
         store.open(200L)
 
@@ -57,7 +62,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `close moves the open interval to the closed list`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
         store.close(200L)
 
@@ -71,7 +76,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `contains is inclusive on both bounds of closed intervals`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
         store.close(200L)
         store.open(300L)
@@ -88,7 +93,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `prune drops intervals ending at or before the watermark and keeps later ones`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
         store.close(200L)
         store.open(300L)
@@ -102,9 +107,9 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `malformed entries are ignored`() {
-        sharedPreferences.edit().putString("optOutIntervals", "garbage;100:200;x:1;").apply()
+        sharedPreferences.edit().putString("optOutIntervals:$TOKEN", "garbage;100:200;x:1;").apply()
 
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
 
         assertTrue(store.covers(150L, nowMs = 1000L))
         assertFalse(store.covers(250L, nowMs = 1000L))
@@ -112,7 +117,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `a closed interval whose clock moved back still covers the span`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(36_000_000L)
         store.close(35_100_000L)
 
@@ -122,15 +127,15 @@ internal class NativeCrashOptOutIntervalStoreTest {
 
     @Test
     fun `an open interval still covers the span when now is before its start`() {
-        val store = NativeCrashOptOutIntervalStore(context)
-        sharedPreferences.edit().putLong("optOutSince", 36_000_000L).apply()
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
+        sharedPreferences.edit().putLong("optOutSince:$TOKEN", 36_000_000L).apply()
 
         assertTrue(store.covers(35_500_000L, nowMs = 35_100_000L))
     }
 
     @Test
     fun `an open with an earlier now re-stamps the start`() {
-        val store = NativeCrashOptOutIntervalStore(context)
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(36_000_000L)
         store.open(34_000_000L)
         store.close(35_000_000L)
@@ -138,6 +143,50 @@ internal class NativeCrashOptOutIntervalStoreTest {
         assertTrue(store.covers(34_000_000L, nowMs = 40_000_000L))
         assertTrue(store.covers(35_500_000L, nowMs = 40_000_000L))
         assertFalse(store.covers(33_999_999L, nowMs = 40_000_000L))
+    }
+
+    @Test
+    fun `closing one token does not close another token's open interval`() {
+        val a = NativeCrashOptOutIntervalStore(context, "A")
+        val b = NativeCrashOptOutIntervalStore(context, "B")
+        a.open(100L)
+
+        b.close(200L)
+
+        assertTrue(a.covers(300L, nowMs = 300L))
+        assertTrue(b.covers(300L, nowMs = 300L))
+        assertEquals(listOf(100L..300L), a.intervals(300L))
+        assertEquals(listOf(100L..300L), b.intervals(300L))
+    }
+
+    @Test
+    fun `intervals are the union across tokens`() {
+        val a = NativeCrashOptOutIntervalStore(context, "A")
+        val b = NativeCrashOptOutIntervalStore(context, "B")
+        a.open(100L)
+        a.close(200L)
+        b.open(300L)
+        b.close(400L)
+
+        listOf(a, b).forEach { store ->
+            assertTrue(store.covers(150L, nowMs = 1000L))
+            assertTrue(store.covers(350L, nowMs = 1000L))
+            assertFalse(store.covers(250L, nowMs = 1000L))
+        }
+    }
+
+    @Test
+    fun `prune drops expired intervals of every token`() {
+        val a = NativeCrashOptOutIntervalStore(context, "A")
+        val b = NativeCrashOptOutIntervalStore(context, "B")
+        a.open(100L)
+        a.close(200L)
+        b.open(150L)
+        b.close(250L)
+
+        a.prune(200L)
+
+        assertEquals(listOf(150L..250L), a.intervals(1000L))
     }
 
     @Test
@@ -149,7 +198,7 @@ internal class NativeCrashOptOutIntervalStoreTest {
         whenever(editor.commit()).thenReturn(false)
         whenever(context.getSharedPreferences(anyOrNull(), any())).thenReturn(preferences)
 
-        assertFailsWith<IllegalStateException> { NativeCrashOptOutIntervalStore(context).open(100L) }
+        assertFailsWith<IllegalStateException> { NativeCrashOptOutIntervalStore(context, TOKEN).open(100L) }
     }
 
     @Test
@@ -163,23 +212,24 @@ internal class NativeCrashOptOutIntervalStoreTest {
         whenever(editor.remove(any())).thenReturn(editor)
         whenever(context.getSharedPreferences(anyOrNull(), any())).thenReturn(preferences)
 
-        NativeCrashOptOutIntervalStore(context).open(100L)
-        verify(editor).putLong("optOutSince", 100L)
+        NativeCrashOptOutIntervalStore(context, TOKEN).open(100L)
+        verify(editor).putLong("optOutSince:$TOKEN", 100L)
         verify(editor).commit()
 
-        whenever(preferences.contains("optOutSince")).thenReturn(true)
+        whenever(preferences.contains("optOutSince:$TOKEN")).thenReturn(true)
         whenever(preferences.getLong(any(), any())).thenReturn(100L)
-        NativeCrashOptOutIntervalStore(context).close(200L)
-        verify(editor).putString("optOutIntervals", "100:200")
-        verify(editor).remove("optOutSince")
+        NativeCrashOptOutIntervalStore(context, TOKEN).close(200L)
+        verify(editor).putString("optOutIntervals:$TOKEN", "100:200")
+        verify(editor).remove("optOutSince:$TOKEN")
 
         verify(editor, times(2)).commit()
         verify(editor, never()).apply()
 
-        whenever(preferences.contains("optOutSince")).thenReturn(false)
-        whenever(preferences.getString("optOutIntervals", null)).thenReturn("100:200")
-        NativeCrashOptOutIntervalStore(context).prune(200L)
-        verify(editor).putString("optOutIntervals", "")
+        whenever(preferences.contains("optOutSince:$TOKEN")).thenReturn(false)
+        whenever(preferences.getString("optOutIntervals:$TOKEN", null)).thenReturn("100:200")
+        whenever(preferences.all).thenReturn(mapOf("optOutIntervals:$TOKEN" to "100:200"))
+        NativeCrashOptOutIntervalStore(context, TOKEN).prune(200L)
+        verify(editor).putString("optOutIntervals:$TOKEN", "")
         verify(editor, times(1)).apply()
     }
 }

@@ -28,7 +28,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
@@ -311,10 +310,10 @@ internal class PostHogAndroidTest {
         // the write runs on the integration's consent thread
         val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
         val deadline = System.currentTimeMillis() + 5_000
-        while (!preferences.contains("optOutSince") && System.currentTimeMillis() < deadline) {
+        while (!preferences.contains("optOutSince:$PROJECT_TOKEN") && System.currentTimeMillis() < deadline) {
             Thread.sleep(10)
         }
-        assertTrue(preferences.contains("optOutSince"))
+        assertTrue(preferences.contains("optOutSince:$PROJECT_TOKEN"))
     }
 
     @Test
@@ -333,7 +332,7 @@ internal class PostHogAndroidTest {
         assertTrue(postHog.isOptOut())
         Thread.sleep(300)
         val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
-        assertFalse(preferences.contains("optOutSince"))
+        assertTrue(preferences.all.keys.none { it.startsWith("optOutSince") })
         postHog.close()
     }
 

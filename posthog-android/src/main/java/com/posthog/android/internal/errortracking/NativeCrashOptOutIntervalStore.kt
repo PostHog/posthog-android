@@ -13,8 +13,10 @@ import android.content.SharedPreferences
  * The wall clock can move backwards while opted out, so bounds are ordered
  * rather than trusted to be.
  */
-internal class NativeCrashOptOutIntervalStore(context: Context) {
+internal class NativeCrashOptOutIntervalStore(context: Context, projectToken: String) {
     private val preferences = context.nativeCrashPreferences()
+    private val openKey = "$OPEN_KEY_PREFIX$projectToken"
+    private val closedKey = "$CLOSED_KEY_PREFIX$projectToken"
 
     // open() and close() commit() rather than apply(): a native crash kills the process before apply()
     // flushes, which would lose the interval or leave it open over consented crashes.
@@ -29,7 +31,7 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
                 // clock moved back: keep the span to the old start covered
                 close(nowMs)
             }
-            commitOrThrow(preferences.edit().putLong(OPEN_KEY, nowMs))
+            commitOrThrow(preferences.edit().putLong(openKey, nowMs))
         }
     }
 
@@ -38,11 +40,11 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
         synchronized(lock) {
             val since = openSince() ?: return
             val interval = minOf(since, nowMs)..maxOf(since, nowMs)
-            val intervals = (closedIntervals() + listOf(interval)).takeLast(MAX_INTERVALS)
+            val intervals = (parseIntervals(preferences.getString(closedKey, null)) + listOf(interval)).takeLast(MAX_INTERVALS)
             commitOrThrow(
                 preferences.edit()
-                    .putString(CLOSED_KEY, serialize(intervals))
-                    .remove(OPEN_KEY),
+                    .putString(closedKey, serialize(intervals))
+                    .remove(openKey),
             )
         }
     }
@@ -53,32 +55,51 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
         check(editor.commit()) { "the native crash preferences could not be written" }
     }
 
-    /** Every opt-out interval, with an open one extended to [nowMs]. */
+    /** Every opt-out interval of every project token, with open ones extended to [nowMs]. */
     fun intervals(nowMs: Long): List<LongRange> {
         synchronized(lock) {
-            val closed = closedIntervals()
-            val open = openSince() ?: return closed
+            // a crash recorded while any client was opted out was recorded without full consent, so it is dropped
+            val all = preferences.all
+            val closed = keysWithPrefix(all, CLOSED_KEY_PREFIX).flatMap { parseIntervals(all[it] as? String) }
             // the clock can move back while still opted out
-            return closed + listOf(minOf(open, nowMs)..maxOf(open, nowMs))
+            val open =
+                keysWithPrefix(all, OPEN_KEY_PREFIX)
+                    .mapNotNull { all[it] as? Long }
+                    .map { since -> minOf(since, nowMs)..maxOf(since, nowMs) }
+            return closed + open
         }
     }
 
     // records at or below the watermark are never scanned again
     fun prune(watermarkMs: Long) {
         synchronized(lock) {
-            val intervals = closedIntervals()
-            val kept = intervals.filter { it.last > watermarkMs }
-            if (kept.size != intervals.size) {
-                preferences.edit().putString(CLOSED_KEY, serialize(kept)).apply()
+            val all = preferences.all
+            val editor = preferences.edit()
+            var changed = false
+            keysWithPrefix(all, CLOSED_KEY_PREFIX).forEach { key ->
+                val intervals = parseIntervals(all[key] as? String)
+                val kept = intervals.filter { it.last > watermarkMs }
+                if (kept.size != intervals.size) {
+                    editor.putString(key, serialize(kept))
+                    changed = true
+                }
+            }
+            if (changed) {
+                editor.apply()
             }
         }
     }
 
-    private fun openSince(): Long? = if (preferences.contains(OPEN_KEY)) preferences.getLong(OPEN_KEY, 0L) else null
+    private fun openSince(): Long? = if (preferences.contains(openKey)) preferences.getLong(openKey, 0L) else null
+
+    private fun keysWithPrefix(
+        all: Map<String, *>,
+        prefix: String,
+    ): List<String> = all.keys.filter { it.startsWith(prefix) }
 
     // oldest first
-    private fun closedIntervals(): List<LongRange> =
-        preferences.getString(CLOSED_KEY, null)
+    private fun parseIntervals(serialized: String?): List<LongRange> =
+        serialized
             ?.split(';')
             ?.mapNotNull { entry ->
                 val parts = entry.split(':')
@@ -91,8 +112,8 @@ internal class NativeCrashOptOutIntervalStore(context: Context) {
     private fun serialize(intervals: List<LongRange>): String = intervals.joinToString(";") { "${it.first}:${it.last}" }
 
     private companion object {
-        private const val OPEN_KEY = "optOutSince"
-        private const val CLOSED_KEY = "optOutIntervals"
+        private const val OPEN_KEY_PREFIX = "optOutSince:"
+        private const val CLOSED_KEY_PREFIX = "optOutIntervals:"
 
         // every instance shares one SharedPreferences file, so the lock is shared too
         private val lock = Any()
