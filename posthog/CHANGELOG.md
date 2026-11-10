@@ -1,5 +1,12 @@
 ## Next
 
+## 6.48.1
+
+### Patch Changes
+
+- 0df75de: Ignore a remote config reply from a closed setup once the client is set up again, so it cannot re-arm the old integrations.
+- afda8ef: Stop a remote config reply that arrives after `close()` from reinstalling integrations on the closed client.
+
 ## 6.48.0
 
 ### Minor Changes

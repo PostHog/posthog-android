@@ -3,6 +3,7 @@ package com.posthog.android.errortracking
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Looper
 import android.os.Process
@@ -12,6 +13,7 @@ import com.posthog.PostHogInterface
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.errortracking.NativeCrashClockOffsetStore
+import com.posthog.android.internal.errortracking.NativeCrashOptOutIntervalStore
 import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TestProtoWriter
 import com.posthog.internal.PostHogDateProvider
@@ -36,7 +38,7 @@ import org.robolectric.shadows.ShadowActivityManager
 import org.robolectric.shadows.ShadowApplication
 import java.io.ByteArrayInputStream
 import java.util.Date
-import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,37 +51,32 @@ internal class PostHogNativeCrashIntegrationTest {
     private lateinit var config: PostHogAndroidConfig
     private val installed = mutableListOf<PostHogNativeCrashIntegration>()
 
-    // Runs submitted work inline so scans complete during install()
-    private open class DirectExecutorService : AbstractExecutorService() {
-        private var shutdown = false
-
-        override fun execute(command: Runnable) = command.run()
-
-        override fun shutdown() {
-            shutdown = true
-        }
-
-        override fun shutdownNow(): MutableList<Runnable> {
-            shutdown = true
-            return mutableListOf()
-        }
-
-        override fun isShutdown(): Boolean = shutdown
-
-        override fun isTerminated(): Boolean = shutdown
-
-        override fun awaitTermination(
-            timeout: Long,
-            unit: TimeUnit,
-        ): Boolean = true
-    }
-
     // Counts submissions without running them, to observe scanner scheduling
     private class RecordingExecutorService : DirectExecutorService() {
         var submitted = 0
 
         override fun execute(command: Runnable) {
             submitted++
+        }
+    }
+
+    // Holds submitted work until the test runs it; shutdownNow drops it like a real executor
+    private class HeldExecutorService : DirectExecutorService() {
+        val held = mutableListOf<Runnable>()
+
+        override fun execute(command: Runnable) {
+            held.add(command)
+        }
+
+        override fun shutdownNow(): MutableList<Runnable> {
+            held.clear()
+            return super.shutdownNow()
+        }
+
+        fun runHeld() {
+            val pending = held.toList()
+            held.clear()
+            pending.forEach { it.run() }
         }
     }
 
@@ -118,8 +115,12 @@ internal class PostHogNativeCrashIntegrationTest {
         ShadowApplication.setProcessName(context.packageName)
     }
 
-    private fun install(executor: DirectExecutorService = DirectExecutorService()): PostHogNativeCrashIntegration {
-        val integration = PostHogNativeCrashIntegration(context, config, { executor }, { wallClockMs })
+    private fun install(
+        executor: DirectExecutorService = DirectExecutorService(),
+        consentExecutor: DirectExecutorService = DirectExecutorService(),
+        wallClock: () -> Long = { wallClockMs },
+    ): PostHogNativeCrashIntegration {
+        val integration = PostHogNativeCrashIntegration(context, config, { executor }, wallClock, { consentExecutor })
         installed.add(integration)
         integration.install(postHog)
         return integration
@@ -532,6 +533,74 @@ internal class PostHogNativeCrashIntegrationTest {
     }
 
     @Test
+    fun `does not record consent outside the default application process`() {
+        ShadowApplication.setProcessName("${context.packageName}:worker")
+        val integration = PostHogNativeCrashIntegration(context, config, { DirectExecutorService() }, { wallClockMs })
+
+        integration.recordOptedOutStart()
+
+        assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `an opted-out start opens the interval`() {
+        val integration = PostHogNativeCrashIntegration(context, config, { DirectExecutorService() }, { wallClockMs })
+
+        integration.recordOptedOutStart()
+
+        assertEquals(listOf(wallClockMs..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `uninstall while opted out opens the interval when capture is off`() {
+        config.errorTrackingConfig.captureNativeCrashes = false
+        val integration = install()
+        config.optOut = true
+
+        integration.uninstall()
+
+        assertEquals(listOf(wallClockMs..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `uninstall while opted out opens the interval when install never ran`() {
+        val integration = PostHogNativeCrashIntegration(context, config, { DirectExecutorService() }, { wallClockMs })
+        config.optOut = true
+
+        integration.uninstall()
+
+        assertEquals(listOf(wallClockMs..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `uninstall while opted in does not open an interval`() {
+        install().uninstall()
+
+        assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `the opt-out is stamped before uninstall waits for the scanner`() {
+        val stampedAt = wallClockMs
+        val scanner =
+            object : DirectExecutorService() {
+                override fun awaitTermination(
+                    timeout: Long,
+                    unit: TimeUnit,
+                ): Boolean {
+                    wallClockMs += 1_000
+                    return true
+                }
+            }
+        val integration = install(scanner)
+        config.optOut = true
+
+        integration.uninstall()
+
+        assertEquals(listOf(stampedAt..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
     fun `does not scan when the remote toggle is off`() {
         whenever(config.remoteConfigHolder!!.isNativeCrashCaptureEnabled()).doReturn(false)
         val executor = RecordingExecutorService()
@@ -539,5 +608,149 @@ internal class PostHogNativeCrashIntegrationTest {
         install(executor)
 
         assertEquals(0, executor.submitted)
+    }
+
+    @Test
+    fun `records consent off the caller thread`() {
+        val consentExecutor = RecordingExecutorService()
+        val integration = PostHogNativeCrashIntegration(context, config, { DirectExecutorService() }, { wallClockMs }, { consentExecutor })
+
+        integration.recordOptedOutStart()
+
+        assertEquals(1, consentExecutor.submitted)
+        assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `a failing system service probe does not escape the opted-out start`() {
+        val throwing =
+            object : ContextWrapper(context) {
+                override fun getSystemService(name: String): Any? =
+                    if (name == Context.USER_SERVICE) throw IllegalStateException("binder died") else super.getSystemService(name)
+            }
+        val integration = PostHogNativeCrashIntegration(throwing, config, { DirectExecutorService() }, { wallClockMs })
+
+        integration.recordOptedOutStart()
+
+        assertEquals(emptyList(), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `a rejected opt-in write skips the scan and keeps the watermark`() {
+        NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).open(500)
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 1_500, trace = tombstoneBytes())
+        val rejecting =
+            object : DirectExecutorService() {
+                override fun execute(command: Runnable) = throw RejectedExecutionException("test")
+            }
+
+        install(consentExecutor = rejecting)
+
+        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertEquals(0L, watermark())
+    }
+
+    @Test
+    fun `install closes the opt-out interval before the scan reads it`() {
+        NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).open(500)
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 1_500, trace = tombstoneBytes())
+        // the opt-in is stamped at 1_000, and the scan reads intervals later, at 2_000
+        val clock = ArrayDeque(listOf(1_000L))
+        val scanner = HeldExecutorService()
+        val consentExecutor = HeldExecutorService()
+
+        install(scanner, consentExecutor) { clock.removeFirstOrNull() ?: 2_000L }
+        val scan = Thread { scanner.runHeld() }.apply { start() }
+        while (scan.state != Thread.State.TIMED_WAITING && scan.isAlive) {
+            Thread.yield()
+        }
+        consentExecutor.runHeld()
+        scan.join(5_000)
+
+        // read before the close, the open interval would extend to 2_000 and drop the consented crash
+        verify(postHog, times(1)).capture(
+            eq("\$exception"),
+            anyOrNull(),
+            any(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+            anyOrNull(),
+        )
+    }
+
+    @Test
+    fun `uninstall does not cancel a pending consent write`() {
+        val consentExecutor = HeldExecutorService()
+        val integration = install(RecordingExecutorService(), consentExecutor)
+        consentExecutor.runHeld()
+
+        config.optOut = true
+        integration.uninstall()
+        consentExecutor.runHeld()
+
+        assertEquals(listOf(wallClockMs..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs))
+    }
+
+    @Test
+    fun `closes the opt-out interval without scanning when native crash capture is off`() {
+        config.errorTrackingConfig.captureNativeCrashes = false
+        NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).open(500)
+        val executor = RecordingExecutorService()
+
+        install(executor)
+
+        assertEquals(0, executor.submitted)
+        assertEquals(listOf(500L..wallClockMs), NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs + 1_000))
+    }
+
+    private fun secondaryConfig(captureNativeCrashes: Boolean) =
+        PostHogAndroidConfig("B").apply {
+            dateProvider = this@PostHogNativeCrashIntegrationTest.dateProvider
+            errorTrackingConfig.captureNativeCrashes = captureNativeCrashes
+            remoteConfigHolder =
+                mock<PostHogRemoteConfig> {
+                    on { isNativeCrashCaptureEnabled() } doReturn true
+                }
+        }
+
+    @Test
+    fun `another client's install does not close an opted-out client's interval`() {
+        PostHogNativeCrashIntegration(context, config, { DirectExecutorService() }, { wallClockMs }).recordOptedOutStart()
+        val secondary =
+            PostHogNativeCrashIntegration(
+                context,
+                secondaryConfig(captureNativeCrashes = false),
+                { DirectExecutorService() },
+                { wallClockMs },
+                { DirectExecutorService() },
+            )
+
+        secondary.install(postHog)
+
+        assertEquals(
+            listOf(wallClockMs..wallClockMs),
+            NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).intervals(wallClockMs),
+        )
+    }
+
+    @Test
+    fun `skips a crash recorded in another client's opt-out interval`() {
+        NativeCrashOptOutIntervalStore(context, PROJECT_TOKEN).open(500)
+        addExitRecord(ApplicationExitInfo.REASON_CRASH_NATIVE, timestamp = 800, trace = tombstoneBytes())
+        val secondary =
+            PostHogNativeCrashIntegration(
+                context,
+                secondaryConfig(captureNativeCrashes = true),
+                { DirectExecutorService() },
+                { wallClockMs },
+                { DirectExecutorService() },
+            )
+        installed.add(secondary)
+
+        secondary.install(postHog)
+
+        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
     }
 }

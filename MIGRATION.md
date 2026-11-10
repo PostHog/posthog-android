@@ -432,6 +432,12 @@ A registered `$session_id` now overrides the SDK's session ID, which can detach 
 A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x, so a blank `$session_id` is sent as an empty `session_id`.
 In 3.x, a `$set`, `$set_once` or `$groups` map in properties replaced the per-call values and the groups set with `group()`. A `$set` or `$set_once` you pass, or `userProperties`, still replaces a registered one whole.
 
+`$lib` and `$lib_version` name the library that produced the event, and the SDK fills them last, as a pair, only where nothing above named the library.
+When neither is set, or only `$lib_version` is, the SDK sends its own `$lib` and `$lib_version`.
+When `$lib` is the SDK's own name without a version, the SDK adds its version.
+When `$lib` names another library, the SDK leaves both as they are and never adds its own version, so set both keys together.
+In 3.x, a registered `$lib` or `$lib_version` was replaced by the SDK's, and a `$lib` you passed was sent with the SDK's `$lib_version`.
+
 ### Session and window IDs
 
 Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, not as properties.
@@ -557,6 +563,8 @@ On Android, listeners run on the main thread. On the JVM, they run on a backgrou
 `posthog-server` isn't having a major release, and its API is unchanged: it keeps its own `apiKey`, `getFeatureFlagPayload` and `remoteConfig`, and `com.posthog.PostHogOnFeatureFlags` now ships in `posthog-server` itself. None of the API changes above apply to it. `PostHogEvent`, which `beforeSend` gets, keeps its 3.x constructor and `copy`, and gains an `options` property; `posthog-server` still sends to `/batch`, which doesn't use it, so a value set in `beforeSend` is sent but has no effect.
 
 It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
+
+Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
