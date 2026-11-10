@@ -385,6 +385,9 @@ public class PostHog private constructor(
                         EndpointSpec.ai(config, api, config.aiStoragePrefix),
                         aiExecutor,
                     )
+                // the loader this setup builds below, so its replies can be told apart from a later
+                // setup's even when the same config object is reused after close()
+                var loader: PostHogRemoteConfig? = null
                 val onRemoteConfigLoaded =
                     PostHogOnRemoteConfigLoaded {
                         // The callback fires whether the attempt succeeded or terminally failed;
@@ -419,9 +422,9 @@ public class PostHog private constructor(
                             }
 
                             // Notify all integrations about remote config changes
-                            notifyIntegrationsRemoteConfig(config, loaded = true)
+                            notifyIntegrationsRemoteConfig(config, loader, loaded = true)
                         } else {
-                            notifyIntegrationsRemoteConfig(config, loaded = false)
+                            notifyIntegrationsRemoteConfig(config, loader, loaded = false)
                         }
                     }
 
@@ -480,6 +483,7 @@ public class PostHog private constructor(
 
                 if (featureFlags is PostHogRemoteConfig) {
                     config.remoteConfigHolder = featureFlags
+                    loader = featureFlags
                 }
 
                 config.addIntegration(sendCachedEventsIntegration)
@@ -566,12 +570,14 @@ public class PostHog private constructor(
 
     private fun notifyIntegrationsRemoteConfig(
         config: PostHogConfig,
+        loader: PostHogRemoteConfig?,
         loaded: Boolean,
     ) {
-        // under setupLock so it can't interleave with optOut/optIn, where some integrations would
-        // otherwise reinstall themselves while opted out
+        // under setupLock so it can't interleave with close/optOut/optIn, where some integrations
+        // would otherwise reinstall themselves on a closed or opted-out client, and a reply from
+        // a closed setup can't re-arm its integrations once the client is set up again
         synchronized(setupLock) {
-            if (isOptedOut()) {
+            if (!isEnabled() || isOptedOut() || config !== this.config || loader !== remoteConfig) {
                 return
             }
             config.integrations.forEach { integration ->
@@ -1984,7 +1990,7 @@ public class PostHog private constructor(
                 // install re-arms each integration from local config; re-apply the cached remote
                 // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
                 if (remoteConfig?.hasRemoteConfigFetched() == true) {
-                    config?.let { notifyIntegrationsRemoteConfig(it, loaded = true) }
+                    config?.let { notifyIntegrationsRemoteConfig(it, remoteConfig, loaded = true) }
                 }
             }
         }

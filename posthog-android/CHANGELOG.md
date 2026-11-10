@@ -1,5 +1,11 @@
 ## Next
 
+## 3.76.2
+
+### Patch Changes
+
+- d81b06d: Drop native crashes recorded while the SDK was opted out instead of sending them after `optIn()`. `PostHogNativeCrashIntegration` is now always registered so consent changes are recorded; it still scans only when `captureNativeCrashes` is enabled.
+
 ## 3.76.1
 
 ### Patch Changes
