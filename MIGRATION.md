@@ -6,7 +6,7 @@
 Most removals are compile errors with a direct replacement. [Behavior changes](#behavior-changes) won't show up at build time.
 Read the checklist first, then the sections that apply to you.
 
-If you use core `posthog` 7.0 on the JVM without `posthog-android`, the API, endpoint, event and retry changes apply, but these don't: [`$locale` and `$app_language`](#locale-and-app_language), [Session replay records screenshots](#session-replay-records-screenshots), [Deep link query parameters](#deep-link-query-parameters) and the AI events disk queue (core keeps AI events in memory). `onFeatureFlags()` listeners run on a background thread.
+Core `posthog` 7.0 is only supported through `posthog-android` 4.0 and `posthog-server`. Using it on its own through `PostHogStateless.with` isn't supported; see [`posthog-server`](#posthog-server).
 
 For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
 
@@ -518,7 +518,7 @@ PostHog.captureAi(
 - An AI event's properties can be up to 8 MiB. The SDK drops a serialized event over 8 MiB + 64 KiB, measured before `encryption`. With `debug` on, it logs the event name and the limit, never the content. Set `captureAiMaxEventBytes` to lower that limit; a larger value uses 8 MiB + 64 KiB, and with `debug` on the SDK logs that it did.
 - PostHog drops an event sent with `captureAi` whose name doesn't start with `$ai_`. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
 - AI requests time out after 60 seconds without network activity, or `captureAiTimeout`. Other requests keep OkHttp's 10-second defaults.
-- On Android, AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Core alone keeps them in memory. Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
+- On Android, AI events are queued on disk separately from other events (`posthog-disk-ai-queue` in the app's cache directory). Up to 100 events (`captureAiMaxQueueSize`) and 50 MiB are kept, and the oldest are dropped first. `maxQueueSize` doesn't apply.
 - `flush()` and `close()` also send the AI queue. On Android, AI events left on disk are sent at the next launch.
 - AI requests are gzipped unless you set `captureAiCompression` to `PostHogCompression.NONE`. `compression` doesn't apply.
 - AI events use `flushAt`, `maxBatchSize` and `flushIntervalSeconds`, like other events. A request carries up to about 5 MiB, as for analytics events (see [Retries](#retries)).
@@ -556,7 +556,7 @@ val subscription = PostHog.onFeatureFlags { loaded ->
 subscription.unsubscribe()
 ```
 
-On Android, listeners run on the main thread. On the JVM, they run on a background thread. If flags have already loaded, a new listener also gets the current values shortly after it registers. You can register before `setup()`, and listeners stay registered across `close()` and `setup()`.
+On Android, listeners run on the main thread. If flags have already loaded, a new listener also gets the current values shortly after it registers. You can register before `setup()`, and listeners stay registered across `close()` and `setup()`.
 
 ### `posthog-server`
 
