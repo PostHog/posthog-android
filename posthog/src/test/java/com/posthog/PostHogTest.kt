@@ -32,8 +32,10 @@ import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.surveys.PostHogSurveysHandler
 import com.posthog.surveys.Survey
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
@@ -333,6 +335,55 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), integration = integration)
 
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    private fun heldFlagsResponse(release: CountDownLatch): MockWebServer {
+        val http = httpServers.create()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    release.await()
+                    return MockResponse().setBody(responseFlagsApi)
+                }
+            }
+        http.start()
+        return http
+    }
+
+    @Test
+    fun `remote config reply that arrives after close does not reach integrations`() {
+        val integration = FakePostHogIntegration()
+        val release = CountDownLatch(1)
+        val http = heldFlagsResponse(release)
+
+        val sut = getSut(http.url("/").toString(), integration = integration)
+        // the loader is now blocked on the held response
+        http.takeRequest()
+
+        sut.close()
+        release.countDown()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+    }
+
+    @Test
+    fun `remote config reply that arrives while open reaches integrations`() {
+        val integration = FakePostHogIntegration()
+        val release = CountDownLatch(1)
+        val http = heldFlagsResponse(release)
+
+        val sut = getSut(http.url("/").toString(), integration = integration)
+        http.takeRequest()
+
+        release.countDown()
         remoteConfigExecutor.shutdownAndAwaitTermination()
 
         assertEquals(1, integration.remoteConfigCount)

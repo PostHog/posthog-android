@@ -429,10 +429,10 @@ public class PostHog private constructor(
         config: PostHogConfig,
         loaded: Boolean,
     ) {
-        // under setupLock so it can't interleave with optOut/optIn, where some integrations would
-        // otherwise reinstall themselves while opted out
+        // under setupLock so it can't interleave with close/optOut/optIn, where some integrations
+        // would otherwise reinstall themselves on a closed or opted-out client
         synchronized(setupLock) {
-            if (isOptedOut()) {
+            if (!isEnabled() || isOptedOut()) {
                 return
             }
             config.integrations.forEach { integration ->
