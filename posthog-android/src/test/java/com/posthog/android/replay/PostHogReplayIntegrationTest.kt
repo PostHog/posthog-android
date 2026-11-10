@@ -1339,6 +1339,122 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun durationHoldFixture(minimum: java.util.concurrent.atomic.AtomicLong): Pair<RealQueueFixture, PostHogInterface> {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        whenever(fx.remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(fx.remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenReturn(false)
+        whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(true)
+        whenever(fx.remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(any()))
+            .thenAnswer { minimum.get() }
+        whenever(fx.remoteConfig.onSessionRecordingTriggerEvent(any(), any(), any())).thenReturn(true)
+        val session = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(session)
+        val client = mock<PostHogInterface>()
+        whenever(client.getSessionId()).thenReturn(session)
+        return fx to client
+    }
+
+    @Test
+    fun `event releasing duration hold migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event keeping a positive duration hold leaves the opening buffer held`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+
+            minimum.set(20_000)
+            fx.sut.onEvent("purchase", emptyMap())
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload lowering the minimum and excluding the session does not persist the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload lowering the minimum for a still permitted session migrates the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            minimum.set(0)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     @Test
     fun `routes snapshots to buffer while awaiting first remote config`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)

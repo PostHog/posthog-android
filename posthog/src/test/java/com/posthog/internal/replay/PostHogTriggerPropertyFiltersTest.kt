@@ -250,4 +250,37 @@ internal class PostHogTriggerPropertyFiltersTest {
         assertTrue(matchTriggerPropertyFilters(filters, mapOf("plan" to "pro", "region" to "EU"), null))
         assertFalse(matchTriggerPropertyFilters(filters, mapOf("plan" to "pro", "region" to "US"), null))
     }
+
+    private fun matches(
+        value: Any,
+        op: String,
+        target: Any,
+    ) = matchTriggerPropertyFilters(
+        listOf(filter(key = "value", type = "event", operator = op, value = target)),
+        mapOf("value" to value),
+        null,
+    )
+
+    @Test
+    fun `float properties compare as their serialized decimal`() {
+        assertTrue(matches(0.1, "exact", 0.1))
+        assertTrue(matches(0.1f, "exact", 0.1))
+        assertFalse(matches(0.1f, "is_not", 0.1))
+        assertFalse(matches(0.1f, "gt", 0.1))
+        assertTrue(matches(1.0E-7f, "exact", "1e-7"))
+        assertTrue(matches(100f, "exact", 100))
+    }
+
+    @Test
+    fun `primitive arrays match like lists`() {
+        assertTrue(matches(listOf(1, 2), "exact", 2))
+        assertTrue(matches(arrayOf(1, 2), "exact", 2))
+        assertTrue(matches(intArrayOf(1, 2), "exact", 2))
+        assertFalse(matches(intArrayOf(1, 2), "is_not", 2))
+        assertTrue(matches(longArrayOf(3L), "exact", 3))
+        assertTrue(matches(doubleArrayOf(0.5), "exact", 0.5))
+        assertTrue(matches(floatArrayOf(0.1f), "exact", 0.1))
+        assertTrue(matches(booleanArrayOf(true), "exact", "true"))
+        assertFalse(matches(intArrayOf(1, 3), "exact", 2))
+    }
 }

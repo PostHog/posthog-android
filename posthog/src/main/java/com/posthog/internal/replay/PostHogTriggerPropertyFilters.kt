@@ -64,18 +64,29 @@ private fun matchesRegex(
         false
     }
 
-// Object arrays are event data too (GsonSafeMapSerializer sends them as JSON arrays), so match them like lists.
+// Object and primitive arrays are event data too (GsonSafeMapSerializer sends them as JSON arrays), so match
+// them like lists. A primitive array would otherwise print as a JVM identity string such as "[I@1b6d3586".
 private fun stringifyValues(value: Any): List<String> =
     when (value) {
         is List<*> -> value.map { jsToString(it) }
         is Array<*> -> value.map { jsToString(it) }
+        is IntArray -> value.map { jsToString(it) }
+        is LongArray -> value.map { jsToString(it) }
+        is ShortArray -> value.map { jsToString(it) }
+        is ByteArray -> value.map { jsToString(it) }
+        is DoubleArray -> value.map { jsToString(it) }
+        is FloatArray -> value.map { jsToString(it) }
+        is BooleanArray -> value.map { jsToString(it) }
+        is CharArray -> value.map { jsToString(it) }
         else -> listOf(jsToString(value))
     }
 
 private fun jsToString(value: Any?): String =
     when (value) {
         is Double -> jsNumberToString(value)
-        is Float -> jsNumberToString(value.toDouble())
+        // Serialization writes a Float's own shortest decimal (0.1f as 0.1); widening it to Double first
+        // would expose the binary value 0.10000000149011612 instead, so start from that decimal.
+        is Float -> if (value.isFinite()) jsNumberToString(value.toString().toDouble()) else jsNumberToString(value.toDouble())
         else -> value.toString()
     }
 

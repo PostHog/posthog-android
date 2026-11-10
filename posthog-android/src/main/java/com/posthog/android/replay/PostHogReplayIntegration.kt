@@ -2720,12 +2720,15 @@ public class PostHogReplayIntegration(
         val newlyActivated = remoteConfig.onSessionRecordingTriggerEvent(currentSessionId, event, properties)
         if (!newlyActivated) return
 
-        updateCachedMinimumDuration()
+        val minimumLowered = updateCachedMinimumDuration()
         if (!isRecordingPermittedForCurrentSession()) {
             config.logger.log(
                 "[Session Replay] Trigger group activated by event: $event, but recording is not permitted for session $currentSessionId.",
             )
             return
+        }
+        if (minimumLowered) {
+            releaseBufferAfterLoweredMinimum()
         }
         config.logger.log("[Session Replay] Trigger group activated by event: $event. Starting replay for session $currentSessionId.")
         // Do not call start(): only an explicit request may establish manual-start provenance.
@@ -2962,7 +2965,7 @@ public class PostHogReplayIntegration(
             return
         }
 
-        updateCachedMinimumDuration()
+        val minimumLowered = updateCachedMinimumDuration()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
         // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
         // synchronously (notifyRemoteConfigLoaded=false) before this single callback fires, so the
@@ -2971,6 +2974,11 @@ public class PostHogReplayIntegration(
         val wasFirstDelivery = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
         resolveFirstRemoteConfig()
         reevaluateRecordingState(isFirstDelivery = wasFirstDelivery)
+        // Only after the fresh config has decided: a reload that lowers the minimum and also excludes
+        // this session must drop the held window, not persist it.
+        if (minimumLowered && isRecordingPermittedForCurrentSession()) {
+            releaseBufferAfterLoweredMinimum()
+        }
     }
 
     /**
@@ -3141,7 +3149,11 @@ public class PostHogReplayIntegration(
         return config.remoteConfigHolder?.let { !it.hasRemoteConfigFetched() } ?: false
     }
 
-    private fun updateCachedMinimumDuration() {
+    /**
+     * Refreshes the cached minimum duration and returns whether it dropped while the hold was still
+     * on. The caller decides whether to release the buffer, once it knows recording is still permitted.
+     */
+    private fun updateCachedMinimumDuration(): Boolean {
         val remoteConfig = config.remoteConfigHolder
         val minimumDuration =
             if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
@@ -3150,9 +3162,22 @@ public class PostHogReplayIntegration(
             } else {
                 remoteConfig?.getRecordingMinimumDurationMs()
             }
-        synchronized(bufferingLock) {
+        return synchronized(bufferingLock) {
+            val previous = cachedMinimumDurationMs ?: 0
             cachedMinimumDurationMs = minimumDuration
+            !hasPassedMinimumDuration && previous > 0 && (minimumDuration ?: 0) < previous
         }
+    }
+
+    /**
+     * A lowered minimum (e.g. an event activating a group with no minimum) can release the hold with
+     * snapshots still buffered. Once isBuffering is false, add() persists directly and never reaches
+     * the buffer callback again, so the opening window would be stranded. Run the same gated check the
+     * buffer callback does: it still waits for the first config, requires an active recording, and
+     * migrates all-or-nothing. Call only once recording is known to be permitted for this session.
+     */
+    private fun releaseBufferAfterLoweredMinimum() {
+        replayQueue?.let { onReplayBufferSnapshot(it) }
     }
 
     // MARK: - Buffering State
