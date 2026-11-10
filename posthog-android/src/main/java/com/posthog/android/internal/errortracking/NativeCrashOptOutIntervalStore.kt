@@ -40,7 +40,7 @@ internal class NativeCrashOptOutIntervalStore(context: Context, projectToken: St
         synchronized(lock) {
             val since = openSince() ?: return
             val interval = minOf(since, nowMs)..maxOf(since, nowMs)
-            val intervals = (parseIntervals(preferences.getString(closedKey, null)) + listOf(interval)).takeLast(MAX_INTERVALS)
+            val intervals = bounded(parseIntervals(preferences.getString(closedKey, null)) + listOf(interval))
             commitOrThrow(
                 preferences.edit()
                     .putString(closedKey, serialize(intervals))
@@ -110,6 +110,13 @@ internal class NativeCrashOptOutIntervalStore(context: Context, projectToken: St
             ?: emptyList()
 
     private fun serialize(intervals: List<LongRange>): String = intervals.joinToString(";") { "${it.first}:${it.last}" }
+
+    // dropping an interval could expose a crash the scan has not acknowledged yet, so merge the two oldest instead
+    private fun bounded(intervals: List<LongRange>): List<LongRange> {
+        if (intervals.size <= MAX_INTERVALS) return intervals
+        val merged = intervals[0].first..intervals[1].last
+        return listOf(merged) + intervals.drop(2)
+    }
 
     private companion object {
         private const val OPEN_KEY_PREFIX = "optOutSince:"

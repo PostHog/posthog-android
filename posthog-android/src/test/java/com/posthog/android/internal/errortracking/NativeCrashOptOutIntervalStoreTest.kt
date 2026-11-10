@@ -75,6 +75,22 @@ internal class NativeCrashOptOutIntervalStoreTest {
     }
 
     @Test
+    fun `overflow merges the two oldest intervals instead of dropping one`() {
+        val store = NativeCrashOptOutIntervalStore(context, TOKEN)
+        repeat(33) { i ->
+            val start = (i + 1) * 100L
+            store.open(start)
+            store.close(start + 10L)
+        }
+
+        assertEquals(32, store.intervals(10_000L).size)
+        assertEquals(100L..210L, store.intervals(10_000L).first())
+        assertTrue(store.covers(105L, nowMs = 10_000L))
+        assertTrue(store.covers(150L, nowMs = 10_000L))
+        assertFalse(store.covers(250L, nowMs = 10_000L))
+    }
+
+    @Test
     fun `contains is inclusive on both bounds of closed intervals`() {
         val store = NativeCrashOptOutIntervalStore(context, TOKEN)
         store.open(100L)
