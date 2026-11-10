@@ -2727,12 +2727,14 @@ public class PostHogReplayIntegration(
             )
             return
         }
-        if (minimumLowered) {
-            releaseBufferAfterLoweredMinimum()
-        }
         config.logger.log("[Session Replay] Trigger group activated by event: $event. Starting replay for session $currentSessionId.")
         // Do not call start(): only an explicit request may establish manual-start provenance.
         startRecording(resumeCurrent = true)
+        // After the start, not before: the release migrates only for an active recorder, and this event
+        // may be what resumes a stopped one. A start a gate refused leaves it inactive and the release no-ops.
+        if (minimumLowered && isSessionReplayActive) {
+            releaseBufferAfterLoweredMinimum()
+        }
     }
 
     /**

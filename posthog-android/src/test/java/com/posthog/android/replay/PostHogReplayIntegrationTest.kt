@@ -1381,6 +1381,65 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `event releasing duration hold after a stop migrates opening buffer when it resumes recording`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // The release must not run while the recorder is still stopped: the event resumes it first.
+            fx.sut.stop()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(fx.sut.isActive())
+
+            minimum.set(0)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event releasing duration hold for a session it may not record leaves the opening buffer unpersisted`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            fx.sut.stop()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            minimum.set(0)
+            whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(false)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertFalse(fx.sut.isActive())
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
     fun `event keeping a positive duration hold leaves the opening buffer held`() {
         val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
         val (fx, client) = durationHoldFixture(minimum)
