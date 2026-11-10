@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   test-android-sdk:
-    uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@17d861f8e230fe943934d70e3eebf5cff6bf3aa4
+    uses: PostHog/posthog-sdk-test-harness/.github/workflows/test-sdk-action.yml@75fb00092c6045daef60c30acc10ac83afefbfe9
     with:
       adapter-dockerfile: sdk_compliance_adapter/Dockerfile
       adapter-context: .
