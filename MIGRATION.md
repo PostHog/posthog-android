@@ -26,6 +26,7 @@ You need to change code if your app does any of these:
 - sets `projectToken` to a personal API key (`phx_...`)
 - reads `$session_id` or `$window_id` from the raw request body, for example in a proxy
 - sets `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` or `$product_tour_id` to a value PostHog can't read, such as `"maybe"`
+- registers `$process_person_profile` as `false` and still calls `identify`, `alias`, `group` or `setPersonProperties` (see [Event options](#event-options))
 - registers a super property, or passes an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expects the SDK's value to win
 - calls `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` or `captureException` from Java, implements `PostHogInterface`, or calls `identify` through a `PostHogCoreInterface` reference
 - sets the event `uuid` in `beforeSend`
@@ -486,7 +487,7 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 
 - An option you pass to any of these methods or set in `beforeSend` wins over its legacy property. An option set to `null` counts as unset, so the legacy property fills it.
 - To change person processing in `beforeSend`, edit `event.options`. A `$process_person_profile` property the hook adds only fills an option that is still unset, so it doesn't override the `false` the SDK set for an anonymous event.
-- When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither, because PostHog processes person profiles by default. In 3.x, every event carried a `$process_person_profile` property. To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property. A registered `$process_person_profile` changes it for every event.
+- When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither, because PostHog processes person profiles by default. In 3.x, every event carried a `$process_person_profile` property. To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property. A registered `$process_person_profile` changes it for every event. In 3.x, the SDK's value replaced a registered `$process_person_profile`, so a registered `false` had no effect. In 4.0 it applies, also after `identify` and with `PersonProfiles.ALWAYS`: those events don't change the person profile, and their `$set` is ignored.
 - This also applies with `personProfiles = PersonProfiles.NEVER`: a `process_person_profile` option or `$process_person_profile` property set to `true`, passed or registered, turns person processing on for that event. In 3.x, `NEVER` always won. If you rely on `NEVER` to keep events personless, make sure neither is set to `true`, or remove it in `beforeSend`.
 - Review your `beforeSend` hooks for the new event shape. In 3.x, the SDK marked person processing with the `$process_person_profile` property. In 4.0, it's the `process_person_profile` option, and the property isn't set. A hook that assigns a new map to `event.options` without keeping that key loses the `false` the SDK set. That turns person processing on for anonymous users, overriding `personProfiles`. Editing `event.options` in place keeps it.
 - `beforeSend` gets its own copy of the event's nested maps, lists and arrays, in `properties` and `options`. Changes a hook makes no longer reach the objects you passed to `capture` or registered, and identity checks against them (`===`) no longer match. In 3.x, hooks edited the caller's objects.
@@ -494,10 +495,22 @@ When the event is sent, the SDK removes each one from `properties` and uses it f
 - A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 - The SDK sends option values as given. PostHog reads common forms of a value, such as `"false"` or `0` for a boolean, and drops an event whose option value it can't read.
 - Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
-- There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$process_person_profile", false)`.
+- There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$cookieless_mode", true)`.
 - There's no setting for GeoIP lookup or `historical_migration` on events, as in 3.x.
 - With `personProfiles = PersonProfiles.IDENTIFIED_ONLY`, `identify`, `alias`, `group` and `setPersonProperties` still turn on person processing for the user's later events, as in 3.x.
-- A registered option also reaches `$identify`, `$create_alias` and `$groupidentify`. If it turns person processing off, for example `register("\$process_person_profile", false)`, PostHog accepts those events and then drops them with an ingestion warning, and the SDK doesn't report it.
+- A registered `$process_person_profile` set to `false` also reaches the events `identify`, `alias`, `group` and `setPersonProperties` send. PostHog accepts `$identify`, `$create_alias` and `$groupidentify` and then drops them with an ingestion warning, and the SDK doesn't report it. A `$set` event is kept, but the person isn't updated. To keep identifying, pass the option on the call, or set it in `beforeSend`:
+
+  ```kotlin
+  PostHog.register("\$process_person_profile", false)
+
+  PostHog.identify(
+      distinctId = "user-123",
+      userProperties = mapOf("plan" to "pro"),
+      options = mapOf("process_person_profile" to true),
+  )
+  ```
+
+  To create no person profiles at all, set `personProfiles = PersonProfiles.NEVER` instead. The SDK then skips these calls.
 - An empty or whitespace-only `distinctId` argument to `capture` now uses the current distinct ID, like `null`. In 3.x, the event was dropped.
 - The event `beforeSend` returns keeps the uuid of the capture it came from. A uuid you set in `beforeSend`, for example with `copy(uuid = …)`, is replaced, so a hook that returns an event kept from an earlier call still sends one uuid per capture.
 - Events still queued on disk by 3.x are sent to capture v1 after the update, with their legacy properties moved to options.
