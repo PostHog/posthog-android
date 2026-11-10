@@ -8,6 +8,7 @@ updates:
       interval: weekly
     ignore:
       - dependency-name: "androidx.compose:compose-bom"
+      # compileOnly in posthog-server, so not in the published POM; drop this if it ever becomes api/implementation
       - dependency-name: "io.opentelemetry:*"
     groups:
       gradle-dependencies:
