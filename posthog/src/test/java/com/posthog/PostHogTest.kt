@@ -408,6 +408,28 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `remote config reply from a closed setup does not reach integrations when the config is reused`() {
+        val integration = FakePostHogIntegration()
+        val release = CountDownLatch(1)
+        val http = heldFlagsResponse(release)
+
+        val sut = getSut(http.url("/").toString(), integration = integration)
+        http.takeRequest()
+
+        sut.close()
+        sut.setup(config)
+
+        release.countDown()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        // only the second setup's own reply
+        assertEquals(1, integration.remoteConfigCount)
+        assertEquals(0, integration.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `remote config reply that arrives while open reaches integrations`() {
         val integration = FakePostHogIntegration()
         val release = CountDownLatch(1)
