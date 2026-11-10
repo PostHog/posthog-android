@@ -1145,10 +1145,11 @@ public class PostHog private constructor(
     }
 
     /**
-     * Whether a `$set` sent with [options] updates the person. A personless one doesn't, so it
-     * neither stores nor matches the person-properties hash.
+     * Whether a `$set` sent with [options] updates the person: `true` when the setting is missing or
+     * a Boolean `true`, `false` when capture reads it as false, and `null` when PostHog might do
+     * either, such as for `"maybe"` or `"true"`.
      */
-    private fun isPersonProcessed(options: Map<String, Any?>?): Boolean {
+    private fun personProcessing(options: Map<String, Any?>?): Boolean? {
         // An explicit null in [options] replaces the registered option, as in optionsForEvent.
         val option =
             if (options?.containsKey("process_person_profile") == true) {
@@ -1156,10 +1157,12 @@ public class PostHog private constructor(
             } else {
                 getRegisteredOptions()["process_person_profile"]
             }
-        if (option != null) {
-            return !isFalseOptionValue(option)
+        val value = option ?: getPreferences().getValue("\$process_person_profile")
+        return when {
+            value == null || value == true -> true
+            isFalseOptionValue(value) -> false
+            else -> null
         }
-        return !isFalseOptionValue(getPreferences().getValue("\$process_person_profile"))
     }
 
     /**
@@ -2336,10 +2339,13 @@ public class PostHog private constructor(
 
             // The transition event must fire even when an identical property call was cached
             // earlier; cache only after capture so deduplication cannot suppress it.
-            if (isPersonProcessed(options)) {
-                synchronized(cachedPersonPropertiesLock) {
-                    cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
-                }
+            when (personProcessing(options)) {
+                true ->
+                    synchronized(cachedPersonPropertiesLock) {
+                        cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+                    }
+                null -> clearPersonPropertiesHash()
+                false -> Unit
             }
 
             // The identified state itself is not part of the flags request; reload only when the
@@ -2348,11 +2354,11 @@ public class PostHog private constructor(
                 reloadFeatureFlags()
             }
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-            if (!isPersonProcessed(options) ||
-                shouldCapturePersonPropertiesEvent(
+            if (shouldCapturePersonPropertiesUpdate(
                     distinctId,
                     userProperties,
                     userPropertiesSetOnce,
+                    options,
                     "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
                 )
             ) {
@@ -2389,11 +2395,11 @@ public class PostHog private constructor(
 
         val currentDistinctId = this.distinctId
 
-        if (isPersonProcessed(options) &&
-            !shouldCapturePersonPropertiesEvent(
+        if (!shouldCapturePersonPropertiesUpdate(
                 currentDistinctId,
                 userPropertiesToSet,
                 userPropertiesToSetOnce,
+                options,
                 "A duplicate setPersonProperties call was made with the same properties. It has been ignored.",
             )
         ) {
@@ -2440,6 +2446,32 @@ public class PostHog private constructor(
                 "userPropertiesToSetOnce" to sortedSetOnce,
             )
         return config?.serializer?.serializeObject(hashData) ?: hashData.toString()
+    }
+
+    /**
+     * Whether to capture a person properties update sent with [options]. One that surely updates the
+     * person is skipped when it repeats the last one. One PostHog might apply clears the hash, so a
+     * later update back to the previous properties is sent. A personless one leaves the hash as is.
+     */
+    private fun shouldCapturePersonPropertiesUpdate(
+        distinctId: String,
+        userPropertiesToSet: Map<String, Any>?,
+        userPropertiesToSetOnce: Map<String, Any>?,
+        options: Map<String, Any?>?,
+        duplicateLogMessage: String,
+    ): Boolean {
+        when (personProcessing(options)) {
+            true -> return shouldCapturePersonPropertiesEvent(distinctId, userPropertiesToSet, userPropertiesToSetOnce, duplicateLogMessage)
+            null -> clearPersonPropertiesHash()
+            false -> Unit
+        }
+        return true
+    }
+
+    private fun clearPersonPropertiesHash() {
+        synchronized(cachedPersonPropertiesLock) {
+            cachedPersonPropertiesHash = null
+        }
     }
 
     /**
