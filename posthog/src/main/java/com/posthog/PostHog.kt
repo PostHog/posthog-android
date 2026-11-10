@@ -39,7 +39,6 @@ import com.posthog.internal.captureAiMaxStoredEventBytes
 import com.posthog.internal.errortracking.PostHogExceptionStepsBuffer
 import com.posthog.internal.executeSafely
 import com.posthog.internal.fillLibraryIdentity
-import com.posthog.internal.isFalseOptionValue
 import com.posthog.internal.logIntegrationFailure
 import com.posthog.internal.personPropertiesContext
 import com.posthog.internal.replay.PostHogSessionReplayHandler
@@ -1145,11 +1144,10 @@ public class PostHog private constructor(
     }
 
     /**
-     * Whether a `$set` sent with [options] updates the person: `true` when the setting is missing or
-     * a Boolean `true`, `false` when capture reads it as false, and `null` when PostHog might do
-     * either, such as for `"maybe"` or `"true"`.
+     * Whether a `$set` sent with [options] surely updates the person: the setting is missing or a
+     * Boolean `true`. Any other value, including a false one, might not, so it never records a hash.
      */
-    private fun personProcessing(options: Map<String, Any?>?): Boolean? {
+    private fun surelyProcessesPersonProfile(options: Map<String, Any?>?): Boolean {
         // An explicit null in [options] replaces the registered option, as in optionsForEvent.
         val option =
             if (options?.containsKey("process_person_profile") == true) {
@@ -1158,11 +1156,7 @@ public class PostHog private constructor(
                 getRegisteredOptions()["process_person_profile"]
             }
         val value = option ?: getPreferences().getValue("\$process_person_profile")
-        return when {
-            value == null || value == true -> true
-            isFalseOptionValue(value) -> false
-            else -> null
-        }
+        return value == null || value == true
     }
 
     /**
@@ -2339,13 +2333,17 @@ public class PostHog private constructor(
 
             // The transition event must fire even when an identical property call was cached
             // earlier; cache only after capture so deduplication cannot suppress it.
-            when (personProcessing(options)) {
-                true ->
-                    synchronized(cachedPersonPropertiesLock) {
-                        cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
-                    }
-                null -> clearPersonPropertiesHash()
-                false -> Unit
+            val hash =
+                if (surelyProcessesPersonProfile(
+                        options,
+                    )
+                ) {
+                    getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+                } else {
+                    null
+                }
+            synchronized(cachedPersonPropertiesLock) {
+                cachedPersonPropertiesHash = hash
             }
 
             // The identified state itself is not part of the flags request; reload only when the
@@ -2450,8 +2448,8 @@ public class PostHog private constructor(
 
     /**
      * Whether to capture a person properties update sent with [options]. One that surely updates the
-     * person is skipped when it repeats the last one. One PostHog might apply clears the hash, so a
-     * later update back to the previous properties is sent. A personless one leaves the hash as is.
+     * person is skipped when it repeats the last one. Any other one is sent and clears the hash, so a
+     * later update back to the previous properties is sent too.
      */
     private fun shouldCapturePersonPropertiesUpdate(
         distinctId: String,
@@ -2460,18 +2458,13 @@ public class PostHog private constructor(
         options: Map<String, Any?>?,
         duplicateLogMessage: String,
     ): Boolean {
-        when (personProcessing(options)) {
-            true -> return shouldCapturePersonPropertiesEvent(distinctId, userPropertiesToSet, userPropertiesToSetOnce, duplicateLogMessage)
-            null -> clearPersonPropertiesHash()
-            false -> Unit
+        if (surelyProcessesPersonProfile(options)) {
+            return shouldCapturePersonPropertiesEvent(distinctId, userPropertiesToSet, userPropertiesToSetOnce, duplicateLogMessage)
         }
-        return true
-    }
-
-    private fun clearPersonPropertiesHash() {
         synchronized(cachedPersonPropertiesLock) {
             cachedPersonPropertiesHash = null
         }
+        return true
     }
 
     /**

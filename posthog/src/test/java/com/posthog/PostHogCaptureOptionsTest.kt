@@ -359,29 +359,13 @@ internal class PostHogCaptureOptionsTest {
         sut.setPersonProperties(userProps, options = personless)
         sut.setPersonProperties(userProps)
 
-        // only the second processed call is a duplicate
-        assertEquals(3, captured.count { it.event == PostHogEventName.SET.event })
+        assertEquals(4, captured.count { it.event == PostHogEventName.SET.event })
         sut.close()
     }
 
     @Test
-    fun `a set with a false value capture reads leniently is personless too`() {
-        for (value in listOf<Any>("false", " Off ", 0, "0.0")) {
-            val sut = getSut()
-            sut.identify("user_id")
-            captured.clear()
-
-            sut.setPersonProperties(userProps, options = mapOf("process_person_profile" to value))
-            sut.setPersonProperties(userProps)
-
-            assertEquals(2, captured.count { it.event == PostHogEventName.SET.event }, "for $value")
-            sut.close()
-        }
-    }
-
-    @Test
-    fun `a set PostHog might not apply neither matches nor keeps the person properties hash`() {
-        for (value in listOf<Any>("maybe", "true", 1)) {
+    fun `a set that may be personless neither matches nor keeps the person properties hash`() {
+        for (value in listOf<Any>(false, "false", " Off ", 0, "0.0", "maybe", "true", 1)) {
             val sut = getSut()
             sut.identify("user_id")
             captured.clear()
