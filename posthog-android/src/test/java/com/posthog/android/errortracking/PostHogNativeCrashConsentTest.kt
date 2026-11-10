@@ -3,6 +3,8 @@ package com.posthog.android.errortracking
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
@@ -10,7 +12,9 @@ import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.android.internal.errortracking.NativeCrashWatermarkStore
 import com.posthog.android.internal.errortracking.TestProtoWriter
+import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogMemoryPreferences
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -25,6 +29,7 @@ import org.robolectric.shadows.ShadowActivityManager
 import org.robolectric.shadows.ShadowApplication
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
@@ -92,7 +97,11 @@ internal class PostHogNativeCrashConsentTest {
         shadowOf(context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).addApplicationExitInfo(exitInfo)
     }
 
-    private fun setup(optOut: Boolean): PostHogInterface {
+    private fun setup(
+        optOut: Boolean,
+        integrationContext: Context = context,
+        logger: PostHogLogger? = null,
+    ): PostHogInterface {
         val applied = CountDownLatch(1).also { remoteConfigApplied = it }
         val prefs = PostHogMemoryPreferences()
         prefs.setValue("errorTracking", mapOf("autocaptureExceptions" to true))
@@ -103,11 +112,12 @@ internal class PostHogNativeCrashConsentTest {
                 replayStoragePrefix = File(tmp, "snapshots").absolutePath
                 cachePreferences = prefs
                 this.optOut = optOut
+                logger?.let { this.logger = it }
                 persistOptOut = false
                 preloadFeatureFlags = false
                 errorTrackingConfig.autoCapture = true
                 errorTrackingConfig.captureNativeCrashes = true
-                addIntegration(PostHogNativeCrashIntegration(this@PostHogNativeCrashConsentTest.context, this, { DirectExecutorService() }))
+                addIntegration(PostHogNativeCrashIntegration(integrationContext, this, { DirectExecutorService() }))
                 // added last, so it fires after the native crash integration handled the same config
                 addIntegration(
                     object : PostHogIntegration {
@@ -213,5 +223,60 @@ internal class PostHogNativeCrashConsentTest {
         setup(optOut = false)
 
         assertEquals(1, exceptionEventsSent(), "a crash recorded after optIn must be sent")
+    }
+
+    @Test
+    fun `a failed opt-in close skips the scan and leaves the watermark unchanged`() {
+        setup(optOut = true).close()
+        addNativeCrash(timestamp = awaitNextMillisecond())
+        val watermarkBefore = NativeCrashWatermarkStore(context).get()
+        val logs = CopyOnWriteArrayList<String>()
+        val logger =
+            object : PostHogLogger {
+                override fun log(message: String) {
+                    logs.add(message)
+                }
+
+                override fun isEnabled() = true
+            }
+
+        val posthog = setup(optOut = true, integrationContext = CommitFailingContext(context), logger = logger)
+        posthog.optIn()
+
+        assertEquals(0, exceptionEventsSent(), "a failed close must not let the scan send the crash")
+        assertEquals(watermarkBefore, NativeCrashWatermarkStore(context).get(), "the watermark must not advance")
+        assertTrue(
+            logs.any { it.contains("Native crash scan skipped until the opt-in is recorded") },
+            "the skipped scan must be logged: $logs",
+        )
+    }
+
+    private class CommitFailingContext(base: Context) : ContextWrapper(base) {
+        override fun getApplicationContext(): Context = this
+
+        override fun getSharedPreferences(
+            name: String?,
+            mode: Int,
+        ): SharedPreferences = CommitFailingPreferences(super.getSharedPreferences(name, mode))
+    }
+
+    private class CommitFailingPreferences(private val delegate: SharedPreferences) : SharedPreferences by delegate {
+        override fun edit(): SharedPreferences.Editor = CommitFailingEditor(delegate.edit())
+    }
+
+    private class CommitFailingEditor(private val delegate: SharedPreferences.Editor) : SharedPreferences.Editor by delegate {
+        override fun putString(
+            key: String?,
+            value: String?,
+        ) = apply { delegate.putString(key, value) }
+
+        override fun putLong(
+            key: String?,
+            value: Long,
+        ) = apply { delegate.putLong(key, value) }
+
+        override fun remove(key: String?) = apply { delegate.remove(key) }
+
+        override fun commit(): Boolean = false
     }
 }

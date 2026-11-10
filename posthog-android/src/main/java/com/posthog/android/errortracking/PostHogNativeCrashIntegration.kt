@@ -216,6 +216,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
 
     // Stamped on the caller thread so the bound is the consent change itself; I/O runs on the consent
     // executor. Runs from setup()/with() on the host thread, so the system-service probes are caught too.
+    // The task rethrows so the Future fails and awaitConsentRecorded sees the unrecorded change.
     private fun recordConsent(
         change: String,
         write: NativeCrashOptOutIntervalStore.(nowMs: Long) -> Unit,
@@ -231,6 +232,7 @@ public class PostHogNativeCrashIntegration : PostHogIntegration {
                     optOutIntervalStore.write(nowMs)
                 } catch (e: Throwable) {
                     fail(e)
+                    throw e
                 }
             }
         }.getOrElse {

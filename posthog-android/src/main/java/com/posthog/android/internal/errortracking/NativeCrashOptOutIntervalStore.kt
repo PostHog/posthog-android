@@ -97,7 +97,7 @@ internal class NativeCrashOptOutIntervalStore(context: Context, projectToken: St
         prefix: String,
     ): List<String> = all.keys.filter { it.startsWith(prefix) }
 
-    // oldest first
+    // insertion order, which is not wall-clock order after a backward clock
     private fun parseIntervals(serialized: String?): List<LongRange> =
         serialized
             ?.split(';')
@@ -111,10 +111,12 @@ internal class NativeCrashOptOutIntervalStore(context: Context, projectToken: St
 
     private fun serialize(intervals: List<LongRange>): String = intervals.joinToString(";") { "${it.first}:${it.last}" }
 
-    // dropping an interval could expose a crash the scan has not acknowledged yet, so merge the two oldest instead
+    // dropping an interval could expose a crash the scan has not acknowledged yet, so merge the two oldest instead,
+    // spanning both whatever their wall-clock order
     private fun bounded(intervals: List<LongRange>): List<LongRange> {
         if (intervals.size <= MAX_INTERVALS) return intervals
-        val merged = intervals[0].first..intervals[1].last
+        val (a, b) = intervals
+        val merged = minOf(a.first, b.first)..maxOf(a.last, b.last)
         return listOf(merged) + intervals.drop(2)
     }
 
