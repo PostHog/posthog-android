@@ -375,6 +375,39 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `remote config reply from a closed setup does not reach integrations after re-setup`() {
+        val integrationA = FakePostHogIntegration()
+        val integrationB = FakePostHogIntegration()
+        val release = CountDownLatch(1)
+        val http = heldFlagsResponse(release)
+
+        val sut = getSut(http.url("/").toString(), integration = integrationA)
+        // the loader of the first setup is now blocked on the held response
+        http.takeRequest()
+
+        sut.close()
+        val configB =
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
+                storagePrefix = tmpDir.newFolder().absolutePath
+                preloadFeatureFlags = false
+                cachePreferences = PostHogMemoryPreferences()
+                addIntegration(integrationB)
+            }
+        sut.setup(configB)
+
+        release.countDown()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(0, integrationA.remoteConfigCount)
+        assertEquals(0, integrationA.remoteConfigFailedCount)
+        // the second setup's own reply, and nothing from the first
+        assertEquals(1, integrationB.remoteConfigCount)
+        assertEquals(0, integrationB.remoteConfigFailedCount)
+
+        sut.close()
+    }
+
+    @Test
     fun `remote config reply that arrives while open reaches integrations`() {
         val integration = FakePostHogIntegration()
         val release = CountDownLatch(1)
