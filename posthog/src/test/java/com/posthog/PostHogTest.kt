@@ -5273,6 +5273,18 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `identify with a person property the hash cannot serialize still identifies`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(DISTINCT_ID, userProperties = mapOf("score" to Double.NaN))
+
+        assertEquals(DISTINCT_ID, sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
     fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
         val http = mockHttp()
         val url = http.url("/")

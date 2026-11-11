@@ -1821,7 +1821,15 @@ public class PostHog private constructor(
                 "userPropertiesToSet" to sortedSet,
                 "userPropertiesToSetOnce" to sortedSetOnce,
             )
-        return config?.serializer?.serializeObject(hashData) ?: hashData.toString()
+        // Gson throws on values such as Double.NaN; the hash must never throw into identify or set.
+        val serialized =
+            try {
+                config?.serializer?.serializeObject(hashData)
+            } catch (e: Throwable) {
+                config?.logger?.log("Failed to serialize person properties for the dedup hash: $e.")
+                null
+            }
+        return serialized ?: hashData.toString()
     }
 
     /**
