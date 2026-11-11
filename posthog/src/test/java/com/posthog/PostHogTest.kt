@@ -5198,6 +5198,81 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `setPersonProperties resends an update that beforeSend dropped`() {
+        val http = mockHttp()
+        var setEvents = 0
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "\$set" && ++setEvents == 1) null else it
+            })
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties resends an update that beforeSend made personless`() {
+        val http = mockHttp(total = 2)
+        var setEvents = 0
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "\$set" && ++setEvents == 1) it.properties!!["\$process_person_profile"] = false
+                it
+            })
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(2, http.requestCount)
+        val flags =
+            List(2) {
+                serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
+                    .batch.single().properties!!["\$process_person_profile"]
+            }
+        assertEquals(listOf<Any?>(false, true), flags)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties sends an update made while opted out after opting in`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, optOut = true)
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.optIn()
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify skips a set that repeats the properties its identify event sent`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.setPersonProperties(mapOf("plan" to "pro"))
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$identify", "\$set"), events.map { it.event })
+        assertEquals(mapOf("plan" to "pro"), events[1].properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
     fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
         val http = mockHttp()
         val url = http.url("/")

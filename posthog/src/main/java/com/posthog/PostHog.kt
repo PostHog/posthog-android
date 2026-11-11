@@ -968,6 +968,23 @@ public class PostHog private constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
+        captureEvent(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
+    }
+
+    /**
+     * [personPropertiesHash], when set, is recorded or cleared once the event is queued, from the
+     * event as sent; see [updatePersonPropertiesHashForQueuedEvent].
+     */
+    private fun captureEvent(
+        event: String,
+        distinctId: String?,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        timestamp: Date?,
+        personPropertiesHash: String? = null,
+    ) {
         // Tracked on this call rather than derived from the event, so it survives beforeSend renaming
         // or replacing the event.
         var claimedReplayDebugBundle = false
@@ -1078,6 +1095,9 @@ public class PostHog private constructor(
                     queue.add(postHogEvent)
                     if (claimedReplayDebugBundle) {
                         commitReplayDebugPropertiesWindow()
+                    }
+                    if (personPropertiesHash != null) {
+                        updatePersonPropertiesHashForQueuedEvent(event, postHogEvent, personPropertiesHash)
                     }
                 }
                 // Notify surveys integration about the event
@@ -1646,12 +1666,15 @@ public class PostHog private constructor(
         if (shouldIdentify || shouldTransitionToIdentified) config.notifyIntegrationsChanged()
 
         if (shouldIdentify) {
-            capture(
+            captureEvent(
                 PostHogEventName.IDENTIFY.event,
                 distinctId = distinctId,
                 properties = props,
                 userProperties = userProperties,
                 userPropertiesSetOnce = userPropertiesSetOnce,
+                groups = null,
+                timestamp = null,
+                personPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce),
             )
 
             if (config?.reuseAnonymousId != true) {
@@ -1686,18 +1709,18 @@ public class PostHog private constructor(
 
             setPersonPropertiesForFlagsIfNeeded(userProperties, userPropertiesSetOnce)
 
-            capture(
+            // The transition event must fire even when an identical property call was cached
+            // earlier, so it skips the duplicate check and only records the hash once queued.
+            captureEvent(
                 PostHogEventName.SET.event,
                 distinctId = distinctId,
+                properties = null,
                 userProperties = userProperties ?: emptyMap(),
                 userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
+                groups = null,
+                timestamp = null,
+                personPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce),
             )
-
-            // The transition event must fire even when an identical property call was cached
-            // earlier; cache only after capture so deduplication cannot suppress it.
-            synchronized(cachedPersonPropertiesLock) {
-                cachedPersonPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
-            }
 
             // The identified state itself is not part of the flags request; reload only when the
             // caller supplied properties that can affect flag evaluation.
@@ -1705,18 +1728,23 @@ public class PostHog private constructor(
                 reloadFeatureFlags(config?.onFeatureFlags)
             }
         } else if (!hasDifferentDistinctId && (userProperties?.isNotEmpty() == true || userPropertiesSetOnce?.isNotEmpty() == true)) {
-            if (shouldCapturePersonPropertiesEvent(
+            val hash =
+                personPropertiesHashIfChanged(
                     distinctId,
                     userProperties,
                     userPropertiesSetOnce,
                     "A duplicate identify call was made with the same properties. The \$set event has been ignored.",
                 )
-            ) {
-                capture(
+            if (hash != null) {
+                captureEvent(
                     PostHogEventName.SET.event,
                     distinctId = distinctId,
+                    properties = null,
                     userProperties = userProperties,
                     userPropertiesSetOnce = userPropertiesSetOnce,
+                    groups = null,
+                    timestamp = null,
+                    personPropertiesHash = hash,
                 )
             }
             // Note we don't reload flags on property changes as these get processed async
@@ -1743,15 +1771,13 @@ public class PostHog private constructor(
 
         val currentDistinctId = this.distinctId
 
-        if (!shouldCapturePersonPropertiesEvent(
+        val hash =
+            personPropertiesHashIfChanged(
                 currentDistinctId,
                 userPropertiesToSet,
                 userPropertiesToSetOnce,
                 "A duplicate setPersonProperties call was made with the same properties. It has been ignored.",
-            )
-        ) {
-            return
-        }
+            ) ?: return
 
         // Update person properties for flags (setOnce properties are applied first, then set properties override)
         val allProperties = mutableMapOf<String, Any>()
@@ -1762,11 +1788,15 @@ public class PostHog private constructor(
         }
 
         // Send the $set event
-        capture(
+        captureEvent(
             PostHogEventName.SET.event,
             distinctId = currentDistinctId,
+            properties = null,
             userProperties = userPropertiesToSet,
             userPropertiesSetOnce = userPropertiesToSetOnce,
+            groups = null,
+            timestamp = null,
+            personPropertiesHash = hash,
         )
     }
 
@@ -1795,26 +1825,44 @@ public class PostHog private constructor(
     }
 
     /**
-     * Checks if person properties have changed by comparing hash values.
-     * Updates the cached hash if different and returns true if the event should be captured.
-     * Returns false if the hash matches (duplicate call), logging the provided message.
+     * Returns the hash of this person-properties update, or null when it matches the last update
+     * that was queued (a duplicate call), logging the provided message. The hash is not stored here:
+     * [updatePersonPropertiesHashForQueuedEvent] stores it once the event is queued.
      */
-    private fun shouldCapturePersonPropertiesEvent(
+    private fun personPropertiesHashIfChanged(
         distinctId: String,
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
         duplicateLogMessage: String,
-    ): Boolean {
+    ): String? {
         val hash = getPersonPropertiesHash(distinctId, userPropertiesToSet, userPropertiesToSetOnce)
 
         synchronized(cachedPersonPropertiesLock) {
             if (cachedPersonPropertiesHash == hash) {
                 config?.logger?.log(duplicateLogMessage)
-                return false
+                return null
             }
-            cachedPersonPropertiesHash = hash
         }
-        return true
+        return hash
+    }
+
+    /**
+     * Runs once [queuedEvent] is queued; a dropped event leaves the hash alone. The event as sent,
+     * after `beforeSend`, decides: an update that keeps its name and whose `$process_person_profile`
+     * is missing or the Boolean `true` surely processes the person, so its hash is recorded. Any
+     * other value may skip the person, so the hash is cleared and a later identical update is sent.
+     */
+    private fun updatePersonPropertiesHashForQueuedEvent(
+        capturedEvent: String,
+        queuedEvent: PostHogEvent,
+        hash: String,
+    ) {
+        val processPersonProfile = queuedEvent.properties?.get("\$process_person_profile")
+        val surelyProcessesPerson =
+            queuedEvent.event == capturedEvent && (processPersonProfile == null || processPersonProfile == true)
+        synchronized(cachedPersonPropertiesLock) {
+            cachedPersonPropertiesHash = if (surelyProcessesPerson) hash else null
+        }
     }
 
     private fun hasPersonProcessing(): Boolean {
