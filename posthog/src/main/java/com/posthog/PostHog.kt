@@ -1810,9 +1810,10 @@ public class PostHog private constructor(
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
     ): String {
-        // Sort keys recursively to ensure deterministic hashing regardless of map insertion order
-        val sortedSet = userPropertiesToSet?.let { sortMapRecursively(it) }
-        val sortedSetOnce = userPropertiesToSetOnce?.let { sortMapRecursively(it) }
+        // Sort keys recursively to ensure deterministic hashing regardless of map insertion order.
+        // An empty map hashes like a missing one, as both send no properties.
+        val sortedSet = userPropertiesToSet?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
+        val sortedSetOnce = userPropertiesToSetOnce?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
 
         // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
         val hashData =
@@ -1856,9 +1857,10 @@ public class PostHog private constructor(
 
     /**
      * Runs once [queuedEvent] is queued; a dropped event leaves the hash alone. The event as sent,
-     * after `beforeSend`, decides: an update that keeps its name and whose `$process_person_profile`
-     * is missing or the Boolean `true` surely processes the person, so its hash is recorded. Any
-     * other value may skip the person, so the hash is cleared and a later identical update is sent.
+     * after `beforeSend`, decides: an update that keeps its name, its distinct id and its `$set` and
+     * `$set_once` payload, and whose `$process_person_profile` is missing or the Boolean `true`, surely
+     * processes the person, so its hash is recorded. Anything else may not have sent these properties
+     * to the person, so the hash is cleared and a later identical update is sent.
      */
     private fun updatePersonPropertiesHashForQueuedEvent(
         capturedEvent: String,
@@ -1867,10 +1869,21 @@ public class PostHog private constructor(
     ) {
         val processPersonProfile = queuedEvent.properties?.get("\$process_person_profile")
         val surelyProcessesPerson =
-            queuedEvent.event == capturedEvent && (processPersonProfile == null || processPersonProfile == true)
+            queuedEvent.event == capturedEvent &&
+                (processPersonProfile == null || processPersonProfile == true) &&
+                sentPersonPropertiesHash(queuedEvent) == hash
         synchronized(cachedPersonPropertiesLock) {
             cachedPersonPropertiesHash = if (surelyProcessesPerson) hash else null
         }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun sentPersonPropertiesHash(queuedEvent: PostHogEvent): String? {
+        val properties = queuedEvent.properties
+        val set = properties?.get("\$set")
+        val setOnce = properties?.get("\$set_once")
+        if ((set != null && set !is Map<*, *>) || (setOnce != null && setOnce !is Map<*, *>)) return null
+        return getPersonPropertiesHash(queuedEvent.distinctId, set as Map<String, Any>?, setOnce as Map<String, Any>?)
     }
 
     private fun hasPersonProcessing(): Boolean {

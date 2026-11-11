@@ -5273,6 +5273,32 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `identify resends set properties that beforeSend removed from the identify event`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                flushAt = 2,
+                beforeSend = {
+                    if (it.event == "\$identify") it.properties!!.remove("\$set")
+                    it
+                },
+            )
+
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.setPersonProperties(userProps)
+        sut.flush()
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$identify", "\$set"), events.map { it.event })
+        assertEquals(userProps, events[1].properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
     fun `identify with a person property the hash cannot serialize still identifies`() {
         val http = mockHttp()
         val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
