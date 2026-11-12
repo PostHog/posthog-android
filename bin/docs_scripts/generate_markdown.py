@@ -230,6 +230,15 @@ def nest(markdown: str) -> str:
     return "\n".join(out)
 
 
+def migration_page(guides: list[str]) -> list[str]:
+    """The migration page. One guide's H1 becomes the page title, so the page shows one title."""
+    title = "PostHog Android SDK migration guides"
+    if len(guides) == 1 and guides[0].startswith("# "):
+        heading, _, rest = guides[0].partition("\n")
+        title, guides = heading[2:].strip(), [rest.strip()]
+    return [f"---\ntitle: {json.dumps(title)}\nsidebar: Docs\nshowTitle: true\n---", *guides]
+
+
 def write(name: str, sections: list[str]) -> None:
     (ROOT / "references" / name).write_text("\n\n".join(sections) + "\n")
     print(f"wrote references/{name}")
@@ -252,8 +261,7 @@ def main() -> None:
     if not opts.experimental:
         write("posthog-android-reference.md", [front_matter("PostHog Android SDK", body), *body])
     if guides := sorted((ROOT / "docs").glob("migration-*.md"), reverse=True):
-        head = "---\ntitle: PostHog Android SDK migration guides\nsidebar: Docs\nshowTitle: true\n---"
-        write("posthog-android-migration.md", [head, *(g.read_text().strip() for g in guides)])
+        write("posthog-android-migration.md", migration_page([g.read_text().strip() for g in guides]))
 
 
 if __name__ == "__main__":
