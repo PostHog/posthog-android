@@ -59,7 +59,7 @@ These are unchanged, so you don't need to change your build for them:
 - Kotlin language and API compatibility: 2.0
 - `posthog-android-gradle-plugin`
 
-Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. A mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
+Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. When core 7.0 is in a Gradle build, for example through `posthog-server` 2.25, Gradle upgrades `posthog-android` to 4.0, even over a range such as `[3.75.0,4.0.0)`, so code that still uses removed APIs fails to compile. Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
 ### Removed APIs
 
@@ -586,4 +586,4 @@ Events with an empty name are dropped before sending. `userProperties`, `userPro
 `posthog-server` 2.25.0 depends on core 7.0, so upgrade it and `posthog-android` together:
 
 - If your project uses `posthog-android` 4.0 or core 7.0, use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
-- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. Gradle resolves core 7.0 for both, and `posthog-android` 3.x fails at runtime against it with errors such as `NoSuchMethodError`.
+- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. `posthog-server` 2.25 brings in core 7.0, and Gradle then upgrades `posthog-android` to 4.0.

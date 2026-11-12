@@ -251,9 +251,16 @@ def main() -> None:
     write(f"posthog-android-{major}.md", [front_matter(title, body), *body])
     if not opts.experimental:
         write("posthog-android-reference.md", [front_matter("PostHog Android SDK", body), *body])
-    if guides := sorted((ROOT / "docs").glob("migration-*.md"), reverse=True):
-        head = "---\ntitle: PostHog Android SDK migration guides\nsidebar: Docs\nshowTitle: true\n---"
-        write("posthog-android-migration.md", [head, *(g.read_text().strip() for g in guides)])
+    write_migration()
+
+
+def write_migration() -> None:
+    """Writes MIGRATION.md as the migration guides page, without its title, which the front matter replaces."""
+    guide = (ROOT / "MIGRATION.md").read_text().strip()
+    if guide.startswith("# "):
+        guide = guide.split("\n", 1)[1].strip()
+    head = "---\ntitle: PostHog Android SDK migration guides\nsidebar: Docs\nshowTitle: true\n---"
+    write("posthog-android-migration.md", [head, guide])
 
 
 if __name__ == "__main__":
