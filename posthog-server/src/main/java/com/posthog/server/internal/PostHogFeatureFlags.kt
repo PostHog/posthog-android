@@ -483,7 +483,13 @@ internal class PostHogFeatureFlags(
         if (cached != null) {
             val failedKeys = cached.filterValues { it.failed == true }.keys
             if (failedKeys.isEmpty()) return cached
-            val local = evaluateFlagsLocally(distinctId, groups, personProperties, groupProperties, flagKeys = failedKeys.toList())
+            // Cache hits may use loaded definitions, but leave missing-definition retries to refresh.
+            val local =
+                if (flagDefinitions != null) {
+                    evaluateFlagsLocally(distinctId, groups, personProperties, groupProperties, flagKeys = failedKeys.toList())
+                } else {
+                    null
+                }
             return local?.flags.orEmpty() + cached.filterKeys { it !in failedKeys }
         }
 
