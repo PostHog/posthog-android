@@ -68,6 +68,19 @@ internal class PostHogCaptureOptionsTest {
         )
     }
 
+    // The person properties hash is only stored once an event is queued, so dedup tests need
+    // beforeSend to keep events.
+    private fun getQueueingSut(): PostHogInterface {
+        val http = httpServers.mockHttp(total = 10)
+        return getSut(
+            http.url("/").toString(),
+            beforeSend = { event ->
+                captured.add(event)
+                event
+            },
+        )
+    }
+
     @AfterTest
     fun `set down`() {
         tmpDir.root.deleteRecursively()
@@ -350,7 +363,7 @@ internal class PostHogCaptureOptionsTest {
     @Test
     fun `a personless set neither stores nor matches the person properties hash`() {
         val personless = mapOf("process_person_profile" to false)
-        val sut = getSut()
+        val sut = getQueueingSut()
         sut.identify("user_id")
         captured.clear()
 
@@ -366,7 +379,7 @@ internal class PostHogCaptureOptionsTest {
     @Test
     fun `a set that may be personless neither matches nor keeps the person properties hash`() {
         for (value in listOf<Any>(false, "false", " Off ", 0, "0.0", "maybe", "true", 1)) {
-            val sut = getSut()
+            val sut = getQueueingSut()
             sut.identify("user_id")
             captured.clear()
 
