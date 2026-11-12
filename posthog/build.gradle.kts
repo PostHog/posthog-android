@@ -109,6 +109,16 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp")
     // Fixes DeflaterSink buffer reuse under JNI array copying: https://github.com/square/okio/issues/1608
     implementation("com.squareup.okio:okio:${PosthogBuildConfig.Dependencies.OKIO}")
+
+    // An app that pins this core next to an older posthog-android major crashes at runtime with
+    // NoSuchMethodError, since that posthog-android calls core APIs this major removed. The constraint
+    // only applies when posthog-android is already in the graph, and raises it to the matching major.
+    constraints {
+        val androidMajor = properties["androidVersion"].toString().substringBefore(".")
+        api("com.posthog:posthog-android:$androidMajor.0.0") {
+            because("posthog-android must match the major of the core posthog artifact")
+        }
+    }
     compileOnly("org.codehaus.mojo:animal-sniffer-annotations:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_ANNOTATION}")
 
     // compatibility

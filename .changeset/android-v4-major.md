@@ -39,6 +39,7 @@
 - Add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event
 - Add internal APIs so wrapper SDKs can register capture options sent with every event
 - Send events queued on disk by 3.x through capture v1 after the update
+- Upgrade `posthog-android` to 4.0 when an app pins core `posthog` 7.x next to `posthog-android` 3.x, which would otherwise crash with `NoSuchMethodError` (Gradle builds only)
 - Send a `PostHog-Request-Id` header with each capture request, which reverse proxies must pass through
 - Cap a capture request at about 5 MiB of events and send as soon as that much is queued
 - Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
