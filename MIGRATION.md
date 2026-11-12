@@ -8,7 +8,7 @@ Read the checklist first, then the sections that apply to you.
 
 Core `posthog` 7.0 is only supported through `posthog-android` 4.0 and `posthog-server`. Using it on its own through `PostHogStateless.with` isn't supported; see [`posthog-server`](#posthog-server).
 
-For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
+For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/api/capture-v1).
 
 For the full list of 4.0 changes, see the [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-android/CHANGELOG.md).
 
@@ -577,7 +577,7 @@ On Android, listeners run on the main thread. If flags have already loaded, a ne
 
 It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
 
-Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
+Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps. A class that extends `PostHogStateless` also needs updating: the protected `buildEvent()` gained `options` and `uuid` parameters, and `captureFeatureFlagCalledEvent()` is no longer protected.
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
