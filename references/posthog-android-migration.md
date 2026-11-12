@@ -63,7 +63,7 @@ These are unchanged, so you don't need to change your build for them:
 - Kotlin language and API compatibility: 2.0
 - `posthog-android-gradle-plugin`
 
-Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. When core 7.0 is in a Gradle build, for example through `posthog-server` 2.25, Gradle upgrades `posthog-android` to 4.0, even over a range such as `[3.75.0,4.0.0)`, so code that still uses removed APIs fails to compile. Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
+Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. When core 7.0 is in a Gradle build, for example through `posthog-server` 2.25, Gradle upgrades the app's `posthog-android` to 4.0, even over a range such as `[3.75.0,4.0.0)`, so app code that still uses removed APIs fails to compile. A library compiled against `posthog-android` 3.x, such as `posthog_flutter` 5, isn't recompiled and fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
 ### Removed APIs
 
