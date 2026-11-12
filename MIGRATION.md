@@ -119,8 +119,10 @@ Upgrade PostHog artifacts together:
 | --- | --- |
 | `com.posthog:posthog-android` | 3.x.x to 4.0.0 |
 | `com.posthog:posthog` (core) | 6.x.x to 7.0.0 |
-| `com.posthog:posthog-android-surveys-compose` | Keep your version. Declare `com.posthog:posthog-android` 4.0.0 or later in your build, so Gradle resolves 4.x.x instead of the 3.x.x version it pulls in. |
+| `com.posthog:posthog-android-surveys-compose` | Keep your version |
 | `com.posthog:posthog-server` | 2.25.0, together with `posthog-android` 4.0.0 (see [Upgrade posthog-server](#upgrade-posthog-server)) |
+
+With `posthog-android-surveys-compose`, declare `com.posthog:posthog-android` 4.0.0 or later in your build, so Gradle resolves 4.x.x instead of the 3.x.x version it pulls in.
 
 Core `posthog` 7.x.x isn't binary compatible with SDK versions built against core 6.x.x. The exception is `posthog-android-surveys-compose`, which works with both.
 
@@ -211,11 +213,13 @@ If you identify users with a long ID, such as a JWT or a long email address, sho
 | `getFeatureFlagPayload()`, on the instance and on `PostHog` | `getFeatureFlagResult()` (see [Fix flag calls](#fix-flag-calls)) |
 | `defaultValue` on `getFeatureFlag()` | `getFeatureFlag(key) ?: default` (see [Fix flag calls](#fix-flag-calls)) |
 | `PostHogSessionReplayConfig.debouncerDelayMs` | `throttleDelayMs` |
-| `PostHogSessionReplayConfig.screenshot`, `drawableConverter`, `PostHogDrawableConverter` | Nothing. Replay always records screenshots (see [Check session replay](#check-session-replay)). |
-| `PostHogConfig.remoteConfig` | Nothing. Remote config always loads (see [Remove remoteConfig](#remove-remoteconfig)). |
+| `PostHogSessionReplayConfig.screenshot`, `drawableConverter`, `PostHogDrawableConverter` | Nothing |
+| `PostHogConfig.remoteConfig` | Nothing |
 | `PostHogConfig.onFeatureFlags` | `PostHog.onFeatureFlags()` before `setup()` (see [Move the flags callback](#move-the-flags-callback)) |
 | `PostHogOnFeatureFlags` | `PostHogFeatureFlagsCallback` |
 | `PostHogConfig.maxRetries` | `pushNotificationSubscriptionMaxRetries` (see [Check retries](#check-retries)) |
+
+Replay always records screenshots (see [Check session replay](#check-session-replay)). Remote config always loads (see [Remove remoteConfig](#remove-remoteconfig)).
 
 The constructor parameters of `PostHogConfig` and `PostHogSessionReplayConfig` move up where these were removed. If you pass arguments by position, check them, or switch to named arguments.
 
@@ -333,7 +337,9 @@ An instance from `PostHogAndroid.with()` is set up as it's created, so call `onF
 | --- | --- |
 | `flags` | The keys of the enabled flags |
 | `variants` | Their values, either `true` or the variant string |
-| `errorsLoading` | Whether the latest load failed. The values are then the last known ones, which can be empty. |
+| `errorsLoading` | Whether the latest load failed |
+
+When the latest load failed, the values are the last known ones, which can be empty.
 
 Register the listener before `setup()`:
 
@@ -425,14 +431,26 @@ class FakePostHog : PostHogInterface {
 
 These helpers were public only by accident and were marked `@PostHogInternal`. They're no longer visible outside the SDK and have no replacement. Apps that don't use `@PostHogInternal` APIs aren't affected.
 
-| Package | No longer visible |
+| No longer visible | Package |
 | --- | --- |
-| `com.posthog.internal` | `CustomHeadersInterceptor`, `PostHogPrintLogger`, `PropertyGroupDeserializer`, `PropertyValueDeserializer`, `personPropertiesContext()`, `PostHogPreferences.PUSH_SUBSCRIPTION_REJECTED` |
-| `com.posthog.internal.errortracking` | `ThrowableCoercer.fromThrowableToPostHogProperties()` |
-| `com.posthog.internal.replay` | `RRDocumentNode`, `RRDomContentLoadedEvent`, `RRLoadedEvent`, `RRStyle`. `RRWireframe` keeps only `id`, `x`, `y`, `width`, `height`, `type`, and `base64`. |
-| `com.posthog.internal.surveys` | `findBestTranslationMatch()` |
-| `com.posthog.android.internal` | `Bitmap.isValid()`, `Bitmap.webpBase64()` |
-| `com.posthog.android.replay.internal` | `LogLine`, `LogcatParser` |
+| `CustomHeadersInterceptor` | `com.posthog.internal` |
+| `PostHogPrintLogger` | `com.posthog.internal` |
+| `PropertyGroupDeserializer` | `com.posthog.internal` |
+| `PropertyValueDeserializer` | `com.posthog.internal` |
+| `personPropertiesContext()` | `com.posthog.internal` |
+| `PostHogPreferences.PUSH_SUBSCRIPTION_REJECTED` | `com.posthog.internal` |
+| `ThrowableCoercer.fromThrowableToPostHogProperties()` | `com.posthog.internal.errortracking` |
+| `RRDocumentNode` | `com.posthog.internal.replay` |
+| `RRDomContentLoadedEvent` | `com.posthog.internal.replay` |
+| `RRLoadedEvent` | `com.posthog.internal.replay` |
+| `RRStyle` | `com.posthog.internal.replay` |
+| `findBestTranslationMatch()` | `com.posthog.internal.surveys` |
+| `Bitmap.isValid()` | `com.posthog.android.internal` |
+| `Bitmap.webpBase64()` | `com.posthog.android.internal` |
+| `LogLine` | `com.posthog.android.replay.internal` |
+| `LogcatParser` | `com.posthog.android.replay.internal` |
+
+In `com.posthog.internal.replay`, `RRWireframe` keeps only `id`, `x`, `y`, `width`, `height`, `type`, and `base64`.
 
 If you call `PostHogRemoteConfig.loadFeatureFlags()` or `loadRemoteConfig()`, their callback parameters changed too. The internal callback is `(errorsLoading: Boolean) -> Unit`, and the other is a `PostHogFeatureFlagsCallback`.
 
@@ -460,9 +478,17 @@ The new `$app_language` property is the language your app shows. Android has no 
 
 | Android | `$app_language` |
 |---|---|
-| 13+ with `android:localeConfig` declared (by hand or with AGP `generateLocaleConfig`) | The per-app language or, without one, the first device language, as you declare it. If you don't declare that language, your `android:defaultLocale` (Android 15+) or your language if you only declare one. Not sent if several of your declared languages could match, such as `pt` and `pt-PT` for a `pt-MZ` device, or if nothing matches and you declare several languages without a default. |
-| 13+ without `localeConfig` | The per-app language, if one is set. Otherwise not sent. |
-| 6 to 12 | Not sent. |
+| 13+ with `android:localeConfig` declared | The per-app language or the first device language |
+| 13+ without `localeConfig` | The per-app language, if one is set |
+| 6 to 12 | Not sent |
+
+You can declare `android:localeConfig` by hand or with AGP `generateLocaleConfig`. With it, the value is the per-app language or, without one, the first device language, as you declare it.
+
+If you don't declare that language, the value is your `android:defaultLocale` (Android 15+) or your language if you only declare one.
+
+It's not sent if several of your declared languages could match, such as `pt` and `pt-PT` for a `pt-MZ` device, or if nothing matches and you declare several languages without a default.
+
+On Android 13+ without `localeConfig`, it's not sent when no per-app language is set.
 
 The SDK reads both languages in the background when an event is captured and uses them from the next event on. The first event after a language change carries the previous value.
 
@@ -560,7 +586,9 @@ These changes follow from this order:
 | --- | --- |
 | Neither, or only `$lib_version` | Its own `$lib` and `$lib_version` |
 | `$lib` as the SDK's own name, without a version | Your `$lib`, and it adds its version |
-| `$lib` as another library's name | Both as they are. It never adds its own version, so set both keys together. |
+| `$lib` as another library's name | Both as they are |
+
+When `$lib` names another library, the SDK never adds its own version, so set both keys together.
 
 In 3.x.x, a registered `$lib` or `$lib_version` was replaced by the SDK's, and a `$lib` you passed was sent with the SDK's `$lib_version`.
 
