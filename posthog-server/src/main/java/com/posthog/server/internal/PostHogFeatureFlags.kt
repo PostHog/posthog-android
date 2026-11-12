@@ -129,6 +129,7 @@ internal class PostHogFeatureFlags(
                 groupProperties,
             ) ?: return null
 
+        if (flag.failed == true) return null
         return FeatureFlagResult(key, flag.enabled, flag.variant, flag.metadata.payload)
     }
 
@@ -369,28 +370,6 @@ internal class PostHogFeatureFlags(
         return LocalEvaluationOutcome(localFlags, needsRemote, missingDefinitionKeys, unresolved)
     }
 
-    /**
-     * All-or-nothing local evaluation for the deprecated [getFeatureFlags] path: a single
-     * unresolved flag discards the batch so the caller falls back to `/flags`.
-     */
-    private fun getFeatureFlagsFromLocalEvaluation(
-        distinctId: String,
-        groups: Map<String, String>?,
-        personProperties: Map<String, Any?>?,
-        groupProperties: Map<String, Map<String, Any?>>?,
-    ): Map<String, FeatureFlag>? {
-        val outcome =
-            evaluateFlagsLocally(
-                distinctId,
-                groups,
-                personProperties,
-                groupProperties,
-                flagKeys = null,
-            ) ?: return null
-
-        return if (outcome.needsRemote) null else outcome.flags
-    }
-
     private fun localPersonProperties(
         distinctId: String,
         personProperties: Map<String, Any?>?,
@@ -502,23 +481,23 @@ internal class PostHogFeatureFlags(
 
         val cached = getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
         if (cached != null) {
-            return cached
+            val failedKeys = cached.filterValues { it.failed == true }.keys
+            if (failedKeys.isEmpty()) return cached
+            val local = evaluateFlagsLocally(distinctId, groups, personProperties, groupProperties, flagKeys = failedKeys.toList())
+            return local?.flags.orEmpty() + cached.filterKeys { it !in failedKeys }
         }
 
-        // If no cached flags, try local evaluation
-        val localFlags =
-            getFeatureFlagsFromLocalEvaluation(
-                distinctId,
-                groups,
-                personProperties,
-                groupProperties,
-            )
-        if (localFlags != null) {
-            return localFlags
+        val local = evaluateFlagsLocally(distinctId, groups, personProperties, groupProperties, flagKeys = null)
+        if (local != null && !local.needsRemote) {
+            return local.flags
         }
 
-        // Finally, fall back to remote fetch
-        return getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties).flags
+        val remoteFlags = getFeatureFlagsFromRemote(distinctId, groups, personProperties, groupProperties).flags
+        val successfulRemoteFlags = remoteFlags?.filterValues { it.failed != true }
+        if (local == null || remoteFlags == null) return successfulRemoteFlags
+        // Preserve local pairs only for explicitly failed records; other remote precedence is unchanged.
+        val retainedLocalFlags = local.flags.filterKeys { remoteFlags[it]?.failed == true }
+        return retainedLocalFlags + successfulRemoteFlags.orEmpty()
     }
 
     override fun clear() {
@@ -1180,7 +1159,7 @@ internal class PostHogFeatureFlags(
                 if (onlyEvaluateLocally) {
                     return EMPTY_EVALUATE_FLAGS_RESULT
                 }
-                val flags = entry.flags ?: EMPTY_FLAGS
+                val flags = entry.flags?.filterValues { it.failed != true } ?: EMPTY_FLAGS
                 return EvaluateFlagsResult(
                     flags = flags,
                     locallyEvaluated = flags.mapValues { isLocallyEvaluated(it.value) },
@@ -1266,7 +1245,8 @@ internal class PostHogFeatureFlags(
         // Same precedence as posthog-python, which skips remote keys already in
         // `locally_evaluated_keys`. Note a group flag evaluated without `groups` resolves locally to
         // `false`, and that now beats the server's answer — pass `groups` when gating on one.
-        val merged = LinkedHashMap(entry?.flags ?: EMPTY_FLAGS).apply { putAll(localFlags) }
+        val successfulRemoteFlags = entry?.flags?.filterValues { it.failed != true } ?: EMPTY_FLAGS
+        val merged = LinkedHashMap(successfulRemoteFlags).apply { putAll(localFlags) }
         applyDefinitionRuntimes(merged)
         return EvaluateFlagsResult(
             flags = merged,
@@ -1479,15 +1459,13 @@ internal class PostHogFeatureFlags(
             return entry.error ?: FeatureFlagError.UNKNOWN_ERROR
         }
 
-        // Request succeeded - check for flag_missing (key-specific, computed at query time)
-        val flagMissing = !entry.flags.containsKey(key)
-
-        return when {
-            entry.error == null && !flagMissing -> null
-            entry.error == null -> FeatureFlagError.FLAG_MISSING
-            !flagMissing -> entry.error
-            else -> "${entry.error},${FeatureFlagError.FLAG_MISSING}"
-        }
+        val flagError =
+            when {
+                entry.flags[key]?.failed == true -> FeatureFlagError.EVALUATION_FAILED
+                !entry.flags.containsKey(key) -> FeatureFlagError.FLAG_MISSING
+                else -> null
+            }
+        return listOfNotNull(entry.error, flagError).takeIf { it.isNotEmpty() }?.joinToString(",")
     }
 
     internal companion object {

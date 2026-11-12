@@ -88,6 +88,151 @@ internal class PostHogFeatureFlagsTest {
     }
 
     @Test
+    fun `failed remote records are not direct or bulk decisions`() {
+        for (errorBit in listOf("true", "false", null)) {
+            val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+            val server =
+                createMockHttp(
+                    jsonResponse(
+                        """{$global"flags":{
+                    "checkout":{"key":"checkout","enabled":false,"variant":"placeholder","failed":true,
+                        "metadata":{"id":1,"version":1,"payload":"\"remote\""}},
+                    "disabled":{"key":"disabled","enabled":false,"failed":false,"metadata":{"id":2,"version":1}}
+                }}""",
+                    ),
+                )
+            val config = createTestConfig(host = server.url("/").toString())
+            val sut = PostHogFeatureFlags(config, PostHogApi(config), 60000, 100)
+            try {
+                repeat(2) {
+                    val snapshot = sut.evaluateFlags("user", null, null, null, null, false, false)
+                    assertEquals(setOf("disabled"), snapshot.flags.keys)
+                }
+                assertNull(sut.getFeatureFlagResult("checkout", "user", null, null, null))
+                assertEquals(true, sut.getFeatureFlag("checkout", defaultValue = true, distinctId = "user"))
+                assertNull(sut.getFeatureFlagPayload("checkout", distinctId = "user"))
+                assertEquals(false, sut.getFeatureFlagResult("disabled", "user", null, null, null)?.enabled)
+                assertEquals(setOf("disabled"), sut.getFeatureFlags("user", null, null, null)?.keys)
+                val errors = sut.getFeatureFlagError("checkout", "user", null, null, null)?.split(",").orEmpty()
+                assertTrue("evaluation_failed" in errors)
+                assertFalse("flag_missing" in errors)
+                assertEquals(errorBit == "true", "errors_while_computing_flags" in errors)
+            } finally {
+                sut.shutDown()
+                server.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun `all failed remote records yield empty server bulk and snapshot values`() {
+        val server =
+            createMockHttp(
+                jsonResponse(
+                    """{"flags":{"checkout":{"key":"checkout","enabled":true,"variant":"placeholder","failed":true,
+                "metadata":{"id":1,"version":1,"payload":"\"placeholder\""}}}}""",
+                ),
+            )
+        val config = createTestConfig(host = server.url("/").toString())
+        val sut = PostHogFeatureFlags(config, PostHogApi(config), 60000, 100)
+        try {
+            assertEquals(emptySet(), sut.getFeatureFlags("user", null, null, null)?.keys)
+            assertTrue(sut.evaluateFlags("user", null, null, null, null, false, false).flags.isEmpty())
+            assertNull(sut.getFeatureFlagResult("checkout", "user", null, null, null))
+        } finally {
+            sut.shutDown()
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `deprecated fallback preserves successful local pairs when remote records fail`() {
+        for (errorBit in listOf("true", "false", null)) {
+            for (value in listOf("true", "false", "\"blue\"")) {
+                val variant = if (value == "\"blue\"") """, "multivariate":{"variants":[{"key":"blue","rollout_percentage":100}]}""" else ""
+                val active = value != "false"
+                val definition =
+                    """{"id":1,"key":"local","active":$active,"filters":{
+                        "groups":[{"properties":[],"rollout_percentage":100}]$variant,
+                        "payloads":{"true":"\"local\"","false":"\"local\"","blue":"\"local\""}
+                    }}"""
+                val definitions =
+                    localEvalResponseWithResolvableAndInconclusiveFlags()
+                        .replace("\"flags\": [", "\"flags\": [$definition,")
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val server =
+                    createMockHttp(
+                        jsonResponse(definitions),
+                        jsonResponse(
+                            """{$global"flags":{
+                        "local":{"key":"local","enabled":false,"variant":"placeholder","failed":true,
+                            "metadata":{"id":1,"version":1,"payload":"\"remote\""}},
+                        "needs-server":{"key":"needs-server","enabled":false,"failed":true,"metadata":{"id":2,"version":1}}
+                    }}""",
+                        ),
+                    )
+                val sut = manuallyLoadedFeatureFlags(server)
+                val expected: Any =
+                    when (value) {
+                        "true" -> true
+                        "false" -> false
+                        else -> "blue"
+                    }
+                repeat(3) {
+                    val flags = sut.getFeatureFlags("user", null, null, null).orEmpty()
+                    assertEquals<Any?>(expected, flags["local"]?.let { it.variant ?: it.enabled }, "call=$it global=$errorBit")
+                    assertEquals("\"local\"", flags["local"]?.metadata?.payload)
+                    assertFalse("needs-server" in flags)
+                }
+                assertEquals(2, server.requestCount, "Repeated bulk reads must reuse the remote cache")
+                val snapshot = sut.evaluateFlags("user", null, null, null, null, false, false)
+                assertEquals<Any?>(expected, snapshot.flags["local"]?.let { it.variant ?: it.enabled })
+                assertEquals("\"local\"", snapshot.flags["local"]?.metadata?.payload)
+                assertFalse("needs-server" in snapshot.flags)
+            }
+        }
+    }
+
+    @Test
+    fun `consecutive deprecated bulk calls keep healthy remote and absent key precedence`() {
+        for (errorBit in listOf("true", "false", null)) {
+            for (healthy in listOf(true, false)) {
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val remoteLocal =
+                    if (healthy) {
+                        """
+                    "resolves-locally":{"key":"resolves-locally","enabled":true,"variant":"remote","failed":false,
+                        "metadata":{"id":1,"version":1,"payload":"\"remote-payload\""}},
+                """
+                    } else {
+                        ""
+                    }
+                val server =
+                    createMockHttp(
+                        jsonResponse(localEvalResponseWithResolvableAndInconclusiveFlags()),
+                        jsonResponse(
+                            """{$global"flags":{$remoteLocal
+                        "needs-server":{"key":"needs-server","enabled":false,"failed":true,"metadata":{"id":2,"version":1}}
+                    }}""",
+                        ),
+                    )
+                val sut = manuallyLoadedFeatureFlags(server)
+                repeat(3) {
+                    val flags = sut.getFeatureFlags("user", null, null, null).orEmpty()
+                    if (healthy) {
+                        assertEquals("remote", flags["resolves-locally"]?.variant)
+                        assertEquals("\"remote-payload\"", flags["resolves-locally"]?.metadata?.payload)
+                    } else {
+                        assertFalse("resolves-locally" in flags)
+                    }
+                    assertFalse("needs-server" in flags)
+                }
+                assertEquals(2, server.requestCount)
+            }
+        }
+    }
+
+    @Test
     fun `fetched regex definitions use remote fallback only when unresolved`() {
         data class Case(
             val pattern: String,

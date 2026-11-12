@@ -2061,6 +2061,7 @@ public class PostHog private constructor(
                     props["\$feature_flag"] = key
                     // value should never be nullabe anyway
                     props["\$feature_flag_response"] = value ?: ""
+                    it.getFlagError(key)?.let { error -> props["\$feature_flag_error"] = error }
                     requestId?.let { props["\$feature_flag_request_id"] = it }
                     evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
                     flagDetails?.let {
@@ -2098,8 +2099,10 @@ public class PostHog private constructor(
         sendFeatureFlagEvent: Boolean?,
     ): Any? {
         if (!isEnabled()) return defaultValue
-        val flagValue = remoteConfig?.getFeatureFlagResult(key)?.value ?: defaultValue
-        sendFeatureFlagCalled(key, flagValue, sendFeatureFlagEvent)
+        val result = remoteConfig?.getFeatureFlagResult(key)
+        val flagValue = result?.value ?: defaultValue
+        val eventValue = if (result == null && remoteConfig?.getFlagDetails(key)?.failed == true) null else flagValue
+        sendFeatureFlagCalled(key, eventValue, sendFeatureFlagEvent)
         return flagValue
     }
 

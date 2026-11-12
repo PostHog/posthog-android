@@ -1012,6 +1012,80 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `failed flag reads emit missing response and independent errors without defaults or duplicate events`() {
+        for (errorBit in listOf("true", "false", null)) {
+            val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+            val body = """{$global"requestId":"failed-request","flags":{
+                "checkout":{"key":"checkout","enabled":false,"failed":true,
+                    "metadata":{"id":1,"version":2,"payload":"\"placeholder\""},
+                    "reason":{"code":"error","description":"Evaluation failed"}},
+                "variant":{"key":"variant","enabled":true,"variant":"placeholder","failed":true,
+                    "metadata":{"id":2,"version":1,"payload":"\"placeholder\""}},
+                "disabled":{"key":"disabled","enabled":false,"metadata":{"id":3,"version":1}}
+            }}"""
+            val http = mockHttp(response = MockResponse().setBody(body))
+            http.enqueue(MockResponse().setBody("{}"))
+            val captured = CopyOnWriteArrayList<String>()
+            val cache = PostHogMemoryPreferences()
+            val sut =
+                getSut(http.url("/").toString(), preloadFeatureFlags = false, flushAt = 20, cachePreferences = cache, beforeSend = {
+                    captured.add(it.event)
+                    it
+                })
+            val loaded = CountDownLatch(1)
+            sut.reloadFeatureFlags { loaded.countDown() }
+            assertTrue(loaded.await(5, TimeUnit.SECONDS))
+            assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+
+            assertNull(sut.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false))
+            assertTrue(captured.isEmpty())
+            assertTrue(sut.isFeatureEnabled("checkout", defaultValue = true))
+            assertNull(sut.getFeatureFlagResult("checkout"))
+            assertEquals("default", sut.getFeatureFlag("checkout", defaultValue = "default"))
+            assertNull(sut.getFeatureFlagResult("variant"))
+            assertFalse(sut.isFeatureEnabled("disabled", defaultValue = true))
+            assertEquals(listOf("disabled"), sut.getAllFeatureFlags()?.map { it.key })
+            sut.flush()
+            queueExecutor.awaitExecution()
+            val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+            val batch = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+            val events = batch.batch.filter { it.event == "\$feature_flag_called" }
+            assertEquals(3, events.size)
+            val props = events.first { it.properties?.get("\$feature_flag") == "checkout" }.properties.orEmpty()
+            assertEquals("", props["\$feature_flag_response"])
+            assertEquals("failed-request", props["\$feature_flag_request_id"])
+            assertEquals("Evaluation failed", props["\$feature_flag_reason"])
+            val errors = (props["\$feature_flag_error"] as String).split(",")
+            assertTrue("evaluation_failed" in errors)
+            assertFalse("flag_missing" in errors)
+            assertEquals(errorBit == "true", "errors_while_computing_flags" in errors)
+            val healthy = events.first { it.properties?.get("\$feature_flag") == "disabled" }.properties.orEmpty()
+            assertEquals(false, healthy["\$feature_flag_response"])
+            assertFalse((healthy["\$feature_flag_error"] as? String).orEmpty().contains("evaluation_failed"))
+            assertFalse(props.containsKey("\$feature/checkout"))
+            sut.close()
+
+            // SharedPreferences restores rich details as JSON maps, not FeatureFlag instances.
+            val details = cache.getValue(PostHogPreferences.FLAGS)!!
+            cache.setValue(PostHogPreferences.FLAGS, serializer.deserializeString(serializer.serializeObject(details)!!)!!)
+            http.enqueue(MockResponse().setBody("{}"))
+            val reopened =
+                getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cache)
+            assertTrue(reopened.isFeatureEnabled("checkout", defaultValue = true))
+            queueExecutor.awaitExecution()
+            val restoredRequest = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+            assertTrue(restoredRequest.path!!.contains("/batch"), "Offline reads must not reload flags")
+            val restoredBatch = serializer.deserialize<PostHogBatchEvent>(restoredRequest.body.unGzip().reader())
+            val restoredProps = restoredBatch.batch.first { it.event == "\$feature_flag_called" }.properties.orEmpty()
+            assertEquals("", restoredProps["\$feature_flag_response"])
+            assertEquals(props["\$feature_flag_error"], restoredProps["\$feature_flag_error"])
+            assertEquals("Evaluation failed", restoredProps["\$feature_flag_reason"])
+            reopened.close()
+            http.shutdown()
+        }
+    }
+
+    @Test
     fun `isFeatureEnabled captures feature flag event if enabled`() {
         val file = File("src/test/resources/json/basic-flags-with-non-active-flags.json")
         val responseFlagsApi = file.readText()
