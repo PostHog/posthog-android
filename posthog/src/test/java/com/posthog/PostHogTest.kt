@@ -1055,6 +1055,8 @@ internal class PostHogTest {
             assertEquals("", props["\$feature_flag_response"])
             assertEquals("failed-request", props["\$feature_flag_request_id"])
             assertEquals("Evaluation failed", props["\$feature_flag_reason"])
+            assertEquals(1, props["\$feature_flag_id"])
+            assertEquals(2, props["\$feature_flag_version"])
             val errors = (props["\$feature_flag_error"] as String).split(",")
             assertTrue("evaluation_failed" in errors)
             assertFalse("flag_missing" in errors)
@@ -1082,6 +1084,131 @@ internal class PostHogTest {
             assertEquals("Evaluation failed", restoredProps["\$feature_flag_reason"])
             reopened.close()
             http.shutdown()
+        }
+    }
+
+    @Test
+    fun `scalar reads safely track failed metadata from JSON`() {
+        assertFailedMetadataReads(structuredFirst = false, reopen = false)
+    }
+
+    @Test
+    fun `structured reads safely track failed metadata from JSON`() {
+        assertFailedMetadataReads(structuredFirst = true, reopen = false)
+    }
+
+    @Test
+    fun `scalar reads safely track failed metadata after JSON cache reopen`() {
+        assertFailedMetadataReads(structuredFirst = false, reopen = true)
+    }
+
+    @Test
+    fun `structured reads safely track failed metadata after JSON cache reopen`() {
+        assertFailedMetadataReads(structuredFirst = true, reopen = true)
+    }
+
+    private fun assertFailedMetadataReads(
+        structuredFirst: Boolean,
+        reopen: Boolean,
+    ) {
+        for (errorBit in listOf("true", "false", null)) {
+            for (metadata in listOf("\"metadata\":null,", "")) {
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val reason = if (metadata.isNotEmpty()) """, "reason":{"code":"error","description":"Evaluation failed"}""" else ""
+                val body = """{$global"requestId":"failed-request","evaluatedAt":123,"flags":{
+                    "checkout":{"key":"checkout","enabled":false,"failed":true,$metadata"variant":"placeholder"$reason},
+                    "disabled":{"key":"disabled","enabled":false,"metadata":{"id":2,"version":3,"has_experiment":false}},
+                    "healthy":{"key":"healthy","enabled":true,"variant":"blue",
+                        "metadata":{"id":3,"version":4,"payload":"\"good\""}}
+                }}"""
+                val http = mockHttp(response = MockResponse().setBody(body))
+                val cache = PostHogMemoryPreferences()
+                val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, flushAt = 20, cachePreferences = cache)
+                try {
+                    val loaded = CountDownLatch(1)
+                    sut.reloadFeatureFlags { loaded.countDown() }
+                    assertTrue(loaded.await(5, TimeUnit.SECONDS))
+                    assertTrue(assertNotNull(http.takeRequest(5, TimeUnit.SECONDS)).path!!.contains("/flags"))
+
+                    fun assertReads(client: PostHogInterface) {
+                        val requestsBefore = http.requestCount
+                        assertNull(client.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false))
+                        assertEquals("default", client.getFeatureFlag("checkout", defaultValue = "default", sendFeatureFlagEvent = false))
+                        client.flush()
+                        queueExecutor.awaitExecution()
+                        assertEquals(requestsBefore, http.requestCount, "Suppressed reads must neither track nor fetch")
+
+                        if (structuredFirst) {
+                            assertNull(client.getFeatureFlagResult("checkout"))
+                        } else {
+                            assertEquals("default", client.getFeatureFlag("checkout", defaultValue = "default"))
+                        }
+                        assertNull(client.getFeatureFlagResult("checkout"))
+                        assertEquals("another-default", client.getFeatureFlag("checkout", defaultValue = "another-default"))
+                        assertFalse(client.isFeatureEnabled("disabled", defaultValue = true))
+                        val healthy = assertNotNull(client.getFeatureFlagResult("healthy"))
+                        assertEquals("blue", healthy.variant)
+                        assertEquals("good", healthy.payload)
+                        assertEquals(setOf("disabled", "healthy"), client.getAllFeatureFlags()?.map { it.key }?.toSet())
+                        http.enqueue(MockResponse().setBody("{}"))
+                        client.flush()
+                        queueExecutor.awaitExecution()
+                        val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+                        assertTrue(request.path!!.contains("/batch"), "Reads must not reload flags, including after reopen")
+                        val events = serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader()).batch
+                        assertEquals(3, events.size, "Repeated missing-value reads deduplicate independently of caller defaults")
+                        val props = events.single { it.properties?.get("\$feature_flag") == "checkout" }.properties.orEmpty()
+                        assertEquals("", props["\$feature_flag_response"])
+                        assertEquals("failed-request", props["\$feature_flag_request_id"])
+                        assertEquals(123, props["\$feature_flag_evaluated_at"])
+                        assertEquals(if (reason.isEmpty()) "" else "Evaluation failed", props["\$feature_flag_reason"])
+                        val errors = (props["\$feature_flag_error"] as String).split(",").toSet()
+                        assertEquals(
+                            if (errorBit == "true") {
+                                setOf("evaluation_failed", "errors_while_computing_flags")
+                            } else {
+                                setOf("evaluation_failed")
+                            },
+                            errors,
+                        )
+                        for (field in listOf("id", "version", "has_experiment")) {
+                            assertFalse(props.containsKey("\$feature_flag_$field"), "Missing metadata must not invent $field")
+                        }
+                        val disabled = events.single { it.properties?.get("\$feature_flag") == "disabled" }.properties.orEmpty()
+                        assertEquals(false, disabled["\$feature_flag_response"])
+                        assertEquals(2, disabled["\$feature_flag_id"])
+                        assertEquals(3, disabled["\$feature_flag_version"])
+                        assertEquals(false, disabled["\$feature_flag_has_experiment"])
+                        assertFalse((disabled["\$feature_flag_error"] as? String).orEmpty().contains("evaluation_failed"))
+                        assertEquals(requestsBefore + 1, http.requestCount, "Only the explicit batch flush may make a request")
+                    }
+
+                    if (reopen) {
+                        sut.close()
+                        // SharedPreferences restores JSON maps; Gson omits null metadata on serialization.
+                        val details = assertNotNull(cache.getValue(PostHogPreferences.FLAGS))
+                        cache.setValue(PostHogPreferences.FLAGS, serializer.deserializeString(serializer.serializeObject(details)!!)!!)
+                        val reopened =
+                            getSut(
+                                http.url("/").toString(),
+                                preloadFeatureFlags = false,
+                                reloadFeatureFlags = false,
+                                flushAt = 20,
+                                cachePreferences = cache,
+                            )
+                        try {
+                            assertReads(reopened)
+                        } finally {
+                            reopened.close()
+                        }
+                    } else {
+                        assertReads(sut)
+                    }
+                } finally {
+                    sut.close()
+                    http.shutdown()
+                }
+            }
         }
     }
 
