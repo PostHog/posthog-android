@@ -52,6 +52,10 @@ import java.util.concurrent.Executors
 
 private const val PUSH_NOTIFICATION_OPENED_EVENT = "\$push_notification_opened"
 private const val MAX_DEBUG_ERROR_LENGTH = 500
+
+// Stands in for the hash of a person-properties update that cannot be serialized: such an update
+// is always sent and never cached, as no real hash is empty.
+private const val UNHASHABLE_PERSON_PROPERTIES = ""
 private const val REPLAY_DEBUG_PROPERTIES_INTERVAL_MILLIS = 30_000L
 
 // Kept on every event because the app reads them per event; the rest of the replay debug bundle is throttled.
@@ -1674,7 +1678,9 @@ public class PostHog private constructor(
                 userPropertiesSetOnce = userPropertiesSetOnce,
                 groups = null,
                 timestamp = null,
-                personPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce),
+                personPropertiesHash =
+                    getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+                        ?: UNHASHABLE_PERSON_PROPERTIES,
             )
 
             if (config?.reuseAnonymousId != true) {
@@ -1719,7 +1725,9 @@ public class PostHog private constructor(
                 userPropertiesSetOnce = userPropertiesSetOnce ?: emptyMap(),
                 groups = null,
                 timestamp = null,
-                personPropertiesHash = getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce),
+                personPropertiesHash =
+                    getPersonPropertiesHash(distinctId, userProperties, userPropertiesSetOnce)
+                        ?: UNHASHABLE_PERSON_PROPERTIES,
             )
 
             // The identified state itself is not part of the flags request; reload only when the
@@ -1809,28 +1817,28 @@ public class PostHog private constructor(
         distinctId: String,
         userPropertiesToSet: Map<String, Any>?,
         userPropertiesToSetOnce: Map<String, Any>?,
-    ): String {
-        // Sort keys recursively to ensure deterministic hashing regardless of map insertion order.
-        // An empty map hashes like a missing one, as both send no properties.
-        val sortedSet = userPropertiesToSet?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
-        val sortedSetOnce = userPropertiesToSetOnce?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
+    ): String? {
+        // Gson throws on values such as Double.NaN, and deeply nested properties can overflow the
+        // recursive sort. A string fallback could equate different values (1 and "1"), so an update
+        // that cannot be hashed has no hash and is never deduplicated.
+        return try {
+            // Sort keys recursively to ensure deterministic hashing regardless of map insertion order.
+            // An empty map hashes like a missing one, as both send no properties.
+            val sortedSet = userPropertiesToSet?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
+            val sortedSetOnce = userPropertiesToSetOnce?.takeIf { it.isNotEmpty() }?.let { sortMapRecursively(it) }
 
-        // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
-        val hashData =
-            sortedMapOf(
-                "distinct_id" to distinctId,
-                "userPropertiesToSet" to sortedSet,
-                "userPropertiesToSetOnce" to sortedSetOnce,
-            )
-        // Gson throws on values such as Double.NaN; the hash must never throw into identify or set.
-        val serialized =
-            try {
-                config?.serializer?.serializeObject(hashData)
-            } catch (e: Throwable) {
-                config?.logger?.log("Failed to serialize person properties for the dedup hash: $e.")
-                null
-            }
-        return serialized ?: hashData.toString()
+            // Create a consistent JSON-like string representation similar to JS SDK's jsonStringify
+            val hashData =
+                sortedMapOf(
+                    "distinct_id" to distinctId,
+                    "userPropertiesToSet" to sortedSet,
+                    "userPropertiesToSetOnce" to sortedSetOnce,
+                )
+            config?.serializer?.serializeObject(hashData)
+        } catch (e: Throwable) {
+            config?.logger?.log("Failed to hash person properties for deduplication: $e.")
+            null
+        }
     }
 
     /**
@@ -1844,7 +1852,9 @@ public class PostHog private constructor(
         userPropertiesToSetOnce: Map<String, Any>?,
         duplicateLogMessage: String,
     ): String? {
-        val hash = getPersonPropertiesHash(distinctId, userPropertiesToSet, userPropertiesToSetOnce)
+        val hash =
+            getPersonPropertiesHash(distinctId, userPropertiesToSet, userPropertiesToSetOnce)
+                ?: return UNHASHABLE_PERSON_PROPERTIES
 
         synchronized(cachedPersonPropertiesLock) {
             if (cachedPersonPropertiesHash == hash) {
@@ -1869,7 +1879,8 @@ public class PostHog private constructor(
     ) {
         val processPersonProfile = queuedEvent.properties?.get("\$process_person_profile")
         val surelyProcessesPerson =
-            queuedEvent.event == capturedEvent &&
+            hash != UNHASHABLE_PERSON_PROPERTIES &&
+                queuedEvent.event == capturedEvent &&
                 (processPersonProfile == null || processPersonProfile == true) &&
                 sentPersonPropertiesHash(queuedEvent) == hash
         synchronized(cachedPersonPropertiesLock) {

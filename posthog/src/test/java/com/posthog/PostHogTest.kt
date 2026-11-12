@@ -5311,6 +5311,37 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `identify with person properties too deeply nested to hash still identifies`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        var nested: Map<String, Any> = mapOf("leaf" to 1)
+        repeat(100_000) { nested = mapOf("child" to nested) }
+
+        sut.identify(DISTINCT_ID, userProperties = nested)
+
+        assertEquals(DISTINCT_ID, sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties sends every update the hash cannot serialize`() {
+        val http = mockHttp()
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.setPersonProperties(mapOf("score" to Double.NaN, "plan" to 1))
+        sut.setPersonProperties(mapOf("score" to Double.NaN, "plan" to "1"))
+        sut.flush()
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$set", "\$set"), events.map { it.event })
+        assertEquals("1", events[1].properties!!["\$set"].let { it as Map<*, *> }["plan"])
+
+        sut.close()
+    }
+
+    @Test
     fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
         val http = mockHttp()
         val url = http.url("/")
