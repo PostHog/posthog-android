@@ -170,6 +170,32 @@ PostHog.close()
 
 Every `PostHog.*` method below is also available on the instance that `PostHogAndroid.with(context, config)` returns.
 
+### Connect requests to backend events
+
+Set `tracingHeaders` and install `PostHogOkHttpInterceptor` on each `OkHttpClient` whose requests should carry PostHog context. This links requests to backend events, errors and LLM traces captured by a server-side PostHog SDK.
+
+```kotlin
+import com.posthog.PostHogOkHttpInterceptor
+import com.posthog.android.PostHogAndroid
+import com.posthog.android.PostHogAndroidConfig
+import okhttp3.OkHttpClient
+
+val config = PostHogAndroidConfig("<ph_project_token>", host = "<ph_client_api_host>").apply {
+    tracingHeaders = listOf("api.example.com")
+}
+PostHogAndroid.setup(this, config)
+
+val httpClient = OkHttpClient.Builder()
+    .addInterceptor(PostHogOkHttpInterceptor())
+    .build()
+```
+
+Use exact hostnames, with no protocol, path, port or wildcard subdomain. Matching requests include `X-POSTHOG-DISTINCT-ID` and `X-POSTHOG-SESSION-ID` only when their values are available.
+
+### Permissions
+
+The SDK declares `android.permission.INTERNET` and `android.permission.ACCESS_NETWORK_STATE`, and Android's manifest merger adds them to your app. It doesn't declare or need an Android `Service`.
+
 ## Setup
 
 ### `PostHogAndroid.setup`
@@ -215,6 +241,8 @@ fun capture(event: String, distinctId: String? = null, properties: Map<String, A
 Captures events
 
 The event's properties are merged in this order, and later values win: properties the SDK sets itself (such as `$os`, `$app_version`, `$screen_name`, `$is_identified` and the session replay debug properties), registered super properties (register), properties, then `beforeSend`.
+
+Events captured while the device is offline are stored on the device. The SDK sends them when the connection returns, or when the app next starts with a connection.
 
 Example:
 
@@ -410,6 +438,8 @@ fun flush()
 ```
 
 Flushes all the events in the Queue right away
+
+Returns early and sends nothing while the device is offline. Online, it starts sending in the background and doesn't wait for the request to finish, so it doesn't guarantee delivery.
 
 ## Get anonymous ID
 
@@ -635,7 +665,7 @@ Disables the SDK to capture events until you optIn again
 fun register(key: String, value: Any)
 ```
 
-Register a property to always be sent with all the following events until you call unregister with the same key PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
+Register a property to always be sent with all the following events until you call unregister with the same key. The property persists across sessions. PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
 
 #### Parameters
 
@@ -1291,7 +1321,7 @@ The SDK Config
 - `var setDefaultPersonProperties: Boolean`: Automatically set common device and app properties as person properties for feature flag evaluation.
 - `var surveys: Boolean`: Enable Surveys for Android (Intended for internal use only)
 - `var surveysConfig: PostHogSurveysConfig`: Configuration for PostHog Surveys feature. (Intended for internal use only)
-- `var tracingHeaders: List<String>?`: When set, PostHog injects tracing headers into OkHttp requests whose destination hostname exactly matches one of the configured hostnames.
+- `var tracingHeaders: List<String>?`: When set, PostHog injects tracing headers into OkHttp requests whose destination hostname exactly matches one of the configured hostnames. Use it to link the app's network requests to the backend events, errors, and LLM traces that a server-side PostHog SDK captures.
 
 #### Functions
 
