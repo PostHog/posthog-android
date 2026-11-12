@@ -14,6 +14,9 @@ public interface PostHogCoreInterface {
 
     /**
      * Flushes all the events in the Queue right away
+     *
+     * Returns early and sends nothing while the device is offline. Online, it starts sending in
+     * the background and doesn't wait for the request to finish, so it doesn't guarantee delivery.
      */
     public fun flush()
 

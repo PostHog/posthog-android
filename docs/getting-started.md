@@ -37,16 +37,6 @@ PostHog.close()
 
 Every `PostHog.*` method below is also available on the instance that `PostHogAndroid.with(context, config)` returns.
 
-## Tracing headers
-
-Set `tracingHeaders` and add `PostHogOkHttpInterceptor` to link Android network requests to the backend events, errors, and LLM traces that a server-side PostHog SDK captures. Matching requests carry `X-POSTHOG-DISTINCT-ID` and `X-POSTHOG-SESSION-ID` when those values exist. List hostnames only, with no protocol, path, port, or wildcard.
-
-## Offline behavior
-
-The SDK keeps capturing events while the device is offline and stores them on the device. It sends them when the app restarts with a connection. `flush()` returns early while the device is offline and sends nothing. Online, `flush()` starts sending in the background and doesn't wait for the request to finish, so it doesn't guarantee delivery.
-
-Super properties you set with `register` also persist across sessions.
-
 ## Permissions
 
 The SDK declares `android.permission.INTERNET` and `android.permission.ACCESS_NETWORK_STATE`, and Android's manifest merger adds them to your app. It doesn't declare or need an Android `Service`.
