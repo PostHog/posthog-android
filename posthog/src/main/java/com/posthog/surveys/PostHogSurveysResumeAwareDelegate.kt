@@ -11,5 +11,6 @@ package com.posthog.surveys
  * `override val supportsSurveyResume: Boolean = true`.
  */
 public interface PostHogSurveysResumeAwareDelegate : PostHogSurveysDelegate {
+    /** Whether this delegate honors [PostHogDisplaySurvey.initialQuestionIndex], so the SDK resumes surveys. */
     public val supportsSurveyResume: Boolean
 }
