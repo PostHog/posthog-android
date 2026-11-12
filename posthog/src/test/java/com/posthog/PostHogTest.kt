@@ -108,6 +108,7 @@ internal class PostHogTest {
         exceptionStepsEnabled: Boolean = true,
         exceptionStepsMaxBytes: Int = 32768,
         sessionReplay: Boolean = false,
+        disableGeoIp: Boolean = false,
     ): PostHogInterface {
         config =
             PostHogConfig(PROJECT_TOKEN, host).apply {
@@ -137,6 +138,7 @@ internal class PostHogTest {
                 this.context = context
                 this.personProfiles = personProfiles
                 this.sessionReplay = sessionReplay
+                this.disableGeoIp = disableGeoIp
             }
         return PostHog.withInternal(
             config,
@@ -156,6 +158,135 @@ internal class PostHogTest {
         }
         pushOpenHttp?.shutdown()
         tmpDir.root.deleteRecursively()
+    }
+
+    @Test
+    fun `GeoIP is enabled by default and caller markers are preserved`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), flushAt = 20, preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.capture(EVENT)
+        sut.capture(EVENT, properties = mapOf("\$geoip_disable" to true))
+        sut.flush()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals(2, batch.batch.size)
+        assertFalse(batch.batch[0].properties!!.containsKey("\$geoip_disable"))
+        assertEquals(true, batch.batch[1].properties!!["\$geoip_disable"])
+    }
+
+    @Test
+    fun `disableGeoIp marks all analytics events without changing person or group properties`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 20,
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                disableGeoIp = true,
+            )
+
+        sut.capture(EVENT, properties = mapOf("\$geoip_disable" to false))
+        sut.identify("identified-user", userProperties = userProps, userPropertiesSetOnce = userPropsOnce)
+        sut.alias("alias-user")
+        sut.group("organization", "acme", groupProperties = mapOf("plan" to "paid"))
+        sut.screen("Home")
+        sut.flush()
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals(setOf(EVENT, "\$identify", "\$create_alias", "\$groupidentify", "\$screen"), batch.batch.map { it.event }.toSet())
+        batch.batch.forEach { event ->
+            assertEquals(true, event.properties!!["\$geoip_disable"], event.event)
+            listOf("\$set", "\$set_once", "\$group_set").forEach { key ->
+                val nested = event.properties!![key] as? Map<*, *>
+                assertFalse(nested?.containsKey("\$geoip_disable") == true)
+            }
+        }
+        val identify = batch.batch.single { it.event == "\$identify" }
+        assertEquals(userProps, identify.properties!!["\$set"])
+        assertEquals(userPropsOnce, identify.properties!!["\$set_once"])
+        val group = batch.batch.single { it.event == "\$groupidentify" }
+        assertEquals(mapOf("plan" to "paid"), group.properties!!["\$group_set"])
+    }
+
+    @Test
+    fun `beforeSend can inspect and override the GeoIP marker`() {
+        val http = mockHttp()
+        var observedMarker: Any? = null
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                disableGeoIp = true,
+                beforeSend = { event ->
+                    observedMarker = event.properties?.get("\$geoip_disable")
+                    event.properties?.put("\$geoip_disable", false)
+                    event
+                },
+            )
+
+        sut.capture(EVENT)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        assertEquals(true, observedMarker)
+        assertEquals(false, batch.batch.single().properties!!["\$geoip_disable"])
+    }
+
+    @Test
+    fun `disableGeoIp does not add a marker to replay snapshots`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, disableGeoIp = true)
+
+        sut.capture("\$snapshot", properties = props)
+        replayQueueExecutor.shutdownAndAwaitTermination()
+
+        val events = serializer.deserialize<List<PostHogEvent>>(http.takeRequest().body.unGzip().reader())
+        assertEquals("\$snapshot", events.single().event)
+        assertFalse(events.single().properties!!.containsKey("\$geoip_disable"))
+    }
+
+    @Test
+    fun `flags requests respect disableGeoIp`() {
+        for (disabled in listOf(false, true)) {
+            val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+            val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, disableGeoIp = disabled)
+            val loaded = CountDownLatch(1)
+
+            sut.reloadFeatureFlags { loaded.countDown() }
+            assertTrue(loaded.await(10, TimeUnit.SECONDS))
+
+            val request = http.takeRequest()
+            assertEquals("/flags/?v=2", request.path)
+            val body = serializer.deserialize<Map<String, Any>>(request.body.unGzip().reader())
+            assertEquals(disabled, body["geoip_disable"])
+            sut.close()
+        }
+    }
+
+    @Test
+    fun `minimal feature flag called events retain the GeoIP marker`() {
+        val response = File("src/test/resources/json/basic-flags-minimal-flag-called-events.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        http.enqueue(MockResponse())
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, disableGeoIp = true)
+
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        http.takeRequest()
+
+        assertFalse(sut.getFeatureFlag("IAmInactive") as Boolean)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val batch = serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())
+        val event = batch.batch.single()
+        assertEquals("\$feature_flag_called", event.event)
+        assertEquals(true, event.properties!!["\$geoip_disable"])
+        assertFalse(event.properties!!.containsKey("\$active_feature_flags"))
     }
 
     @Test

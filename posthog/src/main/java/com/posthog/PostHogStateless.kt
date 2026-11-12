@@ -790,6 +790,7 @@ public open class PostHogStateless protected constructor(
                 "locally_evaluated",
                 "\$groups",
                 "\$process_person_profile",
+                "\$geoip_disable",
                 "\$session_id",
                 "\$window_id",
                 "\$lib",
