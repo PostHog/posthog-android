@@ -5198,6 +5198,150 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `setPersonProperties resends an update that beforeSend dropped`() {
+        val http = mockHttp()
+        var setEvents = 0
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "\$set" && ++setEvents == 1) null else it
+            })
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties resends an update that beforeSend made personless`() {
+        val http = mockHttp(total = 2)
+        var setEvents = 0
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
+                if (it.event == "\$set" && ++setEvents == 1) it.properties!!["\$process_person_profile"] = false
+                it
+            })
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(2, http.requestCount)
+        val flags =
+            List(2) {
+                serializer.deserialize<PostHogBatchEvent>(http.takeRequest().body.unGzip().reader())!!
+                    .batch.single().properties!!["\$process_person_profile"]
+            }
+        assertEquals(listOf<Any?>(false, true), flags)
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties sends an update made while opted out after opting in`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, optOut = true)
+
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        sut.optIn()
+        sut.setPersonProperties(mapOf("email" to "user@example.com"))
+        queueExecutor.shutdownAndAwaitTermination()
+
+        assertEquals(1, http.requestCount)
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify skips a set that repeats the properties its identify event sent`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.setPersonProperties(mapOf("plan" to "pro"))
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$identify", "\$set"), events.map { it.event })
+        assertEquals(mapOf("plan" to "pro"), events[1].properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify resends set properties that beforeSend removed from the identify event`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                flushAt = 2,
+                beforeSend = {
+                    if (it.event == "\$identify") it.properties!!.remove("\$set")
+                    it
+                },
+            )
+
+        sut.identify(DISTINCT_ID, userProperties = userProps)
+        sut.setPersonProperties(userProps)
+        sut.flush()
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$identify", "\$set"), events.map { it.event })
+        assertEquals(userProps, events[1].properties!!["\$set"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify with a person property the hash cannot serialize still identifies`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+
+        sut.identify(DISTINCT_ID, userProperties = mapOf("score" to Double.NaN))
+
+        assertEquals(DISTINCT_ID, sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `identify with person properties too deeply nested to hash still identifies`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        var nested: Map<String, Any> = mapOf("leaf" to 1)
+        repeat(100_000) { nested = mapOf("child" to nested) }
+
+        sut.identify(DISTINCT_ID, userProperties = nested)
+
+        assertEquals(DISTINCT_ID, sut.distinctId())
+
+        sut.close()
+    }
+
+    @Test
+    fun `setPersonProperties sends every update the hash cannot serialize`() {
+        val http = mockHttp()
+        val sut =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, flushAt = 2)
+
+        sut.setPersonProperties(mapOf("score" to Double.NaN, "plan" to 1))
+        sut.setPersonProperties(mapOf("score" to Double.NaN, "plan" to "1"))
+        sut.flush()
+
+        val events = capturedEvents(http)
+        assertEquals(listOf("\$set", "\$set"), events.map { it.event })
+        assertEquals("1", events[1].properties!!["\$set"].let { it as Map<*, *> }["plan"])
+
+        sut.close()
+    }
+
+    @Test
     fun `setPersonProperties deduplicates calls with same setOnce properties in different order`() {
         val http = mockHttp()
         val url = http.url("/")
