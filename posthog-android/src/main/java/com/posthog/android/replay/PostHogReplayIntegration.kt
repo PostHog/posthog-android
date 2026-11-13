@@ -1959,7 +1959,7 @@ public class PostHogReplayIntegration(
         for (info in layoutInfo.getModifierInfo()) {
             // Compose before 1.3 has no modifier nodes: text semantics are a SemanticsModifier element.
             (info.modifier as? SemanticsModifier)?.semanticsConfiguration?.let {
-                if (it.contains(SemanticsProperties.Text)) {
+                if (it.isRenderedText()) {
                     return it
                 }
             }
@@ -1968,6 +1968,7 @@ public class PostHogReplayIntegration(
                 try {
                     coordinates.javaClass.getMethod("getTail")
                 } catch (e: NoSuchMethodException) {
+                    check(!coordinates.isA(NODE_COORDINATOR)) { "Can't read the modifier nodes of $coordinates" }
                     continue
                 }
             val node = getTail.invoke(coordinates) ?: continue
@@ -1975,20 +1976,25 @@ public class PostHogReplayIntegration(
                 try {
                     node.javaClass.getMethod("applySemantics", SemanticsPropertyReceiver::class.java)
                 } catch (e: NoSuchMethodException) {
-                    check(!node.isDelegatingNode()) { "Can't read the semantics delegated by $node" }
+                    check(!node.isA(DELEGATING_NODE)) { "Can't read the semantics delegated by $node" }
                     continue
                 }
             val semantics = SemanticsConfiguration()
             applySemantics.invoke(node, semantics)
-            if (semantics.contains(SemanticsProperties.Text)) {
+            if (semantics.isRenderedText()) {
                 return semantics
             }
         }
         return config
     }
 
-    private fun Any.isDelegatingNode(): Boolean {
-        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == "androidx.compose.ui.node.DelegatingNode" }
+    // The text's own semantics, not a clearAndSetSemantics { text = ... } replacement, which can't be measured.
+    private fun SemanticsConfiguration.isRenderedText(): Boolean {
+        return contains(SemanticsProperties.Text) && contains(SemanticsActions.GetTextLayoutResult)
+    }
+
+    private fun Any.isA(className: String): Boolean {
+        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == className }
     }
 
     // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so a capture's walks
@@ -3512,6 +3518,10 @@ public class PostHogReplayIntegration(
         // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt
         // discards this tick and retries at the next scheduled snapshot.
         private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
+
+        // Compose internals, matched by name in textSemantics(). Kept by consumer-rules.pro.
+        private const val NODE_COORDINATOR: String = "androidx.compose.ui.node.NodeCoordinator"
+        private const val DELEGATING_NODE: String = "androidx.compose.ui.node.DelegatingNode"
 
         private val integrationInstalled = AtomicBoolean(false)
     }

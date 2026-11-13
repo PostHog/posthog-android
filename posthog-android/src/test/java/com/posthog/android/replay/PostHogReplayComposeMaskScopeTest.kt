@@ -419,6 +419,21 @@ internal class PostHogReplayComposeMaskScopeTest {
     }
 
     @Test
+    fun `visible overflow of text with replacement text semantics is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "a secret far wider than its layout box",
+                Modifier.testTag("text").clearAndSetSemantics { text = AnnotatedString("label") }.then(textModifier),
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+            )
+        }
+
+        val mask = maskRects().single()
+        assertTrue(mask.right > boundsOf("text").right, "expected $mask to extend past the layout box")
+    }
+
+    @Test
     fun `postHogMask covers the visible overflow of text with cleared semantics`() {
         compose.activity.setContent {
             Box(Modifier.postHogMask()) {
