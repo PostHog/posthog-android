@@ -349,7 +349,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Register a property to always be sent with all the following events until you call
-     * [unregister] with the same key. The property persists across sessions.
+     * [unregister] with the same key. The property persists across app restarts.
      * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
      * the SDK only.
      * @param key the Key
