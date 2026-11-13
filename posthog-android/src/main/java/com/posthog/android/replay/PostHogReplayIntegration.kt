@@ -48,6 +48,7 @@ import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
+import androidx.compose.ui.semantics.SemanticsModifier
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -1956,8 +1957,20 @@ public class PostHogReplayIntegration(
             return config
         }
         for (info in layoutInfo.getModifierInfo()) {
+            // Compose before 1.3 has no modifier nodes: text semantics are a SemanticsModifier element.
+            (info.modifier as? SemanticsModifier)?.semanticsConfiguration?.let {
+                if (it.contains(SemanticsProperties.Text)) {
+                    return it
+                }
+            }
             val coordinates = info.coordinates
-            val node = coordinates.javaClass.getMethod("getTail").invoke(coordinates) ?: continue
+            val getTail =
+                try {
+                    coordinates.javaClass.getMethod("getTail")
+                } catch (e: NoSuchMethodException) {
+                    continue
+                }
+            val node = getTail.invoke(coordinates) ?: continue
             val applySemantics =
                 try {
                     node.javaClass.getMethod("applySemantics", SemanticsPropertyReceiver::class.java)
@@ -2012,7 +2025,14 @@ public class PostHogReplayIntegration(
             val paragraph = layout.multiParagraph
             // This result is re-wrapped to the box, but softWrap = false draws one unwrapped line.
             val width = if (input.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
-            glyphs = glyphs.copy(right = max(glyphs.right, width), bottom = max(glyphs.bottom, paragraph.height))
+            // A negative TextIndent starts a line left of the box, or right of it for right-to-left text.
+            val lineStarts = (0 until paragraph.lineCount).map { paragraph.getHorizontalPosition(paragraph.getLineStart(it), true) }
+            glyphs =
+                glyphs.copy(
+                    left = min(glyphs.left, lineStarts.minOrNull() ?: 0f),
+                    right = maxOf(glyphs.right, width, lineStarts.maxOrNull() ?: 0f),
+                    bottom = max(glyphs.bottom, paragraph.height),
+                )
             overdraws = true
         }
         val strokes = listOfNotNull(input.style.textStroke()) + input.text.spanStyles.mapNotNull { it.item.textStroke() }

@@ -38,9 +38,11 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.InteractionActivity
@@ -137,6 +139,40 @@ internal class PostHogReplayComposeMaskScopeTest {
         val mask = maskRects().single()
         assertTrue(mask.contains(bounds))
         assertTrue(mask.right > bounds.right, "expected $mask to extend past $bounds")
+    }
+
+    @Test
+    fun `visible overflow left of the layout box from a negative indent is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "secret",
+                Modifier.padding(start = 100.dp).then(textModifier).testTag("text"),
+                style = TextStyle(textIndent = TextIndent(firstLine = (-40).sp)),
+                overflow = TextOverflow.Visible,
+            )
+        }
+
+        val bounds = boundsOf("text")
+        val mask = maskRects().single()
+        assertTrue(mask.contains(bounds))
+        assertTrue(mask.left < bounds.left, "expected $mask to extend left of $bounds")
+    }
+
+    @Test
+    fun `visible overflow right of the layout box from a negative right-to-left indent is covered by its mask`() {
+        compose.activity.setContent {
+            BasicText(
+                "\u05e1\u05d5\u05d3",
+                Modifier.padding(start = 100.dp).then(textModifier).testTag("text"),
+                style = TextStyle(textIndent = TextIndent(firstLine = (-40).sp)),
+                overflow = TextOverflow.Visible,
+            )
+        }
+
+        val bounds = boundsOf("text")
+        val mask = maskRects().single()
+        assertTrue(mask.contains(bounds))
+        assertTrue(mask.right > bounds.right, "expected $mask to extend right of $bounds")
     }
 
     @Test
