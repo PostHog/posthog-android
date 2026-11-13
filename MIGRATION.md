@@ -63,7 +63,7 @@ Read the checklist first, then the sections that apply to you.
 
 ### Prepare your proxy
 
-4.x.x sends data to these endpoints:
+posthog-android 4.x.x sends data to these endpoints:
 
 | Data | 3.x.x | 4.x.x |
 | --- | --- | --- |
@@ -205,7 +205,7 @@ If you identify users with a long ID, such as a JWT or a long email address, sho
 
 ### Fix removed APIs
 
-4.x.x removes these APIs. Each one is a compile error. A call from an already-compiled library that you haven't updated fails at runtime.
+posthog-android 4.x.x removes these APIs. Each one is a compile error. A call from an already-compiled library that you haven't updated fails at runtime.
 
 | Removed | Use instead |
 | --- | --- |
@@ -502,7 +502,7 @@ Call `PostHog.setAppLanguage("de")` at startup and whenever the language changes
 
 ### Check session replay
 
-4.x.x removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did. Remove the `screenshot` option:
+posthog-android 4.x.x removes wireframe session replay. Replay always records masked screenshots, which is what `screenshot = true` already did. Remove the `screenshot` option:
 
 ```kotlin
 // 3.x.x

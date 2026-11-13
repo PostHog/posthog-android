@@ -3,32 +3,32 @@
 'posthog-android': major
 ---
 
-- See the [3.x to 4.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/MIGRATION.md) for upgrade steps
-- **Breaking:** stop supporting core `posthog` on its own through `PostHogStateless.with`; use it through `posthog-android` or `posthog-server`
-- **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`; self-hosted instances and reverse proxies must serve the path, and a 404 keeps events queued, retries them and prints one warning even when `debug` is off
-- **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times); retry 404, 408, 429, 500, 502, 503 and 504
+- See the [posthog-android 3.x.x to 4.0.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/MIGRATION.md) for upgrade steps
+- **Breaking:** stop supporting core `posthog` on its own through `PostHogStateless.with`. Use it through `posthog-android` or `posthog-server`
+- **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`. Reverse proxies must serve the path. A 404 keeps events queued, retries them and prints one warning even when `debug` is off
+- **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times). Retry 404, 408, 429, 500, 502, 503 and 504
 - **Breaking:** cap a `Retry-After` wait at 30 seconds, read it as a minimum wait and accept an HTTP date, and add up to 25% random jitter to the backoff, which still doubles from 1 to 30 seconds, for events, session replay and logs
-- **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`; PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
+- **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`. PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, dropping non-string values
-- **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties; PostHog drops an event whose option value it can't read
+- **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties. PostHog drops an event whose option value it can't read
 - **Breaking:** set the `process_person_profile` option to `false` only when person processing is off, instead of adding a `$process_person_profile` property to every event
 - **Breaking:** let a `process_person_profile` option or `$process_person_profile` property set to `true` turn person processing on for an event even with `PersonProfiles.NEVER`
 - **Breaking:** let registered super properties override properties the SDK sets, such as `$os_name`, and let super and event properties override `$is_identified`, `$process_person_profile` and the session replay debug properties
-- **Breaking:** fill `$lib` and `$lib_version` last and as a pair, only when the event doesn't name its library; a `$lib` you register or pass is sent as it is, without the SDK's version
+- **Breaking:** fill `$lib` and `$lib_version` last and as a pair, only when the event doesn't name its library. A `$lib` you register or pass is sent as it is, without the SDK's version
 - **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps in the same call's properties, and merge a `$groups` map in properties into the groups set with `group()`
 - **Breaking:** keep the event's own uuid when `beforeSend` returns an event with another uuid
 - **Breaking:** disable the SDK at setup when `projectToken` is a personal API key (`phx_...`), as for an empty token, and print a warning for both even when `debug` is off
-- **Breaking:** add an `options` parameter to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException`; Java callers pass `null` for it
-- **Breaking:** add `onFeatureFlags()`, `setAppLanguage()`, `captureAi()` and the `options` parameters to `PostHogInterface`, and move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`; classes that implement these interfaces must add them
+- **Breaking:** add an `options` parameter to `capture`, `screen`, `identify`, `setPersonProperties`, `alias`, `group` and `captureException`. Java callers pass `null` for it
+- **Breaking:** add `onFeatureFlags()`, `setAppLanguage()`, `captureAi()` and the `options` parameters to `PostHogInterface`, and move `identify(distinctId, userProperties, userPropertiesSetOnce)` from `PostHogCoreInterface` to `PostHogStatelessInterface`. Classes that implement these interfaces must add them
 - **Breaking:** rename `PostHogConfig.maxRetries` to `pushNotificationSubscriptionMaxRetries`
-- **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories; use `projectToken`
-- **Breaking:** remove the deprecated `propertiesSanitizer` option and `PostHogPropertiesSanitizer`; use `addBeforeSend`
-- **Breaking:** remove the deprecated `evaluationEnvironments` option; use `evaluationContexts`
-- **Breaking:** remove the deprecated `remoteConfig` option; the SDK always loads remote config at setup
-- **Breaking:** remove the deprecated `getFeatureFlagPayload()`; use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`
-- **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a missing flag or a disabled SDK; a positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback as the flag's value
+- **Breaking:** remove the deprecated `apiKey` property and the `PostHogConfig(apiKey = …)` and `PostHogAndroidConfig(apiKey = …)` factories. Use `projectToken`
+- **Breaking:** remove the deprecated `propertiesSanitizer` option and `PostHogPropertiesSanitizer`. Use `addBeforeSend`
+- **Breaking:** remove the deprecated `evaluationEnvironments` option. Use `evaluationContexts`
+- **Breaking:** remove the deprecated `remoteConfig` option. The SDK always loads remote config at setup
+- **Breaking:** remove the deprecated `getFeatureFlagPayload()`. Use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`
+- **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a missing flag or a disabled SDK. A positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback as the flag's value
 - **Breaking:** leave `$feature_flag_response` out of `$feature_flag_called` for a missing flag instead of sending an empty string
-- **Breaking:** remove `PostHogConfig.onFeatureFlags`; call `PostHog.onFeatureFlags(callback)` before `setup()` instead
+- **Breaking:** remove `PostHogConfig.onFeatureFlags`. Call `PostHog.onFeatureFlags(callback)` before `setup()` instead
 - **Breaking:** replace `PostHogOnFeatureFlags` with `PostHogFeatureFlagsCallback` in `reloadFeatureFlags()`, which receives a `PostHogFeatureFlagsLoaded` with the enabled flags, their values and `errorsLoading`
 - **Breaking:** return `null` from `getFeatureFlagResult(key)?.payload` for a payload that isn't valid JSON, such as plain text, a malformed or empty string, or a JSON `null`
 - **Breaking:** return `enabled = false` from `getFeatureFlagResult()` and leave the flag out of `PostHogFeatureFlagsLoaded` and `$active_feature_flags` for a feature flag whose variant is an empty string, as `isFeatureEnabled()` already does
@@ -38,13 +38,13 @@
 - Add the `$app_language` property with the language the app displays on Android 13+, and `setAppLanguage()` to set it on every version
 - Add internal APIs so wrapper SDKs can run their own `beforeSend` on the fully built event
 - Add internal APIs so wrapper SDKs can register capture options sent with every event
-- Send events queued on disk by 3.x through capture v1 after the update
-- Upgrade `posthog-android` to 4.0 when an app pins core `posthog` 7.x next to `posthog-android` 3.x, which would otherwise crash with `NoSuchMethodError` (Gradle builds only)
+- Send events queued on disk by 3.x.x through capture v1 after the update
+- Upgrade `posthog-android` to 4.0.0 when an app pins core `posthog` 7.x.x next to `posthog-android` 3.x.x, which would otherwise crash with `NoSuchMethodError` (Gradle builds only)
 - Send a `PostHog-Request-Id` header with each capture request, which reverse proxies must pass through
 - Cap a capture request at about 5 MiB of events and send as soon as that much is queued
 - Use the current distinct ID when the `distinctId` argument to `capture` is empty or whitespace-only, instead of dropping the event
 - Stop storing or matching the person-properties deduplication hash for a `$set` sent with `process_person_profile: false`
 - Stop printing analytics and AI event request and response bodies, property values and `beforeSend` exception messages in debug logs, and log per-batch drop and retry counts instead
-- Fix losing an event whose properties hold a nested map with non-string keys; number, boolean and `null` keys are converted to strings
-- Fix removing `null` elements from lists and arrays in event properties, which moved later elements to lower indexes; they're sent as JSON `null` at their position, as is an element that can't be serialized
+- Fix losing an event whose properties hold a nested map with non-string keys. Number, boolean and `null` keys are converted to strings
+- Fix removing `null` elements from lists and arrays in event properties, which moved later elements to lower indexes. They're sent as JSON `null` at their position, as is an element that can't be serialized
 - Fix `beforeSend` edits reaching the caller's nested maps and lists, by giving each hook its own copy
