@@ -6,11 +6,11 @@ showTitle: true
 
 The Android SDK 4.x.x sends analytics and AI events to the [capture v1](https://posthog.com/docs/api/capture-v1) endpoints, `/i/v1/analytics/events` and `/i/v1/ai/events`.
 
-Use the top right copy page button to work through this with your agents.
+On posthog.com, use the copy page button at the top right to work through this with your agents.
 
-You don't need to make every change on the day you upgrade your SDK. Required changes fall in these categories:
+You don't need to make every change on the day you upgrade your SDK. Changes fall in these categories:
 
-- **Before you upgrade**: you should make these changes before you upgrade your SDK to 4.x.x.
+- **Before you upgrade**: These are changes you should make before you upgrade your SDK to 4.x.x.
 - **During your upgrade**: These are changes that you need to make in the same PR that upgrades your SDK version.
 - **Follow ups**: These are changes that can come in follow up PRs, because 4.x.x still accepts the old names and options.
 
