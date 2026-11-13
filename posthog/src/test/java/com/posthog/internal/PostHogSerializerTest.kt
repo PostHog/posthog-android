@@ -1,8 +1,10 @@
 package com.posthog.internal
 
+import com.google.gson.JsonParser
 import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
+import com.posthog.TestLogger
 import com.posthog.date
 import com.posthog.generateEvent
 import org.junit.Rule
@@ -291,7 +293,8 @@ internal class PostHogSerializerTest {
         sut.serialize(event, serialized)
         val actualJson = serialized.toString()
 
-        // The result should preserve the nested "bad" map but only drop the unserializable leaf value
+        // The result should preserve the nested "bad" map but only drop the unserializable leaf value;
+        // in an array it becomes null so later elements keep their index
         val expectedJson =
             """
             {
@@ -303,7 +306,8 @@ internal class PostHogSerializerTest {
                         "good": "yes"
                     },
                     "in_an_array": [
-                        "good"
+                        "good",
+                        null
                     ]
                 },
                 "timestamp": "2009-02-13T23:31:30.000Z",
@@ -312,5 +316,53 @@ internal class PostHogSerializerTest {
             """.replace(" ", "").replace("\n", "")
 
         assertEquals(expectedJson, actualJson)
+    }
+
+    // not a data class: its generated hashCode calls Double.hashCode(double), missing on API 23.
+    // toString carries the prompt so logging the value would leak it
+    private class Turn(val prompt: String, val score: Double) {
+        override fun toString(): String = "Turn(prompt=$prompt)"
+    }
+
+    @Test
+    fun `converts scalar map keys, drops and logs other keys by type and keeps the event`() {
+        val logger = TestLogger()
+        val config = PostHogConfig(PROJECT_TOKEN).apply { this.logger = logger }
+        val nested =
+            mapOf(1 to "int", 1.5 to "float", true to "bool", null to "null", listOf("SECRET-KEY") to "dropped", "text" to "string")
+        val event = generateEvent().copy(properties = mutableMapOf("nested" to nested))
+
+        val writer = StringWriter()
+        config.serializer.serialize(event, writer)
+
+        val properties = JsonParser.parseString(writer.toString()).asJsonObject["properties"].asJsonObject
+        val sent = properties["nested"].asJsonObject
+        assertEquals(setOf("1", "1.5", "true", "null", "text"), sent.keySet())
+        assertEquals("int", sent["1"].asString)
+        val message = logger.messages.single { it.contains("cannot be serialized") }
+        assertTrue(message.contains("Property key of type java.util.Collections\$SingletonList"), message)
+        assertTrue(logger.messages.none { it.contains("SECRET-KEY") })
+    }
+
+    @Test
+    fun `an unserializable property is logged by key and type, never by value`() {
+        val logger = TestLogger()
+        val config = PostHogConfig(PROJECT_TOKEN).apply { this.logger = logger }
+        val event = generateEvent().copy(properties = mutableMapOf("turn" to Turn("SECRET-PROMPT", Double.NaN)))
+
+        config.serializer.serialize(event, StringWriter())
+
+        val message = logger.messages.single { it.contains("cannot be serialized") }
+        assertTrue(message.contains("'turn'"), message)
+        assertTrue(logger.messages.none { it.contains("SECRET-PROMPT") })
+    }
+
+    @Test
+    fun `serializedSize stops counting past its bound`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val event = generateEvent().copy(properties = mutableMapOf("big" to "a".repeat(1_000_000)))
+
+        assertEquals(1_001L, config.serializedSize(event, stopAfter = 1_000))
+        assertTrue(config.serializedSize(event) > 1_000_000)
     }
 }

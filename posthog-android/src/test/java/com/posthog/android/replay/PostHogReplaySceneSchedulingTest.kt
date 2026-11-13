@@ -63,7 +63,6 @@ import java.util.UUID
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -191,7 +190,6 @@ internal class PostHogReplaySceneSchedulingTest {
         config =
             PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 sessionReplay = true
-                sessionReplayConfig.screenshot = true
                 sessionReplayConfig.verifyScreenshotMaskAlignment = true
                 sessionReplayConfig.throttleDelayMs = 0
                 remoteConfigHolder =
@@ -335,7 +333,7 @@ internal class PostHogReplaySceneSchedulingTest {
         val events = fake.properties!!["\$snapshot_data"] as List<*>
         val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
         val scene = (snapshot.data as Map<*, *>)["wireframes"] as List<*>
-        assertEquals(listOf("screenshot", "rectangle", "screenshot"), scene.map { (it as RRWireframe).type })
+        assertEquals(listOf("screenshot", "screenshot", "screenshot"), scene.map { (it as RRWireframe).type })
     }
 
     @Test
@@ -426,37 +424,41 @@ internal class PostHogReplaySceneSchedulingTest {
             val snapshot = events.filterIsInstance<RRFullSnapshotEvent>().single()
             val frames = (snapshot.data as Map<*, *>)["wireframes"] as List<*>
             val scene = frames.map { it as RRWireframe }
-            assertEquals(listOf("screenshot", "screenshot", "rectangle", "screenshot"), scene.map { it.type })
-            val images = scene.filter { it.type == "screenshot" }
-            assertEquals(bounds.map { it.left to it.top }, images.map { it.x to it.y })
-            assertEquals(bounds.map { it.width() to it.height() }, images.map { it.width to it.height })
-            assertEquals("rgba(0,0,0,0.4)", scene[2].style?.backgroundColor)
+            assertEquals(List(4) { "screenshot" }, scene.map { it.type })
+            val windowImages = scene.filterIndexed { index, _ -> index != 2 }
+            assertEquals(bounds.map { it.left to it.top }, windowImages.map { it.x to it.y })
+            assertEquals(bounds.map { it.width() to it.height() }, windowImages.map { it.width to it.height })
+            val dim = scene[2]
+            assertEquals(listOf(0, 0, 320, 400), listOf(dim.x, dim.y, dim.width, dim.height))
+            val dimBytes = Base64.decode(assertNotNull(dim.base64).substringAfter(','), Base64.DEFAULT)
+            val dimImage = assertNotNull(BitmapFactory.decodeByteArray(dimBytes, 0, dimBytes.size))
+            val dimColor =
+                try {
+                    dimImage.getPixel(0, 0)
+                } finally {
+                    dimImage.recycle()
+                }
+            assertEquals(Color.argb(102, 0, 0, 0), dimColor)
             val bitmap = Bitmap.createBitmap(metadata["width"] as Int, metadata["height"] as Int, Bitmap.Config.ARGB_8888)
             try {
                 val canvas = Canvas(bitmap)
-                // Rasterize only the emitted screenshot and black-dim wireframes, in their
-                // emitted order and geometry. This checks producer output, not rrweb playback.
-                for (frame in scene) {
+                // Rasterize the emitted screenshots in their emitted order and geometry. This checks
+                // producer output, not rrweb playback. The dim is one solid color, so it is filled as a
+                // rect: stretching its bitmap blends text edges differently across Skia backends.
+                scene.forEachIndexed { index, frame ->
                     val x = assertNotNull(frame.x)
                     val y = assertNotNull(frame.y)
                     val rect = Rect(x, y, x + assertNotNull(frame.width), y + assertNotNull(frame.height))
-                    when (frame.type) {
-                        "screenshot" -> {
-                            val bytes = Base64.decode(assertNotNull(frame.base64).substringAfter(','), Base64.DEFAULT)
-                            val image = assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-                            try {
-                                canvas.drawBitmap(image, null, rect, null)
-                            } finally {
-                                image.recycle()
-                            }
-                        }
-                        "rectangle" -> {
-                            val color = assertNotNull(frame.style?.backgroundColor)
-                            val match = assertNotNull(Regex("rgba\\(0,0,0,([0-9.]+)\\)").matchEntire(color))
-                            val alpha = (match.groupValues[1].toFloat() * 255).roundToInt()
-                            canvas.drawRect(rect, Paint().apply { this.color = Color.argb(alpha, 0, 0, 0) })
-                        }
-                        else -> error("Unexpected scene wireframe: ${frame.type}")
+                    if (index == 2) {
+                        canvas.drawRect(rect, Paint().apply { color = dimColor })
+                        return@forEachIndexed
+                    }
+                    val bytes = Base64.decode(assertNotNull(frame.base64).substringAfter(','), Base64.DEFAULT)
+                    val image = assertNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                    try {
+                        canvas.drawBitmap(image, null, rect, null)
+                    } finally {
+                        image.recycle()
                     }
                 }
                 return bitmap
@@ -695,7 +697,7 @@ internal class PostHogReplaySceneSchedulingTest {
 
         @Suppress("UNCHECKED_CAST")
         val frames = (snapshot.data as Map<*, *>)["wireframes"] as List<RRWireframe>
-        assertEquals(listOf("screenshot", "rectangle", "screenshot"), frames.map { it.type })
+        assertEquals(listOf("screenshot", "screenshot", "screenshot"), frames.map { it.type })
         assertTrue(dialog.window!!.decorView in sut.decorViews)
     }
 

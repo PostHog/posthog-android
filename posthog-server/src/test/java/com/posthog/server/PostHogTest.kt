@@ -864,7 +864,6 @@ internal class PostHogTest {
                 TEST_PROJECT_TOKEN,
                 host = server.url("/").toString(),
                 preloadFeatureFlags = false,
-                remoteConfig = false,
                 flushIntervalSeconds = 3600,
                 remoteConfigProvider = { coreConfig, api, _, _, _, _ ->
                     PostHogFeatureFlags(

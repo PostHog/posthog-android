@@ -9,9 +9,21 @@ import java.io.OutputStream
 
 /**
  * Per-endpoint specification consumed by [PostHogQueue]. Carries
- * everything that differs between PostHog endpoints (`/batch`, `/snapshot`,
- * and any future endpoint): the codec, the send call, the retry policy,
- * and the per-endpoint runtime knobs.
+ * everything that differs between PostHog endpoints (`/i/v1/analytics/events`,
+ * `/snapshot`, and any future endpoint): the codec, the send call, the retry
+ * policy, and the per-endpoint runtime knobs.
+ *
+ * `send` returns a [SendResult] naming the [recordId]s the server asked to
+ * retry; an empty set means every record is done (delivered or dropped).
+ * Endpoints without per-record results return an empty result and leave
+ * [recordId] null.
+ *
+ * The byte limits are measured on the stored record files. [maxBatchBytes] is
+ * a soft limit on one request: a record that doesn't fit starts the next
+ * request, a record larger than the limit goes alone, and the queue flushes as
+ * soon as that many bytes are queued. [maxQueueBytes] is a FIFO limit on the
+ * queued files on top of [maxQueueSize]; the newest record is always kept.
+ * Null means no limit.
  *
  * The queue itself stays record-type-agnostic; everything that varies
  * between endpoints lives here.
@@ -27,10 +39,13 @@ public class EndpointSpec<Record> internal constructor(
     internal val encode: (Record, OutputStream) -> Unit,
     internal val decode: (InputStream) -> Record?,
     internal val describe: (Record) -> String,
-    internal val send: (List<Record>) -> Unit,
+    internal val send: (List<Record>) -> SendResult,
     internal val isRetriableStatusCode: (Int) -> Boolean,
     internal val isFatalRecord: (Record) -> Boolean = { false },
     internal val canBatchTogether: ((Record, Record) -> Boolean)? = null,
+    internal val recordId: ((Record) -> String?)? = null,
+    internal val maxBatchBytes: Long? = null,
+    internal val maxQueueBytes: Long? = null,
 ) {
     public companion object {
         @JvmStatic
@@ -53,9 +68,45 @@ public class EndpointSpec<Record> internal constructor(
                     config.serializer.deserialize<PostHogEvent?>(stream.reader().buffered())
                 },
                 describe = { event -> "Event ${event.event}" },
-                send = { events -> api.batch(events) },
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                send = { events -> api.captureV1(events) },
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
+                recordId = { event -> event.uuid?.toString() },
+                maxBatchBytes = CAPTURE_V1_MAX_BATCH_BYTES,
+            )
+
+        /**
+         * Returns the [EndpointSpec] for the capture v1 AI endpoint (`/i/v1/ai/events`), used by
+         * `captureAi`. Same codec, results and retry policy as [batch], on its own queue: AI events
+         * can be megabytes, so the queue is capped by bytes as well as count, and an event over
+         * [PostHogConfig.captureAiMaxEventBytes] is dropped when queued.
+         */
+        @JvmStatic
+        public fun ai(
+            config: PostHogConfig,
+            api: PostHogApi,
+            storagePrefix: String?,
+        ): EndpointSpec<PostHogEvent> =
+            EndpointSpec(
+                recordsLabel = "AI events",
+                storagePrefix = storagePrefix,
+                initialCap = { it.maxBatchSize },
+                initialFlushAt = { it.flushAt },
+                maxQueueSize = { it.effectiveCaptureAiMaxQueueSize },
+                flushIntervalSeconds = { it.flushIntervalSeconds },
+                encode = { event, stream ->
+                    config.serializer.serialize(event, stream.writer().buffered())
+                },
+                decode = { stream ->
+                    config.serializer.deserialize<PostHogEvent?>(stream.reader().buffered())
+                },
+                // Name only: AI properties can hold prompts and media.
+                describe = { event -> "AI event ${event.event}" },
+                send = { events -> api.captureAi(events) },
+                isRetriableStatusCode = ::isCaptureV1RetriableStatusCode,
+                recordId = { event -> event.uuid?.toString() },
+                maxBatchBytes = CAPTURE_V1_MAX_BATCH_BYTES,
+                maxQueueBytes = AI_MAX_QUEUE_BYTES,
             )
 
         @JvmStatic
@@ -83,8 +134,11 @@ public class EndpointSpec<Record> internal constructor(
                     first.distinctId == next.distinctId &&
                         (first.properties?.get("\$session_id") as? String) == (next.properties?.get("\$session_id") as? String)
                 },
-                send = { events -> api.snapshot(events) },
-                isRetriableStatusCode = ::isEventsRetriableStatusCode,
+                send = { events ->
+                    api.snapshot(events)
+                    SendResult()
+                },
+                isRetriableStatusCode = ::isSnapshotRetriableStatusCode,
                 isFatalRecord = { it.isFatalExceptionEvent() },
             )
 
@@ -119,18 +173,101 @@ public class EndpointSpec<Record> internal constructor(
                     map?.let { PostHogLogRecord.fromStorageMap(it) }
                 },
                 describe = { _ -> "log" },
-                send = { records -> api.sendLogs(records, resourceAttrs) },
+                send = { records ->
+                    api.sendLogs(records, resourceAttrs)
+                    SendResult()
+                },
                 isRetriableStatusCode = ::isLogsRetriableStatusCode,
             )
         }
     }
 }
 
-internal val DEFAULT_EVENTS_RETRYABLE_STATUS_CODES: Set<Int> = setOf(408, 429, 500, 502, 503, 504)
+/**
+ * What an endpoint's `send` reports back to the queue: the record ids the
+ * server asked to retry, empty when every record is done, and the
+ * `Retry-After` the server sent with that answer.
+ */
+internal class SendResult(
+    val retryIds: Set<String> = emptySet(),
+    val retryAfterSeconds: Int? = null,
+)
 
-internal fun isEventsRetriableStatusCode(code: Int): Boolean = code in DEFAULT_EVENTS_RETRYABLE_STATUS_CODES
+/**
+ * Capture v1 retry policy: 404, 408, 429 and the listed 5xx. A 404 usually means a misconfigured
+ * proxy and a 429 an overloaded ingress, so neither drops events. Everything else, including 3xx,
+ * is terminal; 413 is handled by the queue's batch halving.
+ */
+internal fun isCaptureV1RetriableStatusCode(code: Int): Boolean = code in setOf(404, 408, 429, 500, 502, 503, 504)
 
-internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+/** Soft request size for the capture v1 analytics and AI endpoints, well under their body limits. */
+internal const val CAPTURE_V1_MAX_BATCH_BYTES: Long = 5L * 1024 * 1024
+
+/** Disk budget for queued AI events; the oldest are dropped first. */
+internal const val AI_MAX_QUEUE_BYTES: Long = 50L * 1024 * 1024
+
+/** [PostHogConfig.captureAiMaxQueueSize], or its default when it isn't positive. */
+internal val PostHogConfig.effectiveCaptureAiMaxQueueSize: Int
+    get() = if (captureAiMaxQueueSize > 0) captureAiMaxQueueSize else PostHogConfig.DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
+
+/** [PostHogConfig.captureAiTimeout], or its default when it isn't positive. */
+internal val PostHogConfig.effectiveCaptureAiTimeoutSeconds: Int
+    get() = if (captureAiTimeout > 0) captureAiTimeout else PostHogConfig.DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
+
+/** Thrown by [serializedSize]'s counter to stop serializing once the count passes its bound. */
+private object SerializedSizeExceeded : RuntimeException() {
+    override fun fillInStackTrace(): Throwable = this
+}
+
+/**
+ * Bytes [event] takes serialized as the queue stores it, before any [PostHogConfig.encryption].
+ * Counted as it's written, so the event isn't held in memory a second time. Stops writing at
+ * [stopAfter] + 1, though the serializer still builds the whole properties JSON tree first.
+ */
+internal fun PostHogConfig.serializedSize(
+    event: PostHogEvent,
+    stopAfter: Long = Long.MAX_VALUE,
+): Long {
+    var count = 0L
+    val counter =
+        object : OutputStream() {
+            override fun write(b: Int) {
+                count++
+                if (count > stopAfter) throw SerializedSizeExceeded
+            }
+
+            override fun write(
+                b: ByteArray,
+                off: Int,
+                len: Int,
+            ) {
+                count += len
+                if (count > stopAfter) throw SerializedSizeExceeded
+            }
+        }
+    try {
+        serializer.serialize(event, counter.writer().buffered())
+    } catch (e: SerializedSizeExceeded) {
+        return stopAfter + 1
+    }
+    return count
+}
+
+/**
+ * Size limit for a serialized AI event, before any [PostHogConfig.encryption]: [PostHogConfig.captureAiMaxEventBytes],
+ * capped at its default (PostHog's 8 MiB properties limit plus 64 KiB for the rest of the event).
+ */
+internal val PostHogConfig.captureAiMaxStoredEventBytes: Long
+    get() {
+        val limit = PostHogConfig.DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
+        return (if (captureAiMaxEventBytes > 0) minOf(captureAiMaxEventBytes, limit) else limit).toLong()
+    }
+
+/** `/snapshot` (replay) retry policy: 408, 429, the listed 5xx, plus 3xx redirects. */
+internal fun isSnapshotRetriableStatusCode(code: Int): Boolean = code in setOf(408, 429, 500, 502, 503, 504) || code in 300..399
+
+/** `/i/v1/logs` retry policy: 408, 429, every 5xx, plus 3xx redirects. */
+internal fun isLogsRetriableStatusCode(code: Int): Boolean = code == 408 || code == 429 || code in 300..399 || code in 500..599
 
 /**
  * Captures the resource attributes for the logs endpoint at SDK setup.

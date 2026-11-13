@@ -49,7 +49,7 @@ internal class PostHogStatelessGeoIpTest {
     private fun flushedEvents(): List<PostHogEvent> {
         client!!.flush()
         val request = assertNotNull(http.takeRequest(10, TimeUnit.SECONDS))
-        assertEquals("/batch", request.path)
+        assertEquals("/i/v1/analytics/events", request.path)
         return config.serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader()).batch
     }
 

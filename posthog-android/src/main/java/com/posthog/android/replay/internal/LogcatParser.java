@@ -2,7 +2,6 @@
 
 package com.posthog.android.replay.internal;
 
-import com.posthog.PostHogInternal;
 
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
@@ -10,8 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Parses logcat output formatted with {@code -v epoch}. */
-@PostHogInternal
-public class LogcatParser {
+class LogcatParser {
 
     /** UTC Time Zone. */
     public static final TimeZone UTC = TimeZone.getTimeZone("UTC");

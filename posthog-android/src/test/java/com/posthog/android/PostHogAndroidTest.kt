@@ -2,6 +2,7 @@ package com.posthog.android
 
 import android.content.Context
 import android.content.Intent
+import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
@@ -23,6 +24,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -145,6 +147,23 @@ internal class PostHogAndroidTest {
         PostHogAndroid.setup(context, config)
 
         assertTrue(config.context is PostHogAndroidContext)
+    }
+
+    @Test
+    fun `runs feature flags listeners on the main thread`() {
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
+
+        mockContextAppStart(context, tmpDir)
+
+        PostHogAndroid.setup(context, config)
+
+        var ranOn: Thread? = null
+        val worker = Thread { config.featureFlagsListenerExecutor!!.execute { ranOn = Thread.currentThread() } }
+        worker.start()
+        worker.join()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertSame(Looper.getMainLooper().thread, ranOn)
     }
 
     @Test

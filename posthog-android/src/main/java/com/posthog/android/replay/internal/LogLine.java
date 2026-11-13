@@ -2,15 +2,13 @@
 
 package com.posthog.android.replay.internal;
 
-import com.posthog.PostHogInternal;
 
 import java.util.GregorianCalendar;
 
 /**
  * A log line.
  */
-@PostHogInternal
-public class LogLine {
+class LogLine {
     /**
      * The timestamp of the event, parsed directly from Unix epoch time and represented in UTC.
      */

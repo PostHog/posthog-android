@@ -1,8 +1,12 @@
 package com.posthog.android.internal
 
+import android.app.LocaleConfig
+import android.app.LocaleManager
 import android.content.Context
 import android.content.pm.InstallSourceInfo
+import android.content.res.Resources
 import android.net.ConnectivityManager
+import android.os.LocaleList
 import android.telephony.TelephonyManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.PROJECT_TOKEN
@@ -14,10 +18,13 @@ import com.posthog.android.mockTelephone
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowBuild
+import java.util.Locale
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -187,6 +194,132 @@ internal class PostHogAndroidContextTest {
         assertNotNull(dynamicContext["\$timezone"])
 
         assertEquals("name", dynamicContext["\$network_carrier"])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `locale is the device language even after Locale setDefault`() {
+        context.mockTelephone()
+        val original = Locale.getDefault()
+        val deviceTag = Resources.getSystem().configuration.locales[0].toLanguageTag()
+        Locale.setDefault(Locale.forLanguageTag("fr-FR"))
+        try {
+            assertEquals(deviceTag, getSut().getDynamicContext()["\$locale"])
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `reads locale off the setup and capture threads`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH,en"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        verifyNoInteractions(localeManager)
+        runPendingTasks()
+        assertEquals("de-CH", sut.getDynamicContext()["\$locale"])
+
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("es-ES"))
+        assertEquals("de-CH", sut.getDynamicContext()["\$locale"])
+        runPendingTasks()
+
+        assertEquals("es-ES", sut.getDynamicContext()["\$locale"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `locale leaves out regional preference extensions`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH-u-fw-mon"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+
+        val sut = getSut()
+        runPendingTasks()
+
+        assertEquals("de-CH", sut.getDynamicContext()["\$locale"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `falls back to resources and no app language when LocaleManager throws`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenThrow(RuntimeException())
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        runPendingTasks()
+        val dynamicContext = sut.getDynamicContext()
+
+        assertEquals(Resources.getSystem().configuration.locales[0].toLanguageTag(), dynamicContext["\$locale"])
+        assertFalse(dynamicContext.containsKey("\$app_language"))
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `a per-app language with no declaration is the app language`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.forLanguageTags("fr"))
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        runPendingTasks()
+
+        assertEquals("fr", sut.getDynamicContext()["\$app_language"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `app language follows supported locales changed at runtime`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.getEmptyLocaleList())
+        whenever(localeManager.overrideLocaleConfig).thenReturn(LocaleConfig(LocaleList.forLanguageTags("en")))
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        runPendingTasks()
+        assertEquals("en", sut.getDynamicContext()["\$app_language"])
+
+        sut.getDynamicContext()
+        runPendingTasks()
+        verify(localeManager, times(1)).overrideLocaleConfig
+
+        whenever(localeManager.overrideLocaleConfig).thenReturn(LocaleConfig(LocaleList.forLanguageTags("en,de")))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.forLanguageTags("de"))
+        sut.getDynamicContext()
+        runPendingTasks()
+
+        assertEquals("de", sut.getDynamicContext()["\$app_language"])
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `sends no app language when turned off for wrappers`() {
+        context.mockTelephone()
+        val localeManager = mock<LocaleManager>()
+        whenever(localeManager.systemLocales).thenReturn(LocaleList.forLanguageTags("de-CH"))
+        whenever(localeManager.applicationLocales).thenReturn(LocaleList.forLanguageTags("fr"))
+        whenever(context.getSystemService(LocaleManager::class.java)).thenReturn(localeManager)
+        val sut = getSut()
+        config.detectAppLanguage = false
+        runPendingTasks()
+
+        assertFalse(sut.getDynamicContext().containsKey("\$app_language"))
+    }
+
+    @Test
+    @Config(sdk = [32])
+    fun `does not detect the app language before Android 13`() {
+        context.mockTelephone()
+
+        assertFalse(getSut().getDynamicContext().containsKey("\$app_language"))
     }
 
     @Test

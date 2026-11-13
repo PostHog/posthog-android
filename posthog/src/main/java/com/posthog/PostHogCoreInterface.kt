@@ -13,20 +13,10 @@ public interface PostHogCoreInterface {
     public fun close()
 
     /**
-     * Identifies the user
-     * Docs https://posthog.com/docs/product-analytics/identify
-     * @param distinctId the distinctId
-     * @param userProperties the user properties, set as a "$set" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     * @param userPropertiesSetOnce the user properties to set only once, set as a "$set_once" property, Docs https://posthog.com/docs/product-analytics/user-properties
-     */
-    public fun identify(
-        distinctId: String,
-        userProperties: Map<String, Any>? = null,
-        userPropertiesSetOnce: Map<String, Any>? = null,
-    )
-
-    /**
      * Flushes all the events in the Queue right away
+     *
+     * Doesn't block. It starts sending in the background and returns, so it doesn't guarantee
+     * delivery. Nothing is sent while the device is offline or the SDK is waiting to retry.
      */
     public fun flush()
 

@@ -244,9 +244,7 @@ public class ThrowableCoercer {
         return exception
     }
 
-    // `inAppExcludes` is appended after `releaseIdentifier` so existing positional Kotlin calls stay
-    // valid. This is a `@PostHogInternal` entry point, so the JVM descriptor change is fine.
-    public fun fromThrowableToPostHogProperties(
+    internal fun fromThrowableToPostHogProperties(
         throwable: Throwable,
         inAppIncludes: List<String> = listOf(),
         releaseIdentifier: String? = null,

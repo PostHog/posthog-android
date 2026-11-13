@@ -63,6 +63,8 @@ tasks.withType<DetektCreateBaselineTask>().configureEach {
 }
 
 apiValidation {
+    // Wrapper-only APIs (e.g. for Flutter and React Native) are public for cross-module use but not part of the API contract.
+    nonPublicMarkers.add("com.posthog.PostHogInternal")
     ignoredProjects.add("posthog-android-sample")
     // Pre-1.0 (0.x) module — public surface may change between minor versions until 1.0.0.
     ignoredProjects.add("posthog-android-surveys-compose")

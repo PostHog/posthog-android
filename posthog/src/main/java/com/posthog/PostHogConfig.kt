@@ -24,6 +24,7 @@ import com.posthog.surveys.PostHogSurveysConfig
 import okhttp3.OkHttpClient
 import java.net.Proxy
 import java.util.UUID
+import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
 /**
@@ -109,15 +110,6 @@ public open class PostHogConfig(
      */
     public var setDefaultPersonProperties: Boolean = true,
     /**
-     * Preload PostHog remote config automatically
-     * Defaults to true
-     */
-    @Deprecated(
-        message = "Remote config is now always enabled. This option is a no-op and will be removed in a future version.",
-        level = DeprecationLevel.WARNING,
-    )
-    public var remoteConfig: Boolean = true,
-    /**
      * Number of minimum events before they are sent over the wire
      * Defaults to 20
      */
@@ -142,7 +134,7 @@ public open class PostHogConfig(
      *
      * Defaults to 3
      */
-    public var maxRetries: Int = 3,
+    public var pushNotificationSubscriptionMaxRetries: Int = 3,
     /**
      * Maximum number of retries for feature flag requests after transient network errors.
      * Defaults to 1. Set to 0 to disable feature flag request retries.
@@ -163,22 +155,11 @@ public open class PostHogConfig(
      */
     public var encryption: PostHogEncryption? = null,
     /**
-     * Hook that is called when feature flags are loaded
-     * Defaults to no callback
-     */
-    public var onFeatureFlags: PostHogOnFeatureFlags? = null,
-    /**
      * Enable Recording of Session Replays for Android
      * Requires Record user sessions to be enabled in the PostHog Project Settings
      * Defaults to false
      */
     public var sessionReplay: Boolean = false,
-    /**
-     * Hook that allows to sanitize the event properties
-     * The hook is called before the event is cached or sent over the wire
-     */
-    @Deprecated("Use beforeSendList instead")
-    public var propertiesSanitizer: PostHogPropertiesSanitizer? = null,
     /**
      * Hook that allows for modification of the default mechanism for
      * generating anonymous id (which as of now is just random UUID v7)
@@ -382,13 +363,15 @@ public open class PostHogConfig(
 
     /**
      * When set, PostHog injects tracing headers into OkHttp requests whose destination hostname
-     * exactly matches one of the configured hostnames.
+     * exactly matches one of the configured hostnames. Use it to link the app's network requests
+     * to the backend events, errors, and LLM traces that a server-side PostHog SDK captures.
      *
-     * Injected headers:
+     * Injected headers, each sent only when its value exists:
      * - `X-POSTHOG-DISTINCT-ID`
      * - `X-POSTHOG-SESSION-ID`
      *
      * Notes:
+     * - List hostnames only, with no protocol or path
      * - Requires installing [PostHogOkHttpInterceptor] on each [OkHttpClient] that should send tracing headers
      * - Hostname matching is exact and does not include ports or subdomain wildcards
      * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
@@ -420,7 +403,10 @@ public open class PostHogConfig(
     /**
      * Custom headers to send with every request to the PostHog API.
      *
-     * Useful for reverse-proxy setups that require authentication, e.g. an `Authorization` header.
+     * Useful for reverse-proxy setups that require authentication. Capture requests
+     * (`/i/v1/analytics/events`) send the project token in an `Authorization: Bearer` header, which
+     * replaces an `Authorization` header set here, so authenticate your proxy with a different
+     * header, such as `X-Proxy-Token`. Other requests still send your `Authorization` header.
      *
      * Read once when the SDK is set up; changes after setup are ignored.
      *
@@ -443,6 +429,52 @@ public open class PostHogConfig(
     public var compression: PostHogCompression = PostHogCompression.GZIP
 
     /**
+     * How the SDK compresses [PostHog.captureAi] request bodies, separately from [compression].
+     *
+     * When [httpClient] is set, it applies only if that client installs a [com.posthog.internal.GzipRequestInterceptor],
+     * which the SDK then reads this setting through for AI requests.
+     *
+     * Default: [PostHogCompression.GZIP].
+     */
+    public var captureAiCompression: PostHogCompression = PostHogCompression.GZIP
+
+    /**
+     * Maximum number of [PostHog.captureAi] events kept in their on-disk queue before the oldest
+     * are dropped.
+     *
+     * AI events can be megabytes, so this is lower than [maxQueueSize]. The queue also keeps at most
+     * 50 MiB of AI events, whatever this is set to. The same limits apply to AI events still waiting
+     * to be written to disk, for example during a slow upload: over them, the oldest waiting events
+     * are dropped. A value of 0 or less uses the default.
+     *
+     * Default: 100.
+     */
+    public var captureAiMaxQueueSize: Int = DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE
+
+    /**
+     * How long, in seconds, a [PostHog.captureAi] request can go without network activity before it
+     * times out: its HTTP client's read and write timeouts.
+     *
+     * AI requests can carry several MB, so this is longer than for other requests, which keep
+     * OkHttp's 10 second defaults. A value of 0 or less uses the default.
+     *
+     * Default: 60.
+     */
+    public var captureAiTimeout: Int = DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS
+
+    /**
+     * Maximum size, in bytes, of a serialized [PostHog.captureAi] event, measured before [encryption].
+     * The SDK drops a larger event; then `captureAi` returns null and logs only the event name and the limit.
+     *
+     * Use it to lower the limit. PostHog drops AI events whose properties are over 8 MiB, so the default
+     * allows 8 MiB plus 64 KiB for the rest of the event. A larger value uses the default and logs a
+     * warning. A value of 0 or less uses the default.
+     *
+     * Default: 8454144 (8 MiB + 64 KiB).
+     */
+    public var captureAiMaxEventBytes: Int = DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES
+
+    /**
      * Your PostHog project token, trimmed of leading and trailing whitespace.
      *
      * Find it in your PostHog project settings:
@@ -454,20 +486,6 @@ public open class PostHogConfig(
      * ```
      */
     public val projectToken: String = projectToken.trim()
-
-    /**
-     * Deprecated alias for [projectToken]; returns the same trimmed value.
-     *
-     * ```kotlin
-     * val token = config.projectToken // instead of config.apiKey
-     * ```
-     */
-    @Deprecated(
-        "Deprecated in favor of projectToken. This will be removed in the next major version.",
-        ReplaceWith("projectToken"),
-    )
-    public val apiKey: String
-        get() = projectToken
 
     /**
      * The PostHog Host
@@ -511,6 +529,9 @@ public open class PostHogConfig(
     public var logsStoragePrefix: String? = null
 
     @PostHogInternal
+    public var aiStoragePrefix: String? = null
+
+    @PostHogInternal
     public var cachePreferences: PostHogPreferences? = null
 
     @PostHogInternal
@@ -526,6 +547,13 @@ public open class PostHogConfig(
      */
     @PostHogInternal
     public var sampleRateProvider: (() -> Double?)? = null
+
+    /**
+     * Runs the [PostHog.onFeatureFlags] listeners. Set by platform-specific modules (e.g., Android)
+     * to deliver them on the main thread. When null, they run on the SDK's remote config thread.
+     */
+    @PostHogInternal
+    public var featureFlagsListenerExecutor: Executor? = null
 
     /**
      * Reference to the PostHogRemoteConfig instance, set during setup.
@@ -611,20 +639,6 @@ public open class PostHogConfig(
         }
     }
 
-    /**
-     * Optional list of evaluation environment tags for feature flag evaluation
-     * @deprecated Use evaluationContexts instead. This property will be removed in a future version.
-     */
-    @Deprecated(
-        message = "Use evaluationContexts instead. This property will be removed in a future version.",
-        replaceWith = ReplaceWith("evaluationContexts"),
-    )
-    public var evaluationEnvironments: List<String>?
-        get() = evaluationContexts
-        set(value) {
-            evaluationContexts = value
-        }
-
     public companion object {
         /** Shared default for [flushAt] and [PostHogLogsConfig.flushAt]. */
         public const val DEFAULT_FLUSH_AT: Int = 20
@@ -638,6 +652,15 @@ public open class PostHogConfig(
         /** Shared default for [flushIntervalSeconds] and [PostHogLogsConfig.flushIntervalSeconds]. */
         public const val DEFAULT_FLUSH_INTERVAL_SECONDS: Int = 30
 
+        /** Default for [captureAiMaxQueueSize]. */
+        public const val DEFAULT_CAPTURE_AI_MAX_QUEUE_SIZE: Int = 100
+
+        /** Default for [captureAiTimeout]. */
+        public const val DEFAULT_CAPTURE_AI_TIMEOUT_SECONDS: Int = 60
+
+        /** Default for [captureAiMaxEventBytes]: PostHog's 8 MiB limit on an AI event's properties, plus 64 KiB for the rest of the event. */
+        public const val DEFAULT_CAPTURE_AI_MAX_EVENT_BYTES: Int = 8 * 1024 * 1024 + 64 * 1024
+
         public const val DEFAULT_US_HOST: String = "https://us.i.posthog.com"
         public const val DEFAULT_US_ASSETS_HOST: String = "https://us-assets.i.posthog.com"
 
@@ -648,104 +671,6 @@ public open class PostHogConfig(
         public const val DEFAULT_EU_ASSETS_HOST: String = "https://eu-assets.i.posthog.com"
 
         public const val DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE: Int = 1000
-
-        /**
-         * Deprecated form of the [PostHogConfig] constructor that takes `apiKey` instead of
-         * `projectToken`, kept so Kotlin calls such as `PostHogConfig(apiKey = "phc_...")` still
-         * compile. Every other parameter and default matches the constructor.
-         *
-         * ```kotlin
-         * val config = PostHogConfig(projectToken = "phc_your_project_token") // instead of apiKey =
-         * ```
-         */
-        @Deprecated(
-            "Deprecated in favor of projectToken. This will be removed in the next major version.",
-        )
-        @Suppress("DEPRECATION")
-        @JvmSynthetic
-        public operator fun invoke(
-            apiKey: String,
-            host: String = DEFAULT_HOST,
-            debug: Boolean = false,
-            optOut: Boolean = false,
-            sendFeatureFlagEvent: Boolean = true,
-            featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE,
-            preloadFeatureFlags: Boolean = true,
-            evaluationContexts: List<String>? = null,
-            setDefaultPersonProperties: Boolean = true,
-            remoteConfig: Boolean = true,
-            flushAt: Int = DEFAULT_FLUSH_AT,
-            maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE,
-            maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE,
-            maxRetries: Int = 3,
-            featureFlagRequestMaxRetries: Int = 1,
-            flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS,
-            encryption: PostHogEncryption? = null,
-            onFeatureFlags: PostHogOnFeatureFlags? = null,
-            sessionReplay: Boolean = false,
-            propertiesSanitizer: PostHogPropertiesSanitizer? = null,
-            getAnonymousId: ((UUID) -> UUID) = { it },
-            reuseAnonymousId: Boolean = false,
-            personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
-            surveys: Boolean = false,
-            proxy: Proxy? = null,
-            surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(),
-            logs: PostHogLogsConfig = PostHogLogsConfig(),
-            remoteConfigProvider: (
-                PostHogConfig,
-                PostHogApi,
-                ExecutorService,
-                PostHogDefaultPersonPropertiesProvider?,
-                PostHogOnRemoteConfigLoaded?,
-                PostHogFeatureFlagCalledProvider?,
-            ) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER,
-            queueProvider: (
-                PostHogConfig,
-                PostHogApi,
-                PostHogApiEndpoint,
-                String?,
-                ExecutorService,
-            ) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER,
-            errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(),
-            releaseIdentifier: String? = null,
-            bootstrap: PostHogBootstrapConfig? = null,
-            pushIdentityProvider: ((distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit)? = null,
-        ): PostHogConfig =
-            PostHogConfig(
-                projectToken = apiKey,
-                host = host,
-                debug = debug,
-                optOut = optOut,
-                sendFeatureFlagEvent = sendFeatureFlagEvent,
-                featureFlagCalledCacheSize = featureFlagCalledCacheSize,
-                preloadFeatureFlags = preloadFeatureFlags,
-                evaluationContexts = evaluationContexts,
-                setDefaultPersonProperties = setDefaultPersonProperties,
-                remoteConfig = remoteConfig,
-                flushAt = flushAt,
-                maxQueueSize = maxQueueSize,
-                maxBatchSize = maxBatchSize,
-                maxRetries = maxRetries,
-                featureFlagRequestMaxRetries = featureFlagRequestMaxRetries,
-                flushIntervalSeconds = flushIntervalSeconds,
-                encryption = encryption,
-                onFeatureFlags = onFeatureFlags,
-                sessionReplay = sessionReplay,
-                propertiesSanitizer = propertiesSanitizer,
-                getAnonymousId = getAnonymousId,
-                reuseAnonymousId = reuseAnonymousId,
-                personProfiles = personProfiles,
-                surveys = surveys,
-                proxy = proxy,
-                surveysConfig = surveysConfig,
-                logs = logs,
-                remoteConfigProvider = remoteConfigProvider,
-                queueProvider = queueProvider,
-                errorTrackingConfig = errorTrackingConfig,
-                releaseIdentifier = releaseIdentifier,
-                bootstrap = bootstrap,
-                pushIdentityProvider = pushIdentityProvider,
-            )
     }
 }
 

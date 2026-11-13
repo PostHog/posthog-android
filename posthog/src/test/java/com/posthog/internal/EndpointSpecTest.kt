@@ -81,7 +81,10 @@ internal class EndpointSpecTest {
                 stream.reader().buffered().use { SyntheticRecord(it.readText()) }
             },
             describe = { "synthetic '${it.value}'" },
-            send = { records -> sender.send(records) },
+            send = { records ->
+                sender.send(records)
+                SendResult()
+            },
             isRetriableStatusCode = isRetriableStatusCode,
         )
 
@@ -257,14 +260,13 @@ internal class EndpointSpecTest {
     }
 
     @Test
-    fun `logs spec retry policy retries 408 429 and 5xx`() {
+    fun `logs spec retry policy retries 408 429 3xx and 5xx`() {
         assertTrue(isLogsRetriableStatusCode(408))
         assertTrue(isLogsRetriableStatusCode(429))
         assertTrue(isLogsRetriableStatusCode(500))
         assertTrue(isLogsRetriableStatusCode(599))
-        // 3xx redirects are not retriable — a redirect from /i/v1/logs means
-        // misconfigured host, retrying would loop.
-        assertEquals(false, isLogsRetriableStatusCode(301))
+        // A 3xx that OkHttp did not follow keeps the records, as it always did for logs.
+        assertTrue(isLogsRetriableStatusCode(301))
         assertEquals(false, isLogsRetriableStatusCode(400))
         assertEquals(false, isLogsRetriableStatusCode(404))
         assertEquals(false, isLogsRetriableStatusCode(600))
@@ -272,14 +274,12 @@ internal class EndpointSpecTest {
 
     @Test
     fun `events spec does not retry non-retriable status codes`() {
-        // Events keeps a curated retry set (408, 429, 500, 502, 503, 504); it
-        // must not retry arbitrary 4xx, nor the extra 5xx codes the broad logs
-        // policy (500..599) covers. Guards against widening the set by mistake.
-        assertEquals(false, isEventsRetriableStatusCode(400))
-        assertEquals(false, isEventsRetriableStatusCode(413))
-        assertEquals(false, isEventsRetriableStatusCode(501))
-        assertEquals(false, isEventsRetriableStatusCode(505))
-        assertEquals(false, isEventsRetriableStatusCode(599))
+        assertEquals(false, isCaptureV1RetriableStatusCode(307))
+        assertEquals(false, isCaptureV1RetriableStatusCode(400))
+        assertEquals(false, isCaptureV1RetriableStatusCode(413))
+        assertEquals(false, isCaptureV1RetriableStatusCode(501))
+        assertEquals(false, isCaptureV1RetriableStatusCode(505))
+        assertEquals(false, isCaptureV1RetriableStatusCode(599))
     }
 
     @Test
@@ -359,11 +359,11 @@ internal class EndpointSpecTest {
 
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
-        assertTrue(request.path!!.startsWith("/batch"))
-        val batch = PostHogSerializer(config).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
-        assertEquals("event-via-spec", batch.batch.single().event)
-        assertEquals(com.posthog.DISTINCT_ID, batch.batch.single().distinctId)
-        assertEquals(com.posthog.props, batch.batch.single().properties?.toMap())
+        assertEquals("/i/v1/analytics/events", request.path)
+        val sent = com.posthog.captureV1Events(request.body.unGzip()).single()
+        assertEquals("event-via-spec", sent["event"])
+        assertEquals(com.posthog.DISTINCT_ID, sent["distinct_id"])
+        assertEquals(com.posthog.props, sent["properties"])
 
         http.shutdown()
     }

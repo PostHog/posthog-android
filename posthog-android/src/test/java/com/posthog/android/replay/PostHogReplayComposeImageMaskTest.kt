@@ -844,25 +844,29 @@ internal class PostHogReplayComposeImageMaskTest {
     }
 
     @Test
-    fun `masks an icon inside a window-filling icon button`() {
+    fun `masks only the icon inside a window-filling icon button`() {
         setWindowContent {
             IconButton(onClick = {}, modifier = Modifier.fillMaxSize()) {
-                Icon(vector, contentDescription = "icon")
+                Icon(vector, contentDescription = "icon", modifier = Modifier.testTag("icon"))
             }
         }
 
-        assertWindowMasked()
+        assertEquals(listOf(boundsOf("icon", useUnmergedTree = true)), maskRects(root = dialogWindow()))
     }
 
     @Test
-    fun `masks a vector image merged into a window-filling clickable parent`() {
+    fun `masks only a vector image merged into a window-filling clickable parent`() {
         setWindowContent {
             Box(Modifier.fillMaxSize().clickable {}) {
-                Image(rememberVectorPainter(vector), contentDescription = "photo", modifier = Modifier.size(40.dp))
+                Image(
+                    rememberVectorPainter(vector),
+                    contentDescription = "photo",
+                    modifier = Modifier.size(40.dp).testTag("photo"),
+                )
             }
         }
 
-        assertWindowMasked()
+        assertEquals(listOf(boundsOf("photo", useUnmergedTree = true)), maskRects(root = dialogWindow()))
     }
 
     @Test
@@ -883,8 +887,11 @@ internal class PostHogReplayComposeImageMaskTest {
         assertTrue(maskRects(maskAllImages = false).isEmpty())
     }
 
-    private fun boundsOf(tag: String): Rect {
-        val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow
+    private fun boundsOf(
+        tag: String,
+        useUnmergedTree: Boolean = false,
+    ): Rect {
+        val bounds = compose.onNodeWithTag(tag, useUnmergedTree).fetchSemanticsNode().boundsInWindow
         return Rect(bounds.left.toInt(), bounds.top.toInt(), bounds.right.toInt(), bounds.bottom.toInt())
     }
 

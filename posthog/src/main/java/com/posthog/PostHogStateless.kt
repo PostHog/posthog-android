@@ -14,10 +14,15 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.errortracking.PostHogThrowable
 import com.posthog.internal.errortracking.ThrowableCoercer
+import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import java.util.Date
+import java.util.IdentityHashMap
+import java.util.SortedMap
+import java.util.TreeMap
 import java.util.UUID
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 public open class PostHogStateless protected constructor(
     private val queueExecutor: ExecutorService =
@@ -34,6 +39,7 @@ public open class PostHogStateless protected constructor(
 
     protected val setupLock: Any = Any()
     protected val optOutLock: Any = Any()
+    private val warnedEmptyEventName = AtomicBoolean(false)
     private var featureFlagsCalled: PostHogFeatureFlagCalledCache? = null
 
     // Read on the capture path from any caller thread without setupLock.
@@ -59,8 +65,16 @@ public open class PostHogStateless protected constructor(
                     if (config.logger is PostHogNoOpLogger) PostHogPrintLogger(config) else config.logger
 
                 if (config.projectToken.isEmpty()) {
-                    config.logger.log(
+                    config.logger.logWarning(
                         "PostHog SDK is disabled because the project token is required and was empty after trimming whitespace.",
+                    )
+                    return
+                }
+
+                if (config.projectToken.startsWith("phx_")) {
+                    config.logger.logWarning(
+                        "PostHog SDK is disabled because the project token is a personal API key (phx_...), " +
+                            "use your project token (phc_...).",
                     )
                     return
                 }
@@ -175,8 +189,8 @@ public open class PostHogStateless protected constructor(
                     for (entry in it.entries) {
                         props["\$feature/${entry.key}"] = entry.value
 
-                        // only add active feature flags
-                        val active = entry.value as? Boolean ?: true
+                        // only add active feature flags; an empty variant reads as disabled
+                        val active = entry.value != false && entry.value != ""
 
                         if (active) {
                             keys.add(entry.key)
@@ -207,15 +221,41 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
+        val currentGroups = props["\$groups"] as? Map<*, *>
         properties?.let {
             props.putAll(it)
         }
+        putTypedValuesOverCaller(props, properties, userProperties, userPropertiesSetOnce, groups.takeIf { appendGroups }, currentGroups)
 
         if (config?.disableGeoIp == true) {
             props["\$geoip_disable"] = true
         }
 
         return props
+    }
+
+    /**
+     * A typed per-call value wins key by key over the same map in the caller's [properties]:
+     * `userProperties` over `$set`, `userPropertiesSetOnce` over `$set_once` and `groups` over `$groups`.
+     * A caller `$groups` adds to [currentGroups] (the stored and per-call groups) instead of replacing them.
+     */
+    internal fun putTypedValuesOverCaller(
+        props: MutableMap<String, Any>,
+        properties: Map<String, Any>?,
+        userProperties: Map<String, Any>?,
+        userPropertiesSetOnce: Map<String, Any>?,
+        groups: Map<String, String>?,
+        currentGroups: Map<*, *>? = null,
+    ) {
+        for ((key, typed) in listOf("\$set" to userProperties, "\$set_once" to userPropertiesSetOnce, "\$groups" to groups)) {
+            val caller = properties?.get(key) as? Map<*, *> ?: continue
+            val merged = LinkedHashMap<Any?, Any?>()
+            if (key == "\$groups") currentGroups?.let { merged.putAll(it) }
+            if (typed == null && merged.isEmpty()) continue
+            merged.putAll(caller)
+            typed?.let { merged.putAll(it) }
+            props[key] = merged
+        }
     }
 
     protected fun mergeGroups(givenGroups: Map<String, String>?): Map<String, String>? {
@@ -289,6 +329,9 @@ public open class PostHogStateless protected constructor(
                 config?.logger?.log(message)
                 return
             }
+            if (isEmptyNameDropped(postHogEvent)) {
+                return
+            }
 
             queue?.add(postHogEvent)
         } catch (e: Throwable) {
@@ -296,41 +339,148 @@ public open class PostHogStateless protected constructor(
         }
     }
 
-    @Suppress("DEPRECATION")
     protected fun buildEvent(
         event: String,
         distinctId: String,
         properties: MutableMap<String, Any>,
         timestamp: Date? = null,
-    ): PostHogEvent? {
-        // sanitize the properties or fallback to the original properties
-        val sanitizedProperties = config?.propertiesSanitizer?.sanitize(properties)?.toMutableMap() ?: properties
-        val postHogEvent =
-            PostHogEvent(
-                event,
-                distinctId,
-                properties = sanitizedProperties,
-                timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
-            )
-        var eventChecked: PostHogEvent = postHogEvent
+        options: MutableMap<String, Any?>? = null,
+        uuid: UUID? = null,
+    ): PostHogEvent? = runBeforeSend(newEvent(event, distinctId, properties, timestamp, options, uuid), uuid)
 
+    /**
+     * Creates the event, without running `beforeSend`. A null [timestamp] means now, and a null
+     * [uuid] gets a new UUID v7.
+     */
+    internal fun newEvent(
+        event: String,
+        distinctId: String,
+        properties: MutableMap<String, Any>,
+        timestamp: Date? = null,
+        options: MutableMap<String, Any?>? = null,
+        uuid: UUID? = null,
+    ): PostHogEvent =
+        PostHogEvent(
+            event,
+            distinctId,
+            properties = properties,
+            timestamp = timestamp ?: config?.dateProvider?.currentDate() ?: Date(),
+            uuid = uuid ?: TimeBasedEpochGenerator.generate(),
+        ).also { it.options = options }
+
+    /**
+     * Runs the `beforeSend` chain on [postHogEvent]. Returns null when a hook drops the event or
+     * throws. When [uuid] is given, the result keeps it.
+     */
+    internal fun runBeforeSend(
+        postHogEvent: PostHogEvent,
+        uuid: UUID?,
+    ): PostHogEvent? {
         val beforeSendList = config?.beforeSendList ?: emptyList()
+
+        // Hooks get their own nested values, so an edit never reaches the caller's objects.
+        var eventChecked: PostHogEvent = if (beforeSendList.isEmpty()) postHogEvent else copyForHooks(postHogEvent)
 
         for (beforeSend in beforeSendList) {
             try {
                 val result = beforeSend.run(eventChecked)
                 if (result == null) {
-                    config?.logger?.log("Event $event was rejected in beforeSend function")
+                    config?.logger?.log("Event ${postHogEvent.event} was rejected in beforeSend function")
                     return null
+                }
+                // copy() and the constructor don't carry options, so a new event keeps the ones
+                // the hook was given unless it sets its own.
+                if (result !== eventChecked && result.options == null) {
+                    result.options = eventChecked.options
                 }
                 eventChecked = result
             } catch (e: Throwable) {
-                config?.logger?.log("Error in beforeSend function: $e")
+                // The type only: the message can hold the values the hook was redacting.
+                config?.logger?.log("Dropping event '${eventChecked.event}': beforeSend threw ${e.javaClass.name}.")
                 return null
             }
         }
 
+        // A given uuid is this capture's identity: beforeSend can return an event kept from an
+        // earlier call, and a batch must never repeat a uuid.
+        if (uuid != null && eventChecked.uuid != uuid) {
+            val options = eventChecked.options
+            eventChecked = eventChecked.copy(uuid = uuid).also { it.options = options }
+        }
+
         return eventChecked
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun copyForHooks(event: PostHogEvent): PostHogEvent {
+        val copies = IdentityHashMap<Any, Any>()
+        return event.copy(
+            properties = event.properties?.let { copyContainers(it, copies) as MutableMap<String, Any> },
+        ).also { it.options = event.options?.let { copyContainers(it, copies) as MutableMap<String, Any?> } }
+    }
+
+    /** [copies] keeps a cycle a cycle, so a hook can still remove it. */
+    private fun copyContainers(
+        value: Any?,
+        copies: IdentityHashMap<Any, Any>,
+    ): Any? {
+        if (value == null) return null
+        copies[value]?.let { return it }
+        return when (value) {
+            is Map<*, *> -> {
+                // A sorted map keeps its comparator, so a hook's lookups still match the same keys.
+                @Suppress("UNCHECKED_CAST")
+                val copy: MutableMap<Any?, Any?> =
+                    if (value is SortedMap<*, *>) TreeMap(value.comparator() as Comparator<Any?>?) else LinkedHashMap(value.size)
+                copies[value] = copy
+                value.forEach { (key, item) -> copy[key] = copyContainers(item, copies) }
+                copy
+            }
+            is List<*> -> {
+                val copy = ArrayList<Any?>(value.size)
+                copies[value] = copy
+                value.forEach { copy.add(copyContainers(it, copies)) }
+                copy
+            }
+            is Array<*> -> copyArray(value, copies)
+            is BooleanArray, is ByteArray, is CharArray, is ShortArray, is IntArray, is LongArray, is FloatArray, is DoubleArray -> {
+                val length = java.lang.reflect.Array.getLength(value)
+                val copy = java.lang.reflect.Array.newInstance(value.javaClass.componentType, length)
+                System.arraycopy(value, 0, copy, 0, length)
+                copies[value] = copy
+                copy
+            }
+            else -> value
+        }
+    }
+
+    /** Keeps the array's runtime type for hooks that cast it. An element whose copy doesn't fit that type stays as is. */
+    private fun copyArray(
+        array: Array<*>,
+        copies: IdentityHashMap<Any, Any>,
+    ): Any {
+        val componentType = array.javaClass.componentType
+        val copy = java.lang.reflect.Array.newInstance(componentType, array.size)
+        copies[array] = copy
+        array.forEachIndexed { index, item ->
+            val itemCopy = copyContainers(item, copies)
+            java.lang.reflect.Array.set(copy, index, if (componentType.isInstance(itemCopy)) itemCopy else item)
+        }
+        return copy
+    }
+
+    /**
+     * Capture drops an event with an empty name, so the SDK drops it before queueing, after
+     * beforeSend too. Logs only the first drop, with no event name.
+     */
+    internal fun isEmptyNameDropped(event: PostHogEvent): Boolean {
+        if (event.event.isNotEmpty()) {
+            return false
+        }
+        if (warnedEmptyEventName.compareAndSet(false, true)) {
+            config?.logger?.log("Dropping an event with an empty name.")
+        }
+        return true
     }
 
     public override fun optIn() {
@@ -797,6 +947,10 @@ public open class PostHogStateless protected constructor(
                 "locally_evaluated",
                 "\$groups",
                 "\$process_person_profile",
+                // Legacy option properties, e.g. registered as super properties, so they still become options.
+                "\$cookieless_mode",
+                "\$ignore_sent_at",
+                "\$product_tour_id",
                 "\$geoip_disable",
                 "\$session_id",
                 "\$window_id",

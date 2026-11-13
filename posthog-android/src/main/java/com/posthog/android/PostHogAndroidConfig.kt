@@ -1,6 +1,7 @@
 package com.posthog.android
 
 import com.posthog.PostHogConfig
+import com.posthog.PostHogInternal
 import com.posthog.android.replay.PostHogReplayQueue
 import com.posthog.android.replay.PostHogSessionReplayConfig
 import com.posthog.internal.EndpointSpec
@@ -97,41 +98,12 @@ public open class PostHogAndroidConfig
          */
         public var captureDeadClicks: Boolean = false
 
-        internal var replayQueueHolder: PostHogReplayQueue? = null
+        /**
+         * Whether the SDK detects `$app_language` itself. Wrappers that translate outside of native
+         * resources, such as Flutter, turn this off and report the language they resolved.
+         */
+        @PostHogInternal
+        public var detectAppLanguage: Boolean = true
 
-        public companion object {
-            /**
-             * Deprecated form of the [PostHogAndroidConfig] constructor that takes `apiKey` instead
-             * of `projectToken`, kept so Kotlin calls such as `PostHogAndroidConfig(apiKey = "phc_...")`
-             * still compile. Every other parameter and default matches the constructor.
-             *
-             * ```kotlin
-             * val config = PostHogAndroidConfig(projectToken = "phc_your_project_token") // instead of apiKey =
-             * ```
-             */
-            @Deprecated(
-                "Deprecated in favor of projectToken. This will be removed in the next major version.",
-            )
-            @JvmSynthetic
-            public operator fun invoke(
-                apiKey: String,
-                host: String = PostHogConfig.DEFAULT_HOST,
-                captureApplicationLifecycleEvents: Boolean = true,
-                captureDeepLinks: Boolean = true,
-                captureScreenViews: Boolean = true,
-                sessionReplayConfig: PostHogSessionReplayConfig = PostHogSessionReplayConfig(),
-                capturePushNotificationSubscriptions: Boolean = true,
-                capturePushNotificationOpened: Boolean = true,
-            ): PostHogAndroidConfig =
-                PostHogAndroidConfig(
-                    projectToken = apiKey,
-                    host = host,
-                    captureApplicationLifecycleEvents = captureApplicationLifecycleEvents,
-                    captureDeepLinks = captureDeepLinks,
-                    captureScreenViews = captureScreenViews,
-                    sessionReplayConfig = sessionReplayConfig,
-                    capturePushNotificationSubscriptions = capturePushNotificationSubscriptions,
-                    capturePushNotificationOpened = capturePushNotificationOpened,
-                )
-        }
+        internal var replayQueueHolder: PostHogReplayQueue? = null
     }

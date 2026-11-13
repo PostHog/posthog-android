@@ -277,7 +277,19 @@ internal class PostHogStatelessTest {
         sut.setup(config)
 
         assertFalse(sut.isEnabledPublic())
-        assertTrue(mockLogger.messages.any { it.contains("PostHog SDK is disabled because the project token is required") })
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is required") })
+    }
+
+    @Test
+    fun `setup no-ops for a personal API key`() {
+        sut = createStatelessInstance()
+        val mockLogger = TestLogger()
+        config = PostHogConfig("phx_personal", "https://api.posthog.com").apply { logger = mockLogger }
+
+        sut.setup(config)
+
+        assertFalse(sut.isEnabledPublic())
+        assertTrue(mockLogger.warnings.any { it.contains("PostHog SDK is disabled because the project token is a personal API key") })
     }
 
     @Test
@@ -464,6 +476,49 @@ internal class PostHogStatelessTest {
         assertEquals(mapOf("company" to "acme"), event.properties!!["\$groups"])
     }
 
+    @Test
+    fun `captureStateless drops an event with an empty name`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureStateless(event = "", distinctId = "user123")
+
+        assertTrue(mockQueue.events.isEmpty())
+    }
+
+    @Test
+    fun `captureStateless merges typed values over the same maps in properties per key`() {
+        val mockQueue = MockQueue()
+        sut = createStatelessInstance()
+        config = createConfig()
+
+        sut.setup(config)
+        sut.setMockQueue(mockQueue)
+
+        sut.captureStateless(
+            event = "test_event",
+            distinctId = "user123",
+            properties =
+                mapOf(
+                    "\$set" to mapOf("name" to "caller", "plan" to "free"),
+                    "\$set_once" to mapOf("first" to "caller", "source" to "ad"),
+                    "\$groups" to mapOf("company" to "caller", "team" to "core"),
+                ),
+            userProperties = mapOf("name" to "typed"),
+            userPropertiesSetOnce = mapOf("first" to "typed"),
+            groups = mapOf("company" to "typed"),
+        )
+
+        val properties = mockQueue.events.single().properties!!
+        assertEquals(mapOf("name" to "typed", "plan" to "free"), properties["\$set"])
+        assertEquals(mapOf("first" to "typed", "source" to "ad"), properties["\$set_once"])
+        assertEquals(mapOf("company" to "typed", "team" to "core"), properties["\$groups"])
+    }
+
     private class IgnoredExceptionStub(message: String) : RuntimeException(message)
 
     @Test
@@ -527,6 +582,7 @@ internal class PostHogStatelessTest {
         val mockQueue = MockQueue()
         val mockFeatureFlags = MockFeatureFlags()
         mockFeatureFlags.setFlag("test_flag", true)
+        mockFeatureFlags.setFlag("empty_variant_flag", "")
 
         sut = createStatelessInstance()
         config = createConfig(sendFeatureFlagEvent = true)
@@ -541,6 +597,7 @@ internal class PostHogStatelessTest {
         assertEquals(1, mockQueue.events.size)
         val event = mockQueue.events.first()
         assertEquals(true, event.properties!!["\$feature/test_flag"])
+        assertEquals("", event.properties!!["\$feature/empty_variant_flag"])
         assertEquals(listOf("test_flag"), event.properties!!["\$active_feature_flags"])
     }
 
@@ -1084,42 +1141,10 @@ internal class PostHogStatelessTest {
         sut.captureStateless("test", "user123")
 
         assertEquals(0, mockQueue.events.size)
-        assertTrue(mockLogger.messages.any { it.contains("Error in beforeSend function") })
-    }
-
-    @Test
-    fun `properties sanitizer is applied to events`() {
-        val mockQueue = MockQueue()
-        sut = createStatelessInstance()
-        config =
-            createConfig().apply {
-                @Suppress("DEPRECATION")
-                propertiesSanitizer =
-                    PostHogPropertiesSanitizer { properties ->
-                        properties.apply {
-                            remove("sensitive")
-                            put("sanitized", true)
-                        }
-                    }
-            }
-
-        sut.setup(config)
-        sut.setMockQueue(mockQueue)
-
-        sut.captureStateless(
-            "test",
-            "user123",
-            mapOf(
-                "safe" to "value",
-                "sensitive" to "secret",
-            ),
-        )
-
-        assertEquals(1, mockQueue.events.size)
-        val event = mockQueue.events.first()
-        assertEquals("value", event.properties!!["safe"])
-        assertNull(event.properties!!["sensitive"])
-        assertEquals(true, event.properties!!["sanitized"])
+        val line = mockLogger.messages.single { it.contains("beforeSend") }
+        assertTrue(line.contains("'test'"))
+        assertTrue(line.contains("RuntimeException"))
+        assertFalse(line.contains("Test error"))
     }
 
     @Test

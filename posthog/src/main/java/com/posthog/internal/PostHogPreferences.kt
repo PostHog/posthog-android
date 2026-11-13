@@ -40,6 +40,7 @@ public interface PostHogPreferences {
         public const val DISTINCT_ID: String = "distinctId"
         internal const val IS_IDENTIFIED = "isIdentified"
         internal const val PERSON_PROCESSING = "personProcessingEnabled"
+        internal const val REGISTERED_OPTIONS = "registeredOptions"
         internal const val OPT_OUT = "opt-out"
         internal const val FLAGS = "flags"
         internal const val FEATURE_FLAGS = "featureFlags"
@@ -57,8 +58,7 @@ public interface PostHogPreferences {
         @PostHogInternal
         public const val PUSH_OPENED_MESSAGE_IDS: String = "pushOpenedMessageIds"
 
-        @PostHogInternal
-        public const val PUSH_SUBSCRIPTION_REJECTED: String = "pushSubscriptionRejected"
+        internal const val PUSH_SUBSCRIPTION_REJECTED: String = "pushSubscriptionRejected"
         internal const val PERSON_PROPERTIES_FOR_FLAGS = "personPropertiesForFlags"
         internal const val GROUP_PROPERTIES_FOR_FLAGS = "groupPropertiesForFlags"
         public const val SURVEY_PROGRESS: String = "surveyProgress"
@@ -78,6 +78,7 @@ public interface PostHogPreferences {
                 DISTINCT_ID,
                 IS_IDENTIFIED,
                 PERSON_PROCESSING,
+                REGISTERED_OPTIONS,
                 OPT_OUT,
                 FEATURE_FLAGS,
                 FEATURE_FLAGS_PAYLOAD,
