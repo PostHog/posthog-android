@@ -16,7 +16,7 @@ Read the checklist first, then the sections that apply to you.
 
 **Before you upgrade**
 
-- [ ] You send events through a reverse proxy that doesn't serve `/i/v1/analytics/events` → [Prepare your proxy](#prepare-your-proxy)
+- [ ] You send events to a self-hosted PostHog or a reverse proxy that doesn't serve `/i/v1/analytics/events` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You authenticate your proxy with an `Authorization` header in `requestHeaders` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You send events through a reverse proxy set up from PostHog's proxy guides before 29 October 2026, which strips `Authorization` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You send events through a proxy that redirects capture requests, other than with a 307 or 308 to the same origin as `host` → [Prepare your proxy](#prepare-your-proxy)
@@ -78,6 +78,8 @@ Capture v1 requests send the project token in an `Authorization: Bearer <project
 This header replaces any `Authorization` header you set in `PostHogConfig.requestHeaders`, so authenticate your proxy with a different header, such as `X-Proxy-Token`. Other requests still send your `Authorization` header.
 
 Analytics requests are gzipped unless you set `compression` to `PostHogCompression.NONE`, as in 3.x.x.
+
+If you self-host PostHog, make sure your instance serves `/i/v1/analytics/events`, and `/i/v1/ai/events` if you use `captureAi`, before you upgrade.
 
 If you send events through your own reverse proxy, update it before you upgrade:
 
