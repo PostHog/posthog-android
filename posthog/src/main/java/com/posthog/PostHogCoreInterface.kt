@@ -14,6 +14,9 @@ public interface PostHogCoreInterface {
 
     /**
      * Flushes all the events in the Queue right away
+     *
+     * Doesn't block. It starts sending in the background and returns, so it doesn't guarantee
+     * delivery. Nothing is sent while the device is offline or the SDK is waiting to retry.
      */
     public fun flush()
 
