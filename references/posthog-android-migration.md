@@ -54,7 +54,7 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You read `$session_id` or `$window_id` from the raw request body, for example in a proxy → [Check session IDs](#check-session-ids)
 - [ ] You assign a new map to `event.options` in `beforeSend` → [Review beforeSend hooks](#review-beforesend-hooks)
 - [ ] You set the event `uuid` in `beforeSend` → [Review beforeSend hooks](#review-beforesend-hooks)
-- [ ] You register `$process_person_profile` as `false` and still call `identify`, `alias`, `group`, or `setPersonProperties` → [Check person processing](#check-person-processing)
+- [ ] You register `$process_person_profile` as `false` and expect it to keep every event personless → [Check person processing](#check-person-processing)
 - [ ] You rely on a `Retry-After` longer than 30 seconds → [Check retries](#check-retries)
 - [ ] You set `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig` → [Check retries](#check-retries)
 
@@ -629,26 +629,14 @@ Review your `beforeSend` hooks for the new event shape. Capture v1 reads process
 - **The SDK's value.** When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither the option nor the property, since PostHog processes person profiles by default. In 3.x.x, every event carried a `$process_person_profile` property.
 - **One event.** To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property.
 - **Every event.** A registered `$process_person_profile` changes it for every event. In 3.x.x, the SDK's value replaced a registered `$process_person_profile`, so a registered `false` had no effect.
-- **A registered `false`.** In 4.x.x it applies, also after `identify` and with `PersonProfiles.ALWAYS`. Those events don't change the person profile, and their `$set` is ignored. They are still linked to the person and billed as identified events.
+- **A registered `false`.** In 4.x.x it applies, also after `identify` and with `PersonProfiles.ALWAYS`. Those events don't change the person profile, and their `$set` is ignored. They are still linked to the person and billed as identified events. It doesn't apply to identity events (see below).
 - **`PersonProfiles.NEVER`.** A `process_person_profile` option or `$process_person_profile` property set to `true`, passed or registered, turns person processing on for that event. In 3.x.x, `NEVER` always won. If you rely on `NEVER` to keep events personless, make sure neither is set to `true`, or remove it in `beforeSend`.
 - **`PersonProfiles.IDENTIFIED_ONLY`.** `identify`, `alias`, `group`, and `setPersonProperties` still turn on person processing for the user's later events, as in 3.x.x.
 - **Duplicate checks.** A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 
-A registered `$process_person_profile` set to `false` also reaches the events `identify`, `alias`, `group`, and `setPersonProperties` send.
+A registered `$process_person_profile`, or a `process_person_profile` option a wrapper SDK registers, doesn't apply to identity events: `$identify`, `$create_alias`, `$merge_dangerously`, `$groupidentify`, `$set`, and `$set_once`.
 
-PostHog accepts `$identify`, `$create_alias`, and `$groupidentify` and then drops them with an ingestion warning, and the SDK doesn't report it. A `$set` event is kept, but the person isn't updated.
-
-To keep identifying, pass the option on the call, or set it in `beforeSend`:
-
-```kotlin
-PostHog.register("\$process_person_profile", false)
-
-PostHog.identify(
-    distinctId = "user-123",
-    userProperties = mapOf("plan" to "pro"),
-    options = mapOf("process_person_profile" to true),
-)
-```
+With person processing off, PostHog drops `$identify`, `$create_alias`, `$merge_dangerously`, and `$groupidentify`, and keeps `$set` and `$set_once` but ignores their person update. So a registered `false` would stop `identify`, `alias`, `group`, and `setPersonProperties` from working. A value you pass on the call, or set in `beforeSend`, still applies.
 
 If you registered `false` to skip person profiles for anonymous users, remove it. `personProfiles = PersonProfiles.IDENTIFIED_ONLY`, the default, already does that and still lets `identify` create the person.
 
