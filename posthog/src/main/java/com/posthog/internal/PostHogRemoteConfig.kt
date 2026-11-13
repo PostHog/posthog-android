@@ -1275,7 +1275,8 @@ public class PostHogRemoteConfig(
         val serializedPayloads =
             flags.mapNotNull { (key, flag) ->
                 when (flag) {
-                    is FeatureFlag -> key to flag.metadata.payload
+                    // Gson can hydrate retained failed records without the non-null metadata object.
+                    is FeatureFlag -> flag.metadata?.let { key to it.payload }
                     is Map<*, *> -> (flag["metadata"] as? Map<*, *>)?.let { key to (it["payload"] as? String) }
                     else -> null
                 }
