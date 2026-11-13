@@ -226,19 +226,31 @@ internal class PostHogRemoteConfigPayloadTest {
     }
 
     @Test
-    fun `getRemoteConfigPayload returns null and logs a warning on an empty or blank body`() {
+    fun `getRemoteConfigPayload returns null without a warning on an empty or blank 2xx body`() {
         listOf("", "  \n").forEach { body ->
-            val (server, _) = startServer { MockResponse().setBody(body) }
+            val (server, dispatcher) = startServer { MockResponse().setBody(body) }
             val logger = TestLogger()
             val featureFlags = createFeatureFlags(server, logger)
 
             assertNull(featureFlags.getRemoteConfigPayload("test-flag"))
 
-            assertEquals(
-                listOf("Loading the remote config payload for flag 'test-flag' failed: the response body is empty."),
-                logger.warnings,
-            )
+            assertEquals(1, dispatcher.remoteConfigRequests.size)
+            assertEquals(emptyList(), logger.warnings)
         }
+    }
+
+    @Test
+    fun `getRemoteConfigPayload returns null and logs a warning on a 404 with an empty body`() {
+        val (server, _) = startServer { MockResponse().setResponseCode(404) }
+        val logger = TestLogger()
+        val featureFlags = createFeatureFlags(server, logger)
+
+        assertNull(featureFlags.getRemoteConfigPayload("test-flag"))
+
+        assertEquals(
+            listOf("Loading the remote config payload for flag 'test-flag' failed with status 404."),
+            logger.warnings,
+        )
     }
 
     @Test

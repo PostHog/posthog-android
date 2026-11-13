@@ -1090,10 +1090,8 @@ internal class PostHogFeatureFlags(
                 config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed unexpectedly: $e")
                 return null
             }
-        if (body.isNullOrBlank()) {
-            config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed: the response body is empty.")
-            return null
-        }
+        // The server answers a flag that has no payload with an empty 2xx body.
+        if (body.isNullOrBlank()) return null
         val parsed =
             try {
                 parseStrictJson(body)
