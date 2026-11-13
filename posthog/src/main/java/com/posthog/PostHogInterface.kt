@@ -349,6 +349,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * [unregister] with the same key
      * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
      * the SDK only.
+     * A registered `$process_person_profile` isn't sent with `$identify`, `$create_alias`,
+     * `$merge_dangerously`, `$groupidentify`, `$set` or `$set_once`, so it can't stop those events
+     * from updating persons and groups. A value passed on the call still applies.
      * @param key the Key
      * @param value the Value
      */
@@ -706,7 +709,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      *
      * Registers capture options sent with every later event, under each event's own options. New
      * values overwrite existing ones for the same keys and persist across app restarts until removed
-     * with [unregisterOptionsForWrapper] or cleared by `reset()`.
+     * with [unregisterOptionsForWrapper] or cleared by `reset()`. A registered `process_person_profile`
+     * isn't sent with identity events, as described on [register].
      *
      * @suppress
      */
