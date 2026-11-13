@@ -837,6 +837,9 @@ public class PostHog private constructor(
         if (appendSharedProps) {
             props["\$is_identified"] = isIdentified
             props["\$process_person_profile"] = hasPersonProcessing()
+            if (config?.disableGeoIp == true) {
+                props["\$geoip_disable"] = true
+            }
         }
 
         // After the caller merge so SDK-computed debug values win, matching posthog-js's

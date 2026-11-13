@@ -140,6 +140,18 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `explicit flags GeoIP setting overrides the config`() {
+        val http = mockHttp(response = MockResponse().setBody("{}"))
+        val config = PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply { disableGeoIp = true }
+        val sut = PostHogApi(config)
+
+        sut.flags(DISTINCT_ID, disableGeoip = false)
+
+        val body = config.serializer.deserialize<Map<String, Any>>(http.takeRequest().body.unGzip().reader())
+        assertEquals(false, body["geoip_disable"])
+    }
+
+    @Test
     fun `batch includes custom request headers`() {
         val http = mockHttp()
         val url = http.url("/")
