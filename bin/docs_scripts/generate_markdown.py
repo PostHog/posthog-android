@@ -260,12 +260,12 @@ def main() -> None:
     write(f"posthog-android-{major}.md", [front_matter(title, body), *body])
     if not opts.experimental:
         write("posthog-android-reference.md", [front_matter("PostHog Android SDK", body), *body])
-    # The migration guide is docs/migration-*.md, or MIGRATION.md at the repository root.
-    guides = sorted((ROOT / "docs").glob("migration-*.md"), reverse=True) or [
-        g for g in [ROOT / "MIGRATION.md"] if g.exists()
-    ]
-    if guides:
-        write("posthog-android-migration.md", migration_page([g.read_text().strip() for g in guides]))
+    write_migration()
+
+
+def write_migration() -> None:
+    """Writes MIGRATION.md as the migration guide page. Its H1 becomes the page title, so the page shows one title."""
+    write("posthog-android-migration.md", migration_page([(ROOT / "MIGRATION.md").read_text().strip()]))
 
 
 if __name__ == "__main__":

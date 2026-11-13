@@ -126,7 +126,9 @@ With `posthog-android-surveys-compose`, declare `com.posthog:posthog-android` 4.
 
 Core `posthog` 7.x.x isn't binary compatible with SDK versions built against core 6.x.x. The exception is `posthog-android-surveys-compose`, which works with both.
 
-A mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
+When core 7.x.x is in a Gradle build, for example through `posthog-server` 2.25.0, Gradle upgrades `posthog-android` to 4.x.x, even over a range such as `[3.75.0,4.0.0)`. Code that still uses removed APIs then fails to compile.
+
+Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
 The Android minimum API level (23), the Java bytecode target (Java 8), the Kotlin language and API compatibility (2.0), and `posthog-android-gradle-plugin` are unchanged. You don't need to change your build for them.
 
@@ -141,7 +143,7 @@ It still sends events to `/batch`, not to capture v1. The API, endpoint, proxy, 
 `posthog-server` 2.25.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
 
 - **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime.
-- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.24.x. Gradle resolves core 7.0.0 for both, and `posthog-android` 3.x.x fails at runtime against it with errors such as `NoSuchMethodError`.
+- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.24.x. `posthog-server` 2.25.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
 
 These changes apply to `posthog-server` too:
 
