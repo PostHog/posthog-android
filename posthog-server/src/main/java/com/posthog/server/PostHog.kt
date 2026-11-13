@@ -299,6 +299,11 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         (featureFlags as? PostHogFeatureFlags)?.loadFeatureFlagDefinitions()
     }
 
+    override fun getRemoteConfigPayload(key: String): Any? {
+        if (!isEnabled()) return null
+        return (featureFlags as? PostHogFeatureFlags)?.getRemoteConfigPayload(key)
+    }
+
     override fun captureException(
         exception: Throwable,
         distinctId: String?,

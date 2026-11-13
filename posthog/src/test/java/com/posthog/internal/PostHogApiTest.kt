@@ -192,6 +192,141 @@ internal class PostHogApiTest {
     }
 
     @Test
+    fun `flagRemoteConfigPayload sends a GET with token query and bearer header`() {
+        val http = mockHttp(response = MockResponse().setBody("{}"))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.flagRemoteConfigPayload("test-flag", "test-secret")
+
+        val request = http.takeRequest()
+        assertEquals("GET", request.method)
+        assertEquals("/api/projects/@current/feature_flags/test-flag/remote_config?token=$PROJECT_TOKEN", request.path)
+        assertEquals("Bearer test-secret", request.headers["Authorization"])
+        assertEquals("posthog-java/${BuildConfig.VERSION_NAME}", request.headers["User-Agent"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload returns the raw body`() {
+        val http = mockHttp(response = MockResponse().setBody("{\"a\":1}"))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertEquals("{\"a\":1}", sut.flagRemoteConfigPayload("test-flag", "test-secret"))
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload returns an empty result for an empty body`() {
+        val http = mockHttp(response = MockResponse().setResponseCode(204))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertTrue(sut.flagRemoteConfigPayload("test-flag", "test-secret").isNullOrEmpty())
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload encodes reserved characters in the flag key as one path segment`() {
+        val http = mockHttp()
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.flagRemoteConfigPayload("a/b?c#d e%f", "test-secret")
+
+        val request = http.takeRequest()
+        assertTrue(request.path!!.contains("/feature_flags/a%2Fb%3Fc%23d%20e%25f/remote_config"))
+        assertEquals(6, request.requestUrl!!.pathSegments.size)
+        assertEquals(
+            listOf("api", "projects", "@current", "feature_flags", "a/b?c#d e%f", "remote_config"),
+            request.requestUrl!!.pathSegments,
+        )
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload encodes the project token in the query`() {
+        val http = mockHttp()
+        val token = "a b&c=d"
+        val sut = PostHogApi(PostHogConfig(token, http.url("/").toString()))
+
+        sut.flagRemoteConfigPayload("test-flag", "test-secret")
+
+        val request = http.takeRequest()
+        assertTrue(request.path!!.endsWith("?token=a%20b%26c%3Dd"))
+        assertEquals(token, request.requestUrl!!.queryParameter("token"))
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload keeps a path prefix on the host`() {
+        val http = mockHttp()
+        val sut = getSut(host = http.url("/ph/").toString())
+
+        sut.flagRemoteConfigPayload("test-flag", "test-secret")
+
+        val request = http.takeRequest()
+        assertTrue(request.path!!.startsWith("/ph/api/projects/@current/feature_flags/test-flag/remote_config"))
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload rejects a blank, dot, or dot-dot key without a request`() {
+        val http = mockHttp()
+        val sut = getSut(host = http.url("/").toString())
+
+        listOf("", " ", ".", "..").forEach { key ->
+            assertThrows(IllegalArgumentException::class.java) {
+                sut.flagRemoteConfigPayload(key, "test-secret")
+            }
+        }
+
+        assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload throws PostHogApiError on a non-2xx status`() {
+        listOf(404, 500).forEach { code ->
+            val http = mockHttp(response = MockResponse().setResponseCode(code).setBody("{\"detail\":\"nope\"}"))
+            val sut = getSut(host = http.url("/").toString())
+
+            val error =
+                assertThrows(PostHogApiError::class.java) {
+                    sut.flagRemoteConfigPayload("test-flag", "test-secret")
+                }
+
+            assertEquals(code, error.statusCode)
+            assertEquals(1, http.requestCount)
+        }
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload throws IOException when the connection fails`() {
+        val http = mockHttp()
+        val sut = getSut(host = http.url("/").toString())
+        http.shutdown()
+
+        assertThrows(IOException::class.java) {
+            sut.flagRemoteConfigPayload("test-flag", "test-secret")
+        }
+    }
+
+    @Test
+    fun `flagRemoteConfigPayload does not log the response body or the secret key in debug mode`() {
+        val http = mockHttp(response = MockResponse().setBody("{\"secret-payload\":\"top-secret-value\"}"))
+        val logger = TestLogger()
+        val sut = getSut(host = http.url("/").toString(), debug = true, logger = logger)
+
+        sut.flagRemoteConfigPayload("test-flag", "phx_super_secret_key")
+
+        assertTrue(logger.messages.none { it.contains("top-secret-value") })
+        assertTrue(logger.messages.none { it.contains("phx_super_secret_key") })
+    }
+
+    @Test
+    fun `custom Authorization header does not override flagRemoteConfigPayload secret key`() {
+        val http = mockHttp()
+        val sut = getSut(host = http.url("/").toString(), requestHeaders = mapOf("Authorization" to "Bearer custom"))
+
+        sut.flagRemoteConfigPayload("test-flag", "test-secret")
+
+        val request = http.takeRequest()
+        assertEquals("Bearer test-secret", request.headers["Authorization"])
+    }
+
+    @Test
     fun `does not attach custom headers when the request host differs from the configured host`() {
         val http = mockHttp()
 

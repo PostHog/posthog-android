@@ -774,6 +774,24 @@ public sealed interface PostHogInterface {
     }
 
     /**
+     * Returns the payload of a remote config feature flag, parsed from JSON.
+     * Docs https://posthog.com/docs/feature-flags/remote-config
+     *
+     * Needs [PostHogConfig.personalApiKey]. Use a personal API key to get encrypted payloads
+     * decrypted. No distinct id is needed. Nothing is evaluated, no `$feature_flag_called` event
+     * is sent, and the result is not cached. The call blocks the calling thread for the HTTP request.
+     *
+     * The server stores the payload as a JSON-encoded string. This method parses it, and parses
+     * again when the result is still a string. If the second parse fails, the string is returned.
+     * The result is a Map, List, String, Number, Boolean, or null.
+     *
+     * @param key the feature flag key
+     * @return the parsed payload, or null when the client is disabled, no personal API key is set,
+     * the request fails, or the flag has no payload. A failure is logged as a warning.
+     */
+    public fun getRemoteConfigPayload(key: String): Any?
+
+    /**
      * Reloads feature flag definitions from the server for use with local evaluation.
      * Note that feature flag definitions are automatically fetched on initialization and
      * periodically refreshed, so this method only needs to be called if you want to force

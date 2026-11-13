@@ -1,5 +1,6 @@
 package com.posthog.server.internal
 
+import com.google.gson.JsonParseException
 import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
@@ -1060,6 +1061,39 @@ internal class PostHogFeatureFlags(
 
     private fun logMissingPersonalApiKey() {
         config.logger.log("Fetching feature flag definitions requires a personal API key. This call will be ignored.")
+    }
+
+    fun getRemoteConfigPayload(flagKey: String): Any? {
+        val secretKey = personalApiKey
+        if (secretKey == null) {
+            config.logger.logWarning(
+                "Fetching a remote config payload requires a personal API key. This call will be ignored.",
+            )
+            return null
+        }
+        return try {
+            val body = api.flagRemoteConfigPayload(flagKey, secretKey)
+            if (body.isNullOrBlank()) null else decodeRemoteConfigPayload(body)
+        } catch (e: PostHogApiError) {
+            config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed with status ${e.statusCode}.")
+            null
+        } catch (e: IOException) {
+            config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed: $e")
+            null
+        } catch (e: Throwable) {
+            config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed unexpectedly: $e")
+            null
+        }
+    }
+
+    private fun decodeRemoteConfigPayload(body: String): Any? {
+        val parsed = config.serializer.deserializeString(body)
+        if (parsed !is String) return parsed
+        return try {
+            config.serializer.deserializeString(parsed)
+        } catch (e: JsonParseException) {
+            parsed
+        }
     }
 
     /**
