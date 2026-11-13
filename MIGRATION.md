@@ -1,6 +1,6 @@
 # Migrate the Android SDK from 3.x.x to 4.0.0
 
-The Android SDK 4.x.x sends every event to the [capture v1](https://posthog.com/docs/api/capture-v1) endpoints, `/i/v1/analytics/events` and `/i/v1/ai/events`.
+The Android SDK 4.x.x sends analytics and AI events to the [capture v1](https://posthog.com/docs/api/capture-v1) endpoints, `/i/v1/analytics/events` and `/i/v1/ai/events`.
 
 Use the top right copy page button to work through this with your agents.
 
@@ -8,7 +8,7 @@ You don't need to make every change on the day you upgrade your SDK. Required ch
 
 - **Before you upgrade**: you should make these changes before you upgrade your SDK to 4.x.x.
 - **During your upgrade**: These are changes that you need to make in the same PR that upgrades your SDK version.
-- **Follow ups**: These are changes that can come in follow up PRs because 4.x.x has limited backward compatibility for methods that are to be deprecated.
+- **Follow ups**: These are changes that can come in follow up PRs, because 4.x.x still accepts the old names and options.
 
 ## Checklist
 
@@ -21,14 +21,15 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You send events through a reverse proxy set up from PostHog's proxy guides before 29 October 2026, which strips `Authorization` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You send events through a proxy that redirects capture requests, other than with a 307 or 308 to the same origin as `host` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You set `projectToken` to a personal API key (`phx_...`) → [Use a project token](#use-a-project-token)
-- [ ] You depend only on `posthog-android-surveys-compose` → [Upgrade your dependencies](#upgrade-your-dependencies)
-- [ ] You use `posthog-server` (2.25.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
 - [ ] You read a feature flag payload that isn't valid JSON, such as plain text saved as `hello` → [Fix flag payloads](#fix-flag-payloads)
 - [ ] A feature flag has an empty string as a variant → [Rename empty variants](#rename-empty-variants)
 - [ ] You capture events with a distinct ID over 200 bytes → [Shorten long IDs](#shorten-long-ids)
 
 **During your upgrade**
 
+- [ ] You depend only on `posthog-android-surveys-compose` → [Upgrade your dependencies](#upgrade-your-dependencies)
+- [ ] You use `posthog-server` (2.25.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
+- [ ] You call `PostHogStateless.with`, or extend `PostHogStateless` → [Update PostHogStateless code](#update-posthogstateless-code)
 - [ ] You use `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, or `drawableConverter` → [Fix removed APIs](#fix-removed-apis)
 - [ ] You pass `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position → [Fix removed APIs](#fix-removed-apis)
 - [ ] You call `getFeatureFlagPayload()`, or pass a default value to `getFeatureFlag()` → [Fix flag calls](#fix-flag-calls)
@@ -47,7 +48,6 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You read event content or request bodies from the SDK's debug log, or match its log text → [Update log checks](#update-log-checks)
 - [ ] You register a super property, or pass an event property, with the same key as one the SDK sets, such as `$os_name` or `$is_identified`, and expect the SDK's value to win → [Check property precedence](#check-property-precedence)
 - [ ] You read `$session_id` or `$window_id` from the raw request body, for example in a proxy → [Check session IDs](#check-session-ids)
-- [ ] You set event timestamps, or change the anonymous ID with `getAnonymousId` → [Check timestamps and IDs](#check-timestamps-and-ids)
 - [ ] You assign a new map to `event.options` in `beforeSend` → [Review beforeSend hooks](#review-beforesend-hooks)
 - [ ] You set the event `uuid` in `beforeSend` → [Review beforeSend hooks](#review-beforesend-hooks)
 - [ ] You register `$process_person_profile` as `false` and still call `identify`, `alias`, `group`, or `setPersonProperties` → [Check person processing](#check-person-processing)
@@ -111,6 +111,49 @@ In 3.x.x, the SDK started and PostHog rejected every event with a 401. Use your 
 
 To turn the SDK off in tests, use an empty token.
 
+### Fix flag payloads
+
+In 4.x.x, a payload that isn't valid JSON reads as `null` from `getFeatureFlagResult(key)?.payload` and `getAllFeatureFlags()`. 3.x.x returned the raw string. With `debug` on, the SDK logs the flag key.
+
+| Payload | 3.x.x | 4.x.x |
+| --- | --- | --- |
+| Malformed (`{broken`, `[1, 2`), empty or whitespace-only | the raw string | `null` |
+| Only valid in lenient mode (unquoted `hello`, single quotes, comments) | decoded leniently | `null` |
+| JSON `null` | the string `"null"` | `null` |
+| Valid JSON (`"hello"`, `""`, `false`, `0`, objects, arrays) | decoded | decoded, unchanged |
+| Bootstrapped payloads | as passed | as passed, unchanged |
+
+The flag's value, enabled state, variant, and any other flag's payload aren't affected.
+
+You might read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`. Update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
+
+PostHog no longer saves a new payload that isn't valid JSON, so only payloads saved earlier are affected.
+
+Apps that upgrade from 3.13.x or older didn't cache flag details. Until the app's first `/flags` response, a malformed payload cached by 3.x.x still reads as the raw string, as it did in 3.x.x.
+
+### Rename empty variants
+
+In 4.x.x, a flag whose variant is an empty string reads as disabled everywhere. `isFeatureEnabled()` already read it as disabled in 3.x.x, with or without `defaultValue`.
+
+- **Flag results.** `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it. 3.x.x returned `true`.
+- **Loaded flags.** `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`.
+- **Captured events.** Captured events leave it out of `$active_feature_flags`.
+- **Variant values.** `variant`, `getFeatureFlag()`, and the event's `$feature/<key>` property still return `""`.
+
+PostHog no longer accepts empty variants for new flags, so only flags created earlier through the API, MCP, or Terraform are affected.
+
+`/flags` still returns `enabled: true` for them, and other PostHog SDKs can still report them as enabled, so rename the variant before you upgrade.
+
+### Shorten long IDs
+
+PostHog drops an event whose distinct ID is over 200 UTF-8 bytes. Legacy capture shortened the ID to 200 characters and kept the event.
+
+The distinct ID can come from `identify()`, the `distinctId` argument of `capture`, or `beforeSend`.
+
+If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
+
+## During your upgrade
+
 ### Upgrade your dependencies
 
 Upgrade PostHog artifacts together:
@@ -154,54 +197,13 @@ These changes apply to `posthog-server` too:
 - **`beforeSend` copies.** `beforeSend` gets its own copy of the event's nested maps, lists, and arrays, so its changes no longer reach the objects you passed to `capture`.
 - **Event options.** `PostHogEvent`, which `beforeSend` gets, keeps its 3.x.x constructor and `copy`, and gains an `options` property. `/batch` doesn't use it, so a value set in `beforeSend` is sent but has no effect.
 
+### Update PostHogStateless code
+
 Core `posthog` 7.x.x is only supported through `posthog-android` 4.x.x and `posthog-server`. `PostHogStateless.with` isn't a supported entry point in core 7.x.x.
 
-Without its own queue, it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
+`PostHogStateless` has no queue of its own, so it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
 
 A class that extends `PostHogStateless` also needs an update. The protected `buildEvent()` gained `options` and `uuid` parameters, and `captureFeatureFlagCalledEvent()` is no longer protected.
-
-### Fix flag payloads
-
-In 4.x.x, a payload that isn't valid JSON reads as `null` from `getFeatureFlagResult(key)?.payload` and `getAllFeatureFlags()`. 3.x.x returned the raw string. With `debug` on, the SDK logs the flag key.
-
-| Payload | 3.x.x | 4.x.x |
-| --- | --- | --- |
-| Malformed (`{broken`, `[1, 2`), empty or whitespace-only | the raw string | `null` |
-| Only valid in lenient mode (unquoted `hello`, single quotes, comments) | decoded leniently | `null` |
-| JSON `null` | the string `"null"` | `null` |
-| Valid JSON (`"hello"`, `""`, `false`, `0`, objects, arrays) | decoded | decoded, unchanged |
-| Bootstrapped payloads | as passed | as passed, unchanged |
-
-The flag's value, enabled state, variant, and any other flag's payload aren't affected.
-
-You might read a payload as plain text, such as a payload saved as `hello` rather than `"hello"`. Update it in PostHog to valid JSON before you upgrade, or your code gets `null`.
-
-PostHog no longer saves a new payload that isn't valid JSON, so only payloads saved earlier are affected.
-
-Apps that upgrade from 3.13.x or older didn't cache flag details. Until the app's first `/flags` response, a malformed payload cached by 3.x.x still reads as the raw string, as it did in 3.x.x.
-
-### Rename empty variants
-
-In 4.x.x, a flag whose variant is an empty string reads as disabled everywhere. `isFeatureEnabled()` already read it as disabled in 3.x.x, with or without `defaultValue`.
-
-- **Flag results.** `getFeatureFlagResult()` and `getAllFeatureFlags()` return `enabled = false` for it. 3.x.x returned `true`.
-- **Loaded flags.** `PostHogFeatureFlagsLoaded` leaves it out of `flags` and `variants`.
-- **Captured events.** Captured events leave it out of `$active_feature_flags`.
-- **Variant values.** `variant`, `getFeatureFlag()`, and the event's `$feature/<key>` property still return `""`.
-
-PostHog no longer accepts empty variants for new flags, so only flags created earlier through the API, MCP, or Terraform are affected.
-
-`/flags` still returns `enabled: true` for them, and other PostHog SDKs can still report them as enabled, so rename the variant before you upgrade.
-
-### Shorten long IDs
-
-PostHog drops an event whose distinct ID is over 200 UTF-8 bytes. Legacy capture shortened the ID to 200 characters and kept the event.
-
-The distinct ID can come from `identify()`, the `distinctId` argument of `capture`, or `beforeSend`.
-
-If you identify users with a long ID, such as a JWT or a long email address, shorten or hash it before you upgrade. Otherwise every event for that user is dropped.
-
-## During your upgrade
 
 ### Fix removed APIs
 
@@ -323,7 +325,7 @@ config.remoteConfig = false
 
 If you set it to `false`, your app's behavior changes:
 
-- **Requests at setup.** The SDK requests `/config` at setup, even if `preloadFeatureFlags` is also `false`. 3.x.x sent no request at all.
+- **Requests at setup.** The SDK requests remote config (`/array/<projectToken>/config`) at setup, even if `preloadFeatureFlags` is also `false`. 3.x.x sent no request at all.
 - **Project settings.** The settings in `/config` apply, including the session replay, surveys, error tracking, and push settings from your project.
 - **Flag requests.** With `preloadFeatureFlags = true`, the SDK requests `/flags` only if `/config` reports that the project has feature flags. 3.x.x always requested `/flags`. If the project has none, the cached flags are cleared.
 
@@ -604,13 +606,6 @@ Capture v1 sends `$session_id` and `$window_id` as top-level `session_id` and `w
 
 In PostHog, the events still have `$session_id` and `$window_id`, so insights, filters, and session replay work as before.
 
-### Check timestamps and IDs
-
-- **Timestamps.** The SDK sends every timestamp in UTC with 3 fractional digits, for example `2026-01-01T00:00:00.000Z`, as 3.x.x did.
-- **Future timestamps.** The SDK doesn't check for future timestamps. PostHog replaces a timestamp more than 23 hours ahead with the time it received the event.
-- **Generated IDs.** Event uuids and anonymous distinct IDs are UUID v7, as in 3.x.x. An anonymous ID you change with `getAnonymousId` is sent as you return it.
-- **Request IDs.** Each capture request also sends a UUID v7 request ID in the `PostHog-Request-Id` header, which 3.x.x didn't send.
-
 ### Review beforeSend hooks
 
 Review your `beforeSend` hooks for the new event shape. Capture v1 reads processing settings from an `options` object sent next to `properties`, and `beforeSend` can read and change `PostHogEvent.options`.
@@ -699,12 +694,14 @@ An option you pass to any of these methods or set in `beforeSend` wins over its 
 
 - **Other keys.** Other option keys are sent unchanged, and PostHog ignores keys it doesn't know.
 - **Every event.** There are no global or context options. To set an option on every event, register its legacy property, for example `register("\$cookieless_mode", true)`.
-- **GeoIP and migrations.** There's no setting for GeoIP lookup or `historical_migration` on events, as in 3.x.x.
+- **GeoIP and migrations.** To turn off GeoIP lookup, set `disableGeoIp`. It sends `$geoip_disable` as an event property, not an option. There's no setting for `historical_migration` on events, as in 3.x.x.
 - **Queued events.** Events still queued on disk by 3.x.x are sent to capture v1 after the update, with their legacy properties moved to options.
 
 ### Send AI events with captureAi
 
 `captureAi` sends AI events, such as `$ai_generation`, to PostHog's AI endpoint (`/i/v1/ai/events`) instead of the analytics endpoint. `capture` never sends events to the AI endpoint, even ones named `$ai_*`.
+
+`$ai_*` events you keep sending with `capture` still reach PostHog through the analytics endpoint, as in 3.x.x. Moving them to `captureAi` gets you the AI endpoint's much larger event size limit, and a queue of their own, so large AI events don't hold up your other events.
 
 `captureAi` takes the same arguments as `capture`, and the events go through the same `beforeSend` hooks:
 
