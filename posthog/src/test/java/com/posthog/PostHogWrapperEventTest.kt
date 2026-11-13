@@ -528,16 +528,38 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
-    fun `an explicit null option over a registered one doesn't mark a personless $set as processed`() {
+    fun `a registered personless setting doesn't reach identity events`() {
+        val http = httpServers.mockHttp(total = 5)
+        val sut = getSut(http)
+        sut.registerOptionsForWrapper(mapOf("process_person_profile" to false))
+        sut.register("\$process_person_profile", false)
+
+        sut.identify("user")
+        sut.alias("other")
+        sut.group("company", "acme", mapOf("name" to "Acme"))
+        sut.setPersonProperties(mapOf("plan" to "pro"))
+        sut.capture("plain")
+        queueExecutor.awaitExecution()
+        val sent = (1..5).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }
+
+        for (event in listOf("\$identify", "\$create_alias", "\$groupidentify", "\$set")) {
+            val identity = assertNotNull(sent[event], event)
+            assertNull(identity.options()?.get("process_person_profile"), event)
+            assertFalse(identity.properties().containsKey("\$process_person_profile"), event)
+        }
+        assertEquals(false, assertNotNull(sent["plain"]).options()?.get("process_person_profile"))
+    }
+
+    @Test
+    fun `a call's personless setting still applies to an identity event`() {
         val http = httpServers.mockHttp()
         val sut = getSut(http)
         sut.registerOptionsForWrapper(mapOf("process_person_profile" to true))
-        sut.register("\$process_person_profile", false)
 
-        sut.setPersonProperties(mapOf("plan" to "pro"), null, mapOf("process_person_profile" to null))
+        sut.setPersonProperties(mapOf("plan" to "pro"), null, mapOf("process_person_profile" to false))
         queueExecutor.awaitExecution()
         val personless = events(takeRequest(http)).single()
-        sut.setPersonProperties(mapOf("plan" to "pro"), null, null)
+        sut.setPersonProperties(mapOf("plan" to "pro"))
         queueExecutor.awaitExecution()
 
         assertEquals(false, personless.options()?.get("process_person_profile"))
