@@ -115,7 +115,12 @@ internal class PostHogSendCachedEventsIntegration(
                         try {
                             val retryUuids = api.captureV1(events).retryIds
                             if (retryUuids.isNotEmpty()) {
-                                retryBytes = eventsBytes.filterIndexed { index, _ -> events[index].uuid?.toString() in retryUuids }
+                                // One copy per uuid: capture drops a uuid's later copies in a batch for good.
+                                retryBytes =
+                                    eventsBytes.indices
+                                        .filter { events[it].uuid?.toString() in retryUuids }
+                                        .distinctBy { events[it].uuid }
+                                        .map { eventsBytes[it] }
                             }
                         } catch (e: PostHogApiError) {
                             if (isCaptureV1RetriableStatusCode(e.statusCode)) {

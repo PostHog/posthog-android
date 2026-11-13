@@ -48,6 +48,7 @@ import androidx.compose.ui.layout.LayoutInfo
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsConfiguration
+import androidx.compose.ui.semantics.SemanticsModifier
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsPropertyKey
@@ -1956,26 +1957,44 @@ public class PostHogReplayIntegration(
             return config
         }
         for (info in layoutInfo.getModifierInfo()) {
+            // Compose before 1.3 has no modifier nodes: text semantics are a SemanticsModifier element.
+            (info.modifier as? SemanticsModifier)?.semanticsConfiguration?.let {
+                if (it.isRenderedText()) {
+                    return it
+                }
+            }
             val coordinates = info.coordinates
-            val node = coordinates.javaClass.getMethod("getTail").invoke(coordinates) ?: continue
+            val getTail =
+                try {
+                    coordinates.javaClass.getMethod("getTail")
+                } catch (e: NoSuchMethodException) {
+                    check(!coordinates.isA(NODE_COORDINATOR)) { "Can't read the modifier nodes of $coordinates" }
+                    continue
+                }
+            val node = getTail.invoke(coordinates) ?: continue
             val applySemantics =
                 try {
                     node.javaClass.getMethod("applySemantics", SemanticsPropertyReceiver::class.java)
                 } catch (e: NoSuchMethodException) {
-                    check(!node.isDelegatingNode()) { "Can't read the semantics delegated by $node" }
+                    check(!node.isA(DELEGATING_NODE)) { "Can't read the semantics delegated by $node" }
                     continue
                 }
             val semantics = SemanticsConfiguration()
             applySemantics.invoke(node, semantics)
-            if (semantics.contains(SemanticsProperties.Text)) {
+            if (semantics.isRenderedText()) {
                 return semantics
             }
         }
         return config
     }
 
-    private fun Any.isDelegatingNode(): Boolean {
-        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == "androidx.compose.ui.node.DelegatingNode" }
+    // The text's own semantics, not a clearAndSetSemantics { text = ... } replacement, which can't be measured.
+    private fun SemanticsConfiguration.isRenderedText(): Boolean {
+        return contains(SemanticsProperties.Text) && contains(SemanticsActions.GetTextLayoutResult)
+    }
+
+    private fun Any.isA(className: String): Boolean {
+        return generateSequence<Class<*>>(javaClass) { it.superclass }.any { it.name == className }
     }
 
     // Text(String) rebuilds its paragraph on every GetTextLayoutResult call, so a capture's walks
@@ -2012,7 +2031,14 @@ public class PostHogReplayIntegration(
             val paragraph = layout.multiParagraph
             // This result is re-wrapped to the box, but softWrap = false draws one unwrapped line.
             val width = if (input.softWrap) paragraph.width else max(paragraph.width, paragraph.intrinsics.maxIntrinsicWidth)
-            glyphs = glyphs.copy(right = max(glyphs.right, width), bottom = max(glyphs.bottom, paragraph.height))
+            // A negative TextIndent starts a line left of the box, or right of it for right-to-left text.
+            val lineStarts = (0 until paragraph.lineCount).map { paragraph.getHorizontalPosition(paragraph.getLineStart(it), true) }
+            glyphs =
+                glyphs.copy(
+                    left = min(glyphs.left, lineStarts.minOrNull() ?: 0f),
+                    right = maxOf(glyphs.right, width, lineStarts.maxOrNull() ?: 0f),
+                    bottom = max(glyphs.bottom, paragraph.height),
+                )
             overdraws = true
         }
         val strokes = listOfNotNull(input.style.textStroke()) + input.text.spanStyles.mapNotNull { it.item.textStroke() }
@@ -3492,6 +3518,10 @@ public class PostHogReplayIntegration(
         // Pre-walk re-arm attempts per capture: a screen that redraws during every attempt
         // discards this tick and retries at the next scheduled snapshot.
         private const val MAX_BASELINE_ARM_ATTEMPTS: Int = 3
+
+        // Compose internals, matched by name in textSemantics(). Kept by consumer-rules.pro.
+        private const val NODE_COORDINATOR: String = "androidx.compose.ui.node.NodeCoordinator"
+        private const val DELEGATING_NODE: String = "androidx.compose.ui.node.DelegatingNode"
 
         private val integrationInstalled = AtomicBoolean(false)
     }
