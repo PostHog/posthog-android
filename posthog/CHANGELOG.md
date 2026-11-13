@@ -1,5 +1,11 @@
 ## Next
 
+## 6.49.0
+
+### Minor Changes
+
+- cad8645: Add disableGeoIp configuration to skip GeoIP enrichment for analytics events and feature flag requests.
+
 ## 6.48.2
 
 ### Patch Changes
