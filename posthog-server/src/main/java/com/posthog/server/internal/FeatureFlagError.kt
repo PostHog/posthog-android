@@ -21,6 +21,7 @@ package com.posthog.server.internal
 internal object FeatureFlagError {
     const val ERRORS_WHILE_COMPUTING: String = "errors_while_computing_flags"
     const val FLAG_MISSING: String = "flag_missing"
+    const val EVALUATION_FAILED: String = "evaluation_failed"
     const val LOCAL_EVALUATION_INCONCLUSIVE: String = "local_evaluation_inconclusive"
     const val QUOTA_LIMITED: String = "quota_limited"
     const val TIMEOUT: String = "timeout"

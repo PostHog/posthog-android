@@ -1002,6 +1002,10 @@ public class PostHog private constructor(
                 groups.takeIf { appendGroups },
                 currentGroups,
             )
+            // After the caller merge so a caller value can't re-enable GeoIP.
+            if (config?.disableGeoIp == true) {
+                props["\$geoip_disable"] = true
+            }
         }
 
         // only Session replay needs distinct_id also in the props
@@ -2818,15 +2822,19 @@ public class PostHog private constructor(
                     props["\$feature_flag"] = key
                     // omit for a missing flag: "" means an empty variant
                     value?.let { props["\$feature_flag_response"] = it }
+                    it.getFlagError(key)?.let { error -> props["\$feature_flag_error"] = error }
                     requestId?.let { props["\$feature_flag_request_id"] = it }
                     evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
                     flagDetails?.let {
-                        props["\$feature_flag_id"] = it.metadata.id
-                        props["\$feature_flag_version"] = it.metadata.version
-                        props["\$feature_flag_reason"] = it.reason?.description ?: ""
-                        it.metadata.hasExperiment?.let { hasExperiment ->
-                            props["\$feature_flag_has_experiment"] = hasExperiment
+                        // Gson can hydrate retained failed records without the non-null metadata object.
+                        it.metadata?.let { metadata ->
+                            props["\$feature_flag_id"] = metadata.id
+                            props["\$feature_flag_version"] = metadata.version
+                            metadata.hasExperiment?.let { hasExperiment ->
+                                props["\$feature_flag_has_experiment"] = hasExperiment
+                            }
                         }
+                        props["\$feature_flag_reason"] = it.reason?.description ?: ""
                     }
                     // Snapshot the three bootstrap fields under one lock so a concurrent reset()
                     // can't tear this event (a response present but its payload dropped, or a
