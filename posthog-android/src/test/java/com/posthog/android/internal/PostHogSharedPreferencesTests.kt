@@ -1,12 +1,19 @@
 package com.posthog.android.internal
 
 import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.android.FakeSharedPreferences
 import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.FeatureFlag
+import com.posthog.internal.FeatureFlagMetadata
+import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogPreferences.Companion.GROUPS
 import com.posthog.internal.PostHogPreferences.Companion.STRINGIFIED_KEYS
+import com.posthog.internal.PostHogRemoteConfig
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
@@ -24,6 +31,96 @@ internal class PostHogSharedPreferencesTests {
     private fun getSut(): PostHogSharedPreferences {
         val config = PostHogAndroidConfig(PROJECT_TOKEN)
         return PostHogSharedPreferences(context, config, sharedPreferences = FakeSharedPreferences())
+    }
+
+    @Test
+    fun `cached startup excludes pre fix failed flag placeholders after shared preferences roundtrip`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config = PostHogAndroidConfig("failed-cache-test")
+        val preferences = PostHogSharedPreferences(appContext, config)
+        preferences.clear()
+        preferences.setValue(
+            "flags",
+            mapOf(
+                "checkout" to FeatureFlag("checkout", false, "placeholder", FeatureFlagMetadata(1, "\"remote\"", 1), null, true),
+            ),
+        )
+        preferences.setValue("featureFlags", mapOf("checkout" to "placeholder", "disabled" to false, "legacy" to true))
+        preferences.setValue("featureFlagsPayload", mapOf("checkout" to "remote", "legacy" to "valid"))
+        preferences.setValue("sessionReplay", mapOf("linkedFlag" to "checkout"))
+        val restored = PostHogSharedPreferences(appContext, config)
+        config.cachePreferences = restored
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val flags = PostHogRemoteConfig(config, PostHogApi(config), executor)
+        try {
+            assertFalse(flags.isSessionReplayFlagActive())
+            assertNull(flags.getFeatureFlagResult("checkout"))
+            assertEquals(true, flags.getFeatureFlag("checkout", defaultValue = true))
+            assertEquals(setOf("disabled", "legacy"), flags.getFeatureFlags()?.keys)
+            assertEquals(false, flags.getFeatureFlagResult("disabled")?.enabled)
+            assertEquals("valid", flags.getFeatureFlagResult("legacy")?.payload)
+            assertEquals(true, flags.getFlagDetails("checkout")?.failed)
+        } finally {
+            flags.clear()
+            restored.clear()
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `successful legacy recovery replaces failed detail provenance across shared preferences reopen`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val http = MockWebServer()
+        http.enqueue(
+            MockResponse().setBody(
+                """{"flags":{
+                "checkout":{"key":"checkout","enabled":false,"failed":true,"metadata":{"id":1,"version":1}},
+                "unresolved":{"key":"unresolved","enabled":false,"failed":true,"metadata":{"id":2,"version":1}},
+                "sibling":{"key":"sibling","enabled":false,"metadata":{"id":3,"version":2}}
+            }}""",
+            ),
+        )
+        http.enqueue(
+            MockResponse().setBody(
+                """{"errorsWhileComputingFlags":true,"featureFlags":{"checkout":"recovered"},
+                "featureFlagPayloads":{"checkout":"\"good\""}}""",
+            ),
+        )
+        http.start()
+        val config = PostHogAndroidConfig("legacy-recovery-test", http.url("/").toString())
+        val original = PostHogSharedPreferences(appContext, config)
+        original.clear()
+        config.cachePreferences = original
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val flags = PostHogRemoteConfig(config, PostHogApi(config), executor)
+        try {
+            repeat(2) {
+                val loaded = java.util.concurrent.CountDownLatch(1)
+                flags.loadFeatureFlags("user", null, null, onFeatureFlags = { loaded.countDown() })
+                assertTrue(loaded.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            assertEquals("recovered", flags.getFeatureFlagResult("checkout")?.value)
+            assertEquals("good", flags.getFeatureFlagResult("checkout")?.payload)
+            config.cachePreferences = PostHogSharedPreferences(appContext, config)
+            val reopened = PostHogRemoteConfig(config, PostHogApi(config), executor)
+            assertEquals("recovered", reopened.getFeatureFlagResult("checkout")?.value)
+            assertEquals("good", reopened.getFeatureFlagResult("checkout")?.payload)
+            for (sut in listOf(flags, reopened)) {
+                assertNull(sut.getFlagDetails("checkout"), "Legacy success must not inherit earlier failure attribution")
+                assertEquals(3, sut.getFlagDetails("sibling")?.metadata?.id)
+                assertEquals(false, sut.getFeatureFlagResult("sibling")?.value)
+                assertNull(sut.getFeatureFlagResult("unresolved"))
+                assertEquals(true, sut.getFlagDetails("unresolved")?.failed)
+            }
+            assertEquals(2, http.requestCount, "Reopening must not fetch flags")
+        } finally {
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            flags.clear()
+            original.clear()
+            http.shutdown()
+        }
     }
 
     @Test

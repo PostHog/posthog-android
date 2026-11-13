@@ -4,6 +4,7 @@ import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogFeatureFlagsInterface
 import com.posthog.server.internal.FeatureFlagError
 import com.posthog.server.internal.PostHogFeatureFlags
+import com.posthog.server.internal.PostHogMemoryQueue
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
@@ -773,6 +774,207 @@ internal class PostHogTest {
 
         postHog.close()
         mockServer.shutdown()
+    }
+
+    @Test
+    fun `capture enrichment preserves local success and omits failed remote placeholders`() {
+        for (errorBit in listOf("true", "false", null)) {
+            for (value in listOf("true", "false", "\"blue\"")) {
+                val variant = if (value == "\"blue\"") """, "multivariate":{"variants":[{"key":"blue","rollout_percentage":100}]}""" else ""
+                val active = value != "false"
+                val server = MockWebServer()
+                val definitions =
+                    createLocalEvaluationResponseFrom(
+                        """{"id":1,"key":"local","active":$active,"filters":{
+                        "groups":[{"properties":[],"rollout_percentage":100}]$variant,
+                        "payloads":{"true":"\"local\"","false":"\"local\"","blue":"\"local\""}
+                    }}""",
+                        """{"id":2,"key":"checkout","active":true,"filters":{"groups":[{
+                        "properties":[{"key":"email","value":"test","operator":"exact","type":"person"}],"rollout_percentage":100
+                    }]}}""",
+                    )
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val remote = """{$global"flags":{
+                    "local":{"key":"local","enabled":false,"failed":true,"metadata":{"id":1,"version":1}},
+                    "checkout":{"key":"checkout","enabled":false,"variant":"placeholder","failed":true,"metadata":{"id":2,"version":1}}
+                }}"""
+                val dispatcher = CountingDispatcher({ jsonResponse(definitions) }, { jsonResponse(remote) })
+                server.dispatcher = dispatcher
+                server.start()
+                val loaded = CountDownLatch(1)
+                val client =
+                    PostHog.with(
+                        PostHogConfig(
+                            TEST_PROJECT_TOKEN,
+                            host = server.url("/").toString(),
+                            localEvaluation = true,
+                            personalApiKey = "personal-key",
+                            pollIntervalSeconds = 3600,
+                            flushIntervalSeconds = 3600,
+                            onFeatureFlags = { loaded.countDown() },
+                        ),
+                    )
+                try {
+                    assertTrue(loaded.await(5, TimeUnit.SECONDS))
+                    assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)) // Definitions.
+                    val expected: Any =
+                        when (value) {
+                            "true" -> true
+                            "false" -> false
+                            else -> "blue"
+                        }
+                    repeat(3) { call ->
+                        client.capture("user", "purchase", appendFeatureFlags = true)
+                        client.flush()
+                        if (call == 0) assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)) // Remote fallback.
+                        val batchRequest = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                        assertTrue(batchRequest.path!!.contains("/batch"))
+                        val props = batchRequest.parseBatch().eventProperties("purchase")
+                        assertEquals(expected, props["\$feature/local"], "call=$call global=$errorBit")
+                        assertFalse(props.containsKey("\$feature/checkout"))
+                    }
+                    assertEquals(1, dispatcher.flagsCalls.get(), "Later captures must use the same remote cache")
+                } finally {
+                    client.close()
+                    server.shutdown()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `capture with cached failed flags does not reload unavailable definitions`() {
+        val server = MockWebServer()
+        val dispatcher =
+            CountingDispatcher(
+                { errorResponse(401, "Unauthorized") },
+                {
+                    jsonResponse(
+                        """{"flags":{
+                            "checkout":{"key":"checkout","enabled":false,"failed":true,"metadata":{"id":1,"version":1}},
+                            "disabled":{"key":"disabled","enabled":false,"metadata":{"id":2,"version":1}}
+                        }}""",
+                    )
+                },
+            )
+        server.dispatcher = dispatcher
+        server.start()
+        val config =
+            com.posthog.PostHogConfig(
+                TEST_PROJECT_TOKEN,
+                host = server.url("/").toString(),
+                preloadFeatureFlags = false,
+                flushIntervalSeconds = 3600,
+                remoteConfigProvider = { coreConfig, api, _, _, _, _ ->
+                    PostHogFeatureFlags(
+                        coreConfig,
+                        api,
+                        60000,
+                        100,
+                        localEvaluation = true,
+                        personalApiKey = "personal-key",
+                        pollerEnabled = false,
+                    )
+                },
+                queueProvider = { coreConfig, api, endpoint, _, executor ->
+                    PostHogMemoryQueue(coreConfig, api, endpoint, executor)
+                },
+            )
+        val client = PostHog().apply { setup(config) }
+        try {
+            repeat(3) {
+                client.capture("user", "purchase", appendFeatureFlags = true)
+                client.flush()
+                if (it == 0) {
+                    assertTrue(assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).path!!.contains("/local_evaluation"))
+                    assertTrue(assertNotNull(server.takeRequest(5, TimeUnit.SECONDS)).path!!.contains("/flags"))
+                }
+                assertEquals(1, dispatcher.localEvaluationCalls.get(), "Cached capture enrichment must not reload definitions")
+                assertEquals(1, dispatcher.flagsCalls.get())
+                val request = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                assertTrue(request.path!!.contains("/batch"))
+                val props = request.parseBatch().eventProperties("purchase")
+                assertEquals(false, props["\$feature/disabled"])
+                assertFalse(props.containsKey("\$feature/checkout"))
+            }
+        } finally {
+            client.close()
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `failed direct and inconclusive local reads emit evaluation failure with missing response`() {
+        for (localEvaluation in listOf(false, true)) {
+            for (errorBit in listOf("true", "false", null)) {
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val body = """{$global"requestId":"failed-request","flags":{
+                    "checkout":{"key":"checkout","enabled":false,"variant":"placeholder","failed":true,
+                        "metadata":{"id":1,"version":2,"payload":"\"remote\""},
+                        "reason":{"code":"error","description":"Evaluation failed"}},
+                    "disabled":{"key":"disabled","enabled":false,"failed":false,"metadata":{"id":2,"version":1}}
+                }}"""
+                val definition = """{"id":1,"key":"checkout","active":true,"filters":{"groups":[{
+                    "properties":[{"key":"email","value":"test","operator":"exact","type":"person"}],
+                    "rollout_percentage":100
+                }]}}"""
+                val server = MockWebServer()
+                server.dispatcher =
+                    CountingDispatcher(
+                        { jsonResponse(createLocalEvaluationResponseFrom(definition)) },
+                        { jsonResponse(body) },
+                    )
+                server.start()
+                val loaded = CountDownLatch(1)
+                val captured = java.util.concurrent.CopyOnWriteArrayList<String>()
+                val client =
+                    PostHog.with(
+                        PostHogConfig(
+                            TEST_PROJECT_TOKEN,
+                            host = server.url("/").toString(),
+                            localEvaluation = localEvaluation,
+                            personalApiKey = if (localEvaluation) "personal-key" else null,
+                            pollIntervalSeconds = 3600,
+                            flushIntervalSeconds = 3600,
+                            onFeatureFlags = { loaded.countDown() },
+                        ).apply {
+                            addBeforeSend {
+                                captured.add(it.event)
+                                it
+                            }
+                        },
+                    )
+                try {
+                    assertTrue(loaded.await(5, TimeUnit.SECONDS))
+                    assertNull(client.getFeatureFlagResult("user", "checkout", sendFeatureFlagEvent = false))
+                    assertTrue(captured.isEmpty())
+                    assertTrue(client.isFeatureEnabled("user", "checkout", defaultValue = true))
+                    assertEquals("default", client.getFeatureFlag("user", "checkout", defaultValue = "default"))
+                    assertNull(client.getFeatureFlagResult("user", "checkout"))
+                    assertFalse(client.isFeatureEnabled("user", "disabled", defaultValue = true))
+                    client.flush()
+                    if (localEvaluation) assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                    assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                    val batchRequest = assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+                    val events = listOf(batchRequest).featureFlagCalledEvents()
+                    assertEquals(2, events.size)
+                    val props = events.first { it.first == "checkout" }.second
+                    assertEquals("", props["\$feature_flag_response"])
+                    assertEquals("failed-request", props["\$feature_flag_request_id"])
+                    assertEquals("Evaluation failed", props["\$feature_flag_reason"])
+                    val errors = (props["\$feature_flag_error"] as String).split(",")
+                    assertTrue("evaluation_failed" in errors)
+                    assertFalse("flag_missing" in errors)
+                    assertEquals(errorBit == "true", "errors_while_computing_flags" in errors)
+                    val healthy = events.first { it.first == "disabled" }.second
+                    assertEquals(false, healthy["\$feature_flag_response"])
+                    assertFalse((healthy["\$feature_flag_error"] as? String).orEmpty().contains("evaluation_failed"))
+                } finally {
+                    client.close()
+                    server.shutdown()
+                }
+            }
+        }
     }
 
     @Test

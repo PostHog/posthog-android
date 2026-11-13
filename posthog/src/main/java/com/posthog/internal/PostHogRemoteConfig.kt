@@ -10,6 +10,7 @@ import com.posthog.PostHogFeatureFlagsLoaded
 import com.posthog.PostHogInternal
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
+import com.posthog.internal.PostHogPreferences.Companion.ERRORS_WHILE_COMPUTING_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.ERROR_TRACKING
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS
 import com.posthog.internal.PostHogPreferences.Companion.FEATURE_FLAGS_PAYLOAD
@@ -106,6 +107,7 @@ public class PostHogRemoteConfig(
     private var flags: Map<String, Any>? = null
     private var requestId: String? = null
     private var evaluatedAt: Long? = null
+    private var errorsWhileComputingFlags: Boolean = false
 
     // Server-controlled gate for minimal $feature_flag_called events (top-level
     // minimalFlagCalledEvents of the v2 /flags response). Absent means full events, so it is
@@ -954,6 +956,7 @@ public class PostHogRemoteConfig(
                     }
 
                     val normalizedResponse = normalizeFlagsResponse(it)
+                    errorsWhileComputingFlags = normalizedResponse.errorsWhileComputingFlags
 
                     // A response without the gate (legacy shape or ungated team) disables it,
                     // so full events resume as soon as the server stops sending the field.
@@ -969,7 +972,12 @@ public class PostHogRemoteConfig(
                             val successfulFlags = responseFlags.filterValues { flag -> flag.failed != true }
                             val successfulKeys = successfulFlags.keys
 
-                            this.flags = (this.flags ?: mapOf()) + successfulFlags
+                            // Keep failed details only when no served value supplies a successful fallback.
+                            val diagnosticFlags =
+                                responseFlags.filter { (key, flag) ->
+                                    flag.failed != true || this.featureFlags?.containsKey(key) != true
+                                }
+                            this.flags = (this.flags ?: mapOf()) + diagnosticFlags
 
                             val newFeatureFlags =
                                 normalizedResponse.featureFlags?.filterKeys { it in successfulKeys } ?: mapOf()
@@ -983,9 +991,10 @@ public class PostHogRemoteConfig(
                             serverEvaluatedPayloadKeys =
                                 serverEvaluatedPayloadKeys + normalizedPayloads.keys.filter { it in successfulKeys }
                         } else {
-                            // V1 response: no 'flags' property, merge all featureFlags (legacy behavior)
-                            this.featureFlags =
-                                (this.featureFlags ?: mapOf()) + (normalizedResponse.featureFlags ?: mapOf())
+                            // Legacy successes replace earlier detailed attribution for these keys only.
+                            val newFeatureFlags = normalizedResponse.featureFlags.orEmpty()
+                            this.flags = this.flags?.filterKeys { it !in newFeatureFlags }
+                            this.featureFlags = (this.featureFlags ?: mapOf()) + newFeatureFlags
 
                             val normalizedPayloads = normalizePayloads(normalizedResponse.featureFlagPayloads)
                             this.featureFlagPayloads =
@@ -1048,6 +1057,12 @@ public class PostHogRemoteConfig(
                             payloads.filterKeys { it in serverEvaluatedPayloadKeys }
                         }
                     preferences.setValue(FEATURE_FLAGS_PAYLOAD, serverPayloads)
+
+                    if (this.errorsWhileComputingFlags) {
+                        preferences.setValue(ERRORS_WHILE_COMPUTING_FLAGS, true)
+                    } else {
+                        preferences.remove(ERRORS_WHILE_COMPUTING_FLAGS)
+                    }
 
                     // Persist the gate alongside the cached flags so it survives restarts;
                     // an absent cache entry means full events (fail-safe).
@@ -1175,7 +1190,9 @@ public class PostHogRemoteConfig(
 
                 if (sessionRecording != null) {
                     sessionReplayLinkedFlagConfigured = sessionRecording["linkedFlag"] != null
-                    sessionReplayFlagActive = isRecordingActive(flags ?: mapOf(), sessionRecording)
+                    val details = preferences.getValue(FLAGS) as? Map<*, *>
+                    val successfulFlags = flags?.filterKeys { !isFailedFlag(details?.get(it)) }.orEmpty()
+                    sessionReplayFlagActive = isRecordingActive(successfulFlags, sessionRecording)
 
                     config.snapshotEndpoint = sessionRecording["endpoint"] as? String
                         ?: config.snapshotEndpoint
@@ -1228,13 +1245,16 @@ public class PostHogRemoteConfig(
             // Absent from the cache means full events (fail-safe).
             val cachedMinimalFlagCalledEvents = preferences.getValue(MINIMAL_FLAG_CALLED_EVENTS) as? Boolean ?: false
 
+            val failedKeys = flags.filterValues { isFailedFlag(it) }.keys
+            val cachedErrorsWhileComputingFlags = preferences.getValue(ERRORS_WHILE_COMPUTING_FLAGS) == true
             synchronized(featureFlagsLock) {
                 if (generation != featureFlagsGeneration) {
                     return
                 }
                 this.flags = flags
-                this.featureFlags = featureFlags
-                this.featureFlagPayloads = payloads
+                this.featureFlags = featureFlags.filterKeys { it !in failedKeys }
+                this.featureFlagPayloads = payloads.filterKeys { it !in failedKeys }
+                this.errorsWhileComputingFlags = cachedErrorsWhileComputingFlags
                 this.requestId = cachedRequestId
                 this.evaluatedAt = cachedEvaluatedAt
                 this.minimalFlagCalledEvents = cachedMinimalFlagCalledEvents
@@ -1298,10 +1318,11 @@ public class PostHogRemoteConfig(
         if (flags != null) {
             // This is a v4 response. This means that `featureFlags` and `featureFlagPayloads`
             // are not populated. We need to populate them with the values from the flags property.
+            val successfulFlags = flags.filterValues { it.failed != true }
             val newResponse =
                 flagsResponse.copy(
-                    featureFlags = flags.mapValues { (_, value) -> value.variant ?: value.enabled },
-                    featureFlagPayloads = flags.mapValues { (_, value) -> value.metadata.payload },
+                    featureFlags = successfulFlags.mapValues { (_, value) -> value.variant ?: value.enabled },
+                    featureFlagPayloads = successfulFlags.mapValues { (_, value) -> value.metadata.payload },
                 )
             synchronized(featureFlagsLock) {
                 // Store the requestId in the cache.
@@ -1530,7 +1551,29 @@ public class PostHogRemoteConfig(
         loadFeatureFlagsFromCacheIfNeeded()
 
         synchronized(featureFlagsLock) {
-            return flags?.get(key) as? FeatureFlag
+            return when (val details = flags?.get(key)) {
+                is FeatureFlag -> details
+                is Map<*, *> ->
+                    try {
+                        config.serializer.gson.fromJson(config.serializer.gson.toJsonTree(details), FeatureFlag::class.java)
+                    } catch (e: Throwable) {
+                        config.logger.log("Reading cached flag details failed: $e")
+                        null
+                    }
+                else -> null
+            }
+        }
+    }
+
+    internal fun getFlagError(key: String): String? {
+        loadFeatureFlagsFromCacheIfNeeded()
+        synchronized(featureFlagsLock) {
+            val errors = mutableListOf<String>()
+            if (errorsWhileComputingFlags) errors.add("errors_while_computing_flags")
+            if (featureFlags?.containsKey(key) != true && isFailedFlag(flags?.get(key))) {
+                errors.add("evaluation_failed")
+            }
+            return errors.takeIf { it.isNotEmpty() }?.joinToString(",")
         }
     }
 
@@ -1554,6 +1597,7 @@ public class PostHogRemoteConfig(
         this.flags = null
         this.requestId = null
         this.evaluatedAt = null
+        this.errorsWhileComputingFlags = false
         this.minimalFlagCalledEvents = false
 
         config.cachePreferences?.let { preferences ->
@@ -1562,6 +1606,7 @@ public class PostHogRemoteConfig(
             preferences.remove(FEATURE_FLAGS_PAYLOAD)
             preferences.remove(FEATURE_FLAG_REQUEST_ID)
             preferences.remove(FEATURE_FLAG_EVALUATED_AT)
+            preferences.remove(ERRORS_WHILE_COMPUTING_FLAGS)
             preferences.remove(MINIMAL_FLAG_CALLED_EVENTS)
         }
     }
@@ -1615,6 +1660,7 @@ public class PostHogRemoteConfig(
         this.flags = null
         this.requestId = null
         this.evaluatedAt = null
+        this.errorsWhileComputingFlags = false
     }
 
     /**
@@ -1805,3 +1851,10 @@ public class PostHogRemoteConfig(
         // (project-level, not user data) so each survives a reset without an app restart.
     }
 }
+
+private fun isFailedFlag(details: Any?): Boolean =
+    when (details) {
+        is FeatureFlag -> details.failed == true
+        is Map<*, *> -> details["failed"] == true
+        else -> false
+    }

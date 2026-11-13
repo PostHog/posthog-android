@@ -178,6 +178,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getCaptureAiTimeout ()I
 	public final fun getCompression ()Lcom/posthog/PostHogCompression;
 	public final fun getDebug ()Z
+	public final fun getDisableGeoIp ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getErrorTrackingConfig ()Lcom/posthog/errortracking/PostHogErrorTrackingConfig;
 	public final fun getEvaluationContexts ()Ljava/util/List;
@@ -217,6 +218,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setCaptureAiTimeout (I)V
 	public final fun setCompression (Lcom/posthog/PostHogCompression;)V
 	public final fun setDebug (Z)V
+	public final fun setDisableGeoIp (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setEvaluationContexts (Ljava/util/List;)V
 	public final fun setFeatureFlagCalledCacheSize (I)V
