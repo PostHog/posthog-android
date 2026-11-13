@@ -208,15 +208,56 @@ internal class PostHogRemoteConfigPayloadTest {
     }
 
     @Test
-    fun `getRemoteConfigPayload returns null and logs a warning on a malformed body`() {
-        val (server, _) = startServer { MockResponse().setBody("{bad") }
-        val logger = TestLogger()
-        val featureFlags = createFeatureFlags(server, logger)
+    fun `getRemoteConfigPayload returns null and logs a warning on a body that is not JSON`() {
+        listOf("{bad", "OK", "12abc", "<html>x</html>", "{a:1}", "{} x").forEach { body ->
+            val (server, dispatcher) = startServer { MockResponse().setBody(body) }
+            val logger = TestLogger()
+            val featureFlags = createFeatureFlags(server, logger)
 
-        assertNull(featureFlags.getRemoteConfigPayload("test-flag"))
+            assertNull(featureFlags.getRemoteConfigPayload("test-flag"), body)
 
-        assertEquals(1, logger.warnings.size)
-        assertTrue(logger.warnings.single().contains("failed unexpectedly"), logger.warnings.single())
+            assertEquals(1, dispatcher.remoteConfigRequests.size)
+            assertEquals(
+                listOf("Loading the remote config payload for flag 'test-flag' failed: the response body is not valid JSON."),
+                logger.warnings,
+                body,
+            )
+        }
+    }
+
+    @Test
+    fun `getRemoteConfigPayload returns null and logs a warning on an empty or blank body`() {
+        listOf("", "  \n").forEach { body ->
+            val (server, _) = startServer { MockResponse().setBody(body) }
+            val logger = TestLogger()
+            val featureFlags = createFeatureFlags(server, logger)
+
+            assertNull(featureFlags.getRemoteConfigPayload("test-flag"))
+
+            assertEquals(
+                listOf("Loading the remote config payload for flag 'test-flag' failed: the response body is empty."),
+                logger.warnings,
+            )
+        }
+    }
+
+    @Test
+    fun `getRemoteConfigPayload keeps a string payload that is not strict JSON`() {
+        assertEquals("OK", payloadOf(""""OK""""))
+        assertEquals("{a:1}", payloadOf(""""{a:1}""""))
+        assertEquals("", payloadOf(""""""""))
+    }
+
+    @Test
+    fun `getRemoteConfigPayload logs no warning for a valid body`() {
+        listOf("null", """"OK"""", """{"foo":"bar"}""").forEach { body ->
+            val (server, _) = startServer { MockResponse().setBody(body) }
+            val logger = TestLogger()
+
+            createFeatureFlags(server, logger).getRemoteConfigPayload("test-flag")
+
+            assertEquals(emptyList(), logger.warnings, body)
+        }
     }
 
     @Test
@@ -231,8 +272,10 @@ internal class PostHogRemoteConfigPayloadTest {
             assertNull(client.getRemoteConfigPayload(key))
         }
 
-        assertEquals(4, logger.warnings.size)
-        assertTrue(logger.warnings.all { it.contains("failed unexpectedly") })
+        assertEquals(
+            listOf("", " ", ".", "..").map { "The flag key '$it' is not valid for a remote config payload. No request was sent." },
+            logger.warnings,
+        )
         assertEquals(0, dispatcher.remoteConfigRequests.size)
     }
 

@@ -787,7 +787,8 @@ public sealed interface PostHogInterface {
      *
      * @param key the feature flag key
      * @return the parsed payload, or null when the client is disabled, no personal API key is set,
-     * the request fails, or the flag has no payload. A failure is logged as a warning.
+     * the flag key is invalid, the request fails, the response body is not valid JSON, or the
+     * flag has no payload. A failure is logged as a warning.
      */
     public fun getRemoteConfigPayload(key: String): Any?
 
