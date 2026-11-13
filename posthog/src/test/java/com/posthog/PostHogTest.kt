@@ -1282,6 +1282,32 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `failed flag without metadata reads as missing after reopening an in-memory cache`() {
+        val body = """{"flags":{
+            "checkout":{"key":"checkout","enabled":false,"failed":true,"variant":"placeholder"},
+            "healthy":{"key":"healthy","enabled":true,"metadata":{"id":1,"version":1,"payload":"\"good\""}}
+        }}"""
+        val http = mockHttp(response = MockResponse().setBody(body))
+        val cache = PostHogMemoryPreferences()
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, cachePreferences = cache)
+        val loaded = CountDownLatch(1)
+        sut.reloadFeatureFlags { loaded.countDown() }
+        assertTrue(loaded.await(5, TimeUnit.SECONDS))
+        sut.close()
+
+        // The in-memory cache keeps the Gson-built FeatureFlag objects, whose metadata is null here.
+        val reopened =
+            getSut(http.url("/").toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, cachePreferences = cache)
+        try {
+            assertNull(reopened.getFeatureFlagResult("checkout", sendFeatureFlagEvent = false))
+            assertEquals("good", reopened.getFeatureFlagResult("healthy", sendFeatureFlagEvent = false)?.payload)
+        } finally {
+            reopened.close()
+            http.shutdown()
+        }
+    }
+
+    @Test
     fun `scalar reads safely track failed metadata from JSON`() {
         assertFailedMetadataReads(structuredFirst = false, reopen = false)
     }
