@@ -529,7 +529,7 @@ internal class PostHogWrapperEventTest {
 
     @Test
     fun `a registered personless setting doesn't reach identity events`() {
-        val http = httpServers.mockHttp(total = 5)
+        val http = httpServers.mockHttp(total = 7)
         val sut = getSut(http)
         sut.registerOptionsForWrapper(mapOf("process_person_profile" to false))
         sut.register("\$process_person_profile", false)
@@ -538,11 +538,14 @@ internal class PostHogWrapperEventTest {
         sut.alias("other")
         sut.group("company", "acme", mapOf("name" to "Acme"))
         sut.setPersonProperties(mapOf("plan" to "pro"))
+        sut.capture("\$set_once", userPropertiesSetOnce = mapOf("first" to "web"))
+        sut.capture("\$merge_dangerously", properties = mapOf("alias" to "anon"))
         sut.capture("plain")
         queueExecutor.awaitExecution()
-        val sent = (1..5).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }
+        val sent = (1..7).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }
 
-        for (event in listOf("\$identify", "\$create_alias", "\$groupidentify", "\$set")) {
+        val identityEvents = listOf("\$identify", "\$create_alias", "\$groupidentify", "\$set", "\$set_once", "\$merge_dangerously")
+        for (event in identityEvents) {
             val identity = assertNotNull(sent[event], event)
             assertNull(identity.options()?.get("process_person_profile"), event)
             assertFalse(identity.properties().containsKey("\$process_person_profile"), event)
@@ -564,6 +567,28 @@ internal class PostHogWrapperEventTest {
 
         assertEquals(false, personless.options()?.get("process_person_profile"))
         assertEquals(2, http.requestCount)
+    }
+
+    @Test
+    fun `a call property or beforeSend can still turn person processing off for an identity event`() {
+        val http = httpServers.mockHttp(total = 2)
+        val sut =
+            getSut(http) {
+                addBeforeSend { event ->
+                    if (event.event == "\$identify") event.options = mutableMapOf("process_person_profile" to false)
+                    event
+                }
+            }
+        sut.register("\$process_person_profile", true)
+
+        sut.capture("\$set", properties = mapOf("\$process_person_profile" to false), userProperties = mapOf("plan" to "pro"))
+        sut.identify("user")
+        queueExecutor.awaitExecution()
+        val sent = (1..2).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }
+
+        for (event in listOf("\$set", "\$identify")) {
+            assertEquals(false, assertNotNull(sent[event], event).options()?.get("process_person_profile"), event)
+        }
     }
 
     @Test
