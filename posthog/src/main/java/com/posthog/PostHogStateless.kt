@@ -211,6 +211,10 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
+        if (config?.disableGeoIp == true) {
+            props["\$geoip_disable"] = true
+        }
+
         return props
     }
 
