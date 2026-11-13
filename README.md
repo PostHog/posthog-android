@@ -3,10 +3,10 @@
 | Packages        | Maven Central                                                                                                                                                                                  | Min Version    |
 |-----------------| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | posthog-android | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android) | Android API 23 |
-| posthog-android-surveys-compose | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose) | Android API 23 · `0.x` |
+| posthog-android-surveys-compose | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-surveys-compose) | Android API 23 · `0.x.x` |
 | posthog (core)  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog)                 | Java 8         |
 | posthog-server  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server)                 | Java 8         |
-| posthog-server-openfeature  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature)                 | Java 11 · `0.x` |
+| posthog-server-openfeature  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature)                 | Java 11 · `0.x.x` |
 | posthog-android-gradle-plugin  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin)                 | Java 8         |
 
 # PostHog Android and JVM SDKs
@@ -21,7 +21,7 @@ SDK usage examples and code snippets live in the official documentation so they 
 
 - [Android library docs](https://posthog.com/docs/libraries/android)
 - [Java/JVM library docs](https://posthog.com/docs/libraries/java)
-- [Migrating from 3.x to 4.0](MIGRATION.md)
+- [Migrating posthog-android from 3.x.x to 4.0.0](MIGRATION.md)
 
 ## Required dependencies
 

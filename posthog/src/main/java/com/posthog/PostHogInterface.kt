@@ -74,6 +74,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * replay debug properties), registered super properties ([register]), [properties], then
      * `beforeSend`.
      *
+     * Events captured while the device is offline are stored on the device. The SDK sends them
+     * when the connection returns, or when the app next starts with a connection.
+     *
      * Example:
      * ```
      * PostHog.capture("signed_up", options = mapOf("cookieless_mode" to true))
@@ -346,7 +349,7 @@ public interface PostHogInterface : PostHogCoreInterface {
 
     /**
      * Register a property to always be sent with all the following events until you call
-     * [unregister] with the same key
+     * [unregister] with the same key. The property persists across app restarts.
      * PostHogPreferences.ALL_INTERNAL_KEYS are not allowed since they are internal and used by
      * the SDK only.
      * A registered `$process_person_profile` isn't sent with `$identify`, `$create_alias`,
