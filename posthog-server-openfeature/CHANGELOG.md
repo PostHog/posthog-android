@@ -1,5 +1,11 @@
 ## Next
 
+## 0.1.3
+
+### Patch Changes
+
+- b3afe48: Treat failed detailed feature flag records as unavailable values and payloads, independently of response-wide errors. Preserve successful cached values on errored client refreshes and same-context local decisions during server fallback. Report failed direct reads as evaluation failures without tracking caller defaults as evaluated responses.
+
 ## 0.1.2
 
 ### Patch Changes
