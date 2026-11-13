@@ -41,6 +41,11 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `disableGeoIp is disabled by default`() {
+        assertFalse(config.disableGeoIp)
+    }
+
+    @Test
     fun `beforeSendList is empty by default`() {
         assertTrue(config.beforeSendList.isEmpty())
     }

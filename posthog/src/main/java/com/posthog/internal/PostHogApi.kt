@@ -579,7 +579,7 @@ public class PostHogApi(
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
         flagKeys: List<String>? = null,
-        disableGeoip: Boolean = false,
+        disableGeoip: Boolean = config.disableGeoIp,
     ): PostHogFlagsResponse? {
         val flagsRequest =
             PostHogFlagsRequest(

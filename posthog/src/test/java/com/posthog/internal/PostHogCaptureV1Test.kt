@@ -661,12 +661,13 @@ internal class PostHogCaptureV1Test {
     fun `reads an HTTP-date Retry-After as seconds from now`() {
         val format = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).apply { timeZone = TimeZone.getTimeZone("GMT") }
         val now = clock.currentTimeMillis()
-        for ((date, seconds) in listOf(Date(now + 20_000) to 20, Date(now - 60_000) to 0)) {
+        // The clock is real and an HTTP-date has no milliseconds, so a future date can read one second short.
+        for ((date, seconds) in listOf(Date(now + 20_000) to 19..20, Date(now - 60_000) to 0..0)) {
             val http = httpServers.mockHttp(response = MockResponse().setResponseCode(503).setHeader("Retry-After", format.format(date)))
 
             val error = assertThrows(PostHogApiError::class.java) { api(http.url("/").toString()).captureV1(listOf(event())) }
 
-            assertEquals(seconds, error.retryAfterSeconds)
+            assertTrue(error.retryAfterSeconds in seconds, "${error.retryAfterSeconds} not in $seconds")
         }
     }
 

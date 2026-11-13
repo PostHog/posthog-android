@@ -2744,6 +2744,183 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `failed detailed records never supply values or payloads regardless of global errors`() {
+        for (errorBit in listOf("true", "false", null)) {
+            for (variant in listOf("null", "\"failed-variant\"")) {
+                val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+                val body =
+                    """{$global"flags":{
+                        "checkout":{"key":"checkout","enabled":false,"variant":$variant,"failed":true,
+                            "metadata":{"id":1,"version":1,"payload":"\"remote\""}},
+                        "disabled":{"key":"disabled","enabled":false,"failed":false,"metadata":{"id":2,"version":1}},
+                        "healthy":{"key":"healthy","enabled":true,"metadata":{"id":3,"version":1}}
+                    },"featureFlags":{"checkout":true},"featureFlagPayloads":{"checkout":"\"mirror\""}}"""
+                val http = mockHttp(response = MockResponse().setBody(body))
+                val sut = getSut(http.url("/").toString(), cachePreferences = PostHogMemoryPreferences())
+                val loaded = CountDownLatch(1)
+                sut.loadFeatureFlags("user", null, null, onFeatureFlags = { loaded.countDown() })
+                assertTrue(loaded.await(5, TimeUnit.SECONDS))
+                assertNull(sut.getFeatureFlagResult("checkout"), "global=$errorBit variant=$variant")
+                assertEquals(true, sut.getFeatureFlag("checkout", defaultValue = true))
+                assertNull(sut.getFeatureFlagPayload("checkout"))
+                assertEquals(false, sut.getFeatureFlagResult("disabled")?.enabled)
+                assertEquals(setOf("disabled", "healthy"), sut.getFeatureFlags()?.keys)
+                sut.clear()
+                http.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun `cached failed details suppress old derived placeholders while bootstrap and legacy remain valid`() {
+        for (typedDetails in listOf(false, true)) {
+            val cache = PostHogMemoryPreferences()
+            val failed = FeatureFlag("checkout", false, "placeholder", FeatureFlagMetadata(1, "\"remote\"", 2), null, true)
+            val details: Any =
+                if (typedDetails) {
+                    failed
+                } else {
+                    PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserializeString(
+                        """{"key":"checkout","enabled":false,"variant":"placeholder","failed":true,"metadata":{"id":1,"version":2}}""",
+                    )!!
+                }
+            cache.setValue(PostHogPreferences.FLAGS, mapOf("checkout" to details))
+            cache.setValue(FEATURE_FLAGS, mapOf("checkout" to "placeholder", "disabled" to false, "legacy" to true))
+            cache.setValue(FEATURE_FLAGS_PAYLOAD, mapOf("checkout" to "remote", "legacy" to "valid"))
+            cache.setValue(PostHogPreferences.ERRORS_WHILE_COMPUTING_FLAGS, true)
+            val sut = getSut("https://example.invalid", cachePreferences = cache)
+            assertNull(sut.getFeatureFlagResult("checkout"))
+            assertEquals(setOf("disabled", "legacy"), sut.getFeatureFlags()?.keys)
+            assertEquals(false, sut.getFeatureFlagResult("disabled")?.enabled)
+            assertEquals("valid", sut.getFeatureFlagResult("legacy")?.payload)
+            assertEquals("errors_while_computing_flags,evaluation_failed", sut.getFlagError("checkout"))
+            assertEquals(1, sut.getFlagDetails("checkout")?.metadata?.id)
+
+            val bootstrapped =
+                getSut(
+                    "https://example.invalid",
+                    bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("checkout" to "bootstrap")),
+                    cachePreferences = cache,
+                )
+            assertEquals("bootstrap", bootstrapped.getFeatureFlagResult("checkout")?.variant)
+            assertNull(bootstrapped.getFlagError("checkout"))
+            sut.clear()
+            assertNull(cache.getValue(PostHogPreferences.ERRORS_WHILE_COMPUTING_FLAGS))
+            bootstrapped.clear()
+        }
+    }
+
+    @Test
+    fun `all failed detailed flags replace prior client state with no decisions`() {
+        val http =
+            mockHttp(
+                response =
+                    MockResponse().setBody(
+                        """{"flags":{"checkout":{"key":"checkout","enabled":true,"variant":"placeholder","failed":true,
+                "metadata":{"id":1,"version":1,"payload":"\"placeholder\""}}}}""",
+                    ),
+            )
+        val sut = getSut(http.url("/").toString(), bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("checkout" to true)))
+        val loaded = CountDownLatch(1)
+        sut.loadFeatureFlags("user", null, null, onFeatureFlags = { loaded.countDown() })
+        assertTrue(loaded.await(5, TimeUnit.SECONDS))
+        assertEquals(emptySet(), sut.getFeatureFlags()?.keys)
+        assertNull(sut.getFeatureFlagResult("checkout"))
+        assertNull(sut.getFeatureFlagPayload("checkout"))
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `errored refresh preserves successful cached values payloads and diagnostic source`() {
+        for (value in listOf("true", "false", "\"blue\"")) {
+            val variant = if (value == "\"blue\"") "\"blue\"" else "null"
+            val enabled = value != "false"
+            val http =
+                mockHttp(
+                    response =
+                        MockResponse().setBody(
+                            """{"flags":{"checkout":{"key":"checkout","enabled":$enabled,"variant":$variant,
+                    "metadata":{"id":1,"version":1,"payload":"\"local\""}}}}""",
+                        ),
+                )
+            http.enqueue(
+                MockResponse().setBody(
+                    """{"errorsWhileComputingFlags":true,"flags":{
+                    "checkout":{"key":"checkout","enabled":false,"failed":true,
+                        "metadata":{"id":9,"version":9,"payload":"\"remote\""}}
+                }}""",
+                ),
+            )
+            val sut = getSut(http.url("/").toString(), cachePreferences = PostHogMemoryPreferences())
+            repeat(2) {
+                val loaded = CountDownLatch(1)
+                sut.loadFeatureFlags("user", null, null, onFeatureFlags = { loaded.countDown() })
+                assertTrue(loaded.await(5, TimeUnit.SECONDS))
+            }
+            val expected: Any =
+                when (value) {
+                    "true" -> true
+                    "false" -> false
+                    else -> "blue"
+                }
+            assertEquals<Any?>(expected, sut.getFeatureFlagResult("checkout")?.value)
+            assertEquals("local", sut.getFeatureFlagResult("checkout")?.payload)
+            assertEquals(1, sut.getFlagDetails("checkout")?.metadata?.id)
+            assertEquals("errors_while_computing_flags", sut.getFlagError("checkout"))
+            val restored = getSut(http.url("/").toString(), cachePreferences = config!!.cachePreferences!!)
+            assertEquals<Any?>(expected, restored.getFeatureFlagResult("checkout")?.value)
+            assertEquals("local", restored.getFeatureFlagResult("checkout")?.payload)
+            assertEquals("errors_while_computing_flags", restored.getFlagError("checkout"))
+            sut.clear()
+            restored.clear()
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `failed refresh retains prior pairs only with response wide errors`() {
+        for (errorBit in listOf("true", "false", null)) {
+            val cache =
+                PostHogMemoryPreferences().apply {
+                    setValue(PostHogPreferences.ERRORS_WHILE_COMPUTING_FLAGS, true)
+                }
+            val global = errorBit?.let { "\"errorsWhileComputingFlags\":$it," } ?: ""
+            val http =
+                mockHttp(
+                    response =
+                        MockResponse().setBody(
+                            """{$global"flags":{"checkout":{"key":"checkout","enabled":false,"failed":true,
+                    "metadata":{"id":1,"version":1,"payload":"\"remote\""}}}}""",
+                        ),
+                )
+            val sut =
+                getSut(
+                    http.url("/").toString(),
+                    bootstrap =
+                        PostHogBootstrapConfig(
+                            featureFlags = mapOf("checkout" to "blue"),
+                            featureFlagPayloads = mapOf("checkout" to "local"),
+                        ),
+                    cachePreferences = cache,
+                )
+            val loaded = CountDownLatch(1)
+            sut.loadFeatureFlags("user", null, null, onFeatureFlags = { loaded.countDown() })
+            assertTrue(loaded.await(5, TimeUnit.SECONDS))
+            if (errorBit == "true") {
+                assertEquals("blue", sut.getFeatureFlagResult("checkout")?.variant)
+                assertEquals("local", sut.getFeatureFlagResult("checkout")?.payload)
+            } else {
+                assertNull(sut.getFeatureFlagResult("checkout"))
+                assertNull(cache.getValue(PostHogPreferences.ERRORS_WHILE_COMPUTING_FLAGS))
+                assertEquals("evaluation_failed", sut.getFlagError("checkout"))
+            }
+            sut.clear()
+            http.shutdown()
+        }
+    }
+
+    @Test
     fun `errorsWhileComputingFlags load keeps bootstrapped-only keys`() {
         // V1 partial-failure response returns {"foo": true} with errorsWhileComputingFlags=true.
         val withErrors = File("src/test/resources/json/flags-v1/basic-flags-with-errors.json").readText()

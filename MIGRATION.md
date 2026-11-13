@@ -8,7 +8,7 @@ Read the checklist first, then the sections that apply to you.
 
 Core `posthog` 7.0 is only supported through `posthog-android` 4.0 and `posthog-server`. Using it on its own through `PostHogStateless.with` isn't supported; see [`posthog-server`](#posthog-server).
 
-For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/libraries/capture-v1).
+For the changes every capture v1 SDK shares, such as event options, limits and per-event results, see [Upgrading to capture v1 SDKs](https://posthog.com/docs/api/capture-v1).
 
 For the full list of 4.0 changes, see the [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-android/CHANGELOG.md).
 
@@ -59,7 +59,7 @@ These are unchanged, so you don't need to change your build for them:
 - Kotlin language and API compatibility: 2.0
 - `posthog-android-gradle-plugin`
 
-Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. A mismatch fails at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
+Upgrade PostHog artifacts together. Core 7.0 is not binary compatible with SDK versions built against core 6.x, except `posthog-android-surveys-compose`, which works with both. When core 7.0 is in a Gradle build, for example through `posthog-server` 2.25, Gradle upgrades `posthog-android` to 4.0, even over a range such as `[3.75.0,4.0.0)`, so code that still uses removed APIs fails to compile. Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
 ### Removed APIs
 
@@ -577,7 +577,7 @@ On Android, listeners run on the main thread. If flags have already loaded, a ne
 
 It still sends events to `/batch`, not to capture v1, so the endpoint, proxy, retry and event option changes above don't apply to it either.
 
-Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
+Using core `posthog` on its own through `PostHogStateless.with` isn't a supported entry point in core 7.0. Without its own queue it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps. A class that extends `PostHogStateless` also needs updating: the protected `buildEvent()` gained `options` and `uuid` parameters, and `captureFeatureFlagCalledEvent()` is no longer protected.
 
 A personal API key (`phx_...`) in `projectToken` now disables the client at setup, as an empty token does, and both print why even when `debug` is off.
 
@@ -586,4 +586,4 @@ Events with an empty name are dropped before sending. `userProperties`, `userPro
 `posthog-server` 2.25.0 depends on core 7.0, so upgrade it and `posthog-android` together:
 
 - If your project uses `posthog-android` 4.0 or core 7.0, use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.0 at runtime.
-- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. Gradle resolves core 7.0 for both, and `posthog-android` 3.x fails at runtime against it with errors such as `NoSuchMethodError`.
+- If your project still uses `posthog-android` 3.x, stay on `posthog-server` 2.24.x. `posthog-server` 2.25 brings in core 7.0, and Gradle then upgrades `posthog-android` to 4.0.

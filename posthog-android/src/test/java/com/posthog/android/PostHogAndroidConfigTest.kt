@@ -23,6 +23,15 @@ internal class PostHogAndroidConfigTest {
     }
 
     @Test
+    fun `disableGeoIp is inherited from core config`() {
+        assertFalse(config.disableGeoIp)
+
+        config.disableGeoIp = true
+
+        assertTrue(config.disableGeoIp)
+    }
+
+    @Test
     fun `captureApplicationLifecycleEvents should be enabled by default`() {
         assertTrue(config.captureApplicationLifecycleEvents)
     }
