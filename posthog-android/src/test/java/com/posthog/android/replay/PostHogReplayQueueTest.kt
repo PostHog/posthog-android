@@ -560,6 +560,61 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
+    fun `recheckBuffer notifies the delegate about snapshots already buffered`() {
+        val queue = createReplayQueue(createFakeQueue())
+        val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
+        queue.bufferDelegate = delegate
+        queue.add(createTestEvent("snapshot_1"))
+        queue.add(createTestEvent("snapshot_2"))
+        awaitReplayExecutors()
+        assertEquals(2, delegate.didBufferSnapshotCallCount)
+
+        // No further write reaches the buffer once the delegate stops buffering.
+        delegate.isBuffering = false
+        queue.recheckBuffer()
+        awaitReplayExecutors()
+
+        assertEquals(3, delegate.didBufferSnapshotCallCount)
+        assertEquals(queue, delegate.lastReplayQueue)
+        assertEquals(2, queue.bufferDepth)
+    }
+
+    @Test
+    fun `recheckBuffer does not notify the delegate when nothing is buffered`() {
+        val queue = createReplayQueue(createFakeQueue())
+        val delegate = MockReplayBufferDelegate()
+        queue.bufferDelegate = delegate
+
+        queue.recheckBuffer()
+        awaitReplayExecutors()
+
+        assertEquals(0, delegate.didBufferSnapshotCallCount)
+    }
+
+    @Test
+    fun `recheckBuffer runs after a pending clearBuffer`() {
+        val executor = createPausedExecutor()
+        val queue = createReplayQueue(createFakeQueue(), executor = executor)
+        val delegate = MockReplayBufferDelegate().apply { isBuffering = true }
+        queue.bufferDelegate = delegate
+        queue.add(createTestEvent("previous_session"))
+        executor.runNext()
+        executor.runNext()
+        assertEquals(1, queue.bufferDepth)
+        assertEquals(1, delegate.didBufferSnapshotCallCount)
+
+        // A session rotation clears the buffer; a recheck requested after it must not see that window.
+        queue.clearBuffer()
+        queue.recheckBuffer()
+        assertEquals(1, queue.bufferDepth)
+        executor.runNext()
+        executor.runNext()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(1, delegate.didBufferSnapshotCallCount)
+    }
+
+    @Test
     fun `clear removes both buffer and inner queue events`() {
         val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)

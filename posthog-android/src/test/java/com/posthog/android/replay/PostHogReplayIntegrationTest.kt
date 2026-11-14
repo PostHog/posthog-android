@@ -1514,6 +1514,172 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // A flag turning off can leave every group pending: nothing is activated, so there is no minimum either.
+    private fun stubPendingTriggerGroups(
+        fx: RealQueueFixture,
+        minimum: java.util.concurrent.atomic.AtomicLong,
+        pending: AtomicBoolean,
+    ) {
+        whenever(fx.remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenAnswer { !pending.get() }
+        whenever(fx.remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(any()))
+            .thenAnswer { if (pending.get()) null else minimum.get() }
+    }
+
+    @Test
+    fun `event releasing duration hold after trigger groups went pending migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            // The pending state stops the recorder and erases the 30s minimum the window is held under.
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload resuming after trigger groups went pending migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // The reload only queues the resume on main, so the recorder is still stopped when it returns.
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload resuming with a positive minimum after trigger groups went pending keeps the opening buffer held`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            minimum.set(20_000)
+            pending.set(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertTrue(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `explicit start after the minimum dropped while stopped migrates opening buffer`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                minimumDurationMs = 30_000,
+                sessionReplay = false,
+            )
+        val session = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(session)
+        val client = mock<PostHogInterface>()
+        whenever(client.getSessionId()).thenReturn(session)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // Automatic replay is off, so the reload may neither resume the stopped recorder nor release its window.
+            fx.sut.stop()
+            whenever(fx.remoteConfig.getRecordingMinimumDurationMs()).thenReturn(0L)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     @Test
     fun `routes snapshots to buffer while awaiting first remote config`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
