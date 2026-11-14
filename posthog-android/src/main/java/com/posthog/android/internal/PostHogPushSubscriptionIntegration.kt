@@ -1,11 +1,14 @@
 package com.posthog.android.internal
 
+import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import com.posthog.PostHogIntegration
 import com.posthog.PostHogInterface
 import com.posthog.PostHogOptInReceiver
 import com.posthog.android.PostHogAndroidConfig
+import com.posthog.internal.PostHogPushSubscriptionReceiver
 import com.posthog.internal.PostHogThreadFactory
 import com.posthog.internal.executeSafely
 import java.util.concurrent.ExecutorService
@@ -19,8 +22,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Firebase Messaging is a `compileOnly` dependency — the SDK never ships its own messaging
  * service and never hard-depends on Firebase. When Firebase is absent, [PushTokenFetcher] no-ops
  * with a debug log. Instant token refresh still requires the host app to forward Firebase's
- * `onNewToken` to [PostHogInterface.registerPushNotificationToken]; the startup fetch here only
- * covers tokens refreshed since the last launch.
+ * `onNewToken` (or, in Firebase Installation ID mode, `onRegistered`) to
+ * [PostHogInterface.registerPushNotificationToken]; the startup fetch here only covers tokens
+ * refreshed since the last launch.
  */
 internal class PostHogPushSubscriptionIntegration(
     private val config: PostHogAndroidConfig,
@@ -56,7 +60,12 @@ internal class PostHogPushSubscriptionIntegration(
     private fun fetchAndRegister() {
         executor.executeSafely {
             tokenFetcher.fetchToken { token, appId ->
-                this.postHog?.registerPushNotificationToken(token, appId)
+                val postHog = this.postHog
+                if (postHog is PostHogPushSubscriptionReceiver) {
+                    postHog.registerPushNotificationTokenIfNeeded(token, appId)
+                } else {
+                    postHog?.registerPushNotificationToken(token, appId)
+                }
             }
         }
     }
@@ -85,8 +94,12 @@ internal fun interface PushTokenFetcher {
 
 private const val FIREBASE_MESSAGING_CLASS = "com.google.firebase.messaging.FirebaseMessaging"
 
+// The manifest flag firebase-messaging reads to switch to Firebase Installation ID registration.
+private const val INSTALLATION_ID_ENABLED_KEY = "firebase_messaging_installation_id_enabled"
+
 /**
- * Fetches the FCM token and Firebase `project_id` (used as the push `app_id`).
+ * Fetches the FCM token, or the Firebase Installation ID when the app opted into FID registration,
+ * and the Firebase `project_id` (used as the push `app_id`).
  *
  * Presence is checked reflectively first, so an app without Firebase on the classpath sees a
  * single debug log and nothing else. All direct Firebase references are confined to
@@ -108,17 +121,21 @@ internal class FirebasePushTokenFetcher(
         fetchFirebaseToken(onToken)
     }
 
-    // firebase-messaging 25.1.0 deprecates getToken in favor of FID-based registration;
-    // PostHog delivers via FCM HTTP v1 registration tokens, so we stay on it until the
-    // backend supports FIDs.
-    @Suppress("DEPRECATION")
     private fun fetchFirebaseToken(onToken: (token: String, appId: String) -> Unit) {
-        val projectId =
+        val firebaseApp =
             try {
-                FirebaseApp.getInstance().options.projectId
+                FirebaseApp.getInstance()
             } catch (e: IllegalStateException) {
                 config.logger.log("Firebase is not initialized, skipping push token registration: $e.")
                 return
+            } catch (e: Throwable) {
+                config.logger.log("Failed to read Firebase project id, skipping push token registration: $e.")
+                return
+            }
+
+        val projectId =
+            try {
+                firebaseApp.options.projectId
             } catch (e: Throwable) {
                 config.logger.log("Failed to read Firebase project id, skipping push token registration: $e.")
                 return
@@ -130,26 +147,51 @@ internal class FirebasePushTokenFetcher(
         }
 
         try {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                // The completion runs later, on Play Services' Tasks executor — outside this
-                // try/catch's stack frame, so an uncaught throw here would crash the host app.
-                try {
-                    if (task.isSuccessful) {
-                        val token = task.result
-                        if (!token.isNullOrBlank()) {
-                            onToken(token, projectId)
-                        } else {
-                            config.logger.log("Firebase returned a blank push token, skipping registration.")
-                        }
-                    } else {
-                        config.logger.log("Failed to fetch Firebase push token: ${task.exception}.")
-                    }
-                } catch (e: Throwable) {
-                    config.logger.log("Failed to handle Firebase push token completion: $e.")
-                }
+            // The two modes are exclusive: with the flag on, getToken() fails and FCM only accepts the
+            // FID as a send target.
+            if (isInstallationIdEnabled(firebaseApp)) {
+                FirebaseInstallations.getInstance(firebaseApp).id
+                    .handleCompletion("Firebase Installation ID", projectId, onToken)
+            } else {
+                @Suppress("DEPRECATION")
+                FirebaseMessaging.getInstance().token
+                    .handleCompletion("push token", projectId, onToken)
             }
         } catch (e: Throwable) {
             config.logger.log("Failed to request Firebase push token: $e.")
         }
     }
+
+    private fun Task<String>.handleCompletion(
+        label: String,
+        projectId: String,
+        onToken: (token: String, appId: String) -> Unit,
+    ) {
+        addOnCompleteListener { task ->
+            // The completion runs later, on Play Services' Tasks executor — outside the caller's
+            // try/catch stack frame, so an uncaught throw here would crash the host app.
+            try {
+                if (task.isSuccessful) {
+                    val token = task.result
+                    if (!token.isNullOrBlank()) {
+                        onToken(token, projectId)
+                    } else {
+                        config.logger.log("Firebase returned a blank $label, skipping registration.")
+                    }
+                } else {
+                    config.logger.log("Failed to fetch Firebase $label: ${task.exception}.")
+                }
+            } catch (e: Throwable) {
+                config.logger.log("Failed to handle Firebase $label completion: $e.")
+            }
+        }
+    }
+
+    private fun isInstallationIdEnabled(firebaseApp: FirebaseApp): Boolean =
+        try {
+            getApplicationInfo(firebaseApp.applicationContext).metaData?.getBoolean(INSTALLATION_ID_ENABLED_KEY, false) == true
+        } catch (e: Throwable) {
+            config.logger.log("Failed to read $INSTALLATION_ID_ENABLED_KEY, assuming FCM token registration: $e.")
+            false
+        }
 }

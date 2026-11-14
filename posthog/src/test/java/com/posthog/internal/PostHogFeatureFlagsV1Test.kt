@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.TestHttpServers
 import com.posthog.awaitExecution
@@ -50,7 +50,7 @@ internal class PostHogFeatureFlagsV1Test {
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogRemoteConfig {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 this.networkStatus = networkStatus
                 cachePreferences = preferences
             }

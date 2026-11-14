@@ -2,6 +2,10 @@
 
 If you would like to contribute code to `posthog-android` you can do so through GitHub by forking the repository and opening a pull request against `main`.
 
+## Commit signing
+
+This repo requires all commits to be signed. To configure commit signing, see the [PostHog handbook](https://posthog.com/handbook/engineering/security#commit-signing). Set `commit.gpgsign` to `true` in your git config so that every commit is signed, not only the ones you sign by hand.
+
 ## Development commands
 
 Prefer the [Makefile](./Makefile) wrappers:
@@ -22,6 +26,16 @@ Prefer the [Makefile](./Makefile) wrappers:
 | Stop Gradle daemons | `make stop` |
 
 Use focused tests during iteration and select module/behavior checks before submitting SDK changes. Core JVM tests do not cover Android or Compose behavior; use the relevant Gradle module/task for Android or server tests, and `make testSurveyUI` for Compose survey interactions (it enables debug tests). Formatting uses Spotless + ktlint; review any diff from `make format`. For Markdown-only edits, check links and `git diff --check` rather than running SDK builds/tests.
+
+## Replay masking image snapshots
+
+`make maskingSnapshots` verifies the committed PNGs in `posthog-android/src/test/resources/snapshots/replay-masking/`. Each image shows the original native View fixture beside the SDK-masked result. The suite covers defaults, global masking options, explicit mask/unmask markers, scrolling, scaling and dialog-local coordinates. The single-window fixtures use the production mask collection and painter without PixelCopy scheduling or image encoding.
+
+The stacked-dialog golden exercises registered Activity/dialog windows through the scene producer, masking and image encoding. Its PixelCopy shadow draws each native window into the SDK's target bitmap. Both panels rasterize the emitted screenshot/dim wireframes in SDK order and coordinates, before and after enabling text masking; this checks producer composition, not rrweb playback. It covers an Activity beneath two overlapping dialogs, topmost-window dimming and masking across all three windows.
+
+The renderer is pinned to Robolectric API 28, native graphics, mdpi, US English and light mode. Verification compares decoded pixels exactly and never creates missing baselines. On failure, expected/actual/diff PNGs are written to `posthog-android/build/reports/replay-masking-snapshots/` and uploaded by CI. The tests also run with the normal Android unit suite.
+
+For intentional changes, run `make recordMaskingSnapshots`, inspect both panels of every changed image for under- or over-masking, then run `make maskingSnapshots` and commit the updated PNGs. Recording overwrites the selected baselines, so use it only after understanding the visual change.
 
 ## Public API changes
 

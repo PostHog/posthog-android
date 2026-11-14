@@ -136,7 +136,7 @@ internal class PostHogSurveysRestartTest {
                 cachePreferences =
                     PostHogSharedPreferences(
                         this@PostHogSurveysRestartTest.context,
-                        PostHogAndroidConfig(apiKey),
+                        PostHogAndroidConfig(projectToken),
                     )
                 preloadFeatureFlags = false
                 remoteConfig = false

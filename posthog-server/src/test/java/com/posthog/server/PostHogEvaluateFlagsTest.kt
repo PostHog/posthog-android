@@ -34,7 +34,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -63,7 +63,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -108,7 +108,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -161,7 +161,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -189,7 +189,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -217,7 +217,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -258,7 +258,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -287,7 +287,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -321,7 +321,7 @@ internal class PostHogEvaluateFlagsTest {
             try {
                 postHog =
                     PostHog.with(
-                        PostHogConfig.builder(TEST_API_KEY)
+                        PostHogConfig.builder(TEST_PROJECT_TOKEN)
                             .host(mockServer.url("/").toString())
                             .build(),
                     )
@@ -356,7 +356,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -393,7 +393,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -428,7 +428,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -456,7 +456,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),
@@ -496,7 +496,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .build(),
             )
@@ -532,7 +532,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .personalApiKey("phx_test_personal_api_key")
                     .flushAt(1)
@@ -544,6 +544,68 @@ internal class PostHogEvaluateFlagsTest {
         } finally {
             postHog.close()
             mockServer.shutdown()
+        }
+    }
+
+    @Test
+    fun `numeric ordering evaluates locally and falls back only for invalid filters or missing properties`() {
+        fun definition(
+            key: String,
+            operator: String,
+            filter: String,
+        ): String =
+            """
+            {
+                "id": 1, "key": "$key", "name": "$key", "active": true,
+                "filters": { "groups": [{ "properties": [
+                    { "key": "$key", "type": "person", "operator": "$operator", "value": $filter }
+                ], "rollout_percentage": 100 }] }
+            }
+            """.trimIndent()
+
+        val definitions =
+            createLocalEvaluationResponseFrom(
+                definition("gt", "gt", "2"),
+                definition("lt", "lt", "30"),
+                definition("gte", "gte", "\"5\""),
+                definition("lte", "lte", "\"5\""),
+                definition("invalid-actual", "gt", "\"9\""),
+                definition("null-actual", "gt", "\"9\""),
+                definition("invalid-filter", "gt", "\"9px\""),
+                definition("missing", "gt", "\"9\""),
+            )
+        withLocalEvaluation(
+            definitions = definitions,
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("invalid-filter" to true, "missing" to true)) },
+        ) { postHog, dispatcher, _ ->
+            val properties =
+                mapOf("gt" to "10", "lt" to "100", "gte" to "10", "lte" to "10", "invalid-actual" to "10px", "null-actual" to null)
+            val localKeys = listOf("gt", "lt", "gte", "lte", "invalid-actual", "null-actual")
+            val local = postHog.evaluateFlags("local-user", personProperties = properties, flagKeys = localKeys)
+            assertEquals(localKeys.toSet(), local.keys.toSet())
+            assertTrue(local.isEnabled("gt"))
+            assertFalse(local.isEnabled("lt"))
+            assertTrue(local.isEnabled("gte"))
+            assertFalse(local.isEnabled("lte"))
+            assertFalse(local.isEnabled("invalid-actual"))
+            assertFalse(local.isEnabled("null-actual"))
+            assertEquals(0, dispatcher.flagsCalls.get())
+
+            val withFallback = postHog.evaluateFlags("fallback-user", personProperties = properties + ("invalid-filter" to null))
+            assertTrue(withFallback.isEnabled("gt"))
+            assertFalse(withFallback.isEnabled("invalid-actual"))
+            assertTrue(withFallback.isEnabled("invalid-filter"))
+            assertTrue(withFallback.isEnabled("missing"))
+            assertEquals(1, dispatcher.flagsCalls.get())
+
+            val localOnly =
+                postHog.evaluateFlags(
+                    "local-only-user",
+                    personProperties = properties + ("invalid-filter" to "10"),
+                    onlyEvaluateLocally = true,
+                )
+            assertEquals(localKeys.toSet(), localOnly.keys.toSet())
+            assertEquals(1, dispatcher.flagsCalls.get())
         }
     }
 
@@ -712,6 +774,120 @@ internal class PostHogEvaluateFlagsTest {
 
             val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
             assertEquals(true, assertNotNull(flagCalled["conclusive"])["locally_evaluated"])
+        }
+    }
+
+    @Test
+    fun `local only evaluation exposes an unresolved flag and reports it as inconclusive`() {
+        withLocalEvaluation(definitions = conclusiveAndGatedDefinitions()) { postHog, dispatcher, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-1", onlyEvaluateLocally = true)
+
+            assertEquals(mapOf("gated" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), snapshot.unresolvedFlags)
+            assertFalse(snapshot.isEnabled("gated"))
+            postHog.flush()
+
+            assertEquals(0, dispatcher.flagsCalls.get())
+            val flagCalled = drainRequests(mockServer).featureFlagCalledEvents().toMap()
+            assertEquals("local_evaluation_inconclusive", assertNotNull(flagCalled["gated"])["\$feature_flag_error"])
+        }
+    }
+
+    private fun continuityDefinitions(): String =
+        createLocalEvaluationResponseFrom(
+            conclusiveFlagDefinition("beta-ui"),
+            conclusiveFlagDefinition("checkout", ensureExperienceContinuity = true),
+        )
+
+    private fun Map<String, Any?>.flagErrors(): List<String> = (this["\$feature_flag_error"] as? String)?.split(",").orEmpty()
+
+    @Test
+    fun `local only evaluation lists an experience continuity flag as unresolved without reading it`() {
+        withLocalEvaluation(definitions = continuityDefinitions()) { postHog, dispatcher, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-123", onlyEvaluateLocally = true)
+
+            assertEquals(listOf("beta-ui"), snapshot.keys)
+            assertEquals(true, snapshot.flags["beta-ui"]?.enabled)
+            assertEquals(mapOf("checkout" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), snapshot.unresolvedFlags)
+            assertTrue(snapshot.onlyAccessed().keys.isEmpty(), "reading unresolvedFlags is not an access")
+            val filtered = snapshot.only("beta-ui", "checkout")
+            assertEquals(listOf("beta-ui"), filtered.keys)
+            assertTrue(filtered.unresolvedFlags.isEmpty())
+            postHog.flush()
+
+            assertEquals(0, dispatcher.flagsCalls.get())
+            assertTrue(drainRequests(mockServer).featureFlagCalledEvents().isEmpty())
+        }
+    }
+
+    @Test
+    fun `reading an unresolved flag reports an inconclusive local evaluation`() {
+        withLocalEvaluation(definitions = continuityDefinitions()) { postHog, _, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-123", onlyEvaluateLocally = true)
+
+            assertFalse(snapshot.isEnabled("checkout"))
+            postHog.flush()
+
+            val checkout = assertNotNull(drainRequests(mockServer).featureFlagCalledEvents().toMap()["checkout"])
+            assertEquals(listOf("local_evaluation_inconclusive"), checkout.flagErrors())
+        }
+    }
+
+    @Test
+    fun `reading a flag the remote fallback resolved reports no inconclusive error`() {
+        withLocalEvaluation(
+            definitions = continuityDefinitions(),
+            flagsResponse = { jsonResponse(createMultipleFlagsResponse("checkout" to true)) },
+        ) { postHog, _, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-123")
+
+            assertTrue(snapshot.unresolvedFlags.isEmpty())
+            assertTrue(snapshot.isEnabled("checkout"))
+            postHog.flush()
+
+            val checkout = assertNotNull(drainRequests(mockServer).featureFlagCalledEvents().toMap()["checkout"])
+            assertEquals(true, checkout["\$feature_flag_response"])
+            assertTrue(checkout.flagErrors().isEmpty())
+        }
+    }
+
+    @Test
+    fun `reading a flag the remote fallback did not resolve reports an inconclusive local evaluation`() {
+        val fallbacks =
+            listOf<() -> MockResponse>(
+                { MockResponse().setResponseCode(503).setBody("unavailable") },
+                { jsonResponse(createEmptyFlagsResponse()) },
+            )
+        for (fallback in fallbacks) {
+            withLocalEvaluation(definitions = continuityDefinitions(), flagsResponse = fallback) { postHog, dispatcher, mockServer ->
+                val snapshot = postHog.evaluateFlags("user-123")
+
+                assertFalse("checkout" in snapshot.keys)
+                assertEquals(mapOf("checkout" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), snapshot.unresolvedFlags)
+                assertFalse(snapshot.isEnabled("checkout"))
+                postHog.flush()
+
+                assertEquals(1, dispatcher.flagsCalls.get())
+                val errors =
+                    assertNotNull(drainRequests(mockServer).featureFlagCalledEvents().toMap()["checkout"]).flagErrors()
+                assertTrue("local_evaluation_inconclusive" in errors, "errors: $errors")
+                assertFalse("flag_missing" in errors, "errors: $errors")
+            }
+        }
+    }
+
+    @Test
+    fun `reading a key without a local definition reports a missing flag`() {
+        withLocalEvaluation(
+            definitions = createLocalEvaluationResponseFrom(conclusiveFlagDefinition("beta-ui")),
+        ) { postHog, _, mockServer ->
+            val snapshot = postHog.evaluateFlags("user-123", flagKeys = listOf("beta-ui", "typo-flag"))
+
+            assertFalse(snapshot.isEnabled("typo-flag"))
+            assertTrue(snapshot.unresolvedFlags.isEmpty())
+            postHog.flush()
+
+            val typo = assertNotNull(drainRequests(mockServer).featureFlagCalledEvents().toMap()["typo-flag"])
+            assertEquals(listOf("flag_missing"), typo.flagErrors())
         }
     }
 
@@ -972,7 +1148,7 @@ internal class PostHogEvaluateFlagsTest {
 
         val postHog =
             PostHog.with(
-                PostHogConfig.builder(TEST_API_KEY)
+                PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .flushAt(1)
                     .build(),

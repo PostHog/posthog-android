@@ -65,7 +65,7 @@ public open class PostHogStateless protected constructor(
                     return
                 }
 
-                if (!apiKeys.add(config.projectToken)) {
+                if (!projectTokens.add(config.projectToken)) {
                     config.logger.log("Project token: ${config.projectToken} already has a PostHog instance.")
                 }
 
@@ -125,7 +125,7 @@ public open class PostHogStateless protected constructor(
                 enabled = false
 
                 config?.let { config ->
-                    apiKeys.remove(config.projectToken)
+                    projectTokens.remove(config.projectToken)
 
                     config.integrations.forEach {
                         try {
@@ -211,6 +211,10 @@ public open class PostHogStateless protected constructor(
             props.putAll(it)
         }
 
+        if (config?.disableGeoIp == true) {
+            props["\$geoip_disable"] = true
+        }
+
         return props
     }
 
@@ -241,29 +245,14 @@ public open class PostHogStateless protected constructor(
         groups: Map<String, String>?,
         timestamp: Date?,
     ) {
-        captureStatelessEvent(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp)
-    }
-
-    /**
-     * [captureStateless], returning the event as it was queued (after the beforeSend hooks), or null if it was dropped.
-     */
-    internal fun captureStatelessEvent(
-        event: String,
-        distinctId: String,
-        properties: Map<String, Any>?,
-        userProperties: Map<String, Any>?,
-        userPropertiesSetOnce: Map<String, Any>?,
-        groups: Map<String, String>?,
-        timestamp: Date?,
-    ): PostHogEvent? {
         try {
             if (!isEnabled()) {
-                return null
+                return
             }
 
             if (config?.optOut == true) {
                 config?.logger?.log("PostHog is in OptOut state.")
-                return null
+                return
             }
 
             var groupIdentify = false
@@ -280,18 +269,13 @@ public open class PostHogStateless protected constructor(
                     appendGroups = !groupIdentify,
                 )
 
-            val eventProperties =
-                if (event == PostHogEventName.FEATURE_FLAG_CALLED.event) {
-                    minimizeFeatureFlagCalledProperties(mergedProperties)
-                } else {
-                    mergedProperties
-                }
+            val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties.toMutableMap())
 
             val postHogEvent =
                 buildEvent(
                     event,
                     distinctId,
-                    eventProperties.toMutableMap(),
+                    eventProperties,
                     timestamp,
                 )
             if (postHogEvent == null) {
@@ -303,14 +287,12 @@ public open class PostHogStateless protected constructor(
                         originalMessage
                     }
                 config?.logger?.log(message)
-                return null
+                return
             }
 
             queue?.add(postHogEvent)
-            return postHogEvent
         } catch (e: Throwable) {
             config?.logger?.log("Capture failed: $e.")
-            return null
         }
     }
 
@@ -553,9 +535,15 @@ public open class PostHogStateless protected constructor(
      * enabled minimal flag-called events for this team AND the evaluated flag is not linked to an
      * experiment. Any missing signal (gate absent from the response or cache, `has_experiment`
      * unknown) keeps the full legacy shape, and experiment-linked flags always send the full
-     * envelope because experiment exposure analysis reads it.
+     * envelope because experiment exposure analysis reads it. Other events pass through unchanged.
      */
-    private fun minimizeFeatureFlagCalledProperties(properties: Map<String, Any>): Map<String, Any> {
+    internal fun minimizeIfFeatureFlagCalled(
+        event: String,
+        properties: MutableMap<String, Any>,
+    ): MutableMap<String, Any> {
+        if (event != PostHogEventName.FEATURE_FLAG_CALLED.event) {
+            return properties
+        }
         if (!isMinimalFlagCalledEventsEnabled()) {
             return properties
         }
@@ -563,7 +551,7 @@ public open class PostHogStateless protected constructor(
             return properties
         }
 
-        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }
+        return properties.filterKeys { it in MINIMAL_FEATURE_FLAG_CALLED_PROPERTIES }.toMutableMap()
     }
 
     /**
@@ -586,7 +574,10 @@ public open class PostHogStateless protected constructor(
         if (!isEnabled()) return defaultValue
         val result = featureFlags?.getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties)
         val flagValue = result?.value ?: defaultValue
-        sendFeatureFlagCalled(distinctId, key, flagValue, groups, personProperties, groupProperties)
+        val failed =
+            result == null &&
+                featureFlags?.getFeatureFlagDetails(key, distinctId, groups, personProperties, groupProperties)?.failed == true
+        sendFeatureFlagCalled(distinctId, key, if (failed) null else flagValue, groups, personProperties, groupProperties)
         return flagValue
     }
 
@@ -806,13 +797,14 @@ public open class PostHogStateless protected constructor(
                 "locally_evaluated",
                 "\$groups",
                 "\$process_person_profile",
+                "\$geoip_disable",
                 "\$session_id",
                 "\$window_id",
                 "\$lib",
                 "\$lib_version",
             )
 
-        private val apiKeys = mutableSetOf<String>()
+        private val projectTokens = mutableSetOf<String>()
 
         @PostHogVisibleForTesting
         public fun overrideSharedInstance(postHog: PostHogStatelessInterface) {

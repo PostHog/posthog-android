@@ -20,7 +20,7 @@ public final class com/posthog/PersonProfiles : java/lang/Enum {
 	public static fun values ()[Lcom/posthog/PersonProfiles;
 }
 
-public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posthog/PostHogInterface {
+public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posthog/PostHogInterface, com/posthog/internal/PostHogPushSubscriptionReceiver {
 	public static final field Companion Lcom/posthog/PostHog$Companion;
 	public fun addExceptionStep (Ljava/lang/String;Ljava/util/Map;)V
 	public fun alias (Ljava/lang/String;)V
@@ -53,6 +53,7 @@ public final class com/posthog/PostHog : com/posthog/PostHogStateless, com/posth
 	public fun optOut ()V
 	public fun register (Ljava/lang/String;Ljava/lang/Object;)V
 	public fun registerPushNotificationToken (Ljava/lang/String;Ljava/lang/String;)V
+	public fun registerPushNotificationTokenIfNeeded (Ljava/lang/String;Ljava/lang/String;)V
 	public fun reloadFeatureFlags (Lcom/posthog/PostHogOnFeatureFlags;)V
 	public fun reset ()V
 	public fun resetGroupPropertiesForFlags (Ljava/lang/String;Z)V
@@ -170,6 +171,7 @@ public class com/posthog/PostHogConfig {
 	public final fun getContext ()Lcom/posthog/internal/PostHogContext;
 	public final fun getDateProvider ()Lcom/posthog/internal/PostHogDateProvider;
 	public final fun getDebug ()Z
+	public final fun getDisableGeoIp ()Z
 	public final fun getEncryption ()Lcom/posthog/PostHogEncryption;
 	public final fun getErrorTrackingConfig ()Lcom/posthog/errortracking/PostHogErrorTrackingConfig;
 	public final fun getEvaluationContexts ()Ljava/util/List;
@@ -227,6 +229,7 @@ public class com/posthog/PostHogConfig {
 	public final fun setContext (Lcom/posthog/internal/PostHogContext;)V
 	public final fun setDateProvider (Lcom/posthog/internal/PostHogDateProvider;)V
 	public final fun setDebug (Z)V
+	public final fun setDisableGeoIp (Z)V
 	public final fun setEncryption (Lcom/posthog/PostHogEncryption;)V
 	public final fun setEvaluationContexts (Ljava/util/List;)V
 	public final fun setEvaluationEnvironments (Ljava/util/List;)V
@@ -933,6 +936,11 @@ public final class com/posthog/internal/PostHogFlagsResponse : com/posthog/inter
 public abstract interface class com/posthog/internal/PostHogLogger {
 	public abstract fun isEnabled ()Z
 	public abstract fun log (Ljava/lang/String;)V
+	public fun logWarning (Ljava/lang/String;)V
+}
+
+public final class com/posthog/internal/PostHogLogger$DefaultImpls {
+	public static fun logWarning (Lcom/posthog/internal/PostHogLogger;Ljava/lang/String;)V
 }
 
 public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/internal/PostHogPreferences {
@@ -1015,6 +1023,11 @@ public final class com/posthog/internal/PostHogPrintLogger : com/posthog/interna
 	public fun <init> (Lcom/posthog/PostHogConfig;)V
 	public fun isEnabled ()Z
 	public fun log (Ljava/lang/String;)V
+	public fun logWarning (Ljava/lang/String;)V
+}
+
+public abstract interface class com/posthog/internal/PostHogPushSubscriptionReceiver {
+	public abstract fun registerPushNotificationTokenIfNeeded (Ljava/lang/String;Ljava/lang/String;)V
 }
 
 public final class com/posthog/internal/PostHogQueue : com/posthog/internal/PostHogQueueInterface {
@@ -1150,6 +1163,7 @@ public final class com/posthog/internal/PostHogUtilsKt {
 	public static final fun executeSafely (Ljava/util/concurrent/Executor;Ljava/lang/Runnable;)V
 	public static final fun interruptSafely (Ljava/lang/Thread;)V
 	public static final fun isNetworkingError (Ljava/lang/Throwable;)Z
+	public static final fun logIntegrationFailure (Lcom/posthog/PostHogConfig;Ljava/lang/String;Ljava/lang/Throwable;)V
 	public static final fun submitSyncSafely (Ljava/util/concurrent/ExecutorService;Ljava/lang/Runnable;)V
 }
 

@@ -11,7 +11,7 @@ import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogFake
 import com.posthog.PostHogInterface
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import curtains.Curtains
 import curtains.DispatchState
@@ -68,7 +68,7 @@ internal class PostHogElementInteractionIntegrationTest {
 
     private fun integration(enabled: Boolean = true): PostHogElementInteractionIntegration =
         PostHogElementInteractionIntegration(
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureElementInteractions = enabled
                 sessionReplay = false
             },
@@ -100,7 +100,7 @@ internal class PostHogElementInteractionIntegrationTest {
 
     @Test
     fun `default disabled adds no listener or interceptor`() {
-        assertFalse(PostHogAndroidConfig(API_KEY).captureElementInteractions)
+        assertFalse(PostHogAndroidConfig(PROJECT_TOKEN).captureElementInteractions)
         val listeners = Curtains.onRootViewsChangedListeners.size
         val interceptors = activity.window.touchEventInterceptors.size
         integration(false).install(fake)

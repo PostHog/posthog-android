@@ -18,11 +18,13 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 @RunWith(ParameterizedRobolectricTestRunner::class)
 @Config(sdk = [28])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 internal class SurveyShuffleInteractionTest(
     private val isMultipleChoice: Boolean,
     private val hasOpenChoice: Boolean,

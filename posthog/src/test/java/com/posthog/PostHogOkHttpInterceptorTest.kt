@@ -188,7 +188,7 @@ internal class PostHogOkHttpInterceptorTest {
     ) {
         val executors = TestExecutors()
         val config =
-            PostHogConfig(API_KEY, "http://localhost").apply {
+            PostHogConfig(PROJECT_TOKEN, "http://localhost").apply {
                 this.tracingHeaders = tracingHeaders
                 this.storagePrefix = tmpDir.newFolder().absolutePath
                 this.replayStoragePrefix = tmpDir.newFolder().absolutePath

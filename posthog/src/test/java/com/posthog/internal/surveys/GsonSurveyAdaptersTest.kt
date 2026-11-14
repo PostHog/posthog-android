@@ -1,7 +1,7 @@
 package com.posthog.internal.surveys
 
 import com.google.gson.GsonBuilder
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.TestLogger
 import com.posthog.surveys.SurveyQuestion
@@ -37,7 +37,7 @@ internal class GsonSurveyAdaptersTest {
     }
 
     private fun config(logger: TestLogger): PostHogConfig =
-        PostHogConfig(API_KEY).apply {
+        PostHogConfig(PROJECT_TOKEN).apply {
             this.logger = logger
         }
 

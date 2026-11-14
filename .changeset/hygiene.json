@@ -1,6 +1,7 @@
 {
     "transitiveReExports": {
         "posthog": ["posthog-android", "posthog-server", "posthog-android-surveys-compose"],
-        "posthog-android": ["posthog-android-surveys-compose"]
+        "posthog-android": ["posthog-android-surveys-compose"],
+        "posthog-server": ["posthog-server-openfeature"]
     }
 }

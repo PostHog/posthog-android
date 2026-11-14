@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.TestHttpServers
 import com.posthog.TestPostHogContext
@@ -88,7 +88,7 @@ internal class EndpointSpecTest {
     @Test
     fun `add persists the record encoded by spec encode`() {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val spec = syntheticSpec(storagePrefix)
         val queue = PostHogQueue(config, spec, executor)
 
@@ -96,7 +96,7 @@ internal class EndpointSpecTest {
 
         executor.awaitExecution()
 
-        val files = File(storagePrefix, API_KEY).listFiles()!!
+        val files = File(storagePrefix, PROJECT_TOKEN).listFiles()!!
         assertEquals(1, files.size)
         assertEquals("hello", files[0].readText())
 
@@ -106,7 +106,7 @@ internal class EndpointSpecTest {
     @Test
     fun `flush invokes spec send with decoded records and pops files`() {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val sender = CapturingSender()
         val spec = syntheticSpec(storagePrefix, sender = sender)
         val queue = PostHogQueue(config, spec, executor)
@@ -122,13 +122,13 @@ internal class EndpointSpecTest {
         assertTrue(sender.batches.isNotEmpty())
         val flat = sender.batches.flatten().map { it.value }
         assertEquals(listOf("a", "b"), flat)
-        assertEquals(0, File(storagePrefix, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(storagePrefix, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
     fun `spec isRetriableStatusCode retains files on retriable error`() {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val sender = CapturingSender()
         // 999 is non-default, only retriable per this spec
         val spec =
@@ -147,7 +147,7 @@ internal class EndpointSpecTest {
 
         assertEquals(listOf(listOf(SyntheticRecord("a"))), sender.batches)
         // file retained because 999 is retriable per spec
-        assertEquals(1, File(storagePrefix, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(storagePrefix, PROJECT_TOKEN).listFiles()!!.size)
 
         executor.shutdownAndAwaitTermination()
     }
@@ -155,7 +155,7 @@ internal class EndpointSpecTest {
     @Test
     fun `spec isRetriableStatusCode deletes files on non-retriable error`() {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val sender = CapturingSender()
         // 999 is non-retriable per this spec (default returns false)
         val spec = syntheticSpec(storagePrefix, sender = sender)
@@ -169,7 +169,7 @@ internal class EndpointSpecTest {
 
         assertEquals(listOf(listOf(SyntheticRecord("a"))), sender.batches)
         // file dropped because 999 is not retriable per spec
-        assertEquals(0, File(storagePrefix, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(storagePrefix, PROJECT_TOKEN).listFiles()!!.size)
 
         executor.shutdownAndAwaitTermination()
     }
@@ -177,7 +177,7 @@ internal class EndpointSpecTest {
     @Test
     fun `encode failure deletes the file and does not crash`() {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val spec = syntheticSpec(storagePrefix, encodeFails = true)
         val queue = PostHogQueue(config, spec, executor)
 
@@ -185,7 +185,7 @@ internal class EndpointSpecTest {
 
         executor.shutdownAndAwaitTermination()
 
-        assertEquals(0, File(storagePrefix, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(storagePrefix, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -197,7 +197,7 @@ internal class EndpointSpecTest {
         // and the deque would still cap at the original value.
         val storagePrefix = tmpDir.newFolder().absolutePath
         val config =
-            PostHogConfig(API_KEY, "http://localhost:9999").apply {
+            PostHogConfig(PROJECT_TOKEN, "http://localhost:9999").apply {
                 this.storagePrefix = storagePrefix
                 this.maxQueueSize = 2
                 this.flushAt = 1000 // never auto-flush
@@ -228,7 +228,7 @@ internal class EndpointSpecTest {
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 // EndpointSpec.logs reads its flushAt from logs.flushAt, not the
                 // top-level events flushAt — set the logs config field, not the
@@ -291,7 +291,7 @@ internal class EndpointSpecTest {
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.logs.flushAt = 1
                 this.context = TestPostHogContext()
@@ -320,7 +320,7 @@ internal class EndpointSpecTest {
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.logs.flushAt = 1
                 // context intentionally not set (null)
@@ -345,7 +345,7 @@ internal class EndpointSpecTest {
         val storagePrefix = tmpDir.newFolder().absolutePath
         val http = mockHttp(response = MockResponse().setBody(""))
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.flushAt = 1
             }

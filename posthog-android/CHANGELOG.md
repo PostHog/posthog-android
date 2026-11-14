@@ -1,5 +1,155 @@
 ## Next
 
+## 3.77.1
+
+### Patch Changes
+
+- b3afe48: Treat failed detailed feature flag records as unavailable values and payloads, independently of response-wide errors. Preserve successful cached values on errored client refreshes and same-context local decisions during server fallback. Report failed direct reads as evaluation failures without tracking caller defaults as evaluated responses.
+
+## 3.77.0
+
+### Minor Changes
+
+- cad8645: Add disableGeoIp configuration to skip GeoIP enrichment for analytics events and feature flag requests.
+
+## 3.76.2
+
+### Patch Changes
+
+- d81b06d: Drop native crashes recorded while the SDK was opted out instead of sending them after `optIn()`. `PostHogNativeCrashIntegration` is now always registered so consent changes are recorded; it still scans only when `captureNativeCrashes` is enabled.
+
+## 3.76.1
+
+### Patch Changes
+
+- 85142d6: Fix Compose modal scrims masking the whole window as an image, which recorded a `ModalBottomSheet` as a solid black frame
+
+## 3.76.0
+
+### Minor Changes
+
+- e9a8f5d: Compose activity and dialog windows into one scene in screenshot-mode session replay.
+
+## 3.75.3
+
+### Patch Changes
+
+- b17ca78: Stop recording session replay touches that land inside a `ph-no-capture` view or a `postHogMask()` Compose node
+
+## 3.75.2
+
+### Patch Changes
+
+- 784571b: Survey eligibility checks no longer send `$feature_flag_called` events for keys starting with `survey-targeting-`, matching posthog-js. Other flag keys retain their configured tracking behavior, and linked-variant lookups remain silent.
+
+## 3.75.1
+
+### Patch Changes
+
+- f459156: Session replay now masks Jetpack Compose images that have no content description, such as `Image` or Coil `AsyncImage` with `contentDescription = null`, when `maskAllImages` is enabled.
+
+## 3.75.0
+
+### Minor Changes
+
+- 3366547: Support Firebase Installation ID (FID) push registration. When the app enables `firebase_messaging_installation_id_enabled`, the SDK registers the FID instead of calling the deprecated `getToken()`. Forward `onRegistered` to `registerPushNotificationToken(installationId, appId)` to refresh the subscription even when the FID is unchanged. Automatic startup registration still skips previously delivered subscriptions, and pending registrations retain their retry backoff.
+
+## 3.74.2
+
+### Patch Changes
+
+- c09b501: Discard a session replay screenshot in screenshot mode when a view with content to mask is animating or in a transient state, instead of recording that view unmasked
+- c09b501: Record windows that set `FLAG_SECURE` as a fully masked session replay screenshot in screenshot mode, without their pixels or touches
+- c09b501: Record windows that set `FLAG_SECURE` as a solid black session replay frame in wireframe mode, without their views, text or touches
+
+## 3.74.1
+
+### Patch Changes
+
+- 3280f6c: Session replay now masks the children of a `ph-no-capture` view, so content that draws outside an unclipped container is no longer recorded. While one of those children is animating, the snapshot may be skipped.
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
+## 3.74.0
+
+### Minor Changes
+
+- 5f5cee2: Session replay screenshots now default to one pixel per dp (about 1/9 of the pixels on a 3x screen, so smaller uploads), using a filtered downscale that keeps small text readable. Set `screenshotScale = 1f` to keep native resolution.
+  
+  **Breaking change to the experimental `screenshotScale`:** its type changes from `Float` to `Float?`, and `null` (the new default) means one pixel per dp. Explicit values keep their meaning, and assigning one (`screenshotScale = 0.5f`) still compiles. Code compiled against 3.63.x must be rebuilt. Kotlin code that reads it into a `Float` no longer compiles, and Java code that reads it into a `float` throws `NullPointerException` while it is unset.
+
+## 3.73.1
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 3.73.0
+
+### Minor Changes
+
+- 5809b4f: Add `$is_sideloaded` to the static context, reporting whether the app was installed outside a known app store
+
+## 3.72.10
+
+### Patch Changes
+
+- cb6fe68: Fix `beforeSend` running twice for each captured event, which discarded the hook's changes to `distinctId`, `timestamp` and `uuid` and compounded random sampling
+
+## 3.72.9
+
+### Patch Changes
+
+- fb584fd: Upgrade OkHttp to 4.12.1 to block compromised eMudhra intermediate certificates.
+
+## 3.72.8
+
+### Patch Changes
+
+- 42cc183: Stop reading the network carrier synchronously while capturing events, which could cause ANRs at app start. Events captured before the first background read finishes, such as `Application Installed` and the first `Application Opened`, are sent without `$network_carrier`.
+
+## 3.72.7
+
+### Patch Changes
+
+- 98315b9: Stop session replay, autocapture and other integrations while opted out, and restart them on `optIn()`. Replay restarts in a new session if the app wanted it on at opt-out: `sessionReplay` is enabled or the app called `startSessionReplay()`, and the app hasn't called `stopSessionReplay()` since.
+
+## 3.72.6
+
+### Patch Changes
+
+- ee5e1e3: `alias()` now also sends the current `distinct_id` in the `$create_alias` event properties, alongside `alias`, matching posthog-js
+- 9192756: Keep `$recording_status`, the replay trigger statuses and the replay buffer length on every captured event. Add the remaining `$sdk_debug_*` session replay properties and `$sdk_debug_session_start` only to SDK events (names starting with `$`, excluding `$feature_flag_called` and `$snapshot`), at most once every 30 seconds. Remove `$sdk_debug_current_session_duration` and `$sdk_debug_replay_throttle_delay_ms`.
+
+## 3.72.5
+
+### Patch Changes
+
+- 815d270: Fix screenshot-mode session replay masks staying at stale positions while the soft keyboard pans the window, which exposed masked input values.
+
+## 3.72.4
+
+### Patch Changes
+
+- c5e788b: Report a missing runtime dependency instead of disabling an integration in silence. When an integration cannot be built or installed because a class is absent, the SDK now logs a warning that names the Maven artifact the build excludes, even when debug is off, and keeps the other integrations. A build that excludes `com.squareup.curtains:curtains` turns off session replay, interaction autocapture and touch tracking, and said nothing useful about it before.
+
+## 3.72.3
+
+### Patch Changes
+
+- 683a4e0: Fix screenshot-mode session replay geometry reads corrupting app layout and screenshot masks.
+
+## 3.72.2
+
+### Patch Changes
+
+- 0859ca7: Fix repeat trigger events restarting a survey's `surveyPopupDelaySeconds` delay; a custom `PostHogSurveysDelegate` that can't show a survey must now call `onSurveyClosed`. Flutter apps should use posthog_flutter 5.50.13 or later, since earlier versions can stop showing surveys until the app restarts.
+
+## 3.72.1
+
+### Patch Changes
+
+- fb21f39: Retry feature flag requests that fail with a DNS or TLS transport error, instead of only timeouts, EOF, and connection resets
+
 ## 3.72.0
 
 ### Minor Changes

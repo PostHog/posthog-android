@@ -131,10 +131,14 @@ internal class WindowDrawState {
     // another task while the old worker or a timed-out PixelCopy callback is still running.
     private var captureScheduled = false
     private var pixelCopyInFlight = false
+    private var onCaptureAvailable: (() -> Unit)? = null
 
-    fun tryScheduleCapture(): Boolean =
+    fun tryScheduleCapture(onAvailable: (() -> Unit)? = null): Boolean =
         synchronized(captureLock) {
             if (captureScheduled || pixelCopyInFlight) {
+                // Register the wakeup with the rejection so completion cannot overtake it.
+                // Multiple requests need only one notification to capture the latest scene.
+                if (onAvailable != null) onCaptureAvailable = onAvailable
                 false
             } else {
                 captureScheduled = true
@@ -142,8 +146,19 @@ internal class WindowDrawState {
             }
         }
 
+    // Called under captureLock; invoke the returned callback only after releasing the lock.
+    private fun takeCaptureAvailableCallback(): (() -> Unit)? {
+        if (captureScheduled || pixelCopyInFlight) return null
+        return onCaptureAvailable.also { onCaptureAvailable = null }
+    }
+
     fun finishScheduledCapture() {
-        synchronized(captureLock) { captureScheduled = false }
+        val onAvailable =
+            synchronized(captureLock) {
+                captureScheduled = false
+                takeCaptureAvailableCallback()
+            }
+        onAvailable?.invoke()
     }
 
     fun beginPixelCopy() {
@@ -151,7 +166,12 @@ internal class WindowDrawState {
     }
 
     fun finishPixelCopy() {
-        synchronized(captureLock) { pixelCopyInFlight = false }
+        val onAvailable =
+            synchronized(captureLock) {
+                pixelCopyInFlight = false
+                takeCaptureAvailableCallback()
+            }
+        onAvailable?.invoke()
     }
 
     fun reset() {

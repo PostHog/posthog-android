@@ -8,6 +8,7 @@ import com.posthog.internal.PostHogDateProvider
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyOperator
 import com.posthog.internal.PropertyType
+import com.posthog.server.PostHogUnresolvedFlagReason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -81,6 +82,208 @@ internal class FlagEvaluatorTest {
         }
         // Existing callers that do not select a version retain service legacy behavior.
         assertTrue(evaluator.matchProperty(FlagProperty("value", false, null, null, null, null), mapOf("value" to "banana")))
+    }
+
+    @Test
+    internal fun testInvalidRegexDoesNotMatchEitherOperator() {
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for (pattern in listOf("[", "(", "*", "?*")) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                for (input in listOf("present", "é", "\r")) {
+                    assertFalse("$operator $pattern input=$input", evaluator.matchProperty(property, mapOf("value" to input)))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexCompatibilityRequiresRemoteEvaluation() {
+        val cases =
+            listOf(
+                "^\\d+$" to "١",
+                "^\\w+$" to "é",
+                "^\\s$" to "\u00a0",
+                "^\\s$" to "\ufeff",
+                "^.$" to "😀",
+                "(?i)^null$" to "NULL",
+                "(?m)^foo$" to "bar\nfoo\nbaz",
+                "^\\p{L}+$" to "null",
+                "\\Afoo\\z" to "foo",
+                "^[[:alpha:]]+$" to "foo",
+                "^[a-z&&[^aeiou]]+$" to "bcdf",
+                "^[a&&b]$" to "a",
+                "^[a-z--b]$" to "b",
+                "^[a~~b]$" to "~",
+                "a(?=b)" to "ab",
+                "(?<=a+)b" to "aab",
+                "(a)\\1" to "aa",
+                "a++" to "aa",
+                "a{,2}" to "aa",
+                "a*{2}" to "aa",
+                "{foo}" to "{foo}",
+                "[\\s-9]" to "-",
+                "[a-\\d]" to "-",
+                "^?https?://" to "https://a",
+                "$?" to "x",
+                "{2}" to "x",
+                "a|{2}" to "x",
+                "({2})" to "x",
+                "(?:{2})" to "x",
+                "(?:)*" to "x",
+                "()+" to "x",
+                "(?:){2}" to "x",
+                "a{0,4294967296}" to "x",
+                "a{4294967296,}" to "x",
+                ".*\\bbot\\b.*" to "a".repeat(140),
+                ".*\\Bbot\\B.*" to "a".repeat(140),
+                "[\\B]" to "B",
+                "[\\b]" to "\b",
+                "[\\b]" to "abc",
+                "\\<foo\\>" to "foo",
+                "^\\<$" to "<",
+                "^\\>$" to ">",
+                "\\q" to "q",
+                "\\141" to "a",
+                "^\\x{41}$" to "A",
+                "[]" to "a",
+                "[^]" to "a",
+            )
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern") {
+                    evaluator.matchProperty(property, mapOf("value" to input))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexVeryLargeBoundedRepetitionsRequireRemoteEvaluation() {
+        val cases =
+            listOf(1000000, 1000000000).flatMap { count ->
+                listOf(
+                    "^a{0,$count}.$" to "\r",
+                    "^(?:a{0,$count}){1}.$" to "\r",
+                    "^a{0,$count}$" to "",
+                    "^(?:a{0,$count}){1}$" to "",
+                )
+            } +
+                listOf(
+                    "^a{0,1001}$" to "",
+                    "^a{1001}$" to "",
+                    "^a{1001,}$" to "",
+                    "^(?:(?:a{0,1000}){1000}){1000}.$" to "\r",
+                    "^(?:(?:a{0,1000}){1000}){1000}$" to "",
+                    "^(?:a{2}){2}$" to "aaaa",
+                )
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern") {
+                    evaluator.matchProperty(property, mapOf("value" to input))
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexPortableSearchStaysLocal() {
+        val cases =
+            listOf(
+                Triple("pro", "a pro plan", true),
+                Triple("^pro$", "PRO", false),
+                Triple("^pro$", "a pro plan", false),
+                Triple("^\\d+$", "123", true),
+                Triple("^[\\w.+-]+@example\\.com$", "a.b+tag@example.com", true),
+                Triple("^(?:ab|cd){2,3}$", "abcdab", true),
+                Triple("^foo$", "foo\n", false),
+                Triple("^foo$", "bar\nfoo\nbaz", false),
+                Triple("^.$", "\r", true),
+                Triple("^a{0,1000}.$", "\r", true),
+                Triple("^a{2}$", "aa", true),
+                Triple("^a{2,}$", "aaa", true),
+                Triple("^a*.$", "\r", true),
+                Triple("^(?:ab){2,3}.$", "abab\r", true),
+                Triple("^(?:(?:ab)){2,3}.$", "abab\r", true),
+                Triple("^a{2}$", "a", false),
+                Triple("^a\\{1001\\}$", "a{1001}", true),
+                Triple("^[a{1001}]+$", "a{1001}", true),
+                Triple("^\\x41+$", "AA", true),
+                Triple("^\\\\p\\{L\\}$", "\\p{L}", true),
+                Triple("^\\(\\?i\\)$", "(?i)", true),
+                Triple("[\\x08]", "\b", true),
+                Triple("[\\<\\>]", "<", true),
+                Triple("^a<b>$", "a<b>", true),
+                Triple("\\v", "\n", false),
+                Triple("\\v", "\u000b", true),
+                Triple("^\\^?$", "", true),
+                Triple("^\\\${2}$", "$$", true),
+                Triple("^\\({2}$", "((", true),
+                Triple("^\\|{2}$", "||", true),
+                Triple("^[\\^$?]+$", "$?^", true),
+                Triple("^[\\w-]+$", "a-b", true),
+                Triple("", "", true),
+                Triple("", "é\r", true),
+            ) +
+                listOf('-', '@', ':', '_', '=', ' ', '!', '"', '#', '%', '&', '\'', ',', '/', ';', '`', '~').map {
+                    Triple("^a\\${it}b$", "a${it}b", true)
+                }
+        for (operator in listOf(PropertyOperator.REGEX, PropertyOperator.NOT_REGEX)) {
+            for ((pattern, input, expected) in cases) {
+                val property = FlagProperty("value", pattern, operator, PropertyType.PERSON, false, null)
+                assertEquals(
+                    "$operator $pattern input=$input",
+                    if (operator == PropertyOperator.REGEX) expected else !expected,
+                    evaluator.matchProperty(property, mapOf("value" to input)),
+                )
+            }
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchProperty(FlagProperty("value", "", operator, null, false, null), emptyMap())
+            }
+        }
+    }
+
+    @Test
+    internal fun testRegexErrorsCannotBecomeTrueThroughCohortLeafNegation() {
+        for (operator in listOf("regex", "not_regex")) {
+            for (pattern in listOf("[", "a(?=b)", ".*\\bbot\\b.*", "[\\b]")) {
+                for (groupType in listOf("AND", "OR")) {
+                    val patternJson = config.serializer.gson.toJson(pattern)
+                    val group =
+                        config.serializer.gson.fromJson(
+                            """
+                            {"type":"$groupType","values":[
+                              {"key":"value","value":$patternJson,"operator":"$operator","type":"person","negation":true}
+                            ]}
+                            """.trimIndent(),
+                            PropertyGroup::class.java,
+                        )
+                    kotlin.test.assertFailsWith<InconclusiveMatchException>("$operator $pattern $groupType") {
+                        evaluator.matchPropertyGroup(group, mapOf("value" to "a".repeat(140)), emptyMap(), null, null, null)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testInvalidRegexInNestedCohortCannotBeNegatedIntoAMatch() {
+        for (operator in listOf("regex", "not_regex")) {
+            val leaf =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[{"key":"value","value":"[","operator":"$operator","type":"person"}]}""",
+                    PropertyGroup::class.java,
+                )
+            val outer =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[{"key":"id","value":1,"type":"cohort","negation":true}]}""",
+                    PropertyGroup::class.java,
+                )
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchPropertyGroup(outer, mapOf("value" to "present"), mapOf("1" to leaf), null, null, null)
+            }
+        }
     }
 
     @Test
@@ -700,6 +903,92 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testNumericOrderingIssueCases() {
+        data class Row(val actual: String, val filter: Any, val operator: PropertyOperator, val expected: Boolean)
+
+        val rows =
+            listOf(
+                Row("10", 2, PropertyOperator.GT, true),
+                Row("100", 30, PropertyOperator.LT, false),
+                Row("10", "5", PropertyOperator.GTE, true),
+                Row("10", "5", PropertyOperator.LTE, false),
+            )
+        for (row in rows) {
+            val property = FlagProperty("value", row.filter, row.operator, PropertyType.PERSON, false, null)
+            assertEquals("$row", row.expected, evaluator.matchProperty(property, mapOf("value" to row.actual)))
+        }
+    }
+
+    @Test
+    internal fun testNumericOrderingUsesFiniteBinary64() {
+        val pairs =
+            listOf(
+                Triple("10", "2", 1),
+                Triple("100", "30", 1),
+                Triple("10", "5", 1),
+                Triple("5", "10", -1),
+                Triple("+0010.", "1e1", 0),
+                Triple("-.5", "-0.50", 0),
+                Triple("+1.25e+2", "124.9", 1),
+                Triple("-1.25E-2", "-.01", -1),
+                Triple("-0", "+0.0", 0),
+                Triple("1e-9999", "0", 0),
+                Triple("9007199254740993", "9007199254740992", 0),
+            )
+        for ((actual, filter, comparison) in pairs) {
+            for (actualValue in listOfNotNull(actual, actual.toDouble(), actual.toLongOrNull())) {
+                for (filterValue in listOfNotNull(filter, filter.toDouble(), filter.toLongOrNull())) {
+                    for (operator in listOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)) {
+                        val expected =
+                            when (operator) {
+                                PropertyOperator.GT -> comparison > 0
+                                PropertyOperator.GTE -> comparison >= 0
+                                PropertyOperator.LT -> comparison < 0
+                                else -> comparison <= 0
+                            }
+                        val property = FlagProperty("value", filterValue, operator, PropertyType.PERSON, false, null)
+                        assertEquals(
+                            "actual=$actualValue filter=$filterValue operator=$operator",
+                            expected,
+                            evaluator.matchProperty(property, mapOf("value" to actualValue)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    internal fun testNumericOrderingDistinguishesInvalidPropertyFromInvalidFilter() {
+        val invalidValues =
+            listOf(
+                "", " ", " 10", "10 ", "10\n", "10\r\n", "\t10", "10px", "1_0", "1,000", "١٠", "１０",
+                "+", ".", "1e", "0x10", "0x1.0p0", "10d", "NaN", "Infinity", "-Infinity", "1e309",
+                Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY,
+                true, false, null, listOf(10), mapOf("value" to 10),
+            )
+        for (operator in listOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)) {
+            for (validFilter in listOf("9", 9)) {
+                val property = FlagProperty("value", validFilter, operator, PropertyType.PERSON, false, null)
+                for (invalid in invalidValues) {
+                    assertFalse("actual=$invalid operator=$operator", evaluator.matchProperty(property, mapOf("value" to invalid)))
+                }
+                kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                    evaluator.matchProperty(property, emptyMap())
+                }
+            }
+            for (invalid in invalidValues) {
+                val property = FlagProperty("value", invalid, operator, PropertyType.PERSON, false, null)
+                for (actual in listOf(10, "10", null, "invalid")) {
+                    kotlin.test.assertFailsWith<InconclusiveMatchException>("filter=$invalid operator=$operator actual=$actual") {
+                        evaluator.matchProperty(property, mapOf("value" to actual))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     internal fun testMatchPropertyDateBefore() {
         val property =
             FlagProperty(
@@ -1261,7 +1550,7 @@ internal class FlagEvaluatorTest {
             evaluator.matchFeatureFlagProperties(flag, "user-123", properties, cohortProperties)
             assertTrue("Should have thrown InconclusiveMatchException", false)
         } catch (e: InconclusiveMatchException) {
-            // Expected
+            assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, e.reason)
         }
     }
 
@@ -3189,5 +3478,452 @@ internal class FlagEvaluatorTest {
 
         assertEquals(true, result)
         assertEquals(false, evaluationCache["base-flag"])
+    }
+
+    private fun reasonFlag(
+        key: String,
+        groups: String,
+        continuity: Boolean = false,
+    ): FlagDefinition =
+        config.serializer.gson.fromJson(
+            """{"id": 1, "name": "$key", "key": "$key", "active": true, "ensure_experience_continuity": $continuity,
+                "filters": {"groups": [$groups]}, "version": 1}""",
+            FlagDefinition::class.java,
+        )
+
+    private fun reasonCondition(vararg properties: String): String =
+        """{"properties": [${properties.joinToString(",")}], "rollout_percentage": 100}"""
+
+    private fun reasonDependency(vararg chain: String): String =
+        """{"key": "${chain.lastOrNull() ?: "x"}", "value": true, "operator": "flag_evaluates_to", "type": "flag",
+            "dependency_chain": [${chain.joinToString(",") { "\"$it\"" }}]}"""
+
+    private fun personFilter(
+        key: String,
+        operator: String,
+        value: String,
+    ): String = """{"key": "$key", "value": $value, "operator": "$operator", "type": "person"}"""
+
+    private val staticCohortFilter = """{"key": "id", "value": 99, "operator": "in", "type": "cohort"}"""
+
+    @Test
+    internal fun testInconclusiveReasonSeparatesDefinitionFromCallerValues() {
+        data class Row(
+            val name: String,
+            val groups: String,
+            val properties: Map<String, Any?>,
+            val reason: PostHogUnresolvedFlagReason,
+            val otherFlags: List<FlagDefinition> = emptyList(),
+            val cohorts: Map<String, PropertyGroup> = emptyMap(),
+        )
+
+        val unknownOperatorLeaf = personFilter("plan", "some_future_operator", "\"pro\"")
+        val missingEmailLeaf = personFilter("email", "exact", "\"a@acme.com\"")
+        val cohortFilter = """{"key": "id", "value": 5, "operator": "in", "type": "cohort"}"""
+        val flatCohort =
+            mapOf(
+                "5" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [$unknownOperatorLeaf, $missingEmailLeaf]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
+        val nestedCohort =
+            mapOf(
+                "5" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [{"type": "OR", "values": [$unknownOperatorLeaf]},
+                            {"type": "OR", "values": [$missingEmailLeaf]}]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
+        val continuityFlag = reasonFlag("continuity-dep", reasonCondition(), continuity = true)
+        val contextFlag = reasonFlag("context-dep", reasonCondition(personFilter("plan", "exact", "\"pro\"")))
+        val rows =
+            listOf(
+                Row(
+                    "caller float",
+                    reasonCondition(personFilter("n", "exact", "\"1\"")),
+                    mapOf("n" to 1.5),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition float",
+                    reasonCondition(personFilter("n", "exact", "1.5")),
+                    mapOf("n" to "x"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition float",
+                    reasonCondition(personFilter("n", "exact", "[1.5]")),
+                    mapOf("n" to 2.5),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller date",
+                    reasonCondition(personFilter("d", "is_date_before", "\"2024-01-01\"")),
+                    mapOf("d" to "not-a-date"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition date",
+                    reasonCondition(personFilter("d", "is_date_before", "\"not-a-date\"")),
+                    mapOf("d" to "2024-01-01"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"1.2.3\"")),
+                    mapOf("v" to "abc"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "definition semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"abc\"")),
+                    mapOf("v" to "1.2.3"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition semver",
+                    reasonCondition(personFilter("v", "semver_gt", "\"abc\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller and definition wildcard",
+                    reasonCondition(personFilter("v", "semver_wildcard", "\"1x.*\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "caller tilde",
+                    reasonCondition(personFilter("v", "semver_tilde", "\"1.2.3\"")),
+                    mapOf("v" to "xyz"),
+                    PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                ),
+                Row(
+                    "unknown operator and missing property",
+                    reasonCondition(personFilter("plan", "some_future_operator", "\"pro\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "malformed date filter and missing property",
+                    reasonCondition(personFilter("d", "is_date_after", "\"not-a-date\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "malformed number filter",
+                    reasonCondition(personFilter("n", "gt", "\"9px\"")),
+                    mapOf("n" to 10),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "regex syntax local evaluation does not support",
+                    reasonCondition(personFilter("email", "regex", "\"\\\\bacme\"")),
+                    mapOf("email" to "a@acme.com"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "negated invalid regex",
+                    reasonCondition("""{"key": "email", "value": "(", "operator": "regex", "type": "person", "negation": true}"""),
+                    mapOf("email" to "a@acme.com"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "regex on a non-ASCII value",
+                    reasonCondition(personFilter("name", "regex", "\"^a\"")),
+                    mapOf("name" to "année"),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "unloaded dependency",
+                    reasonCondition(reasonDependency("gone")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "circular dependency",
+                    reasonCondition(reasonDependency()),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "dependency with experience continuity",
+                    reasonCondition(reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "dependency that needs context",
+                    reasonCondition(reasonDependency("context-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(contextFlag),
+                ),
+                Row(
+                    "inconclusive dependency before an unloaded one in the chain",
+                    reasonCondition(reasonDependency("continuity-dep", "gone")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "missing property before an unresolved dependency",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\""), reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "missing property in one condition, static cohort in the next",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\"")) + "," + reasonCondition(staticCohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "missing property and static cohort in one condition",
+                    reasonCondition(personFilter("plan", "exact", "\"pro\""), staticCohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "static cohort in one condition, missing property in the next",
+                    reasonCondition(staticCohortFilter) + "," + reasonCondition(personFilter("plan", "exact", "\"pro\"")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                ),
+                Row(
+                    "unresolved dependency referenced by two conditions",
+                    reasonCondition(reasonDependency("continuity-dep")) + "," + reasonCondition(reasonDependency("continuity-dep")),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "dependency with an invalid operator on an unresolved flag",
+                    reasonCondition(
+                        """{"key": "continuity-dep", "value": true, "operator": "exact", "type": "flag",
+                            "dependency_chain": ["continuity-dep"]}""",
+                    ),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    listOf(continuityFlag),
+                ),
+                Row(
+                    "cohort with an unknown operator leaf before a missing property leaf",
+                    reasonCondition(cohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    cohorts = flatCohort,
+                ),
+                Row(
+                    "cohort with an unknown operator group before a missing property group",
+                    reasonCondition(cohortFilter),
+                    emptyMap(),
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                    cohorts = nestedCohort,
+                ),
+            )
+        for (row in rows) {
+            val flag = reasonFlag("f", row.groups)
+            val flagsByKey = (row.otherFlags + flag).associateBy { it.key }
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>(row.name) {
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", row.properties, row.cohorts, flagsByKey, mutableMapOf())
+                }
+            assertEquals(row.name, row.reason, error.reason)
+        }
+
+        val continuityError =
+            kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                evaluator.matchFeatureFlagProperties(continuityFlag, "user-123", emptyMap())
+            }
+        assertEquals(PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY, continuityError.reason)
+    }
+
+    @Test
+    internal fun testPickUnresolvedReasonFollowsSpecPrecedence() {
+        val precedence =
+            listOf(
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        for ((i, first) in precedence.withIndex()) {
+            assertEquals(first, pickUnresolvedReason(null, first))
+            for ((j, second) in precedence.withIndex()) {
+                val expected = precedence[minOf(i, j)]
+                assertEquals("$first then $second", expected, pickUnresolvedReason(first, second))
+            }
+        }
+    }
+
+    @Test
+    internal fun testConditionWithAnUncheckableFilterAndAFailingFilterDoesNotMatch() {
+        val planIsFree = personFilter("plan", "exact", "\"free\"")
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val unknownOperator = personFilter("plan", "some_future_operator", "\"pro\"")
+        val properties = mapOf("plan" to "pro")
+        for (uncheckable in listOf(missingEmail, staticCohortFilter, unknownOperator, reasonDependency("gone"))) {
+            for (filters in listOf(arrayOf(uncheckable, planIsFree), arrayOf(planIsFree, uncheckable))) {
+                val flag = reasonFlag("f", reasonCondition(*filters))
+                assertEquals(
+                    filters.joinToString(),
+                    false,
+                    evaluator.matchFeatureFlagProperties(flag, "user-123", properties, emptyMap(), mapOf("f" to flag), mutableMapOf()),
+                )
+            }
+        }
+    }
+
+    @Test
+    internal fun testConditionWithAnUncheckableFilterLetsALaterConditionMatch() {
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val planIsPro = personFilter("plan", "exact", "\"pro\"")
+        for (uncheckable in listOf(missingEmail, staticCohortFilter)) {
+            val flag = reasonFlag("f", reasonCondition(uncheckable, planIsPro) + "," + reasonCondition(planIsPro))
+            assertEquals(
+                uncheckable,
+                true,
+                evaluator.matchFeatureFlagProperties(
+                    flag,
+                    "user-123",
+                    mapOf("plan" to "pro"),
+                    emptyMap(),
+                    mapOf("f" to flag),
+                    mutableMapOf(),
+                ),
+            )
+        }
+    }
+
+    @Test
+    internal fun testUnexpectedErrorAfterAnUncheckableFilterLetsALaterConditionMatch() {
+        val missingEmail = personFilter("email", "icontains", "\"@acme.com\"")
+        val planRegex = personFilter("plan", "regex", "\"^pro\"")
+        val unprintable =
+            object {
+                override fun toString(): String = throw IllegalStateException("unprintable")
+            }
+        val properties = mapOf("plan" to unprintable)
+        val catchAll = reasonCondition()
+
+        val afterUncheckable = reasonFlag("f", reasonCondition(missingEmail, planRegex) + "," + catchAll)
+        assertEquals(
+            true,
+            evaluator.matchFeatureFlagProperties(
+                afterUncheckable,
+                "user-123",
+                properties,
+                emptyMap(),
+                mapOf("f" to afterUncheckable),
+                mutableMapOf(),
+            ),
+        )
+
+        val beforeUncheckable = reasonFlag("f", reasonCondition(planRegex, missingEmail) + "," + catchAll)
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            evaluator.matchFeatureFlagProperties(
+                beforeUncheckable,
+                "user-123",
+                properties,
+                emptyMap(),
+                mapOf("f" to beforeUncheckable),
+                mutableMapOf(),
+            )
+        }
+    }
+
+    @Test
+    internal fun testInactiveDependencyWithExperienceContinuityResolvesToFalse() {
+        val dependency =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "dep", "key": "dep", "active": false, "ensure_experience_continuity": true, "version": 1,
+                    "filters": {"groups": [${reasonCondition()}]}}""",
+                FlagDefinition::class.java,
+            )
+        val flag = reasonFlag("f", reasonCondition(reasonDependency("dep")))
+
+        assertEquals(
+            false,
+            evaluator.matchFeatureFlagProperties(
+                flag,
+                "user-123",
+                emptyMap(),
+                emptyMap(),
+                mapOf("dep" to dependency, "f" to flag),
+                mutableMapOf(),
+            ),
+        )
+    }
+
+    @Test
+    internal fun testDefinitionUnresolvedReason() {
+        val cohorts =
+            mapOf(
+                "1" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "AND", "values": [{"type": "AND", "values": [
+                            {"key": "plan", "value": "pro", "operator": "some_future_operator", "type": "person"}]}]}""",
+                        PropertyGroup::class.java,
+                    ),
+                "2" to
+                    config.serializer.gson.fromJson(
+                        """{"type": "OR", "values": [{"key": "plan", "value": "pro", "operator": "exact", "type": "person"}]}""",
+                        PropertyGroup::class.java,
+                    ),
+            )
+        val dependency = reasonFlag("dependency", reasonCondition(), continuity = true)
+        val unknownGroupType =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "g", "key": "g", "active": true, "version": 1,
+                    "filters": {"aggregation_group_type_index": 7, "groups": [${reasonCondition()}]}}""",
+                FlagDefinition::class.java,
+            )
+        val inactive =
+            config.serializer.gson.fromJson(
+                """{"id": 1, "name": "i", "key": "i", "active": false, "ensure_experience_continuity": true, "version": 1,
+                    "filters": {"groups": [${reasonCondition(staticCohortFilter)}]}}""",
+                FlagDefinition::class.java,
+            )
+        val rows =
+            listOf(
+                reasonFlag("f", reasonCondition(), continuity = true) to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+                reasonFlag("f", reasonCondition(staticCohortFilter)) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("plan", "some_future_operator", "\"pro\""))) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("v", "semver_caret", "\"x.y\""))) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(personFilter("n", "lt", "\"ten\""))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(reasonDependency("gone"))) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition(reasonDependency())) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag(
+                    "f",
+                    reasonCondition(
+                        """{"key": "dependency", "value": true, "operator": "exact", "type": "flag", "dependency_chain": ["dependency"]}""",
+                    ),
+                ) to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                reasonFlag("f", reasonCondition("""{"key": "id", "value": 1, "operator": "in", "type": "cohort"}""")) to
+                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                unknownGroupType to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+                inactive to null,
+                reasonFlag("f", reasonCondition()) to null,
+                reasonFlag("f", reasonCondition(personFilter("plan", "exact", "\"pro\""))) to null,
+                reasonFlag("f", reasonCondition("""{"key": "id", "value": 2, "operator": "in", "type": "cohort"}""")) to null,
+                reasonFlag("f", reasonCondition(reasonDependency("dependency"))) to null,
+                reasonFlag("f", reasonCondition(personFilter("email", "regex", "\"(\""))) to null,
+            )
+        for ((index, row) in rows.withIndex()) {
+            val (flag, reason) = row
+            assertEquals(
+                "row $index",
+                reason,
+                evaluator.definitionUnresolvedReason(flag, mapOf("dependency" to dependency, flag.key to flag), emptyMap(), cohorts),
+            )
+        }
     }
 }

@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.awaitExecution
 import com.posthog.shutdownAndAwaitTermination
@@ -43,7 +43,7 @@ internal class PostHogQueueDurabilityTest {
         send: (List<String>) -> Unit = {},
     ): PostHogQueue<String> {
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 maxQueueSize = capacity
                 maxBatchSize = batchSize
                 flushAt = 100

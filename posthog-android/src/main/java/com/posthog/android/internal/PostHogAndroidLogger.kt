@@ -15,6 +15,10 @@ internal class PostHogAndroidLogger(private val config: PostHogAndroidConfig) : 
         }
     }
 
+    override fun logWarning(message: String) {
+        Log.println(Log.WARN, "PostHog", message)
+    }
+
     override fun isEnabled(): Boolean {
         return config.debug
     }

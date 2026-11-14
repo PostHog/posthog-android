@@ -62,6 +62,115 @@ internal class PostHogSurveyHostTest {
         assertResetBeforeHostTransition(resetAfterFinish = true)
     }
 
+    @Test
+    fun `failed initial composition releases the presentation and a fresh survey can render`() {
+        val provider = ActivityProvider()
+        lateinit var composition: SurveyComposition
+        val host =
+            PostHogSurveyHost(provider) { activity, lifecycle, onFailure ->
+                SurveyComposition(activity, lifecycle, onFailure).also { composition = it }
+            }
+        val survey = failureTestSurvey()
+        var shown = 0
+        var closed = 0
+        try {
+            compose.runOnIdle {
+                provider.onActivityResumed(compose.activity)
+                host.show(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
+                composition.setContent { throw NoSuchMethodError("Missing Material3 API") }
+            }
+            compose.waitForIdle()
+            assertEquals(0, shown)
+            assertEquals(1, closed)
+            compose.onNodeWithText("Failure test question?").assertDoesNotExist()
+            compose.runOnIdle {
+                host.show(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
+            }
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            assertEquals(1, shown)
+            assertEquals(1, closed)
+        } finally {
+            compose.runOnUiThread { host.cleanup() }
+        }
+    }
+
+    @Test
+    fun `surveys without a valid initial question close without being shown`() {
+        val provider = ActivityProvider()
+        val host = PostHogSurveyHost(provider)
+        val valid = failureTestSurvey()
+        val invalid = listOf(valid.copy(questions = emptyList()), valid.copy(initialQuestionIndex = 1))
+        var shown = 0
+        var closed = 0
+        try {
+            invalid.forEachIndexed { index, survey ->
+                compose.runOnIdle {
+                    provider.onActivityResumed(compose.activity)
+                    host.show(survey, { shown++ }, { _, _, _ -> null }, { closed++ })
+                }
+                compose.waitForIdle()
+                assertEquals(0, shown)
+                assertEquals(index + 1, closed)
+                compose.onNodeWithText("Failure test question?").assertDoesNotExist()
+            }
+            compose.runOnIdle {
+                host.show(valid, { shown++ }, { _, _, _ -> null }, { closed++ })
+            }
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            assertEquals(1, shown)
+            assertEquals(2, closed)
+        } finally {
+            compose.runOnUiThread { host.cleanup() }
+        }
+    }
+
+    @Test
+    fun `old window failure cannot close a survey restored on a new activity`() {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val provider = ActivityProvider()
+        val failures = mutableListOf<(Throwable) -> Unit>()
+        val host =
+            PostHogSurveyHost(provider) { activity, lifecycle, onFailure ->
+                failures.add(onFailure)
+                SurveyComposition(activity, lifecycle, onFailure)
+            }
+        var shown = 0
+        var closed = 0
+        application.registerActivityLifecycleCallbacks(provider)
+        try {
+            compose.runOnIdle {
+                provider.onActivityResumed(compose.activity)
+                host.show(failureTestSurvey(), { shown++ }, { _, _, _ -> null }, { closed++ })
+            }
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            assertEquals(2, failures.size)
+            compose.runOnIdle { failures.first()(NoSuchMethodError("Stale failure")) }
+            compose.onNodeWithText("Failure test question?").assertIsDisplayed()
+            assertEquals(1, shown)
+            assertEquals(0, closed)
+            compose.runOnIdle {
+                failures.last()(NoSuchMethodError("Current failure"))
+                failures.last()(NoSuchMethodError("Duplicate failure"))
+            }
+            compose.onNodeWithText("Failure test question?").assertDoesNotExist()
+            assertEquals(1, closed)
+        } finally {
+            compose.runOnUiThread { host.cleanup() }
+            application.unregisterActivityLifecycleCallbacks(provider)
+        }
+    }
+
+    private fun failureTestSurvey() =
+        PostHogDisplaySurvey(
+            "failure",
+            "Failure",
+            listOf(
+                PostHogDisplayOpenQuestion("q", "Failure test question?", null, PostHogDisplaySurveyTextContentType.TEXT, false, "Send"),
+            ),
+        )
+
     private fun assertResetBeforeHostTransition(resetAfterFinish: Boolean) {
         val application = ApplicationProvider.getApplicationContext<Application>()
         val config = resetConfig()

@@ -24,6 +24,8 @@ import java.io.IOException
 import java.io.OutputStream
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
 /**
  * The class that calls the PostHog API
@@ -105,7 +107,7 @@ public class PostHogApi(
 
     /**
      * Builds an OTLP/JSON payload for the supplied [records] and posts it to
-     * `/i/v1/logs?token=<apiKey>`. Throws [PostHogApiError] on a non-success
+     * `/i/v1/logs?token=<projectToken>`. Throws [PostHogApiError] on a non-success
      * status and [IOException] on a transport failure.
      *
      * `resourceAttributes` (e.g. `service.name`, `service.version`) is merged
@@ -254,7 +256,7 @@ public class PostHogApi(
         personProperties: Map<String, Any?>? = null,
         groupProperties: Map<String, Map<String, Any?>>? = null,
         flagKeys: List<String>? = null,
-        disableGeoip: Boolean = false,
+        disableGeoip: Boolean = config.disableGeoIp,
     ): PostHogFlagsResponse? {
         val flagsRequest =
             PostHogFlagsRequest(
@@ -306,6 +308,8 @@ public class PostHogApi(
             is IOException ->
                 error is SocketTimeoutException ||
                     error is EOFException ||
+                    error is UnknownHostException ||
+                    error is SSLException ||
                     (error is SocketException && error.message?.contains("reset", ignoreCase = true) == true)
             else -> false
         }

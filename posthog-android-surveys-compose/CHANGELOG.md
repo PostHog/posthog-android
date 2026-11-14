@@ -1,5 +1,35 @@
 # posthog-android-surveys-compose
 
+## 0.5.1
+
+### Patch Changes
+
+- b3afe48: Treat failed detailed feature flag records as unavailable values and payloads, independently of response-wide errors. Preserve successful cached values on errored client refreshes and same-context local decisions during server fallback. Report failed direct reads as evaluation failures without tracking caller defaults as evaluated responses.
+
+## 0.5.0
+
+### Minor Changes
+
+- dae1d87: Raise the minimum Material3 version to 1.4.0 and use bottom-sheet APIs compatible with Material3 1.5.0. Isolate survey composition and measurement failures so incompatible Compose dependencies skip the survey instead of crashing the host app.
+
+## 0.4.5
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 0.4.4
+
+### Patch Changes
+
+- fb584fd: Upgrade OkHttp to 4.12.1 to block compromised eMudhra intermediate certificates.
+
+## 0.4.3
+
+### Patch Changes
+
+- 0859ca7: Fix repeat trigger events restarting a survey's `surveyPopupDelaySeconds` delay; a custom `PostHogSurveysDelegate` that can't show a survey must now call `onSurveyClosed`. Flutter apps should use posthog_flutter 5.50.13 or later, since earlier versions can stop showing surveys until the app restarts.
+
 ## 0.4.2
 
 ### Patch Changes

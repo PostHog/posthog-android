@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Test utilities for posthog-server tests
  */
 
-public const val TEST_API_KEY: String = "test-api-key"
+public const val TEST_PROJECT_TOKEN: String = "test-api-key"
 
 // Executor utilities
 public fun ExecutorService.awaitExecution() {
@@ -179,7 +179,15 @@ public fun RecordedRequest.parseBatch(): BatchRequest {
 public class TestLogger : PostHogLogger {
     public val logs: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
 
+    /** Messages logged through [logWarning], which shows even when debug is off. Also in [logs]. */
+    public val warnings: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
+
     override fun log(message: String) {
+        logs.add(message)
+    }
+
+    override fun logWarning(message: String) {
+        warnings.add(message)
         logs.add(message)
     }
 
@@ -187,6 +195,7 @@ public class TestLogger : PostHogLogger {
 
     public fun clear() {
         logs.clear()
+        warnings.clear()
     }
 
     public fun containsLog(substring: String): Boolean = logs.any { it.contains(substring) }
@@ -220,11 +229,11 @@ public fun createMockHttp(vararg responses: MockResponse): MockWebServer {
 public fun createTestConfig(
     logger: PostHogLogger = TestLogger(),
     host: String = "https://example.com",
-    apiKey: String = TEST_API_KEY,
+    projectToken: String = TEST_PROJECT_TOKEN,
 ): PostHogConfig {
     val config =
         PostHogConfig(
-            projectToken = apiKey,
+            projectToken = projectToken,
             host = host,
         )
     config.logger = logger
@@ -508,6 +517,7 @@ private fun evaluationRuntimeJson(evaluationRuntime: String?): String {
 public fun conclusiveFlagDefinition(
     key: String,
     evaluationRuntime: String? = null,
+    ensureExperienceContinuity: Boolean = false,
 ): String {
     return """
         {
@@ -515,6 +525,7 @@ public fun conclusiveFlagDefinition(
             "name": "$key",
             "key": "$key",
             "active": true,
+            "ensure_experience_continuity": $ensureExperienceContinuity,
             ${evaluationRuntimeJson(evaluationRuntime)}
             "filters": {
                 "groups": [

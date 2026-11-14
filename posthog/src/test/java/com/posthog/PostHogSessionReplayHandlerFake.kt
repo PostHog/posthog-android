@@ -14,6 +14,9 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
     public var throwOnDebugProperties: Boolean = false
 
+    // false models a start held back, e.g. waiting for an event trigger
+    public var activateOnStart: Boolean = true
+
     public fun reset() {
         stopCalled = false
         startCalled = false
@@ -28,19 +31,27 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     override fun start(resumeCurrent: Boolean) {
         startCalled = true
         this.resumeCurrent = resumeCurrent
-        isActive = true
+        isActive = activateOnStart
     }
 
     override fun onStartRequested() {
         onStartRequestedCalled = true
     }
 
+    // runs at the start of each stop() call, before the handler goes inactive
+    public var onStop: (() -> Unit)? = null
+
     override fun stop() {
+        onStop?.invoke()
         stopCalled = true
         isActive = false
     }
 
+    // runs on each isActive() call, so a test can interleave work at that point
+    public var onIsActive: (() -> Unit)? = null
+
     override fun isActive(): Boolean {
+        onIsActive?.invoke()
         return isActive
     }
 

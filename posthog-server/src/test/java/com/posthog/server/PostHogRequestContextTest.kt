@@ -327,7 +327,7 @@ internal class PostHogRequestContextTest {
         flushAt: Int = 1,
     ): PostHogInterface =
         PostHog.with(
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(http.url("/").toString())
                 .flushAt(flushAt)
                 .build(),

@@ -179,6 +179,7 @@ internal class PostHogSurveysEventPayloadTest {
             val staleDisplay = assertNotNull(delegate.shownSurvey)
             val staleShown = assertNotNull(delegate.onSurveyShown)
             preferences.clear()
+            assertNotNull(delegate.onSurveyClosed).invoke(staleDisplay)
             resumed.showSurvey(survey.copy(id = "new-survey"))
             val currentDisplay = assertNotNull(delegate.shownSurvey)
             assertNotNull(delegate.onSurveyShown).invoke(currentDisplay)

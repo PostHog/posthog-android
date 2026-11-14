@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.PostHogEventName
@@ -73,7 +73,7 @@ internal class PostHogQueueTest {
         httpClient: OkHttpClient? = null,
     ): PostHogQueue<PostHogEvent> {
         val config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 this.maxQueueSize = maxQueueSize
                 this.storagePrefix = storagePrefix
                 this.flushAt = flushAt
@@ -105,7 +105,7 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(2, sut.dequeList.size)
-        val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+        val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
         assertEquals(
             listOf("2", "3"),
             sut.dequeList.map { file ->
@@ -126,7 +126,7 @@ internal class PostHogQueueTest {
 
         awaitQueue()
 
-        assertTrue(File(path, API_KEY).exists())
+        assertTrue(File(path, PROJECT_TOKEN).exists())
     }
 
     @Test
@@ -141,7 +141,7 @@ internal class PostHogQueueTest {
 
         awaitQueue()
 
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -326,7 +326,7 @@ internal class PostHogQueueTest {
             assertEquals(0, http.requestCount)
             assertEquals(0, sut.currentRetryCountForTesting)
             assertEquals(1, sut.dequeList.size)
-            assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
             connected = true
             onAvailableCallback?.invoke()
@@ -335,7 +335,7 @@ internal class PostHogQueueTest {
             assertEquals(1, http.requestCount)
             assertEquals(0, sut.currentRetryCountForTesting)
             assertEquals(0, sut.dequeList.size)
-            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
         } finally {
             sut.stop()
             sut.clear()
@@ -373,7 +373,7 @@ internal class PostHogQueueTest {
                 executor.awaitExecution()
 
                 assertEquals(2, sut.dequeList.size)
-                assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+                assertEquals(2, File(path, PROJECT_TOKEN).listFiles()!!.size)
             }
 
             sut.add(generateEvent("replacement", givenUuuid = UUID.randomUUID()))
@@ -382,14 +382,14 @@ internal class PostHogQueueTest {
             assertEquals(2, sut.dequeList.size)
             assertFalse(sut.dequeList.contains(firstFile))
             assertFalse(firstFile.exists())
-            assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(2, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
             sut.flush()
             executor.awaitExecution()
 
             assertEquals(3, http.requestCount)
             assertEquals(0, sut.dequeList.size)
-            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
         } finally {
             sut.clear()
             awaitQueue()
@@ -472,7 +472,7 @@ internal class PostHogQueueTest {
                 executor.awaitExecution()
 
                 assertEquals(1, sut.dequeList.size)
-                assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+                assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
             }
             assertEquals(0, http.requestCount)
 
@@ -483,7 +483,7 @@ internal class PostHogQueueTest {
             assertEquals(1, http.requestCount)
             assertEquals(0, sut.currentRetryCountForTesting)
             assertEquals(0, sut.dequeList.size)
-            assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
             sut.add(generateEvent("fresh"))
             sut.flush()
@@ -493,7 +493,7 @@ internal class PostHogQueueTest {
             assertEquals(1, http.requestCount)
             assertEquals(1, sut.currentRetryCountForTesting)
             assertEquals(1, sut.dequeList.size)
-            assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
         } finally {
             sut.clear()
             awaitQueue()
@@ -516,7 +516,7 @@ internal class PostHogQueueTest {
 
             assertEquals(2, sut.dequeList.size)
             assertEquals(2, sut.dequeList.map { it.name }.toSet().size)
-            assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+            assertEquals(2, File(path, PROJECT_TOKEN).listFiles()!!.size)
         } finally {
             sut.clear()
             awaitQueue()
@@ -540,7 +540,7 @@ internal class PostHogQueueTest {
         val queueExecutor = Executors.newFixedThreadPool(1, PostHogThreadFactory("ConcurrentQueueTest")) as ThreadPoolExecutor
         val path = tmpDir.newFolder().absolutePath
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 storagePrefix = path
                 maxQueueSize = 3
                 maxBatchSize = 3
@@ -603,7 +603,7 @@ internal class PostHogQueueTest {
             assertEquals(1, sut.currentRetryCountForTesting)
             assertEquals(replacementFiles, sut.dequeList)
             assertEquals(List(3) { "same" }, replacementFiles.map { it.readText() })
-            assertEquals(replacementFiles.toSet(), File(path, API_KEY).listFiles()!!.toSet())
+            assertEquals(replacementFiles.toSet(), File(path, PROJECT_TOKEN).listFiles()!!.toSet())
         } finally {
             releaseSend.countDown()
             sut.clear()
@@ -624,7 +624,7 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -640,7 +640,7 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -657,7 +657,7 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -673,14 +673,14 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
         sut.clear()
 
         awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -701,7 +701,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
 
@@ -710,7 +710,7 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -731,7 +731,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(1, sut.dequeList.size)
-        assertEquals(1, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(1, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
         http.enqueue(MockResponse().setResponseCode(300).setBody("error"))
 
@@ -740,7 +740,7 @@ internal class PostHogQueueTest {
         executor.awaitExecution()
 
         assertEquals(2, sut.dequeList.size)
-        assertEquals(2, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(2, File(path, PROJECT_TOKEN).listFiles()!!.size)
 
         http.enqueue(MockResponse().setBody(""))
         http.enqueue(MockResponse().setBody(""))
@@ -750,14 +750,14 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
         assertEquals(4, http.requestCount)
     }
 
     @Test
     fun `reduces batch size if 413`() {
         val e = PostHogApiError(413, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -770,7 +770,7 @@ internal class PostHogQueueTest {
     @Test
     fun `halves cap from actual batch size when smaller than configured cap`() {
         val e = PostHogApiError(413, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config) // cap = 50
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = 10, logger = config.logger))
@@ -784,7 +784,7 @@ internal class PostHogQueueTest {
         // we can ever send in a single batch.
         val e = PostHogApiError(413, "", null)
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 maxBatchSize = 50
                 flushAt = 20
             }
@@ -845,7 +845,7 @@ internal class PostHogQueueTest {
     fun `delete files if batch is min already`() {
         val e = PostHogApiError(413, "", null)
         val config =
-            PostHogConfig(API_KEY).apply {
+            PostHogConfig(PROJECT_TOKEN).apply {
                 maxBatchSize = 1
                 flushAt = 1
             }
@@ -859,7 +859,7 @@ internal class PostHogQueueTest {
     @Test
     fun `delete files if 413 affects a single record with larger configured cap`() {
         val e = PostHogApiError(413, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = 1, logger = config.logger))
@@ -870,7 +870,7 @@ internal class PostHogQueueTest {
     @Test
     fun `delete files if errored`() {
         val e = PostHogApiError(400, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertTrue(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -879,7 +879,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 408`() {
         val e = PostHogApiError(408, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -888,7 +888,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 500`() {
         val e = PostHogApiError(500, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -897,7 +897,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 502`() {
         val e = PostHogApiError(502, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -906,7 +906,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 429`() {
         val e = PostHogApiError(429, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -915,7 +915,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 504`() {
         val e = PostHogApiError(504, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -924,7 +924,7 @@ internal class PostHogQueueTest {
     @Test
     fun `retries on 503`() {
         val e = PostHogApiError(503, "", null)
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val limits = initialBatchLimits(config)
 
         assertFalse(deleteFilesIfAPIError(e, limits, actualBatchSize = limits.cap, logger = config.logger))
@@ -947,7 +947,7 @@ internal class PostHogQueueTest {
         // Assert delivery before draining the executor: fatal capture must send synchronously.
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
-        val batch = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
+        val batch = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<PostHogBatchEvent>(request.body.unGzip().reader())
         assertEquals(PostHogEventName.EXCEPTION.event, batch.batch.single().event)
         assertEquals("123", batch.batch.single().distinctId)
         assertEquals(
@@ -955,7 +955,7 @@ internal class PostHogQueueTest {
             batch.batch.single().properties?.get(ThrowableCoercer.EXCEPTION_LEVEL_ATTRIBUTE),
         )
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -964,7 +964,7 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val path = tmpDir.newFolder().absolutePath
-        val dir = File(path, API_KEY)
+        val dir = File(path, PROJECT_TOKEN)
         dir.mkdirs()
 
         val eventFile = File("src/test/resources/json/basic-event.json")
@@ -993,7 +993,7 @@ internal class PostHogQueueTest {
     fun `reload evicts oldest cached files beyond queue capacity`() {
         val http = mockHttp()
         val path = tmpDir.newFolder().absolutePath
-        val dir = File(path, API_KEY)
+        val dir = File(path, PROJECT_TOKEN)
         dir.mkdirs()
         val eventContent = File("src/test/resources/json/basic-event.json").readText()
         val cachedFiles =
@@ -1025,7 +1025,7 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val path = tmpDir.newFolder().absolutePath
-        val dir = File(path, API_KEY)
+        val dir = File(path, PROJECT_TOKEN)
         dir.mkdirs()
 
         val eventFile = File("src/test/resources/json/basic-event.json")
@@ -1045,7 +1045,7 @@ internal class PostHogQueueTest {
 
         assertEquals(1, http.requestCount)
         assertEquals(0, sut.dequeList.size)
-        assertEquals(0, File(path, API_KEY).listFiles()!!.size)
+        assertEquals(0, File(path, PROJECT_TOKEN).listFiles()!!.size)
     }
 
     @Test
@@ -1054,7 +1054,7 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val path = tmpDir.newFolder().absolutePath
-        // don't create the API_KEY subdirectory
+        // don't create the PROJECT_TOKEN subdirectory
 
         val sut = getSut(host = url.toString(), storagePrefix = path)
 
@@ -1073,7 +1073,7 @@ internal class PostHogQueueTest {
         val url = http.url("/")
 
         val path = tmpDir.newFolder().absolutePath
-        val dir = File(path, API_KEY)
+        val dir = File(path, PROJECT_TOKEN)
         dir.mkdirs()
 
         val eventFile = File("src/test/resources/json/basic-event.json")

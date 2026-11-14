@@ -2,7 +2,7 @@ package com.posthog.android.replay
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogQueue
@@ -113,7 +113,7 @@ internal class PostHogReplayBufferQueueTest {
 
     private fun createQueue(
         bufferDir: File? = null,
-        config: PostHogConfig = PostHogConfig(API_KEY),
+        config: PostHogConfig = PostHogConfig(PROJECT_TOKEN),
     ): PostHogReplayBufferQueue {
         val dir = bufferDir ?: File(tmpDir.newFolder(), "buffer")
         return PostHogReplayBufferQueue(config, dir).apply { clear() }
@@ -269,7 +269,7 @@ internal class PostHogReplayBufferQueueTest {
 
     @Test
     fun `migrateAllTo moves files into PostHogQueue target in order`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val bufferDir = File(tmpDir.newFolder(), "buffer")
         val targetStoragePrefix = tmpDir.newFolder().absolutePath
         val targetQueue = createTargetQueue(config, targetStoragePrefix)
@@ -284,7 +284,7 @@ internal class PostHogReplayBufferQueueTest {
 
         val migrated = queue.migrateAllTo(targetQueue)
 
-        val targetDir = File(targetStoragePrefix, API_KEY)
+        val targetDir = File(targetStoragePrefix, PROJECT_TOKEN)
         assertEquals(3, migrated)
         assertEquals(0, queue.depth)
         assertTrue(bufferDir.listFiles()!!.isEmpty())
@@ -301,7 +301,7 @@ internal class PostHogReplayBufferQueueTest {
 
     @Test
     fun `migrateAllTo leaves writes added while reload is pending in buffer`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val bufferDir = File(tmpDir.newFolder(), "buffer")
         val targetStoragePrefix = tmpDir.newFolder().absolutePath
         val targetExecutor = createPausedExecutor()
@@ -336,7 +336,7 @@ internal class PostHogReplayBufferQueueTest {
 
             assertFalse(migrationThread.isAlive)
             migrationError.get()?.let { throw AssertionError("Migration failed", it) }
-            val targetDir = File(targetStoragePrefix, API_KEY)
+            val targetDir = File(targetStoragePrefix, PROJECT_TOKEN)
             assertEquals(2, migratedCount.get())
             assertEquals(
                 listOf("snapshot_before_1", "snapshot_before_2"),
@@ -356,7 +356,7 @@ internal class PostHogReplayBufferQueueTest {
 
     @Test
     fun `migrateAllTo preserves existing target items in order`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val bufferDir = File(tmpDir.newFolder(), "buffer")
         val targetStoragePrefix = tmpDir.newFolder().absolutePath
         val targetQueue = createTargetQueue(config, targetStoragePrefix)
@@ -373,7 +373,7 @@ internal class PostHogReplayBufferQueueTest {
 
         val migrated = queue.migrateAllTo(targetQueue)
 
-        val targetDir = File(targetStoragePrefix, API_KEY)
+        val targetDir = File(targetStoragePrefix, PROJECT_TOKEN)
         assertEquals(3, migrated)
         assertEquals(0, queue.depth)
         assertEquals(4, targetDir.listFiles()!!.size)
@@ -385,7 +385,7 @@ internal class PostHogReplayBufferQueueTest {
 
     @Test
     fun `migrateAllTo discards duplicate filename without overwriting target`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val bufferDir = File(tmpDir.newFolder(), "buffer")
         val targetStoragePrefix = tmpDir.newFolder().absolutePath
         val targetQueue = createTargetQueue(config, targetStoragePrefix)
@@ -393,7 +393,7 @@ internal class PostHogReplayBufferQueueTest {
 
         queue.add(createEvent("buffer_duplicate"))
         val bufferFile = bufferDir.listFiles()!!.single()
-        val targetDir = File(targetStoragePrefix, API_KEY).apply { mkdirs() }
+        val targetDir = File(targetStoragePrefix, PROJECT_TOKEN).apply { mkdirs() }
         File(targetDir, bufferFile.name).outputStream().use { output ->
             config.serializer.serialize(createEvent("target_existing"), output.writer().buffered())
         }

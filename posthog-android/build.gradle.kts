@@ -177,6 +177,7 @@ val testWithoutCompose by tasks.registering(Test::class) {
     maxHeapSize = "1g"
     useJUnit()
     filter.includeTestsMatching("com.posthog.android.internal.InteractionTargetTest")
+    filter.includeTestsMatching("com.posthog.android.replay.PostHogReplayTouchWithoutComposeTest")
 }
 
 tasks.named("check") {

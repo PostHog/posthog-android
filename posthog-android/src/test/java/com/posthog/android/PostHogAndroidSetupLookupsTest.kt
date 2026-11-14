@@ -70,7 +70,7 @@ internal class PostHogAndroidSetupLookupsTest {
     }
 
     private fun config() =
-        PostHogAndroidConfig(API_KEY, host = "http://localhost:1").apply {
+        PostHogAndroidConfig(PROJECT_TOKEN, host = "http://localhost:1").apply {
             cachePreferences = PostHogMemoryPreferences()
             preloadFeatureFlags = false
             networkStatus =

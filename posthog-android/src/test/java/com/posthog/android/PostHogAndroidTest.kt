@@ -2,6 +2,7 @@ package com.posthog.android
 
 import android.content.Context
 import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.android.errortracking.PostHogNativeCrashIntegration
@@ -22,6 +23,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.mockito.kotlin.mock
+import org.robolectric.annotation.Config
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -75,7 +77,7 @@ internal class PostHogAndroidTest {
         // Before setup(): no config, so nothing is armed and nothing is persisted.
         PostHogAndroid.capturePushNotificationOpened(intent)
 
-        val config = PostHogAndroidConfig(API_KEY).apply { capturePushNotificationOpened = false }
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { capturePushNotificationOpened = false }
         PostHogAndroid.setup(context, config)
         // Armed now, but the feature is disabled, so still nothing.
         PostHogAndroid.capturePushNotificationOpened(intent)
@@ -89,7 +91,7 @@ internal class PostHogAndroidTest {
         val activePrefs = PostHogMemoryPreferences()
         val rejectedPrefs = PostHogMemoryPreferences()
 
-        PostHogAndroid.setup(context, PostHogAndroidConfig(API_KEY).apply { cachePreferences = activePrefs })
+        PostHogAndroid.setup(context, PostHogAndroidConfig(PROJECT_TOKEN).apply { cachePreferences = activePrefs })
         // The core no-ops this one — an instance is already active — so the shared client keeps
         // sending under the first config and this one must not decide the gate or the prefs file.
         PostHogAndroid.setup(
@@ -112,7 +114,7 @@ internal class PostHogAndroidTest {
         val primaryPrefs = PostHogMemoryPreferences()
         val secondaryPrefs = PostHogMemoryPreferences()
 
-        PostHogAndroid.setup(context, PostHogAndroidConfig(API_KEY).apply { cachePreferences = primaryPrefs })
+        PostHogAndroid.setup(context, PostHogAndroidConfig(PROJECT_TOKEN).apply { cachePreferences = primaryPrefs })
         val secondary = PostHogAndroid.with(context, PostHogAndroidConfig(API_KEY_2).apply { cachePreferences = secondaryPrefs })
         try {
             PostHogAndroid.capturePushNotificationOpened(Intent().putExtra("google.message_id", "probe"))
@@ -125,7 +127,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android Logger if System logger`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -136,7 +138,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android context`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -147,7 +149,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets legacy storage path`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -158,7 +160,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets storage path`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -169,7 +171,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android cache preferences`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -180,7 +182,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android network checker`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -191,7 +193,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds connectivity monitor when custom network status is configured`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val customNetworkStatus =
             object : PostHogNetworkStatus {
                 override fun isConnected(): Boolean = true
@@ -209,7 +211,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `sets Android SDK version`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -221,7 +223,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `overwrites sdkName and sdkVersion when not a wrapper SDK`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 sdkName = "posthog"
                 sdkVersion = "0.0.0"
             }
@@ -239,7 +241,7 @@ internal class PostHogAndroidTest {
         for (sdkName in listOf("posthog-flutter", "posthog-react-native", "posthog-kmp")) {
             PostHog.close()
             val config =
-                PostHogAndroidConfig(API_KEY).apply {
+                PostHogAndroidConfig(PROJECT_TOKEN).apply {
                     this.sdkName = sdkName
                     sdkVersion = "1.2.3"
                 }
@@ -255,7 +257,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds captureApplicationLifecycleEvents integrations`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -275,7 +277,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `registers the native crash integration when enabled`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         config.errorTrackingConfig.captureNativeCrashes = true
 
         mockContextAppStart(context, tmpDir)
@@ -290,14 +292,59 @@ internal class PostHogAndroidTest {
     }
 
     @Test
-    fun `does not register the native crash integration by default`() {
-        val config = PostHogAndroidConfig(API_KEY)
+    @Config(sdk = [34])
+    fun `an opted-out setup opens the native crash opt-out interval`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
+                optOut = true
+                persistOptOut = false
+                preloadFeatureFlags = false
+                cachePreferences = PostHogMemoryPreferences()
+                storagePrefix = tmpDir.newFolder().absolutePath
+                replayStoragePrefix = tmpDir.newFolder().absolutePath
+            }
+
+        PostHogAndroid.setup(appContext, config)
+
+        // the write runs on the integration's consent thread
+        val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!preferences.contains("optOutSince:$PROJECT_TOKEN") && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10)
+        }
+        assertTrue(preferences.contains("optOutSince:$PROJECT_TOKEN"))
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun `a disabled with instance does not open the native crash opt-out interval`() {
+        val appContext = ApplicationProvider.getApplicationContext<Context>()
+        val config =
+            PostHogAndroidConfig("").apply {
+                cachePreferences = PostHogMemoryPreferences()
+                storagePrefix = tmpDir.newFolder().absolutePath
+                replayStoragePrefix = tmpDir.newFolder().absolutePath
+            }
+
+        val postHog = PostHogAndroid.with(appContext, config)
+
+        assertTrue(postHog.isOptOut())
+        Thread.sleep(300)
+        val preferences = appContext.getSharedPreferences("posthog-native-crash", Context.MODE_PRIVATE)
+        assertTrue(preferences.all.keys.none { it.startsWith("optOutSince") })
+        postHog.close()
+    }
+
+    @Test
+    fun `registers the native crash integration when disabled so consent changes are recorded`() {
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
         PostHogAndroid.setup(context, config)
 
-        assertNull(
+        assertNotNull(
             config.integrations.find {
                 it is PostHogNativeCrashIntegration
             },
@@ -307,7 +354,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `adds captureDeepLinks integration`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureScreenViews = false
                 capturePushNotificationOpened = false
                 sessionReplay = false
@@ -327,7 +374,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `adds captureScreenViews integration`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureDeepLinks = false
                 capturePushNotificationOpened = false
                 sessionReplay = false
@@ -347,7 +394,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `does not add captureDeepLinks, captureScreenViews and sessionReplay integration if disabled`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureDeepLinks = false
                 captureScreenViews = false
                 sessionReplay = false
@@ -368,7 +415,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `adds activity lifecycle integration when only capturePushNotificationOpened is enabled`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 captureDeepLinks = false
                 captureScreenViews = false
                 sessionReplay = false
@@ -387,7 +434,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `adds capturePushNotificationSubscriptions integration`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -403,7 +450,7 @@ internal class PostHogAndroidTest {
     @Test
     fun `does not add capturePushNotificationSubscriptions integration if disabled`() {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 capturePushNotificationSubscriptions = false
             }
 
@@ -420,7 +467,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `with creates new single instance`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 
@@ -433,7 +480,7 @@ internal class PostHogAndroidTest {
 
     @Test
     fun `logger uses Logcat by default`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
         mockContextAppStart(context, tmpDir)
 

@@ -7,7 +7,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.R
 import org.junit.runner.RunWith
@@ -33,7 +33,7 @@ internal class InteractionDeadDetectorTest {
             isClickable = true
         }
     private val status = TextView(controller.get()).apply { text = "Before" }
-    private val config = PostHogAndroidConfig(API_KEY).apply { captureDeadClicks = true }
+    private val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { captureDeadClicks = true }
     private var generation: Long? = 1
     private var time = 0L
     private val events = mutableListOf<Pair<Map<String, Any>, Date>>()

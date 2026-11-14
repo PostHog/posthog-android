@@ -35,7 +35,7 @@ internal class PostHogStatelessTest {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestQueueStateless"))
     private val featureFlagsExecutor =
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestFeatureFlagsStateless"))
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
     private lateinit var sut: TestablePostHogStateless
 
@@ -244,7 +244,7 @@ internal class PostHogStatelessTest {
         personProfiles: PersonProfiles = PersonProfiles.ALWAYS,
         storagePrefix: String = tmpDir.newFolder().absolutePath,
     ): PostHogConfig {
-        return PostHogConfig(API_KEY, host).apply {
+        return PostHogConfig(PROJECT_TOKEN, host).apply {
             this.optOut = optOut
             this.sendFeatureFlagEvent = sendFeatureFlagEvent
             this.personProfiles = personProfiles

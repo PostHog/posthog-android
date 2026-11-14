@@ -7,7 +7,7 @@ import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.internal.MainHandler
 import com.posthog.internal.PostHogLogger
@@ -113,7 +113,7 @@ internal class PostHogReplayComposeMaskTraversalTest {
         view: View,
         logger: RecordingLogger,
     ): Future<PostHogReplayIntegration.MaskWalk> {
-        val config = PostHogAndroidConfig(API_KEY).apply { this.logger = logger }
+        val config = PostHogAndroidConfig(PROJECT_TOKEN).apply { this.logger = logger }
         val sut = PostHogReplayIntegration(context, config, MainHandler())
         return executor.submit<PostHogReplayIntegration.MaskWalk> {
             val walk = PostHogReplayIntegration.MaskWalk()

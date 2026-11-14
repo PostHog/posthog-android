@@ -27,7 +27,7 @@ internal class PostHogBootstrapTest {
     private val replayQueueExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestReplayQueue"))
     private val remoteConfigExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
 
     @Suppress("DEPRECATION")
@@ -45,7 +45,7 @@ internal class PostHogBootstrapTest {
         onFeatureFlags: PostHogOnFeatureFlags? = null,
     ): PostHogInterface {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 this.flushAt = flushAt
                 this.storagePrefix = File(storagePrefix, "events").absolutePath
                 this.replayStoragePrefix = File(storagePrefix, "snapshots").absolutePath

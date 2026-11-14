@@ -1,7 +1,6 @@
 package com.posthog.internal
 
 import com.posthog.PostHogInternal
-import java.util.Calendar
 import java.util.Date
 
 /**
@@ -11,14 +10,11 @@ import java.util.Date
 @PostHogInternal
 public class PostHogDeviceDateProvider : PostHogDateProvider {
     override fun currentDate(): Date {
-        val cal = Calendar.getInstance()
-        return cal.time
+        return Date()
     }
 
     override fun addSecondsToCurrentDate(seconds: Int): Date {
-        val cal = Calendar.getInstance()
-        cal.add(Calendar.SECOND, seconds)
-        return cal.time
+        return Date(System.currentTimeMillis() + seconds * 1000L)
     }
 
     override fun currentTimeMillis(): Long {

@@ -1,5 +1,83 @@
 ## Next
 
+## 2.24.2
+
+### Patch Changes
+
+- b3afe48: Treat failed detailed feature flag records as unavailable values and payloads, independently of response-wide errors. Preserve successful cached values on errored client refreshes and same-context local decisions during server fallback. Report failed direct reads as evaluation failures without tracking caller defaults as evaluated responses.
+
+## 2.24.1
+
+### Patch Changes
+
+- 58777de: Suppress local-evaluation definition warnings for client-only flags and reset their warning history when the runtime changes.
+
+## 2.24.0
+
+### Minor Changes
+
+- 9ebc329: Add `unresolvedFlags` to the `evaluateFlags()` snapshot. It lists the requested flags that have a local definition but no value, because local evaluation could not resolve them and no `/flags` fallback filled them, for example with `onlyEvaluateLocally` or when the fallback fails. Each entry has a `PostHogUnresolvedFlagReason`: `EXPERIENCE_CONTINUITY`, `UNSUPPORTED_DEFINITION`, `UNRESOLVED_DEPENDENCY` or `MISSING_CONTEXT`. When several causes apply, the first reason in that order is reported. Snapshots from `only()` and `onlyAccessed()` have no unresolved flags.
+  
+  Behavior changes:
+  
+  - A condition with a filter that local evaluation cannot check and a filter that does not match now resolves locally as no match. Before, the flag fell back to a `/flags` request, or stayed absent with `onlyEvaluateLocally`.
+  - `$feature_flag_called` events from snapshot reads of an unresolved flag report `$feature_flag_error: local_evaluation_inconclusive` instead of `flag_missing`, so insights that filter on `flag_missing` count fewer events.
+  - When definitions load, the SDK logs a warning, also with `debug` off, that names the flags local evaluation can never resolve: flags with experience continuity, and flags that use a static cohort, an unknown operator, a malformed value, or a missing or circular dependency. Each flag is warned about once until its definition changes.
+
+## 2.23.1
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 2.23.0
+
+### Minor Changes
+
+- e344e58: Add an optional OpenTelemetry span processor and request-scope bridge for session and person context on application spans. The processor is bound to one PostHog client. Only scopes owned by that client add IDs, and a disabled or opted-out client adds none. A nested scope without a client keeps the outer scope's owner. If the application replaces its client, build a new processor.
+
+## 2.22.1
+
+### Patch Changes
+
+- fb584fd: Upgrade OkHttp to 4.12.1 to block compromised eMudhra intermediate certificates.
+
+## 2.22.0
+
+### Minor Changes
+
+- 990c60c: Add the active OpenTelemetry trace and span IDs to captured server exceptions when the application provides OpenTelemetry.
+
+## 2.21.5
+
+### Patch Changes
+
+- ed475dd: Fall back to server evaluation for incompatible feature flag regex criteria and keep invalid negative criteria from matching.
+
+## 2.21.4
+
+### Patch Changes
+
+- 25e65fe: Fix numeric-string ordering in server-side local feature flag evaluation. `gt`, `gte`, `lt`, and `lte` now compare finite numbers rather than strings, which can change flag membership for numeric-string properties. Invalid property values no longer match through lexicographic comparison, and invalid numeric conditions remain eligible for remote fallback.
+
+## 2.21.3
+
+### Patch Changes
+
+- d09a92a: Log a message when `evaluateFlags(onlyEvaluateLocally = true)` omits flags because experience continuity is on. Local evaluation cannot resolve these flags, so a local-only snapshot does not contain them. The message names the flags. Like all SDK logs, it shows only when `debug` is on.
+
+## 2.21.2
+
+### Patch Changes
+
+- 11470c7: Allow local feature flag evaluation from a shared definition cache without a personal API key when local evaluation is enabled.
+
+## 2.21.1
+
+### Patch Changes
+
+- fb21f39: Retry feature flag requests that fail with a DNS or TLS transport error, instead of only timeouts, EOF, and connection resets
+
 ## 2.21.0
 
 ### Minor Changes

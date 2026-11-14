@@ -182,7 +182,7 @@ internal class PostHogServerWireSnapshotTest {
         server.enqueue(jsonResponse("{\"flags\":{}}"))
 
         val config =
-            PostHogConfig.builder(TEST_API_KEY)
+            PostHogConfig.builder(TEST_PROJECT_TOKEN)
                 .host(server.url("/").toString())
                 .flushAt(flushAt)
                 .flushIntervalSeconds(3600)

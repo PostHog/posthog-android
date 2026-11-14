@@ -1,6 +1,7 @@
 package com.posthog.server.internal
 
 import com.posthog.internal.FeatureFlag
+import com.posthog.server.PostHogUnresolvedFlagReason
 
 /**
  * The rich envelope returned by [PostHogFeatureFlags.evaluateFlags]. Holds the per-flag results
@@ -18,4 +19,6 @@ internal data class EvaluateFlagsResult(
      * events so they match what the per-flag accessor path emits.
      */
     val responseError: String?,
+    /** Flags with a local definition that have no value in [flags], with the reason why. */
+    val unresolvedFlags: Map<String, PostHogUnresolvedFlagReason>,
 )

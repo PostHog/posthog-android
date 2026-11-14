@@ -368,6 +368,15 @@ public open class PostHogConfig(
     @Volatile
     public var persistOptOut: Boolean = true
 
+    /**
+     * Skip server-side GeoIP enrichment for captured events and feature flag requests.
+     * When enabled, the server won't infer the user's location from their IP address.
+     *
+     * Default: false.
+     */
+    @Volatile
+    public var disableGeoIp: Boolean = false
+
     @Volatile
     private var tracingHeadersList: List<String>? = null
 

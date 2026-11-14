@@ -10,6 +10,7 @@ PostHog Android SDK monorepo. Kotlin-first, targets JVM and Android.
 - `posthog-android/` — Android-specific SDK (depends on `posthog/`)
 - `posthog-android-surveys-compose/` — Compose survey UI (depends on `posthog-android/`, transitively on `posthog/`)
 - `posthog-server/` — Server-side SDK (depends on `posthog/`)
+- `posthog-server-openfeature/` — OpenFeature provider for the server-side SDK (depends on `posthog-server/`, Java 11+)
 - `posthog-android-gradle-plugin/` — Gradle plugin for Android integrations
 - `posthog-samples/` — Sample apps
 
@@ -36,6 +37,7 @@ Prefer Make wrappers; see [development commands](./CONTRIBUTING.md#development-c
 
 ## PR process
 
+- Sign every commit; `main` rejects unsigned commits. Configure signing in the git config you commit with, as described in "Commit signing" in [CONTRIBUTING.md](./CONTRIBUTING.md).
 - Public API changes: follow "Public API changes" in [CONTRIBUTING.md](./CONTRIBUTING.md). As an agent, also:
     - When reviewing or fixing someone else's PR, don't ask for or open an issue. Note an external contributor's public API change when it has neither an agreed issue nor an API-defining published spec.
     - The author is a PostHog maintainer when the PR's `author_association` is `MEMBER` or `OWNER` (`gh api repos/PostHog/posthog-android/pulls/<number> --jq .author_association`) or, before a PR exists, when `gh api orgs/PostHog/members/$(gh api user --jq .login)` succeeds. If the check fails or can't run, treat the author as an external contributor.

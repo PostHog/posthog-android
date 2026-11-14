@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.TestHttpServers
@@ -56,7 +56,7 @@ internal class PostHogReplayQueueTest {
         replay: Boolean = true,
     ): PostHogQueue<PostHogEvent> {
         val config =
-            PostHogConfig(API_KEY, http.url("/").toString()).apply {
+            PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 this.flushAt = flushAt
                 this.maxBatchSize = maxBatchSize
                 dateProvider = clock
@@ -86,7 +86,7 @@ internal class PostHogReplayQueueTest {
         http: MockWebServer,
         count: Int = http.requestCount,
     ): List<List<PostHogEvent>> {
-        val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+        val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
         return List(count) {
             val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
             assertEquals("/s/", request.path)
@@ -272,7 +272,7 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, http.requestCount)
         val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
         assertEquals("/batch", request.path)
-        val payload = PostHogSerializer(PostHogConfig(API_KEY)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
+        val payload = PostHogSerializer(PostHogConfig(PROJECT_TOKEN)).deserialize<Map<String, Any>>(request.body.unGzip().reader())
         assertEquals(2, (payload["batch"] as List<*>).size)
         assertEquals(0, sut.size)
     }

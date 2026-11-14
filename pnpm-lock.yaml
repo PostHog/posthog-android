@@ -22,6 +22,8 @@ importers:
 
   posthog-server: {}
 
+  posthog-server-openfeature: {}
+
 packages:
 
   '@changesets/apply-release-plan@8.1.1':

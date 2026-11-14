@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
 import com.posthog.date
@@ -24,7 +24,7 @@ internal class PostHogSerializerTest {
     val tmpDir = TemporaryFolder()
 
     private fun getSut(): PostHogSerializer {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         return PostHogSerializer(config)
     }
 
@@ -87,7 +87,7 @@ internal class PostHogSerializerTest {
         val sut = getSut()
 
         val event = generateEvent()
-        val batch = PostHogBatchEvent(API_KEY, listOf(event), sentAt = date)
+        val batch = PostHogBatchEvent(PROJECT_TOKEN, listOf(event), sentAt = date)
 
         val file = tmpDir.newFile()
         sut.serialize(batch, file.outputStream().writer().buffered())
@@ -122,7 +122,7 @@ internal class PostHogSerializerTest {
             val sut = getSut()
             val instant = parseISO8601Date("2024-03-10T01:30:00.123-05:00")!!
             val event = generateEvent().copy(timestamp = instant)
-            val batch = PostHogBatchEvent(API_KEY, listOf(event), sentAt = instant)
+            val batch = PostHogBatchEvent(PROJECT_TOKEN, listOf(event), sentAt = instant)
             val serialized = StringWriter()
 
             sut.serialize(batch, serialized)
@@ -217,7 +217,7 @@ internal class PostHogSerializerTest {
 
         val flagsRequest =
             PostHogFlagsRequest(
-                apiKey = API_KEY,
+                projectToken = PROJECT_TOKEN,
                 distinctId = "test_user",
                 personProperties = personProperties,
             )

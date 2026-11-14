@@ -1,6 +1,6 @@
 package com.posthog.internal
 
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
 import com.posthog.TestHttpServers
@@ -38,7 +38,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         networkStatus: PostHogNetworkStatus? = null,
     ): PostHogSendCachedEventsIntegration {
         val config =
-            PostHogConfig(API_KEY, host = host).apply {
+            PostHogConfig(PROJECT_TOKEN, host = host).apply {
                 this.legacyStoragePrefix = storagePrefix
                 this.networkStatus = networkStatus
             }
@@ -60,7 +60,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
 
     private fun writeFile(content: List<String> = emptyList()): String {
         val storagePrefix = tmpDir.newFolder().absolutePath
-        QueueFile.Builder(File(storagePrefix, "$API_KEY.tmp")).forceLegacy(true).build().use { queue ->
+        QueueFile.Builder(File(storagePrefix, "$PROJECT_TOKEN.tmp")).forceLegacy(true).build().use { queue ->
             content.forEach { queue.add(it.toByteArray()) }
         }
 
@@ -76,7 +76,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         val ready = CountDownLatch(threadCount)
         val integrations =
             List(threadCount) {
-                val config = PostHogConfig(API_KEY, host = "host")
+                val config = PostHogConfig(PROJECT_TOKEN, host = "host")
                 val countingExecutor =
                     object : AbstractExecutorService() {
                         override fun execute(command: Runnable) {
@@ -144,7 +144,7 @@ internal class PostHogSendCachedEventsIntegrationTest {
         executor.shutdownAndAwaitTermination()
 
         assertEquals(0, http.requestCount)
-        QueueFile.Builder(File(storagePrefix, "$API_KEY.tmp")).forceLegacy(true).build().use { queue ->
+        QueueFile.Builder(File(storagePrefix, "$PROJECT_TOKEN.tmp")).forceLegacy(true).build().use { queue ->
             assertEquals(listOf(event), queue.map { it.toString(Charsets.UTF_8) })
         }
 

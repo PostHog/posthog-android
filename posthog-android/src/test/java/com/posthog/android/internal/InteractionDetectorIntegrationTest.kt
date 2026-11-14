@@ -11,7 +11,7 @@ import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
 import com.posthog.PostHogEvent
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogMemoryPreferences
 import curtains.Curtains
@@ -48,7 +48,7 @@ internal class InteractionDetectorIntegrationTest {
 
     @Suppress("DEPRECATION")
     private val config =
-        PostHogAndroidConfig(API_KEY).apply {
+        PostHogAndroidConfig(PROJECT_TOKEN).apply {
             captureRageClicks = true
             captureDeadClicks = true
             sessionReplay = false
@@ -235,7 +235,7 @@ internal class InteractionDetectorIntegrationTest {
 
     @Test
     fun `public detector defaults and independent flags gate emissions`() {
-        val defaults = PostHogAndroidConfig(API_KEY)
+        val defaults = PostHogAndroidConfig(PROJECT_TOKEN)
         assertFalse(defaults.captureDeadClicks)
         assertFalse(defaults.captureRageClicks)
         config.captureDeadClicks = false

@@ -35,6 +35,9 @@ dryReleaseSurveysCompose:
 dryReleaseServer:
 	./gradlew :posthog-server:publishToMavenLocal
 
+dryReleaseServerOpenFeature:
+	./gradlew :posthog-server-openfeature:publishToMavenLocal
+
 dryReleaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToMavenLocal
 
@@ -52,6 +55,9 @@ releaseSurveysCompose:
 
 releaseServer:
 	./gradlew :posthog-server:publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseServerOpenFeature:
+	./gradlew :posthog-server-openfeature:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 releaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToSonatype :posthog-android-gradle-plugin:closeAndReleaseSonatypeStagingRepository
@@ -83,7 +89,13 @@ updateLocks:
 	./gradlew build :posthog-android-gradle-plugin:build --write-locks
 	CI=false ./gradlew publishToMavenLocal :posthog-android-gradle-plugin:publishToMavenLocal --write-locks
 
-.PHONY: testSurveyUI
+.PHONY: testSurveyUI maskingSnapshots recordMaskingSnapshots
+
+maskingSnapshots:
+	./gradlew -PenableDebugTests=true :posthog-android:testDebugUnitTest --tests '*PostHogReplayMaskingSnapshotsTest' --tests '*PostHogReplaySceneSchedulingTest.stacked dialogs masking snapshot' --rerun
+
+recordMaskingSnapshots:
+	UPDATE_MASKING_SNAPSHOTS=1 $(MAKE) maskingSnapshots
 
 # Compose interaction tests require the debug variant, which CI otherwise skips.
 testSurveyUI:

@@ -33,6 +33,8 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
 
         // Uploads have no outputs; without this the task would always rerun.
         outputs.upToDateWhen { true }
+        skipOnConflict.convention(false)
+        force.convention(false)
     }
 
     /**
@@ -49,6 +51,14 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
     @get:Optional
     public abstract val includeSource: Property<Boolean>
 
+    /** Keeps existing native symbol sets with different content. Mutually exclusive with [force]. */
+    @get:Input
+    public abstract val skipOnConflict: Property<Boolean>
+
+    /** Overwrites existing native symbol sets with different content. Mutually exclusive with [skipOnConflict]. */
+    @get:Input
+    public abstract val force: Property<Boolean>
+
     @get:Input
     @get:Optional
     public abstract val releaseName: Property<String>
@@ -62,12 +72,24 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
     public abstract val build: Property<Int>
 
     override fun getArguments(args: MutableList<String>) {
+        if (skipOnConflict.get() && force.get()) {
+            error(
+                "[PostHog] skipOnConflict and force cannot both be set. " +
+                    "posthog-cli accepts only one of --skip-on-conflict and --force.",
+            )
+        }
         args.add("symbol-sets")
         args.add("upload")
         args.add("--directory")
         args.add(nativeLibsDirectory.get().asFile.toString())
         if (includeSource.orNull == true) {
             args.add("--include-source")
+        }
+        if (skipOnConflict.get()) {
+            args.add("--skip-on-conflict")
+        }
+        if (force.get()) {
+            args.add("--force")
         }
         releaseName.orNull?.takeIf { it.isNotEmpty() }?.let {
             args.add("--release-name")
@@ -88,6 +110,8 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
             project: Project,
             nativeLibsDirectory: Provider<org.gradle.api.file.Directory>,
             includeSource: Provider<Boolean>,
+            skipOnConflict: Provider<Boolean>,
+            force: Provider<Boolean>,
             taskSuffix: String = "",
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
@@ -100,6 +124,8 @@ public abstract class PostHogUploadNativeSymbolsTask : PostHogCliExecTask() {
                 workingDir(project.rootDir)
                 this.nativeLibsDirectory.set(nativeLibsDirectory)
                 this.includeSource.set(includeSource)
+                this.skipOnConflict.convention(skipOnConflict)
+                this.force.convention(force)
                 releaseName?.let { this.releaseName.set(it) }
                 releaseVersion?.let { this.releaseVersion.set(it) }
                 build?.let { this.build.set(it) }

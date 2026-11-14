@@ -3,7 +3,7 @@ package com.posthog.android.internal
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHog
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.android.createPostHogFake
 import com.posthog.android.mockPackageInfo
@@ -26,7 +26,7 @@ internal class PostHogAppInstallIntegrationTest {
         captureLifecycle: Boolean = true,
     ): PostHogAppInstallIntegration {
         val config =
-            PostHogAndroidConfig(API_KEY).apply {
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 cachePreferences = preferences
                 captureApplicationLifecycleEvents = captureLifecycle
             }
@@ -225,5 +225,24 @@ internal class PostHogAppInstallIntegrationTest {
         assertEquals(1L, fake.properties?.get("previous_build"))
 
         sut.uninstall()
+    }
+
+    @Test
+    fun `recordAppVersion does not throw when the store fails`() {
+        val failing =
+            object : PostHogPreferences by PostHogMemoryPreferences() {
+                override fun setValue(
+                    key: String,
+                    value: Any,
+                ) {
+                    throw IllegalStateException("store failed")
+                }
+            }
+        val sut = getSut(preferences = failing)
+
+        context.mockPackageInfo("1.0.0", 1)
+
+        // runs from PostHogAndroid.setup while opted out, so a failure must not reach the host app
+        sut.recordAppVersion()
     }
 }

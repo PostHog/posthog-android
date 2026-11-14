@@ -177,6 +177,8 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
             project: Project,
             generateMapIdTask: Provider<PostHogGenerateMapIdTask>,
             mappingFiles: Provider<FileCollection>,
+            skipOnConflict: Provider<Boolean>,
+            force: Provider<Boolean>,
             taskSuffix: String = "",
             releaseName: Provider<String>? = null,
             releaseVersion: Provider<String>? = null,
@@ -191,6 +193,8 @@ public abstract class PostHogUploadProguardMappingsTask : PostHogCliExecTask() {
                     workingDir(project.rootDir)
                     this.mapIdFile.set(generateMapIdTask.flatMap { it.outputFile })
                     this.mappingsFiles = mappingFiles
+                    this.skipOnConflict.convention(skipOnConflict)
+                    this.force.convention(force)
                     releaseName?.let { this.releaseName.set(it) }
                     releaseVersion?.let { this.releaseVersion.set(it) }
                     build?.let { this.build.set(it) }

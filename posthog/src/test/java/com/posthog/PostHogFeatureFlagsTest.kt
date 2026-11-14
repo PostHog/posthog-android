@@ -38,7 +38,7 @@ internal class PostHogFeatureFlagsTest {
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestRemoteConfig"))
     private val cachedEventsExecutor =
         Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
-    private val serializer = PostHogSerializer(PostHogConfig(API_KEY))
+    private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
 
     @Suppress("DEPRECATION")
@@ -60,7 +60,7 @@ internal class PostHogFeatureFlagsTest {
         context: PostHogContext? = null,
     ): PostHogInterface {
         config =
-            PostHogConfig(API_KEY, host).apply {
+            PostHogConfig(PROJECT_TOKEN, host).apply {
                 // for testing
                 this.flushAt = flushAt
                 this.storagePrefix = File(storagePrefix, "events").absolutePath

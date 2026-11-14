@@ -2,7 +2,7 @@ package com.posthog.android.replay
 
 import com.posthog.PostHogConfig
 import com.posthog.PostHogEvent
-import com.posthog.android.API_KEY
+import com.posthog.android.PROJECT_TOKEN
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
@@ -164,12 +164,12 @@ internal class PostHogReplayQueueTest {
         storagePrefix: String = tmpDir.newFolder().absolutePath,
         executor: ExecutorService = createReplayExecutor(),
     ): PostHogReplayQueue {
-        val config = PostHogConfig(API_KEY, "http://localhost:9001")
+        val config = PostHogConfig(PROJECT_TOKEN, "http://localhost:9001")
         return PostHogReplayQueue(config, fakeInnerQueue, storagePrefix, executor)
     }
 
     private fun createRealReplayQueue(): RealReplayQueueFixture {
-        val config = PostHogConfig(API_KEY, "http://localhost:9001")
+        val config = PostHogConfig(PROJECT_TOKEN, "http://localhost:9001")
         val storagePrefix = tmpDir.newFolder().absolutePath
         val executor = createReplayExecutor()
         val innerQueue =
@@ -179,7 +179,7 @@ internal class PostHogReplayQueueTest {
                 executor,
             )
         val queue = PostHogReplayQueue(config, innerQueue, storagePrefix, executor)
-        return RealReplayQueueFixture(queue, config, File(storagePrefix, API_KEY))
+        return RealReplayQueueFixture(queue, config, File(storagePrefix, PROJECT_TOKEN))
     }
 
     private fun eventNamesInDirectory(
@@ -206,9 +206,9 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `queue provider defers buffer cleanup even with replay disabled`() {
-        val config = PostHogAndroidConfig(API_KEY)
+        val config = PostHogAndroidConfig(PROJECT_TOKEN)
         val storagePrefix = File(tmpDir.root, "replay").absolutePath
-        val bufferDir = File("$storagePrefix-buffer", API_KEY)
+        val bufferDir = File("$storagePrefix-buffer", PROJECT_TOKEN)
         bufferDir.mkdirs()
         val leftover = File(bufferDir, "leftover.event").apply { writeText("old data") }
         val executor = createPausedExecutor()
@@ -233,7 +233,7 @@ internal class PostHogReplayQueueTest {
     @Test
     fun `construction does not create buffer directory`() {
         val storagePrefix = File(tmpDir.root, "replay").absolutePath
-        val bufferDir = File("$storagePrefix-buffer", API_KEY)
+        val bufferDir = File("$storagePrefix-buffer", PROJECT_TOKEN)
         val executor = createPausedExecutor()
         val queue = createReplayQueue(createFakeQueue(), storagePrefix, executor)
 
@@ -249,9 +249,9 @@ internal class PostHogReplayQueueTest {
 
     @Test
     fun `initial cleanup precedes buffered writes and subsequent clears`() {
-        val config = PostHogConfig(API_KEY)
+        val config = PostHogConfig(PROJECT_TOKEN)
         val storagePrefix = File(tmpDir.root, "replay").absolutePath
-        val bufferDir = File("$storagePrefix-buffer", API_KEY)
+        val bufferDir = File("$storagePrefix-buffer", PROJECT_TOKEN)
         bufferDir.mkdirs()
         val leftover = File(bufferDir, "leftover.event").apply { writeText("old data") }
         val executor = createPausedExecutor()

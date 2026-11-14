@@ -6,7 +6,7 @@ import java.util.TimeZone
  * The data structure for calling the flags API
  */
 internal class PostHogFlagsRequest(
-    apiKey: String,
+    projectToken: String,
     distinctId: String,
     anonymousId: String? = null,
     deviceId: String? = null,
@@ -18,7 +18,7 @@ internal class PostHogFlagsRequest(
     disableGeoip: Boolean = false,
 ) : HashMap<String, Any>() {
     init {
-        this["api_key"] = apiKey
+        this["api_key"] = projectToken
         this["distinct_id"] = distinctId
         this["timezone"] = TimeZone.getDefault().id
         if (!anonymousId.isNullOrBlank()) {

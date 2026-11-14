@@ -53,6 +53,26 @@ jobs:
             slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
             posthog_project_api_key: ${{ secrets.POSTHOG_PROJECT_API_KEY }}
 
+    preserve-slack-thread:
+        name: Preserve Slack thread
+        needs: notify-approval-needed
+        if: needs.notify-approval-needed.outputs.slack_ts != ''
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        continue-on-error: true
+        steps:
+            - name: Save approval thread timestamp
+              env:
+                  THREAD_TS: ${{ needs.notify-approval-needed.outputs.slack_ts }}
+              run: printf '%s' "$THREAD_TS" > thread-ts.txt
+
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              with:
+                  name: release-slack-thread-${{ github.run_attempt }}
+                  path: thread-ts.txt
+                  retention-days: 30
+                  if-no-files-found: error
+
     version-bump:
         name: Bump versions and commit to main
         needs: [check-changesets, notify-approval-needed]
@@ -76,7 +96,7 @@ jobs:
 
             - name: Get GitHub App token
               id: releaser
-              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
               with:
                   client-id: ${{ secrets.GH_APP_POSTHOG_ANDROID_RELEASER_APP_ID }}
                   private-key: ${{ secrets.GH_APP_POSTHOG_ANDROID_RELEASER_PRIVATE_KEY }}
@@ -106,13 +126,43 @@ jobs:
                   ANDROID_VERSION=$(node -p "require('./posthog-android/package.json').version")
                   SURVEYS_COMPOSE_VERSION=$(node -p "require('./posthog-android-surveys-compose/package.json').version")
                   SERVER_VERSION=$(node -p "require('./posthog-server/package.json').version")
+                  SERVER_OPENFEATURE_VERSION=$(node -p "require('./posthog-server-openfeature/package.json').version")
                   PLUGIN_VERSION=$(node -p "require('./posthog-android-gradle-plugin/package.json').version")
 
                   sed -i "s/^coreVersion=.*/coreVersion=$CORE_VERSION/" gradle.properties
                   sed -i "s/^androidVersion=.*/androidVersion=$ANDROID_VERSION/" gradle.properties
                   sed -i "s/^surveysComposeVersion=.*/surveysComposeVersion=$SURVEYS_COMPOSE_VERSION/" gradle.properties
                   sed -i "s/^serverVersion=.*/serverVersion=$SERVER_VERSION/" gradle.properties
+                  sed -i "s/^serverOpenFeatureVersion=.*/serverOpenFeatureVersion=$SERVER_OPENFEATURE_VERSION/" gradle.properties
                   sed -i "s/^androidPluginVersion=.*/androidPluginVersion=$PLUGIN_VERSION/" posthog-android-gradle-plugin/gradle.properties
+
+            - name: 'Set up Java 17'
+              uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+              with:
+                  java-version: '17'
+                  distribution: 'temurin'
+
+            - name: 'Set up Python'
+              uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+              with:
+                  python-version: '3.13'
+
+            # Best-effort: a failure never blocks the release. Run generate-references.yml to retry.
+            - name: Regenerate the SDK reference
+              id: reference
+              continue-on-error: true
+              env:
+                  GH_TOKEN: ${{ steps.releaser.outputs.token }}
+              run: |
+                  gh repo clone PostHog/sdk-specs "$RUNNER_TEMP/sdk-specs" -- --depth 1
+                  python3 -m pip install --quiet -r bin/docs_scripts/requirements.txt
+                  python3 bin/docs_scripts/generate_markdown.py --sdk-specs "$RUNNER_TEMP/sdk-specs"
+                  # Stage the pages, so a new page shows in git status as a file, not as an untracked folder.
+                  git add references
+
+            - name: Warn if the SDK reference didn't regenerate
+              if: steps.reference.outcome == 'failure'
+              run: echo "::warning::The SDK reference didn't regenerate. Run generate-references.yml to retry."
 
             - name: Check for version bump changes
               id: check-changes
@@ -142,7 +192,7 @@ jobs:
                   package_name=""
                   package_version=""
                   separator=""
-                  for package_json in posthog/package.json posthog-android/package.json posthog-android-surveys-compose/package.json posthog-server/package.json posthog-android-gradle-plugin/package.json; do
+                  for package_json in posthog/package.json posthog-android/package.json posthog-android-surveys-compose/package.json posthog-server/package.json posthog-server-openfeature/package.json posthog-android-gradle-plugin/package.json; do
                     if [ -f "$package_json" ]; then
                       package_name_part=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("name", ""))' "$package_json")
                       version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$package_json")
@@ -177,17 +227,6 @@ jobs:
                         "alertText": ":rotating_light: Failed to prepare release for posthog-android :rotating_light:",
                         "alertContext": "The version bump/changelog step failed before packages were published."
                       }
-
-            - name: Notify Slack - Failed
-              continue-on-error: true
-              if: ${{ failure() && needs.notify-approval-needed.outputs.slack_ts != '' }}
-              uses: PostHog/.github/.github/actions/slack-thread-reply@cb0979b67dcd585828b61ac45927eef4da8f6287 # main
-              with:
-                  slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
-                  slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
-                  thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
-                  message: '❌ Failed to bump versions for `posthog-android`! <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>'
-                  emoji_reaction: 'x'
 
     notify-rejected:
         name: Notify Slack - Rejected
@@ -244,7 +283,8 @@ jobs:
         strategy:
             # If any package fails to publish, stop immediately — don't publish dependents against a broken/missing dependency
             fail-fast: true
-            # Order matters: posthog (core) must be released before posthog-android and posthog-server
+            # Order matters: posthog (core) must be released before posthog-android and posthog-server,
+            # and posthog-server must be released before posthog-server-openfeature
             # since they are transitive dependencies. We use max-parallel: 1 to enforce sequential execution.
             max-parallel: 1
             matrix:
@@ -269,6 +309,11 @@ jobs:
                       make_dry_target: dryReleaseServer
                       make_release_target: releaseServer
                       changelog: posthog-server/CHANGELOG.md
+                    - name: posthog-server-openfeature
+                      tag_prefix: serverOpenFeature
+                      make_dry_target: dryReleaseServerOpenFeature
+                      make_release_target: releaseServerOpenFeature
+                      changelog: posthog-server-openfeature/CHANGELOG.md
                     - name: posthog-android-gradle-plugin
                       tag_prefix: androidPlugin
                       make_dry_target: dryReleaseAndroidPlugin
@@ -288,7 +333,7 @@ jobs:
                   git config user.email "github-actions[bot]@users.noreply.github.com"
 
             - name: 'Set up Java 17'
-              uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+              uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
               with:
                   java-version: '17'
                   distribution: 'temurin'
@@ -391,17 +436,6 @@ jobs:
                         "alertText": ":rotating_light: Failed to release ${{ matrix.package.name }}@${{ steps.detect-version.outputs.version }} :rotating_light:",
                         "alertContext": "The package publish step failed."
                       }
-
-            - name: Notify Slack - Failed
-              continue-on-error: true
-              if: ${{ failure() && needs.notify-approval-needed.outputs.slack_ts != '' }}
-              uses: PostHog/.github/.github/actions/slack-thread-reply@cb0979b67dcd585828b61ac45927eef4da8f6287 # main
-              with:
-                  slack_bot_token: ${{ secrets.SLACK_CLIENT_LIBRARIES_BOT_TOKEN }}
-                  slack_channel_id: ${{ vars.SLACK_APPROVALS_CLIENT_LIBRARIES_CHANNEL_ID }}
-                  thread_ts: ${{ needs.notify-approval-needed.outputs.slack_ts }}
-                  message: '❌ Failed to release `${{ matrix.package.name }}@${{ steps.detect-version.outputs.version }}`! <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>'
-                  emoji_reaction: 'x'
 
     notify-released:
         name: Notify Slack - Released

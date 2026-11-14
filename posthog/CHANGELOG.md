@@ -1,5 +1,85 @@
 ## Next
 
+## 6.49.1
+
+### Patch Changes
+
+- b3afe48: Treat failed detailed feature flag records as unavailable values and payloads, independently of response-wide errors. Preserve successful cached values on errored client refreshes and same-context local decisions during server fallback. Report failed direct reads as evaluation failures without tracking caller defaults as evaluated responses.
+
+## 6.49.0
+
+### Minor Changes
+
+- cad8645: Add disableGeoIp configuration to skip GeoIP enrichment for analytics events and feature flag requests.
+
+## 6.48.2
+
+### Patch Changes
+
+- 6540a3f: Store the person-properties dedup hash only after the `$set` or `$identify` event is queued, and only when the event as sent still processes the person. An update that `beforeSend` dropped or made personless, or one made while opted out, is no longer skipped when it is repeated.
+
+## 6.48.1
+
+### Patch Changes
+
+- 0df75de: Ignore a remote config reply from a closed setup once the client is set up again, so it cannot re-arm the old integrations.
+- afda8ef: Stop a remote config reply that arrives after `close()` from reinstalling integrations on the closed client.
+
+## 6.48.0
+
+### Minor Changes
+
+- 3366547: Support Firebase Installation ID (FID) push registration. When the app enables `firebase_messaging_installation_id_enabled`, the SDK registers the FID instead of calling the deprecated `getToken()`. Forward `onRegistered` to `registerPushNotificationToken(installationId, appId)` to refresh the subscription even when the FID is unchanged. Automatic startup registration still skips previously delivered subscriptions, and pending registrations retain their retry backoff.
+
+## 6.47.8
+
+### Patch Changes
+
+- 0310daf: Fix session replay recording into the opted-out session when a linked feature flag or pending remote config delayed its restart after `optIn()`.
+
+## 6.47.7
+
+### Patch Changes
+
+- 6a80525: Avoid unnecessary Calendar allocations when reading device-clock timestamps.
+
+## 6.47.6
+
+### Patch Changes
+
+- cb6fe68: Fix `beforeSend` running twice for each captured event, which discarded the hook's changes to `distinctId`, `timestamp` and `uuid` and compounded random sampling
+
+## 6.47.5
+
+### Patch Changes
+
+- fb584fd: Upgrade OkHttp to 4.12.1 to block compromised eMudhra intermediate certificates.
+
+## 6.47.4
+
+### Patch Changes
+
+- 98315b9: Stop session replay, autocapture and other integrations while opted out, and restart them on `optIn()`. Replay restarts in a new session if the app wanted it on at opt-out: `sessionReplay` is enabled or the app called `startSessionReplay()`, and the app hasn't called `stopSessionReplay()` since.
+
+## 6.47.3
+
+### Patch Changes
+
+- ee5e1e3: `alias()` now also sends the current `distinct_id` in the `$create_alias` event properties, alongside `alias`, matching posthog-js
+- 9192756: Keep `$recording_status`, the replay trigger statuses and the replay buffer length on every captured event. Add the remaining `$sdk_debug_*` session replay properties and `$sdk_debug_session_start` only to SDK events (names starting with `$`, excluding `$feature_flag_called` and `$snapshot`), at most once every 30 seconds. Remove `$sdk_debug_current_session_duration` and `$sdk_debug_replay_throttle_delay_ms`.
+
+## 6.47.2
+
+### Patch Changes
+
+- c5e788b: Report a missing runtime dependency instead of disabling an integration in silence. When an integration cannot be built or installed because a class is absent, the SDK now logs a warning that names the Maven artifact the build excludes, even when debug is off, and keeps the other integrations. A build that excludes `com.squareup.curtains:curtains` turns off session replay, interaction autocapture and touch tracking, and said nothing useful about it before.
+
+## 6.47.1
+
+### Patch Changes
+
+- fb21f39: Retry feature flag requests that fail with a DNS or TLS transport error, instead of only timeouts, EOF, and connection resets
+
 ## 6.47.0
 
 ### Minor Changes

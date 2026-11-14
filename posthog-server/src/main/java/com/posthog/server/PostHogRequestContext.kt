@@ -1,5 +1,6 @@
 package com.posthog.server
 
+import com.posthog.server.internal.enrichCurrentSpanSafely
 import java.util.UUID
 
 /**
@@ -23,6 +24,9 @@ public class PostHogRequestContext private constructor() {
         private const val MAX_HEADER_VALUE_LENGTH = 1000
 
         private val currentContext = ThreadLocal<PostHogRequestContextData?>()
+        private val currentOwner = ThreadLocal<PostHogInterface?>()
+
+        internal fun owner(): PostHogInterface? = currentOwner.get()
 
         /**
          * Returns the context active on the current thread, or null when no scope is active.
@@ -55,10 +59,42 @@ public class PostHogRequestContext private constructor() {
             data: PostHogRequestContextData,
             fresh: Boolean,
         ): Scope {
+            return beginOwnedScope(if (fresh) null else currentOwner.get(), data, fresh)
+        }
+
+        /**
+         * Starts a scope owned by [owner] for capture and optional span enrichment.
+         * A different owner does not inherit the previous client's IDs or properties.
+         */
+        @JvmStatic
+        public fun beginScope(
+            owner: PostHogInterface,
+            data: PostHogRequestContextData,
+        ): Scope = beginScope(owner, data, fresh = false)
+
+        /**
+         * Starts an owner-bound scope. Only this client's registered processor may enrich spans.
+         * Opted-out clients add no attributes. [fresh] ignores any previous context.
+         */
+        @JvmStatic
+        public fun beginScope(
+            owner: PostHogInterface,
+            data: PostHogRequestContextData,
+            fresh: Boolean,
+        ): Scope = beginOwnedScope(owner, data, fresh)
+
+        private fun beginOwnedScope(
+            owner: PostHogInterface?,
+            data: PostHogRequestContextData,
+            fresh: Boolean,
+        ): Scope {
             val previous = currentContext.get()
-            val base = if (fresh) null else previous
+            val previousOwner = currentOwner.get()
+            val base = if (fresh || previousOwner !== owner) null else previous
             currentContext.set(resolveContext(data, base))
-            return Scope(previous)
+            currentOwner.set(owner)
+            enrichCurrentSpanSafely()
+            return Scope(previous, previousOwner)
         }
 
         /**
@@ -87,6 +123,29 @@ public class PostHogRequestContext private constructor() {
             block: () -> T,
         ): T {
             beginScope(data, fresh).use {
+                return block()
+            }
+        }
+
+        /**
+         * Runs [block] in an owner-bound scope and restores the previous scope afterwards.
+         */
+        public fun <T> withContext(
+            owner: PostHogInterface,
+            data: PostHogRequestContextData,
+            block: () -> T,
+        ): T = withContext(owner, data, fresh = false, block)
+
+        /**
+         * Runs [block] in an owner-bound scope, optionally ignoring previous context with [fresh].
+         */
+        public fun <T> withContext(
+            owner: PostHogInterface,
+            data: PostHogRequestContextData,
+            fresh: Boolean,
+            block: () -> T,
+        ): T {
+            beginScope(owner, data, fresh).use {
                 return block()
             }
         }
@@ -244,7 +303,10 @@ public class PostHogRequestContext private constructor() {
     /**
      * Active request context scope. Close it to restore the previous context.
      */
-    public class Scope internal constructor(private val previous: PostHogRequestContextData?) : AutoCloseable {
+    public class Scope internal constructor(
+        private val previous: PostHogRequestContextData?,
+        private val previousOwner: PostHogInterface?,
+    ) : AutoCloseable {
         private var closed: Boolean = false
 
         override fun close() {
@@ -256,6 +318,11 @@ public class PostHogRequestContext private constructor() {
                 currentContext.remove()
             } else {
                 currentContext.set(previous)
+            }
+            if (previousOwner == null) {
+                currentOwner.remove()
+            } else {
+                currentOwner.set(previousOwner)
             }
             closed = true
         }

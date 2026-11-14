@@ -3,7 +3,7 @@ package com.posthog.internal
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
-import com.posthog.API_KEY
+import com.posthog.PROJECT_TOKEN
 import com.posthog.PostHogConfig
 import java.io.File
 import java.util.Date
@@ -14,7 +14,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class GsonDateTypeAdapterTest {
-    private val config = PostHogConfig(API_KEY)
+    private val config = PostHogConfig(PROJECT_TOKEN)
     private val gsonFakeDateType = object : TypeToken<FakeDate>() {}.type
 
     @Suppress("DEPRECATION")

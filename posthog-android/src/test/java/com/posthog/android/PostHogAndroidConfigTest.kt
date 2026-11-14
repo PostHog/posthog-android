@@ -4,33 +4,43 @@ import com.posthog.android.replay.PostHogScreenshotColorMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogAndroidConfigTest {
-    private val config = PostHogAndroidConfig(API_KEY)
+    private val config = PostHogAndroidConfig(PROJECT_TOKEN)
 
     @Test
     fun `captureApplicationLifecycleEvents sets given projectToken`() {
-        assertEquals(API_KEY, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
     }
 
     @Test
     fun `trims whitespace-sensitive config values`() {
-        val config = PostHogAndroidConfig(" \n$API_KEY\t ")
+        val config = PostHogAndroidConfig(" \n$PROJECT_TOKEN\t ")
 
-        assertEquals(API_KEY, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
     }
 
     @Suppress("DEPRECATION")
     @Test
     fun `deprecated apiKey factory and getter alias projectToken`() {
-        val config = PostHogAndroidConfig(apiKey = " $API_KEY ", captureDeepLinks = false, capturePushNotificationOpened = false)
+        val config = PostHogAndroidConfig(apiKey = " $PROJECT_TOKEN ", captureDeepLinks = false, capturePushNotificationOpened = false)
 
-        assertEquals(API_KEY, config.projectToken)
-        assertEquals(API_KEY, config.apiKey)
+        assertEquals(PROJECT_TOKEN, config.projectToken)
+        assertEquals(PROJECT_TOKEN, config.apiKey)
         assertFalse(config.captureDeepLinks)
         assertFalse(config.capturePushNotificationOpened)
         assertTrue(config.captureScreenViews)
+    }
+
+    @Test
+    fun `disableGeoIp is inherited from core config`() {
+        assertFalse(config.disableGeoIp)
+
+        config.disableGeoIp = true
+
+        assertTrue(config.disableGeoIp)
     }
 
     @Test
@@ -51,7 +61,7 @@ internal class PostHogAndroidConfigTest {
     @Test
     fun `screenshot settings preserve the default capture fidelity`() {
         assertEquals(30, config.sessionReplayConfig.screenshotCompressionQuality)
-        assertEquals(1f, config.sessionReplayConfig.screenshotScale)
+        assertNull(config.sessionReplayConfig.screenshotScale)
         assertEquals(PostHogScreenshotColorMode.ARGB_8888, config.sessionReplayConfig.screenshotColorMode)
         assertFalse(config.sessionReplayConfig.screenshot)
     }
