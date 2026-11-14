@@ -1293,6 +1293,51 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `under React Native a stop re-applied after a reinstall holds every automatic start until JS asks again`() {
+        PostHogSessionManager.isReactNative = true
+
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            sut.stop()
+
+            // optOut uninstalls and optIn reinstalls; the SDK then repeats the stop JS had made,
+            // on a recorder that never started in this installation.
+            sut.uninstall()
+            sut.install(postHog)
+            sut.stop()
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a remote config refresh overrode the re-applied JS stop")
+
+            sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a captured event overrode the re-applied JS stop")
+
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a session change overrode the re-applied JS stop")
+
+            // JS asks to start; from then on automatic starts go through again.
+            sut.onStartRequested()
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "the later automatic start must go through after the JS request")
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
     fun `outside React Native a remote config refresh can still resume after a stop`() {
         val sessionId = UUID.randomUUID()
         PostHogSessionManager.setSessionId(sessionId)

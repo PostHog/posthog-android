@@ -74,4 +74,11 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     override fun onSessionIdChanged() {
         onSessionIdChangedCalled = true
     }
+
+    // runs on each remote config delivery, so a test can check what reached the handler before it
+    public var onRemoteConfigDelivered: (() -> Unit)? = null
+
+    override fun onRemoteConfig(loaded: Boolean) {
+        onRemoteConfigDelivered?.invoke()
+    }
 }

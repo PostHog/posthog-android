@@ -1413,6 +1413,12 @@ public class PostHog private constructor(
                     PostHogSessionManager.startSession()
                 }
                 installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
+                // the uninstall on optOut dropped the React Native stop hold with the rest of the handler's
+                // state; put it back before the remote config below, or any later automatic start, can
+                // restart replay the JS layer had stopped (as on iOS)
+                if (!sessionReplayWanted && PostHogSessionManager.isReactNative) {
+                    sessionReplayHandler?.stop()
+                }
                 // install re-arms each integration from local config; re-apply the cached remote
                 // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
                 if (remoteConfig?.hasRemoteConfigFetched() == true) {

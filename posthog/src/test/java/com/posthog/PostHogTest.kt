@@ -1930,6 +1930,127 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `under React Native optIn holds session replay the app stopped until it starts it again`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+            val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+            // Under React Native the native side doesn't create the session; JS hands it over.
+            PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+            config.sessionReplay = true
+            sut.startSessionReplay()
+            sut.stopSessionReplay()
+
+            sut.optOut()
+            integration.reset()
+            sut.optIn()
+
+            // the reinstalled handler lost the stop with the uninstall: it is told again, so its
+            // automatic starts stay held
+            assertTrue(integration.stopCalled)
+            assertFalse(integration.startCalled)
+
+            // only the app's next start lifts the hold
+            sut.startSessionReplay()
+            assertTrue(integration.onStartRequestedCalled)
+            assertTrue(integration.startCalled)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native optIn holds stopped session replay before re-applying the cached remote config`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+            val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+
+            val sut = getSut(url.toString(), remoteConfig = true, integration = integration, sessionReplay = true)
+            remoteConfigExecutor.shutdownAndAwaitTermination()
+            sut.stopSessionReplay()
+
+            sut.optOut()
+            integration.reset()
+            // a remote config delivery is an automatic start path: the hold has to be back by then
+            var heldBeforeRemoteConfig: Boolean? = null
+            integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.stopCalled }
+            sut.optIn()
+
+            assertEquals(true, heldBeforeRemoteConfig)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native optIn restarts session replay the app started without holding it`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+            val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+            // Under React Native the native side doesn't create the session; JS hands it over.
+            PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+            sut.startSessionReplay()
+
+            sut.optOut()
+            // ignored while opted out, so it must not turn into a hold either
+            sut.stopSessionReplay()
+            integration.reset()
+            sut.optIn()
+
+            assertTrue(integration.startCalled)
+            assertFalse(integration.stopCalled)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `outside React Native optIn does not stop the reinstalled session replay handler`() {
+        val http = mockHttp()
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+        config.sessionReplay = true
+        sut.startSessionReplay()
+        sut.stopSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        sut.optIn()
+
+        assertFalse(integration.stopCalled)
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
     fun `optIn starts session replay when launched opted out with it enabled`() {
         val http = mockHttp()
         val url = http.url("/")
