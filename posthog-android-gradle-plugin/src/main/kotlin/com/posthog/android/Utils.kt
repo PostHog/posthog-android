@@ -155,8 +155,18 @@ internal fun resolvePostHogCliExecutable(
     cliInstallLocations: List<File>? = null,
     nodeInstallLocations: List<File>? = null,
 ): String {
-    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE || isWindows) {
+    if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE) {
         return configured
+    }
+    if (isWindows) {
+        // A native posthog-cli.exe on PATH runs directly, so its arguments never pass through
+        // cmd. Otherwise keep the bare name, which cmd resolves (e.g. to the npm .cmd shim).
+        val exeName = "$configured.exe"
+        return pathValue(environment)
+            ?.split(File.pathSeparator)
+            ?.map { File(it, exeName) }
+            ?.firstOrNull { it.isRunnableFile(isWindows = true) }
+            ?.absolutePath ?: configured
     }
 
     val launcherName = configured

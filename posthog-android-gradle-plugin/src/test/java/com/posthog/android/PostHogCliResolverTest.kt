@@ -155,6 +155,36 @@ internal class PostHogCliResolverTest {
         assertEquals(customExecutable, resolved)
     }
 
+    @Test
+    fun `resolves a native exe on the Windows PATH`() {
+        val pathDirectory = temporaryFolder.newFolder("windows-bin")
+        val exe = createExecutable(File(pathDirectory, "posthog-cli.exe"))
+
+        val resolved = resolveOnWindows(mapOf("Path" to pathDirectory.absolutePath))
+
+        assertEquals(exe.absolutePath, resolved)
+    }
+
+    @Test
+    fun `keeps the bare name on Windows without a native exe on PATH`() {
+        val pathDirectory = temporaryFolder.newFolder("npm-bin")
+        createExecutable(File(pathDirectory, "posthog-cli.cmd"))
+
+        val resolved = resolveOnWindows(mapOf("Path" to pathDirectory.absolutePath))
+
+        assertEquals(POSTHOG_CLI_DEFAULT_EXECUTABLE, resolved)
+    }
+
+    private fun resolveOnWindows(environment: Map<String, String>): String =
+        resolvePostHogCliExecutable(
+            configured = POSTHOG_CLI_DEFAULT_EXECUTABLE,
+            logger = logger,
+            environment = environment,
+            home = temporaryFolder.newFolder("home"),
+            workingDirectory = temporaryFolder.newFolder("android"),
+            isWindows = true,
+        )
+
     private fun createLauncher(
         projectRoot: File,
         name: String,
