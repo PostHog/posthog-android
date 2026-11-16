@@ -224,8 +224,8 @@ internal class PostHogWrapperEventTest {
         assertNotNull(sut.sendBuiltEventForWrapper(identified))
         val next = assertNotNull(sut.buildEventForWrapper("tap"))
 
-        assertNull(identified.options?.get("process_person_profile"))
-        assertNull(next.options?.get("process_person_profile"))
+        assertEquals(true, identified.options?.get("process_person_profile"))
+        assertEquals(true, next.options?.get("process_person_profile"))
     }
 
     @Test
@@ -516,15 +516,26 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
-    fun `a registered process_person_profile replaces the SDK's personless default`() {
-        val http = httpServers.mockHttp()
-        val sut = getSut(http)
-        sut.registerOptionsForWrapper(mapOf("process_person_profile" to true))
+    fun `registered canonical options override SDK policy and call options override registered ones`() {
+        for ((mode, registered) in listOf(PersonProfiles.NEVER to true, PersonProfiles.ALWAYS to false)) {
+            val http = httpServers.mockHttp(total = 4)
+            val sut = getSut(http) { personProfiles = mode }
+            sut.registerOptionsForWrapper(mapOf("process_person_profile" to registered))
+            sut.register("\$process_person_profile", !registered)
 
-        sut.capture("anonymous")
-        queueExecutor.awaitExecution()
+            sut.capture("registered")
+            sut.capture("call", options = mapOf("process_person_profile" to !registered))
+            sut.capture("null", options = mapOf("process_person_profile" to null))
+            sut.capture("later")
+            queueExecutor.awaitExecution()
+            val sent = (1..4).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }
 
-        assertEquals(true, events(takeRequest(http)).single().options()?.get("process_person_profile"))
+            assertEquals(registered, sent.getValue("registered").options()?.get("process_person_profile"))
+            assertEquals(!registered, sent.getValue("call").options()?.get("process_person_profile"))
+            assertEquals(!registered, sent.getValue("null").options()?.get("process_person_profile"))
+            assertEquals(registered, sent.getValue("later").options()?.get("process_person_profile"))
+            sut.close()
+        }
     }
 
     @Test
@@ -547,7 +558,7 @@ internal class PostHogWrapperEventTest {
         val identityEvents = listOf("\$identify", "\$create_alias", "\$groupidentify", "\$set", "\$set_once", "\$merge_dangerously")
         for (event in identityEvents) {
             val identity = assertNotNull(sent[event], event)
-            assertNull(identity.options()?.get("process_person_profile"), event)
+            assertEquals(true, identity.options()?.get("process_person_profile"), event)
             assertFalse(identity.properties().containsKey("\$process_person_profile"), event)
         }
         assertEquals(false, assertNotNull(sent["plain"]).options()?.get("process_person_profile"))
@@ -570,7 +581,7 @@ internal class PostHogWrapperEventTest {
     }
 
     @Test
-    fun `a call property or beforeSend can still turn person processing off for an identity event`() {
+    fun `a canonical call option or beforeSend can still turn person processing off for an identity event`() {
         val http = httpServers.mockHttp(total = 2)
         val sut =
             getSut(http) {
@@ -581,7 +592,7 @@ internal class PostHogWrapperEventTest {
             }
         sut.register("\$process_person_profile", true)
 
-        sut.capture("\$set", properties = mapOf("\$process_person_profile" to false), userProperties = mapOf("plan" to "pro"))
+        sut.capture("\$set", userProperties = mapOf("plan" to "pro"), options = mapOf("process_person_profile" to false))
         sut.identify("user")
         queueExecutor.awaitExecution()
         val sent = (1..2).flatMap { events(takeRequest(http)) }.associateBy { it["event"] }

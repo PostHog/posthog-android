@@ -11,9 +11,9 @@
 - **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`. PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
 - **Breaking:** send `$session_id` and `$window_id` as top-level `session_id` and `window_id` fields, dropping non-string values
 - **Breaking:** send `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at` and `$product_tour_id` as capture options instead of properties. PostHog drops an event whose option value it can't read
-- **Breaking:** set the `process_person_profile` option to `false` only when person processing is off, instead of adding a `$process_person_profile` property to every event
-- **Breaking:** let a `process_person_profile` option or `$process_person_profile` property set to `true` turn person processing on for an event even with `PersonProfiles.NEVER`
-- **Breaking:** let registered super properties override properties the SDK sets, such as `$os_name`, and let super and event properties override `$is_identified`, `$process_person_profile` and the session replay debug properties
+- **Breaking:** set the `process_person_profile` option to the SDK's computed Boolean before `beforeSend`, instead of adding a `$process_person_profile` property to every event; registered or caller legacy properties don't override it
+- **Breaking:** let an explicit canonical `process_person_profile` option or a `beforeSend` edit turn person processing on for an event even with `PersonProfiles.NEVER`
+- **Breaking:** let registered super properties override properties the SDK sets, such as `$os_name`, and let super and event properties override `$is_identified` and the session replay debug properties
 - Ignore a registered `$process_person_profile` or `process_person_profile` option on `$identify`, `$create_alias`, `$merge_dangerously`, `$groupidentify`, `$set` and `$set_once`, so a registered `false` doesn't stop identifying users
 - **Breaking:** fill `$lib` and `$lib_version` last and as a pair, only when the event doesn't name its library. A `$lib` you register or pass is sent as it is, without the SDK's version
 - **Breaking:** let `userProperties`, `userPropertiesSetOnce` and `groups` win key by key over `$set`, `$set_once` and `$groups` maps in the same call's properties, and merge a `$groups` map in properties into the groups set with `group()`

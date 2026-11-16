@@ -72,7 +72,11 @@ public interface PostHogInterface : PostHogCoreInterface {
      * The event's properties are merged in this order, and later values win: properties the SDK
      * sets itself (such as `$os`, `$app_version`, `$screen_name`, `$is_identified` and the session
      * replay debug properties), registered super properties ([register]), [properties], then
-     * `beforeSend`.
+     * `beforeSend`. Person processing uses the SDK's computed `process_person_profile` option,
+     * not a registered or caller `$process_person_profile` property. A non-null canonical option
+     * registered by a wrapper or passed in [options] overrides that default; per-call options win
+     * over registered options. A missing or null option uses the SDK's default. `beforeSend` can
+     * change the assembled option through [PostHogEvent.options].
      *
      * Events captured while the device is offline are stored on the device. The SDK sends them
      * when the connection returns, or when the app next starts with a connection.
@@ -354,7 +358,8 @@ public interface PostHogInterface : PostHogCoreInterface {
      * the SDK only.
      * A registered `$process_person_profile` isn't sent with `$identify`, `$create_alias`,
      * `$merge_dangerously`, `$groupidentify`, `$set` or `$set_once`, so it can't stop those events
-     * from updating persons and groups. A value passed on the call still applies.
+     * from updating persons and groups. A canonical `process_person_profile` option passed on
+     * the call still applies.
      * @param key the Key
      * @param value the Value
      */

@@ -597,7 +597,7 @@ An event's properties are merged in this order, and later values win:
 
 These changes follow from this order:
 
-- **SDK values.** In 3.x.x, the SDK's own values won over super properties. `$is_identified`, `$process_person_profile`, and the session replay debug properties also won over the properties you pass. In 4.x.x a value you register or pass wins. For example, `register("\$os_name", "custom")` sends every event with that value.
+- **SDK values.** In 3.x.x, the SDK's own values won over super properties. `$is_identified`, `$process_person_profile`, and the session replay debug properties also won over the properties you pass. In 4.x.x a value you register or pass wins, except for [person processing](#check-person-processing), which uses a canonical option. For example, `register("\$os_name", "custom")` sends every event with that value.
 - **Session IDs.** A registered `$session_id` overrides the SDK's session ID, which can detach events from their session replay.
 - **Blank values.** A caller `$screen_name` or `$session_id` still replaces the SDK's value even when it's blank, as in 3.x.x, so a blank `$session_id` is sent as an empty `session_id`.
 - **Merged maps.** In 3.x.x, a `$set`, `$set_once`, or `$groups` map in properties replaced the per-call values and the groups set with `group()`. A `$set` or `$set_once` you pass, or `userProperties`, still replaces a registered one whole.
@@ -629,7 +629,7 @@ In PostHog, the events still have `$session_id` and `$window_id`, so insights, f
 Review your `beforeSend` hooks for the new event shape. Capture v1 reads processing settings from an `options` object sent next to `properties`, and `beforeSend` can read and change `PostHogEvent.options`.
 
 - **Person processing.** In 3.x.x, the SDK marked person processing with the `$process_person_profile` property. In 4.x.x, it's the `process_person_profile` option, and the property isn't set. To change person processing in `beforeSend`, edit `event.options`.
-- **Properties a hook adds.** A `$process_person_profile` property the hook adds only fills an option that is still unset. It doesn't override the `false` the SDK set for an anonymous event.
+- **Properties a hook adds.** A `$process_person_profile` property the hook adds only fills an option that is still unset. It doesn't override the SDK's computed `true` or `false` option.
 - **New option maps.** A hook that assigns a new map to `event.options` without keeping that key loses the `false` the SDK set. That turns person processing on for anonymous users, overriding `personProfiles`. Editing `event.options` in place keeps it.
 - **Copies.** `beforeSend` gets its own copy of the event's nested maps, lists, and arrays, in `properties` and `options`. Changes a hook makes no longer reach the objects you passed to `capture` or registered, and identity checks against them (`===`) no longer match. In 3.x.x, hooks edited the caller's objects.
 - **Returned events.** `options` is a property of `PostHogEvent`, not a constructor parameter, so the constructor and `copy` are unchanged from 3.x.x. When `beforeSend` returns a different event whose `options` is `null`, such as one made with `event.copy(…)` or the constructor, it gets the options of the event the hook was given. To send an event with no options, set `options` to an empty map.
@@ -638,17 +638,16 @@ Review your `beforeSend` hooks for the new event shape. Capture v1 reads process
 
 ### Check person processing
 
-- **The SDK's value.** When `personProfiles` turns person processing off, the SDK sets the `process_person_profile` option to `false`. Otherwise it sends neither the option nor the property, since PostHog processes person profiles by default. In 3.x.x, every event carried a `$process_person_profile` property.
-- **One event.** To change person processing for one event, pass the `process_person_profile` option or the `$process_person_profile` property.
-- **Every event.** A registered `$process_person_profile` changes it for every event. In 3.x.x, the SDK's value replaced a registered `$process_person_profile`, so a registered `false` had no effect.
-- **A registered `false`.** In 4.x.x it applies, also after `identify` and with `PersonProfiles.ALWAYS`. Those events don't change the person profile, and their `$set` is ignored. They are still linked to the person and billed as identified events. It doesn't apply to identity events (see below).
-- **`PersonProfiles.NEVER`.** A `process_person_profile` option or `$process_person_profile` property set to `true`, passed or registered, turns person processing on for that event. In 3.x.x, `NEVER` always won. If you rely on `NEVER` to keep events personless, make sure neither is set to `true`, or remove it in `beforeSend`.
+- **The SDK's value.** The SDK sets the `process_person_profile` option to its computed Boolean before `beforeSend`: `false` with `PersonProfiles.NEVER`, `true` with `PersonProfiles.ALWAYS`, and whether the user is identified or person processing has been enabled with `PersonProfiles.IDENTIFIED_ONLY`. A registered or caller `$process_person_profile` property doesn't override it. In 3.x.x, every event carried a `$process_person_profile` property instead.
+- **One event.** To change person processing for one event, pass a non-null `process_person_profile` option. A missing or null option uses the SDK's computed value. An override doesn't change the configured mode or the user's identity or processing state.
+- **Wrapper options.** A canonical `process_person_profile` option registered by a wrapper overrides the SDK's default, except on identity events (see below). Per-call options win over registered options; a per-call `null` uses the SDK's computed value.
+- **`PersonProfiles.NEVER`.** An explicit canonical `process_person_profile: true` option or a `beforeSend` edit can still turn person processing on for an event. If you rely on `NEVER` to keep events personless, don't override the computed option.
 - **`PersonProfiles.IDENTIFIED_ONLY`.** `identify`, `alias`, `group`, and `setPersonProperties` still turn on person processing for the user's later events, as in 3.x.x.
 - **Duplicate checks.** A `$set` sent with `process_person_profile: false` doesn't update the person, so it no longer suppresses a later `setPersonProperties` or `identify` call with the same properties as a duplicate.
 
 A registered `$process_person_profile`, or a `process_person_profile` option a wrapper SDK registers, doesn't apply to identity events: `$identify`, `$create_alias`, `$merge_dangerously`, `$groupidentify`, `$set`, and `$set_once`.
 
-With person processing off, PostHog drops `$identify`, `$create_alias`, `$merge_dangerously`, and `$groupidentify`, and keeps `$set` and `$set_once` but ignores their person update. So a registered `false` would stop `identify`, `alias`, `group`, and `setPersonProperties` from working. A value you pass on the call, or set in `beforeSend`, still applies.
+With person processing off, PostHog drops `$identify`, `$create_alias`, `$merge_dangerously`, and `$groupidentify`, and keeps `$set` and `$set_once` but ignores their person update. So a registered `false` would stop `identify`, `alias`, `group`, and `setPersonProperties` from working. A canonical `process_person_profile` option you pass on the call, or edit in `beforeSend`, still applies.
 
 If you registered `false` to skip person profiles for anonymous users, remove it. `personProfiles = PersonProfiles.IDENTIFIED_ONLY`, the default, already does that and still lets `identify` create the person.
 

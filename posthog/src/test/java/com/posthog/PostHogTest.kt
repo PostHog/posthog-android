@@ -5788,7 +5788,7 @@ internal class PostHogTest {
         var setEvents = 0
         val sut =
             getSut(http.url("/").toString(), preloadFeatureFlags = false, beforeSend = {
-                if (it.event == "\$set" && ++setEvents == 1) it.properties!!["\$process_person_profile"] = false
+                if (it.event == "\$set" && ++setEvents == 1) it.options!!["process_person_profile"] = false
                 it
             })
 
@@ -5803,7 +5803,7 @@ internal class PostHogTest {
                 val options = captureV1Events(http.takeRequest().body.unGzip()).single()["options"] as Map<*, *>?
                 options?.get("process_person_profile")
             }
-        assertEquals(listOf<Any?>(false, null), flags)
+        assertEquals(listOf<Any?>(false, true), flags)
 
         sut.close()
     }
@@ -6256,7 +6256,7 @@ internal class PostHogTest {
         val request = http.takeRequest()
         val content = request.body.unGzip()
         val batch = serializer.deserialize<PostHogBatchEvent>(content.reader())
-        assertNull(batch.batch[0].options?.get("process_person_profile"))
+        assertEquals(true, batch.batch[0].options?.get("process_person_profile"))
 
         sut.close()
     }

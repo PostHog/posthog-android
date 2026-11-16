@@ -2,6 +2,8 @@ package com.posthog
 
 import com.posthog.internal.PostHogBatchEvent
 import com.posthog.internal.PostHogMemoryPreferences
+import com.posthog.internal.PostHogPreferences.Companion.IS_IDENTIFIED
+import com.posthog.internal.PostHogPreferences.Companion.PERSON_PROCESSING
 import com.posthog.internal.PostHogSerializer
 import com.posthog.internal.PostHogThreadFactory
 import okhttp3.mockwebserver.MockWebServer
@@ -31,6 +33,7 @@ internal class PostHogCaptureOptionsTest {
     private val cachedEventsExecutor = Executors.newSingleThreadScheduledExecutor(PostHogThreadFactory("TestCachedEvents"))
     private val serializer = PostHogSerializer(PostHogConfig(PROJECT_TOKEN))
     private lateinit var config: PostHogConfig
+    private val clients = mutableListOf<PostHogInterface>()
 
     // Events as beforeSend sees them. The hook drops them, so each capture is recorded once and
     // nothing is sent.
@@ -65,7 +68,7 @@ internal class PostHogCaptureOptionsTest {
             remoteConfigExecutor,
             cachedEventsExecutor,
             false,
-        )
+        ).also { clients.add(it) }
     }
 
     // The person properties hash is only stored once an event is queued, so dedup tests need
@@ -83,6 +86,10 @@ internal class PostHogCaptureOptionsTest {
 
     @AfterTest
     fun `set down`() {
+        clients.forEach { it.close() }
+        listOf(queueExecutor, replayQueueExecutor, remoteConfigExecutor, cachedEventsExecutor).forEach {
+            it.shutdownAndAwaitTermination()
+        }
         tmpDir.root.deleteRecursively()
     }
 
@@ -108,13 +115,12 @@ internal class PostHogCaptureOptionsTest {
             )
         for ((eventName, trigger) in cases) {
             captured.clear()
-            // always processed, so the SDK adds no option of its own
             val sut = getSut(personProfiles = PersonProfiles.ALWAYS)
 
             trigger(sut)
 
             val event = captured.single { it.event == eventName }
-            assertEquals<Map<String, Any?>?>(mapOf("cookieless_mode" to true), event.options, eventName)
+            assertEquals<Map<String, Any?>?>(mapOf("cookieless_mode" to true, "process_person_profile" to true), event.options, eventName)
             sut.close()
         }
     }
@@ -127,7 +133,7 @@ internal class PostHogCaptureOptionsTest {
         sut.identify("user_id", userProperties = userProps, options = mapOf("cookieless_mode" to true))
 
         val event = captured.single { it.event == PostHogEventName.SET.event }
-        assertEquals<Map<String, Any?>?>(mapOf("cookieless_mode" to true), event.options)
+        assertEquals<Map<String, Any?>?>(mapOf("cookieless_mode" to true, "process_person_profile" to true), event.options)
         sut.close()
     }
 
@@ -220,7 +226,7 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
-    fun `the personless option is set only when person processing is off`() {
+    fun `the SDK sets the computed person processing option in both states`() {
         val never = getSut(personProfiles = PersonProfiles.NEVER)
         never.capture("test_event")
         assertEquals(false, captured.single().processPersonProfile())
@@ -233,14 +239,14 @@ internal class PostHogCaptureOptionsTest {
         identifiedOnly.identify("user_id")
         identifiedOnly.capture("identified_event")
         assertEquals(false, captured.single { it.event == "anonymous_event" }.processPersonProfile())
-        assertNull(captured.single { it.event == PostHogEventName.IDENTIFY.event }.options)
-        assertNull(captured.single { it.event == "identified_event" }.options)
+        assertEquals(true, captured.single { it.event == PostHogEventName.IDENTIFY.event }.processPersonProfile())
+        assertEquals(true, captured.single { it.event == "identified_event" }.processPersonProfile())
         identifiedOnly.close()
 
         captured.clear()
         val always = getSut(personProfiles = PersonProfiles.ALWAYS)
         always.capture("test_event")
-        assertNull(captured.single().options)
+        assertEquals(true, captured.single().processPersonProfile())
         always.close()
     }
 
@@ -260,16 +266,90 @@ internal class PostHogCaptureOptionsTest {
     }
 
     @Test
-    fun `a registered legacy person processing property suppresses the personless option`() {
-        val sut = getSut(personProfiles = PersonProfiles.NEVER)
-        sut.register("\$process_person_profile", true)
+    fun `serialized person processing follows canonical options then SDK policy across modes and states`() {
+        val cases =
+            listOf(
+                Triple(PersonProfiles.NEVER, "anonymous", false),
+                Triple(PersonProfiles.ALWAYS, "anonymous", true),
+                Triple(PersonProfiles.IDENTIFIED_ONLY, "anonymous", false),
+                Triple(PersonProfiles.IDENTIFIED_ONLY, "identified", true),
+                Triple(PersonProfiles.IDENTIFIED_ONLY, "processing", true),
+            )
+        for ((mode, state, computed) in cases) {
+            val http = httpServers.mockHttp(total = 40)
+            val sut = getSut(http.url("/").toString(), personProfiles = mode, beforeSend = { it })
+            when (state) {
+                "identified" -> sut.identify("user")
+                "processing" -> sut.alias("alias")
+            }
+            sut.capture("baseline")
+            val prefs = config.cachePreferences!!
+            val identifiedBefore = prefs.getValue(IS_IDENTIFIED)
+            val processingBefore = prefs.getValue(PERSON_PROCESSING)
+            val distinctIdBefore = sut.distinctId()
+            val expected = mutableMapOf("baseline" to computed)
+            val optionMaps =
+                listOf(
+                    emptyMap(),
+                    mapOf("process_person_profile" to null),
+                    mapOf("process_person_profile" to true),
+                    mapOf("process_person_profile" to false),
+                )
+            for (registered in listOf(null, true, false)) {
+                if (registered == null) sut.unregister("\$process_person_profile") else sut.register("\$process_person_profile", registered)
+                for (caller in listOf(null, true, false)) {
+                    val properties = caller?.let { mapOf("\$process_person_profile" to it) }
+                    for ((index, options) in optionMaps.withIndex()) {
+                        val name = "case-$registered-$caller-$index"
+                        expected[name] = options["process_person_profile"] ?: computed
+                        sut.capture(name, properties = properties, options = options)
+                    }
+                }
+                assertEquals(registered, prefs.getValue("\$process_person_profile"))
+            }
+            sut.capture("later")
+            expected["later"] = computed
+            queueExecutor.awaitExecution()
 
-        sut.capture("test_event")
+            val events = sentEvents(http).filter { it.event in expected }
+            assertEquals(expected.size, events.size, "$mode $state")
+            for (event in events) {
+                assertEquals(expected[event.event], event.processPersonProfile(), "$mode $state ${event.event}")
+                assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+            }
+            assertEquals(mode, config.personProfiles)
+            assertEquals(identifiedBefore, prefs.getValue(IS_IDENTIFIED))
+            assertEquals(processingBefore, prefs.getValue(PERSON_PROCESSING))
+            assertEquals(distinctIdBefore, sut.distinctId())
+            sut.close()
+        }
+    }
 
-        val event = captured.single()
-        assertNull(event.options)
-        assertEquals(true, event.properties!!["\$process_person_profile"])
-        sut.close()
+    @Test
+    fun `beforeSend sees the computed option and can reverse it in either direction`() {
+        for ((mode, computed) in listOf(PersonProfiles.NEVER to false, PersonProfiles.ALWAYS to true)) {
+            val http = httpServers.mockHttp(total = 2)
+            val seen = mutableListOf<Any?>()
+            val sut =
+                getSut(http.url("/").toString(), personProfiles = mode, beforeSend = { event ->
+                    seen.add(event.processPersonProfile())
+                    if (event.event == "changed") event.options!!["process_person_profile"] = !computed
+                    event
+                })
+            sut.register("\$process_person_profile", !computed)
+
+            sut.capture("changed", properties = mapOf("\$process_person_profile" to !computed))
+            sut.capture("later")
+            queueExecutor.awaitExecution()
+
+            val events = sentEvents(http).associateBy { it.event }
+            assertEquals(listOf<Any?>(computed, computed), seen)
+            assertEquals(!computed, events.getValue("changed").processPersonProfile())
+            assertEquals(computed, events.getValue("later").processPersonProfile())
+            assertEquals(!computed, config.cachePreferences!!.getValue("\$process_person_profile"))
+            assertEquals(mode, config.personProfiles)
+            sut.close()
+        }
     }
 
     @Test
@@ -390,6 +470,48 @@ internal class PostHogCaptureOptionsTest {
             assertEquals(3, captured.count { it.event == PostHogEventName.SET.event }, "for $value")
             sut.close()
         }
+    }
+
+    @Test
+    fun `a legacy hook property does not prevent dedup when the canonical option processes the person`() {
+        val http = httpServers.mockHttp()
+        val sut =
+            getSut(http.url("/").toString(), beforeSend = { event ->
+                event.properties!!["\$process_person_profile"] = false
+                event
+            })
+
+        sut.setPersonProperties(userProps)
+        sut.setPersonProperties(userProps)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val event = sentEvents(http).single()
+        assertEquals(PostHogEventName.SET.event, event.event)
+        assertEquals(true, event.processPersonProfile())
+        assertFalse(event.properties!!.containsKey("\$process_person_profile"))
+        sut.close()
+    }
+
+    @Test
+    fun `dedup follows the legacy fallback when a hook clears the canonical option`() {
+        val http = httpServers.mockHttp(total = 2)
+        var setEvents = 0
+        val sut =
+            getSut(http.url("/").toString(), beforeSend = { event ->
+                if (event.event == PostHogEventName.SET.event && ++setEvents == 1) {
+                    event.options!!["process_person_profile"] = null
+                    event.properties!!["\$process_person_profile"] = false
+                }
+                event
+            })
+
+        sut.setPersonProperties(userProps)
+        sut.setPersonProperties(userProps)
+        queueExecutor.shutdownAndAwaitTermination()
+
+        val events = sentEvents(http)
+        assertEquals(listOf<Any?>(false, true), events.map { it.processPersonProfile() })
+        sut.close()
     }
 
     @Test

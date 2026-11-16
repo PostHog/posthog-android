@@ -937,9 +937,8 @@ public class PostHog private constructor(
             stampCachedScreenName(props)
 
             props["\$is_identified"] = isIdentified
-            // No `$process_person_profile`: person processing is sent as the `process_person_profile`
-            // option, only when it's off (see optionsForEvent). A registered or caller
-            // `$process_person_profile` wins over it when the send hoists the property.
+            // Person processing is sent as the `process_person_profile` option (see optionsForEvent),
+            // so a registered or caller legacy property can't override the SDK's policy.
         }
 
         val isSessionReplayActive = isSessionReplayActive()
@@ -1123,20 +1122,18 @@ public class PostHog private constructor(
     }
 
     /**
-     * The event's [options] over the wrapper-registered ones, plus `process_person_profile: false`
-     * when the SDK doesn't process person profiles for this event, unless an option or a non-null
-     * legacy `$process_person_profile` property in [properties] (per call or registered) already
-     * says otherwise. Nothing is added otherwise: PostHog processes person profiles by default.
+     * The event's [options] over the wrapper-registered ones, filling a missing or null
+     * `process_person_profile` with the SDK's computed Boolean before `beforeSend`. Legacy
+     * `$process_person_profile` properties don't override this default.
      * [personProcessingPending] counts a person processing change a wrapper build defers to its
      * send. An [isIdentityEvent] skips the registered `process_person_profile`. Returns a copy, so
      * `beforeSend` edits never reach the caller's map.
      */
     private fun optionsForEvent(
         options: Map<String, Any?>?,
-        properties: Map<String, Any>,
         personProcessingPending: Boolean = false,
         isIdentityEvent: Boolean = false,
-    ): MutableMap<String, Any?>? {
+    ): MutableMap<String, Any?> {
         val registered = getRegisteredOptions().let { if (isIdentityEvent) it - "process_person_profile" else it }
         val eventOptions =
             if (registered.isEmpty()) {
@@ -1144,15 +1141,10 @@ public class PostHog private constructor(
             } else {
                 registered.toMutableMap<String, Any?>().apply { options?.let { putAll(it) } }
             }
-        if ((personProcessingPending && config?.personProfiles != PersonProfiles.NEVER) ||
-            hasPersonProcessing() ||
-            properties["\$process_person_profile"] != null
-        ) {
-            return eventOptions
-        }
         val result = eventOptions ?: mutableMapOf()
         if (result["process_person_profile"] == null) {
-            result["process_person_profile"] = false
+            result["process_person_profile"] =
+                (personProcessingPending && config?.personProfiles != PersonProfiles.NEVER) || hasPersonProcessing()
         }
         return result
     }
@@ -1445,7 +1437,7 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 options?.toMutableMap()
             } else {
-                optionsForEvent(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing, isIdentityEvent)
+                optionsForEvent(options, deferPersonProcessing && requiresPersonProcessing, isIdentityEvent)
             }
 
         // This capture's identity, kept through beforeSend.
