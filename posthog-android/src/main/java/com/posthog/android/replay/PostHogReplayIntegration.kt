@@ -3461,11 +3461,15 @@ public class PostHogReplayIntegration(
             )
         props["\$sdk_debug_replay_linked_flag_trigger_status"] = linkedFlagStatus
 
+        var triggerGroupsPending = false
         config.remoteConfigHolder?.let { remoteConfig ->
             if (remoteConfig.hasSessionRecordingTriggerGroups()) {
                 // Read-only like above: getSessionId() can rotate an idle session mid-snapshot.
                 PostHogSessionManager.peekSessionId()?.toString()?.let { sessionId ->
                     props.putAll(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(sessionId))
+                    // Not installed, no group can activate: same rule as the trigger statuses above.
+                    triggerGroupsPending =
+                        postHog != null && remoteConfig.hasPendingSessionRecordingTriggerGroups(sessionId)
                 }
             }
         }
@@ -3474,6 +3478,8 @@ public class PostHogReplayIntegration(
             listOfNotNull(
                 "event_trigger".takeIf { eventTriggerStatus == "trigger_pending" },
                 "linked_flag".takeIf { linkedFlagStatus == "trigger_pending" },
+                // As on iOS: no group records yet and at least one can still activate.
+                "trigger_groups".takeIf { triggerGroupsPending },
             )
         if (pendingConditions.isNotEmpty()) {
             props["\$sdk_debug_replay_pending_trigger_conditions"] = pendingConditions

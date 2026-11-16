@@ -7196,6 +7196,48 @@ internal class PostHogReplayIntegrationTest {
         assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
     }
 
+    @Test
+    fun `debugProperties names pending trigger groups as a pending condition until one records or replay is uninstalled`() {
+        val pending = AtomicBoolean(true)
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { hasSessionRecordingTriggerGroups() } doReturn true
+                on { sessionRecordingTriggerGroupsDebugProperties(any()) } doReturn
+                    mapOf(
+                        "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
+                        "\$sdk_debug_replay_trigger_groups_count" to 1,
+                    )
+                on { sessionReplayLinkedFlagSnapshot() } doReturn
+                    PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = false, activated = false)
+                on { hasRemoteConfigFetched() } doReturn true
+            }
+        whenever(remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
+                remoteConfigHolder = remoteConfig
+            }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        PostHogSessionManager.startSession()
+
+        var props = sut.debugProperties()
+        assertEquals("v2_trigger_groups", props["\$sdk_debug_replay_remote_trigger_matching_config"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_event_trigger_status"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+        assertEquals(listOf("trigger_groups"), props["\$sdk_debug_replay_pending_trigger_conditions"])
+
+        // a group now records, or every group is ruled out
+        pending.set(false)
+        assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+
+        pending.set(true)
+        sut.uninstall()
+        props = sut.debugProperties()
+        assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+    }
+
     private fun assertDebugPropertiesDisabledAfter(teardown: (PostHogReplayIntegration) -> Unit) {
         val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
         sut.install(createPostHogFake())
