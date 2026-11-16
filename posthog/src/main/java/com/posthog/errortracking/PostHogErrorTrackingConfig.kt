@@ -34,8 +34,9 @@ public class PostHogErrorTrackingConfig
          *
          * Matched against the RUNTIME class name, before any symbolication. On a minified build
          * (ProGuard/R8) the runtime names are the obfuscated ones, so prefixes written against your
-         * source packages generally will not match; PostHog also re-derives `in_app` server-side
-         * after deobfuscation, which can override what the SDK sent.
+         * source packages generally will not match. When [com.posthog.PostHogConfig.releaseIdentifier]
+         * is set, the SDK also sends this list with the exception so PostHog can apply it to the
+         * deobfuscated class names.
          */
         public val inAppIncludes: MutableList<String> = mutableListOf(),
         /**
@@ -70,10 +71,9 @@ public class PostHogErrorTrackingConfig
          *
          * Same matching caveats as [inAppIncludes]: prefixes are compared against the RUNTIME class
          * name before any symbolication, so on minified (ProGuard/R8) builds an exclude written
-         * against your source packages generally will not match, and PostHog's server-side
-         * deobfuscation may reclassify frames as `in_app` afterwards regardless of what the SDK
-         * sent. Making excludes survive deobfuscation needs a server-side in-app contract
-         * (follow-up); until then treat this as best-effort on non-minified builds.
+         * against your source packages generally will not match. When
+         * [com.posthog.PostHogConfig.releaseIdentifier] is set, the SDK also sends this list with the
+         * exception so PostHog can apply it to the deobfuscated class names.
          *
          * Defaults to empty.
          */

@@ -343,6 +343,18 @@ public class ThrowableCoercer {
             exceptionProperties["\$exception_list"] = cappedExceptions
         }
 
+        // Frames carrying a map_id are deobfuscated server-side, where the runtime class names the
+        // SDK matched against are replaced. Sending the rules lets the server classify the real
+        // class names the same way instead of overriding the SDK's in_app flags.
+        if (!releaseIdentifier.isNullOrEmpty()) {
+            if (inAppIncludes.isNotEmpty()) {
+                exceptionProperties[EXCEPTION_IN_APP_INCLUDES_ATTRIBUTE] = inAppIncludes.toList()
+            }
+            if (inAppExcludes.isNotEmpty()) {
+                exceptionProperties[EXCEPTION_IN_APP_EXCLUDES_ATTRIBUTE] = inAppExcludes.toList()
+            }
+        }
+
         return exceptionProperties
     }
 
@@ -356,6 +368,8 @@ public class ThrowableCoercer {
     internal companion object {
         const val EXCEPTION_LEVEL_FATAL = "fatal"
         const val EXCEPTION_LEVEL_ATTRIBUTE = "\$exception_level"
+        private const val EXCEPTION_IN_APP_INCLUDES_ATTRIBUTE = "\$exception_in_app_includes"
+        private const val EXCEPTION_IN_APP_EXCLUDES_ATTRIBUTE = "\$exception_in_app_excludes"
 
         /**
          * The cause chain starting at [root], identity-deduplicated and capped at

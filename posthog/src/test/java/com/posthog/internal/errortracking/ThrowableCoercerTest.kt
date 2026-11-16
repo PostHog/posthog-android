@@ -284,6 +284,41 @@ internal class ThrowableCoercerTest {
     }
 
     @Test
+    fun `sends in_app rules for server-side reclassification when frames carry a map_id`() {
+        val t = throwableWith("boom", arrayOf(frame("a1.d", "a")))
+
+        val props =
+            coercer.fromThrowableToPostHogProperties(
+                t,
+                inAppIncludes = listOf("com.app"),
+                releaseIdentifier = "com.app@1.0+1",
+                inAppExcludes = listOf("com.app.vendored"),
+            )
+
+        assertEquals(listOf("com.app"), props["\$exception_in_app_includes"])
+        assertEquals(listOf("com.app.vendored"), props["\$exception_in_app_excludes"])
+    }
+
+    @Test
+    fun `omits in_app rules when there is nothing for the server to reclassify`() {
+        val t = throwableWith("boom", arrayOf(frame("com.app.A", "a")))
+
+        // without a map_id the server never deobfuscates, so the SDK's classification is final
+        val noMapping =
+            coercer.fromThrowableToPostHogProperties(
+                t,
+                inAppIncludes = listOf("com.app"),
+                inAppExcludes = listOf("com.app.vendored"),
+            )
+        assertFalse(noMapping.containsKey("\$exception_in_app_includes"))
+        assertFalse(noMapping.containsKey("\$exception_in_app_excludes"))
+
+        val noRules = coercer.fromThrowableToPostHogProperties(t, releaseIdentifier = "com.app@1.0+1")
+        assertFalse(noRules.containsKey("\$exception_in_app_includes"))
+        assertFalse(noRules.containsKey("\$exception_in_app_excludes"))
+    }
+
+    @Test
     fun `empty includes marks everything in_app by default`() {
         val t =
             throwableWith(
