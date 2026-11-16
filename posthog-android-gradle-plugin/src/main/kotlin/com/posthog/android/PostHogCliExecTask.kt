@@ -50,7 +50,6 @@ public abstract class PostHogCliExecTask : Exec() {
                 // in a standard React Native project. The resolver also checks its parent.
                 workingDirectory = workingDir,
             )
-        executable = resolved
         if (resolved != configured) {
             // npm installs posthog-cli as a node shim; prepend the discovered
             // bin dir so the shim's `env node` resolves alongside it.
@@ -59,11 +58,12 @@ public abstract class PostHogCliExecTask : Exec() {
             environment(pathKey, pathValue)
         }
 
-        val args =
-            computeCommandLineArgs().also {
-                logger.info("cli args: $it")
+        val commandLine =
+            postHogCliCommandLine(resolved, computeCommandLineArgs()).also {
+                logger.info("cli command line: $it")
             }
-        args(args)
+        executable = commandLine.first()
+        args(commandLine.drop(1))
 
         // Setup environment variables for authentication etc
         postHogHost.orNull?.let {
@@ -87,13 +87,20 @@ public abstract class PostHogCliExecTask : Exec() {
     /** Computes the full list of arguments for the task */
     private fun computeCommandLineArgs(): List<String> {
         val args = mutableListOf<String>()
-        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-            args.add(0, "cmd")
-            args.add(1, "/c")
-        }
-
         getArguments(args)
-
         return args
     }
+}
+
+internal fun postHogCliCommandLine(
+    executable: String,
+    args: List<String>,
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+): List<String> {
+    // On Windows a bare name may be the npm posthog-cli.cmd shim, which only cmd can find and
+    // run. An .exe runs directly, which also keeps cmd from mangling a quoted path with spaces.
+    if (isWindows && !executable.endsWith(".exe", ignoreCase = true)) {
+        return listOf("cmd", "/c", executable) + args
+    }
+    return listOf(executable) + args
 }
