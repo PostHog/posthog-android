@@ -51,6 +51,11 @@ internal class PostHogConfigTest {
     }
 
     @Test
+    fun `surveys is enabled by default`() {
+        assertTrue(config.surveys)
+    }
+
+    @Test
     fun `sendFeatureFlagEvent is enabled by default`() {
         assertTrue(config.sendFeatureFlagEvent)
     }

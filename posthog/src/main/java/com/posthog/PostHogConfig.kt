@@ -197,14 +197,20 @@ public open class PostHogConfig(
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     /**
-     * Enable Surveys for Android (Intended for internal use only)
+     * Whether the SDK loads surveys and shows the ones that match.
      *
-     * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
+     * Defaults to `true`. Surveys display only when the app depends on
+     * `com.posthog:posthog-android-surveys-compose` or sets `surveysConfig.surveysDelegate`;
+     * without either, matching surveys are only logged. Surveys must also be enabled in
+     * the PostHog project settings. Set to `false` to stop loading and showing surveys.
      *
-     * Requires Surveys to be enabled in the PostHog Project Settings
-     * Defaults to false
+     * ```kotlin
+     * val config = PostHogAndroidConfig(projectToken = "phc_...").apply {
+     *     surveys = false
+     * }
+     * ```
      */
-    public var surveys: Boolean = false,
+    public var surveys: Boolean = true,
     /**
      * Configures an optional HTTP proxy for the PostHog API client.
      *
