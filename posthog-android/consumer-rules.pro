@@ -124,6 +124,7 @@
     public void applySemantics(androidx.compose.ui.semantics.SemanticsPropertyReceiver);
 }
 -keepnames class androidx.compose.ui.node.DelegatingNode
+-keepnames class androidx.compose.ui.node.NodeCoordinator
 
 # Session replay walks the Compose layout tree to mask images that have no semantics.
 -keepclassmembers class androidx.compose.ui.node.LayoutNode {

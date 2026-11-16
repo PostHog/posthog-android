@@ -161,6 +161,24 @@ internal class PostHogSendCachedLegacyEventsIntegrationTest {
     }
 
     @Test
+    fun `re-queues one copy of a retried event that the queue holds twice`() {
+        val retried = event.replace("8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5", "11111111-0b10-42e2-b3d4-8f35af1b11f6")
+        val prefix = writeLegacyFile(listOf(retried, retried, event))
+        val http =
+            servers.mockHttp(
+                response =
+                    MockResponse().setBody(
+                        "{\"results\":{\"11111111-0b10-42e2-b3d4-8f35af1b11f6\":{\"result\":\"retry\",\"duplicates_dropped\":1}," +
+                            "\"8837f4d8-01e3-4bb8-b3f3-16b8fa8173e5\":{\"result\":\"ok\"}}}",
+                    ),
+            )
+        getSut(prefix, http.url("/").toString()).install(mock())
+        executor.shutdownAndAwaitTermination()
+        assertEquals(1, http.requestCount)
+        assertEquals(listOf(retried), retained(prefix))
+    }
+
+    @Test
     fun `sends events from the legacy queue in batches`() {
         val prefix = writeLegacyFile(listOf(event, event))
         val http = servers.mockHttp(2, MockResponse().setBody("{\"results\":{}}"))
