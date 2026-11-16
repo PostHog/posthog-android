@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.posthog.PostHogConfig
 import com.posthog.PostHogInterface
+import com.posthog.surveys.PostHogSurveysDelegate
 import com.posthog.surveys.Survey
 import com.posthog.surveys.SurveyConditions
 import com.posthog.surveys.SurveyEventCondition
@@ -26,6 +27,7 @@ internal class PostHogSurveysEventPropertyFilterTest {
         val config =
             PostHogConfig("test-api-key").apply {
                 surveys = true
+                surveysConfig.surveysDelegate = mock<PostHogSurveysDelegate>()
             }
         val integration = PostHogSurveysIntegration(context, config)
         val fake = mock<PostHogInterface>()

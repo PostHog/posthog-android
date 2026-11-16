@@ -201,7 +201,7 @@ public open class PostHogConfig(
      *
      * Defaults to `true`. Surveys display only when the app depends on
      * `com.posthog:posthog-android-surveys-compose` or sets `surveysConfig.surveysDelegate`;
-     * without either, matching surveys are only logged. Surveys must also be enabled in
+     * without either, the SDK doesn't match or show surveys. Surveys must also be enabled in
      * the PostHog project settings. Set to `false` to stop loading and showing surveys.
      *
      * ```kotlin
