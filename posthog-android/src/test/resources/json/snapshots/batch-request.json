@@ -19,6 +19,9 @@
         "distinct_id": "anonymous-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "options": {
+          "process_person_profile": true
+        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -71,6 +74,9 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "options": {
+          "process_person_profile": true
+        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -118,6 +124,9 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "options": {
+          "process_person_profile": true
+        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -159,6 +168,9 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "options": {
+          "process_person_profile": true
+        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
@@ -207,6 +219,9 @@
         "distinct_id": "identified-user",
         "timestamp": "2023-11-14T22:13:20.123Z",
         "session_id": "018bcfe5-687b-7abc-8def-0123456789ab",
+        "options": {
+          "process_person_profile": true
+        },
         "properties": {
           "$app_name": "Snapshot App",
           "$app_namespace": "com.example.snapshot",
