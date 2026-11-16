@@ -199,6 +199,13 @@ public class PostHogSurveysIntegration(
             }
         }
 
+    /**
+     * Whether a delegate that can display surveys is available. The default delegate only logs,
+     * so without the Compose module or a custom delegate, skip matching: it evaluates linked
+     * flags (capturing `$feature_flag_called`) and property filters for surveys nobody can see.
+     */
+    private fun canRenderSurveys(): Boolean = getSurveysDelegate() !is PostHogSurveysDefaultDelegate
+
     private fun defaultMatchType(matchType: SurveyMatchType?): SurveyMatchType {
         return matchType ?: SurveyMatchType.I_CONTAINS
     }
@@ -877,7 +884,7 @@ public class PostHogSurveysIntegration(
      * 4. Tracks the active survey state
      */
     internal fun showNextSurvey() {
-        if (!canShowNextSurvey()) {
+        if (!canRenderSurveys() || !canShowNextSurvey()) {
             return
         }
 
@@ -1251,6 +1258,8 @@ public class PostHogSurveysIntegration(
         event: String,
         properties: Map<String, Any>?,
     ) {
+        if (!canRenderSurveys()) return
+
         val candidates =
             synchronized(eventActivationLock) {
                 // Copy to avoid concurrent modification issues

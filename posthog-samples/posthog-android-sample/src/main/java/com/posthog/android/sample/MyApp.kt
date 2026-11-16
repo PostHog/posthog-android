@@ -48,9 +48,6 @@ class MyApp : Application() {
                 sessionReplayConfig.maskAllTextInputs = false
                 sessionReplayConfig.maskAllImages = false
                 sessionReplayConfig.captureLogcat = true
-                // Surveys are opt-in. With :posthog-android-surveys-compose on the classpath the
-                // core SDK auto-discovers the Compose UI delegate — no surveysConfig wiring needed.
-                surveys = true
                 // Enabled so the ErrorTrackingActivity "Crash app (fatal)" button is captured
                 // as an $exception with $exception_steps. Requires exception autocapture
                 // enabled for the project in PostHog too.

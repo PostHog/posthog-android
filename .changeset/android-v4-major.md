@@ -26,6 +26,7 @@
 - **Breaking:** remove the deprecated `propertiesSanitizer` option and `PostHogPropertiesSanitizer`. Use `addBeforeSend`
 - **Breaking:** remove the deprecated `evaluationEnvironments` option. Use `evaluationContexts`
 - **Breaking:** remove the deprecated `remoteConfig` option. The SDK always loads remote config at setup
+- **Breaking:** enable `surveys` by default. Surveys display when the app depends on `posthog-android-surveys-compose` or sets `surveysConfig.surveysDelegate`; set `surveys = false` to keep them off
 - **Breaking:** remove the deprecated `getFeatureFlagPayload()`. Use `getFeatureFlagResult(key, sendFeatureFlagEvent = false)?.payload`
 - **Breaking:** remove the `defaultValue` parameter from `getFeatureFlag()`, which returns `null` for a missing flag or a disabled SDK. A positional `Boolean` second argument now sets `sendFeatureFlagEvent`, and `$feature_flag_called` no longer reports a fallback as the flag's value
 - **Breaking:** leave `$feature_flag_response` out of `$feature_flag_called` for a missing flag instead of sending an empty string
