@@ -46,6 +46,7 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You break down by `$locale` for the language your app shows (use `$app_language`, and call `setAppLanguage()` if you need it on Android 6 to 12) → [Check locale properties](#check-locale-properties)
 - [ ] You use session replay → [Check session replay](#check-session-replay)
 - [ ] You read `$`-prefixed query parameters from `Deep Link Opened` events → [Check deep links](#check-deep-links)
+- [ ] You depend on `posthog-android-surveys-compose` or set `surveysConfig.surveysDelegate`, and don't set `surveys` → [Check surveys](#check-surveys)
 - [ ] You capture events with an empty event name, or with an event name over 200 bytes → [Check dropped events](#check-dropped-events)
 - [ ] You set an empty distinct ID in `beforeSend` → [Check dropped events](#check-dropped-events)
 - [ ] You set `$process_person_profile`, `$cookieless_mode`, `$ignore_sent_at`, or `$product_tour_id` to a value PostHog can't read, such as `"maybe"` → [Check dropped events](#check-dropped-events)
@@ -541,6 +542,21 @@ The `$sdk_debug_replay_capture_mode` property is always `screenshot`.
 The `Deep Link Opened` event leaves out query parameters whose name starts with `$`, such as `$process_person_profile`, so a link can't set PostHog's own properties.
 
 Other parameters and the `url` property are sent as in 3.x.x.
+
+### Check surveys
+
+`surveys` defaults to `true`, as in the iOS, Flutter, React Native and web SDKs. In 3.x.x it defaulted to `false`.
+
+Surveys still display only when your app depends on `posthog-android-surveys-compose` or sets `surveysConfig.surveysDelegate`. Without either, nothing changes.
+
+If you have one of them but don't want surveys to show, turn them off:
+
+```kotlin
+// 4.x.x
+config.surveys = false
+```
+
+If you already set `surveys = true`, you can remove the line.
 
 ### Check dropped events
 
