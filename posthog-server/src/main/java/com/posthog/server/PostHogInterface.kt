@@ -448,6 +448,8 @@ public sealed interface PostHogInterface {
     /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * A remote config flag with an encrypted payload is not available here. Use [getRemoteConfigPayload].
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
@@ -774,12 +776,15 @@ public sealed interface PostHogInterface {
     }
 
     /**
-     * Returns the payload of a remote config feature flag, parsed from JSON.
+     * Returns the payload of a remote config feature flag by key, parsed from JSON, with no
+     * distinct ID. Use it for a remote config flag, and always when the payload is encrypted:
+     * flag evaluation does not return such a flag, so `evaluateFlags(distinctId).getFlagPayload(key)`
+     * and `getFeatureFlagPayload` cannot read it. Needs [PostHogConfig.personalApiKey]. A personal
+     * API key returns an encrypted payload decrypted. A project secret API key returns it redacted.
      * Docs https://posthog.com/docs/feature-flags/remote-config
      *
-     * Needs [PostHogConfig.personalApiKey]. Use a personal API key to get encrypted payloads
-     * decrypted. No distinct id is needed. Nothing is evaluated, no `$feature_flag_called` event
-     * is sent, and the result is not cached. The call blocks the calling thread for the HTTP request.
+     * Nothing is evaluated, no `$feature_flag_called` event is sent, and the result is not cached.
+     * The call blocks the calling thread for the HTTP request.
      *
      * The server stores the payload as a JSON-encoded string. This method parses it, and parses
      * again when the result is still a string. If the second parse fails, the string is returned.
