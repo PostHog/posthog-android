@@ -4429,6 +4429,48 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `flags reload restarting replay after stop restores replay debug keys`() {
+        val http = httpServers.create()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.path.orEmpty()
+                    return when {
+                        path.endsWith("/config") -> MockResponse().setBody("""{"sessionRecording": {"endpoint": "/s/"}}""")
+                        path.contains("/flags") -> MockResponse().setBody("""{"featureFlags": {}, "featureFlagPayloads": {}}""")
+                        else -> MockResponse().setBody("")
+                    }
+                }
+            }
+        http.start()
+        val handler = replayHandlerWithFullBundle()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 2,
+                preloadFeatureFlags = false,
+                integration = handler,
+                remoteConfig = true,
+                sessionReplay = true,
+            )
+        remoteConfigExecutor.awaitExecution()
+        sut.startSession()
+
+        sut.stopSessionReplay()
+        sut.capture(SDK_EVENT)
+        sut.reloadFeatureFlags()
+        remoteConfigExecutor.awaitExecution()
+        assertTrue(sut.isSessionReplayActive())
+        sut.capture(SDK_EVENT)
+
+        val events = capturedBatchEvents(http)
+        assertReplayOffShape(events[0].properties!!)
+        assertReplayDebugKeysKept(events[1].properties!!)
+
+        sut.close()
+    }
+
+    @Test
     fun `optIn after optOut restores replay debug keys`() {
         val http = mockHttp()
         val sut = replayDebugSut(http, flushAt = 1)
