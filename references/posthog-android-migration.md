@@ -32,7 +32,7 @@ Read the checklist first, then the sections that apply to you.
 **During your upgrade**
 
 - [ ] You depend only on `posthog-android-surveys-compose` → [Upgrade your dependencies](#upgrade-your-dependencies)
-- [ ] You use `posthog-server` (2.25.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
+- [ ] You use `posthog-server` (2.26.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
 - [ ] You call `PostHogStateless.with`, or extend `PostHogStateless` → [Update PostHogStateless code](#update-posthogstateless-code)
 - [ ] You use `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, or `drawableConverter` → [Fix removed APIs](#fix-removed-apis)
 - [ ] You pass `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position → [Fix removed APIs](#fix-removed-apis)
@@ -170,13 +170,13 @@ Upgrade PostHog artifacts together:
 | `com.posthog:posthog-android` | 3.x.x to 4.0.0 |
 | `com.posthog:posthog` (core) | 6.x.x to 7.0.0 |
 | `com.posthog:posthog-android-surveys-compose` | Keep your version |
-| `com.posthog:posthog-server` | 2.25.0, together with `posthog-android` 4.0.0 (see [Upgrade posthog-server](#upgrade-posthog-server)) |
+| `com.posthog:posthog-server` | 2.26.0, together with `posthog-android` 4.0.0 (see [Upgrade posthog-server](#upgrade-posthog-server)) |
 
 With `posthog-android-surveys-compose`, declare `com.posthog:posthog-android` 4.0.0 or later in your build, so Gradle resolves 4.x.x instead of the 3.x.x version it pulls in.
 
 Core `posthog` 7.x.x isn't binary compatible with SDK versions built against core 6.x.x. The exception is `posthog-android-surveys-compose`, which works with both.
 
-When core 7.x.x is in a Gradle build, for example through `posthog-server` 2.25.0, Gradle upgrades `posthog-android` to 4.x.x, even over a range such as `[3.75.0,4.0.0)`. Code that still uses removed APIs then fails to compile.
+When core 7.x.x is in a Gradle build, for example through `posthog-server` 2.26.0, Gradle upgrades `posthog-android` to 4.x.x, even over a range such as `[3.75.0,4.0.0)`. Code that still uses removed APIs then fails to compile.
 
 Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
@@ -190,10 +190,10 @@ The [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-and
 
 It still sends events to `/batch`, not to capture v1. The API, endpoint, proxy, retry, and event option changes in this guide don't apply to it.
 
-`posthog-server` 2.25.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
+`posthog-server` 2.26.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
 
-- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime.
-- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.24.x. `posthog-server` 2.25.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
+- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.26.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime.
+- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.25.x or older. `posthog-server` 2.26.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
 
 These changes apply to `posthog-server` too:
 
