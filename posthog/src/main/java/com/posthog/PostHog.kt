@@ -872,20 +872,13 @@ public class PostHog private constructor(
         if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
             return props
         }
-        if (isSessionReplayIntentionallyOff()) {
-            props["\$recording_status"] = "disabled"
-            try {
-                queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
-            } catch (e: Throwable) {
-                props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
-            }
-            return props
-        }
-        val claimed = claimReplayDebugBundle()
+        val replayOff = isSessionReplayIntentionallyOff()
+        val claimed = !replayOff && claimReplayDebugBundle()
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            val replayProps = sessionReplayHandler?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
+            val replayProps =
+                sessionReplayHandler?.takeUnless { replayOff }?.debugProperties() ?: mapOf("\$recording_status" to "disabled")
             if (claimed) {
                 props.putAll(replayProps)
             } else {
