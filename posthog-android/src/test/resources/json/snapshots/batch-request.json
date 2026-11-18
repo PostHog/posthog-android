@@ -55,10 +55,7 @@
           "$is_identified": false,
           "$process_person_profile": true,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0
+          "$recording_status": "disabled"
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"
@@ -101,12 +98,7 @@
           "$is_identified": true,
           "$process_person_profile": true,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_capture_mode": "wireframe",
-          "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_session_start": 1700000000123
+          "$recording_status": "disabled"
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"
@@ -145,10 +137,7 @@
           "$is_identified": true,
           "$process_person_profile": true,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0
+          "$recording_status": "disabled"
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"
@@ -194,10 +183,7 @@
           "$is_identified": true,
           "$process_person_profile": true,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0
+          "$recording_status": "disabled"
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"
@@ -295,10 +281,7 @@
           "$is_identified": true,
           "$process_person_profile": true,
           "$sdk_debug_pending_queue_size": "<pending-queue-size>",
-          "$recording_status": "disabled",
-          "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
-          "$sdk_debug_replay_internal_buffer_length": 0
+          "$recording_status": "disabled"
         },
         "timestamp": "2023-11-14T22:13:20.123Z",
         "uuid": "<uuid>"

@@ -872,6 +872,15 @@ public class PostHog private constructor(
         if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
             return props
         }
+        if (isSessionReplayIntentionallyOff()) {
+            props["\$recording_status"] = "disabled"
+            try {
+                queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+            } catch (e: Throwable) {
+                props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
+            }
+            return props
+        }
         val claimed = claimReplayDebugBundle()
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
@@ -2605,6 +2614,14 @@ public class PostHog private constructor(
 
     private fun isSessionReplayConfigEnabled(): Boolean {
         return config?.sessionReplay == true
+    }
+
+    // Not off while sampled out, awaiting remote config, or waiting on a trigger: those keys explain
+    // why replay isn't recording.
+    private fun isSessionReplayIntentionallyOff(): Boolean {
+        return sessionReplayHandler == null ||
+            !sessionReplayWanted ||
+            remoteConfig?.isSessionRecordingRemotelyDisabled() == true
     }
 
     // this is used in cases where we know the session is already active

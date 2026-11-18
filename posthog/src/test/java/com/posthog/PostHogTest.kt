@@ -3874,7 +3874,8 @@ internal class PostHogTest {
         val http = mockHttp()
         val url = http.url("/")
         val integration = replayHandlerWithFullBundle()
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        val sut =
+            getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
         sut.startSession()
 
         sut.capture(EVENT)
@@ -3911,7 +3912,8 @@ internal class PostHogTest {
                         "\$sdk_debug_replay_capture_mode" to "wireframe",
                     )
             }
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        val sut =
+            getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
 
         sut.captureException(RuntimeException("boom"))
 
@@ -3966,7 +3968,8 @@ internal class PostHogTest {
                         "\$sdk_debug_replay_capture_mode" to "screenshot",
                     )
             }
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        val sut =
+            getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
 
         sut.capture(SDK_EVENT)
 
@@ -3991,7 +3994,8 @@ internal class PostHogTest {
             PostHogSessionReplayHandlerFake(true).apply {
                 debugProperties = mapOf("\$recording_status" to "active")
             }
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        val sut =
+            getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
         sut.register("\$recording_status", "registered")
 
         sut.capture(EVENT, properties = mapOf("\$recording_status" to "caller", "\$sdk_debug_pending_queue_size" to -1))
@@ -4047,7 +4051,8 @@ internal class PostHogTest {
             PostHogSessionReplayHandlerFake(true).apply {
                 throwOnDebugProperties = true
             }
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
+        val sut =
+            getSut(url.toString(), sessionReplay = true, preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
 
         sut.capture(SDK_EVENT)
 
@@ -4102,7 +4107,298 @@ internal class PostHogTest {
             reloadFeatureFlags = false,
             integration = replayHandlerWithFullBundle(),
             beforeSend = beforeSend,
+            sessionReplay = true,
         )
+
+    private fun assertReplayOffShape(props: Map<String, Any>) {
+        assertEquals("disabled", props["\$recording_status"])
+        assertTrue(
+            props.keys.none { it.startsWith("\$sdk_debug_replay_") },
+            "unexpected replay keys: ${props.keys.filter { it.startsWith("\$sdk_debug_replay_") }}",
+        )
+        assertFalse(props.containsKey("\$sdk_debug_session_start"))
+        assertNotNull(props["\$sdk_debug_pending_queue_size"])
+    }
+
+    private fun assertReplayDebugKeysKept(props: Map<String, Any>) {
+        assertEquals("buffering", props["\$recording_status"])
+        assertEquals("trigger_pending", props["\$sdk_debug_replay_event_trigger_status"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+        assertNotNull(props["\$sdk_debug_replay_internal_buffer_length"])
+        assertNotNull(props["\$sdk_debug_pending_queue_size"])
+    }
+
+    private fun replayRemoteConfigServer(
+        configBody: String,
+        release: CountDownLatch? = null,
+    ): MockWebServer {
+        val http = httpServers.create()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path?.endsWith("/config") == true) {
+                        release?.await()
+                        return MockResponse().setBody(configBody)
+                    }
+                    return MockResponse().setBody("")
+                }
+            }
+        http.start()
+        return http
+    }
+
+    private fun capturedBatchEvents(http: MockWebServer): List<PostHogEvent> {
+        queueExecutor.shutdownAndAwaitTermination()
+        while (true) {
+            val request = assertNotNull(http.takeRequest(5, TimeUnit.SECONDS))
+            if (request.path!!.contains("/batch")) {
+                return serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader())!!.batch
+            }
+        }
+    }
+
+    private fun replayRemoteConfigSut(http: MockWebServer): PostHogInterface =
+        getSut(
+            http.url("/").toString(),
+            preloadFeatureFlags = false,
+            integration = replayHandlerWithFullBundle(),
+            remoteConfig = true,
+            sessionReplay = true,
+        ).also { remoteConfigExecutor.shutdownAndAwaitTermination() }
+
+    @Test
+    fun `replay disabled in config sends only recording status`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 2,
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                integration = replayHandlerWithFullBundle(),
+            )
+        sut.startSession()
+
+        sut.capture(EVENT)
+        sut.capture(SDK_EVENT)
+
+        capturedEvents(http).forEach { assertReplayOffShape(it.properties!!) }
+
+        sut.close()
+    }
+
+    @Test
+    fun `explicit stopSessionReplay sends only recording status`() {
+        val http = mockHttp()
+        val sut = replayDebugSut(http, flushAt = 1)
+        sut.startSession()
+        sut.stopSessionReplay()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayOffShape(capturedEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote Boolean false sends only recording status`() {
+        val http = replayRemoteConfigServer("""{"sessionRecording": false}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayOffShape(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `quota limited sends only recording status`() {
+        val http =
+            replayRemoteConfigServer("""{"sessionRecording": {"endpoint": "/s/"}, "quotaLimited": ["mobile_recordings"]}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayOffShape(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote config without a sessionRecording key sends only recording status`() {
+        val http = replayRemoteConfigServer("""{"hasFeatureFlags": false}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayOffShape(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `no remote config yet keeps replay debug keys`() {
+        val http = mockHttp()
+        val sut = replayDebugSut(http, flushAt = 1)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `sampled out session keeps replay debug keys`() {
+        val http = replayRemoteConfigServer("""{"sessionRecording": {"endpoint": "/s/", "sampleRate": 0}}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `linked flag pending keeps replay debug keys`() {
+        val http = replayRemoteConfigServer("""{"sessionRecording": {"endpoint": "/s/", "linkedFlag": "replay-flag"}}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `event trigger pending keeps replay debug keys`() {
+        val http = replayRemoteConfigServer("""{"sessionRecording": {"endpoint": "/s/", "eventTriggers": ["checkout"]}}""")
+        val sut = replayRemoteConfigSut(http)
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedBatchEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `awaiting first remote config keeps replay debug keys`() {
+        val release = CountDownLatch(1)
+        val http = replayRemoteConfigServer("""{"sessionRecording": false}""", release)
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                integration = replayHandlerWithFullBundle(),
+                remoteConfig = true,
+                sessionReplay = true,
+            )
+        sut.startSession()
+
+        try {
+            sut.capture(SDK_EVENT)
+
+            val props = capturedBatchEvents(http).first().properties!!
+            assertReplayDebugKeysKept(props)
+            assertEquals("awaiting_remote_config", props["\$sdk_debug_replay_flush_hold_reason"])
+        } finally {
+            release.countDown()
+        }
+
+        sut.close()
+    }
+
+    @Test
+    fun `manual start while sessionReplay false keeps replay debug keys`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                integration = replayHandlerWithFullBundle(),
+            )
+        sut.startSession()
+        sut.startSessionReplay()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `restart after stop restores replay debug keys`() {
+        val http = mockHttp()
+        val sut = replayDebugSut(http, flushAt = 2)
+        sut.startSession()
+
+        sut.stopSessionReplay()
+        sut.capture(SDK_EVENT)
+        sut.startSessionReplay()
+        sut.capture(SDK_EVENT)
+
+        val events = capturedEvents(http)
+        assertReplayOffShape(events[0].properties!!)
+        assertReplayDebugKeysKept(events[1].properties!!)
+        assertTrue(events[1].carriesReplayDebugBundle)
+        assertNotNull(events[1].properties!!["\$sdk_debug_session_start"])
+
+        sut.close()
+    }
+
+    @Test
+    fun `optIn after optOut restores replay debug keys`() {
+        val http = mockHttp()
+        val sut = replayDebugSut(http, flushAt = 1)
+        sut.optOut()
+        sut.optIn()
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+
+        assertReplayDebugKeysKept(capturedEvents(http).first().properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `off state does not consume the debug bundle window`() {
+        val http = mockHttp()
+        val clock = TestDateProvider(System.currentTimeMillis())
+        val sut = replayDebugSut(http, flushAt = 3)
+        config.dateProvider = clock
+        sut.startSession()
+
+        sut.stopSessionReplay()
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 1_000
+        sut.capture(SDK_EVENT)
+        clock.nowMs += 1_000
+        sut.startSessionReplay()
+        sut.capture(SDK_EVENT)
+
+        val events = capturedEvents(http)
+        assertEquals(listOf(false, false, true), events.map { it.carriesReplayDebugBundle })
+        assertReplayOffShape(events[0].properties!!)
+        assertReplayOffShape(events[1].properties!!)
+        assertReplayDebugKeysKept(events[2].properties!!)
+
+        sut.close()
+    }
 
     @Test
     fun `replay debug bundle is attached at most once every 30 seconds while required keys stay on every event`() {
@@ -4400,6 +4696,7 @@ internal class PostHogTest {
             PostHogConfig(PROJECT_TOKEN, http.url("/").toString()).apply {
                 storagePrefix = tmpDir.newFolder().absolutePath
                 preloadFeatureFlags = false
+                sessionReplay = true
                 addIntegration(replayHandlerWithFullBundle())
                 dateProvider = clock
                 addBeforeSend {
@@ -7102,7 +7399,14 @@ internal class PostHogTest {
     fun `session debug keys follow a caller-provided session id`() {
         val http = mockHttp()
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                integration = PostHogSessionReplayHandlerFake(false),
+                sessionReplay = true,
+            )
         sut.startSession()
         val managerStart = PostHogSessionManager.getSessionStartedAt()
         assertTrue(managerStart > 0)
@@ -7173,7 +7477,14 @@ internal class PostHogTest {
     fun `a backdated event within the current session keeps the debug keys`() {
         val http = mockHttp()
         val url = http.url("/")
-        val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false)
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                integration = PostHogSessionReplayHandlerFake(false),
+                sessionReplay = true,
+            )
         sut.startSession()
         val start = PostHogSessionManager.getSessionStartedAt()
 

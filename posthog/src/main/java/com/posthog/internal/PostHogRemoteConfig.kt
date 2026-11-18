@@ -181,6 +181,11 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionRecordingMinimumDurationMs: Long? = null
 
+    // The last /config said replay is off (sessionRecording false, or mobile recordings quota limited).
+    // Kept across clear(), like the cached session replay config.
+    @Volatile
+    private var sessionRecordingRemotelyDisabled = false
+
     init {
         preloadSessionRecordingConfig()
         preloadSurveys()
@@ -329,8 +334,10 @@ public class PostHogRemoteConfig(
                                     Learn more about billing limits at https://posthog.com/docs/billing/limits-alerts""",
                             )
                             processSessionRecordingConfig(false)
+                            sessionRecordingRemotelyDisabled = true
                         } else {
                             processSessionRecordingConfig(it.sessionRecording)
+                            sessionRecordingRemotelyDisabled = it.sessionRecording == false
                         }
                         processSurveys(it.surveys)
                         processErrorTrackingConfig(it.errorTracking)
@@ -1394,6 +1401,8 @@ public class PostHogRemoteConfig(
      * value, so the replay integration buffers snapshots until the server confirms the flag.
      */
     public fun hasRemoteConfigFetched(): Boolean = remoteConfigHasFetched.get()
+
+    internal fun isSessionRecordingRemotelyDisabled(): Boolean = sessionRecordingRemotelyDisabled
 
     /**
      * Makes a sampling decision for session recording based on the sample rate
