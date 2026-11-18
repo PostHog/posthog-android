@@ -1,5 +1,11 @@
 ## Next
 
+## 1.8.1
+
+### Patch Changes
+
+- 2733de8: Fix ProGuard mapping and native symbol uploads failing on Windows with `unrecognized subcommand 'cmd'`.
+
 ## 1.8.0
 
 ### Minor Changes

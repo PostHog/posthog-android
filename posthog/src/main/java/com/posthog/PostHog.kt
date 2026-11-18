@@ -893,6 +893,7 @@ public class PostHog private constructor(
         appendSharedProps: Boolean = true,
         appendGroups: Boolean = true,
         timestamp: Date? = null,
+        isIdentityEvent: Boolean = false,
         claimReplayDebugBundle: () -> Boolean = { false },
         readReplayDebugProperties: () -> Map<String, Any> = ::readReplayDebugProperties,
     ): MutableMap<String, Any> {
@@ -969,6 +970,9 @@ public class PostHog private constructor(
             val registeredPrefs = getPreferences().getAll()
             if (registeredPrefs.isNotEmpty()) {
                 props.putAll(registeredPrefs)
+            }
+            if (isIdentityEvent) {
+                props.remove("\$process_person_profile")
             }
 
             // Per-call values win over registered ones.
@@ -1124,14 +1128,16 @@ public class PostHog private constructor(
      * legacy `$process_person_profile` property in [properties] (per call or registered) already
      * says otherwise. Nothing is added otherwise: PostHog processes person profiles by default.
      * [personProcessingPending] counts a person processing change a wrapper build defers to its
-     * send. Returns a copy, so `beforeSend` edits never reach the caller's map.
+     * send. An [isIdentityEvent] skips the registered `process_person_profile`. Returns a copy, so
+     * `beforeSend` edits never reach the caller's map.
      */
     private fun optionsForEvent(
         options: Map<String, Any?>?,
         properties: Map<String, Any>,
         personProcessingPending: Boolean = false,
+        isIdentityEvent: Boolean = false,
     ): MutableMap<String, Any?>? {
-        val registered = getRegisteredOptions()
+        val registered = getRegisteredOptions().let { if (isIdentityEvent) it - "process_person_profile" else it }
         val eventOptions =
             if (registered.isEmpty()) {
                 options?.toMutableMap()
@@ -1154,16 +1160,10 @@ public class PostHog private constructor(
     /**
      * Whether a `$set` sent with [options] surely updates the person: the setting is missing or a
      * Boolean `true`. Any other value, including a false one, might not, so it never records a hash.
+     * Registered values don't apply to identity events, so only [options] counts.
      */
     private fun surelyProcessesPersonProfile(options: Map<String, Any?>?): Boolean {
-        // An explicit null in [options] replaces the registered option, as in optionsForEvent.
-        val option =
-            if (options?.containsKey("process_person_profile") == true) {
-                options["process_person_profile"]
-            } else {
-                getRegisteredOptions()["process_person_profile"]
-            }
-        val value = option ?: getPreferences().getValue("\$process_person_profile")
+        val value = options?.get("process_person_profile")
         return value == null || value == true
     }
 
@@ -1393,6 +1393,7 @@ public class PostHog private constructor(
         if (event == PostHogEventName.GROUP_IDENTIFY.event) {
             groupIdentify = true
         }
+        val isIdentityEvent = event in IDENTITY_EVENTS
 
         // Externally-built $exception events (e.g. the Flutter/RN bridge) carry only
         // serialized class names, so they are matched by name instead of isInstance.
@@ -1432,6 +1433,7 @@ public class PostHog private constructor(
                 // only append groups if not a group identify event and not a snapshot
                 appendGroups = !groupIdentify,
                 timestamp = timestamp,
+                isIdentityEvent = isIdentityEvent,
                 claimReplayDebugBundle = { isReplayDebugEvent(event) && claimReplayDebugBundle() },
                 readReplayDebugProperties = readReplayDebugProperties,
             )
@@ -1443,7 +1445,7 @@ public class PostHog private constructor(
             if (isSnapshotEvent) {
                 options?.toMutableMap()
             } else {
-                optionsForEvent(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing)
+                optionsForEvent(options, mergedProperties, deferPersonProcessing && requiresPersonProcessing, isIdentityEvent)
             }
 
         // This capture's identity, kept through beforeSend.
@@ -3419,6 +3421,11 @@ public class PostHog private constructor(
         private var defaultSharedInstance = shared
 
         private val projectTokens = mutableSetOf<String>()
+
+        // Events that change a person or group. PostHog drops or ignores them when person
+        // processing is off, so a registered `process_person_profile` doesn't apply to them.
+        private val IDENTITY_EVENTS =
+            setOf("\$identify", "\$create_alias", "\$merge_dangerously", "\$groupidentify", "\$set", "\$set_once")
 
         /**
          * Captures application log records into PostHog's logs product

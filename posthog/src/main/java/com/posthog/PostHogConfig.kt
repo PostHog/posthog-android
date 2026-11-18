@@ -197,14 +197,20 @@ public open class PostHogConfig(
      */
     public var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY,
     /**
-     * Enable Surveys for Android (Intended for internal use only)
+     * Whether the SDK loads surveys and shows the ones that match.
      *
-     * Note: Not fully supported or documented yet. Primarily used by hybrid SDKs to attach a custom display logic.
+     * Defaults to `true`. Surveys display only when the app depends on
+     * `com.posthog:posthog-android-surveys-compose` or sets `surveysConfig.surveysDelegate`;
+     * without either, the SDK doesn't match or show surveys. Surveys must also be enabled in
+     * the PostHog project settings. Set to `false` to stop loading and showing surveys.
      *
-     * Requires Surveys to be enabled in the PostHog Project Settings
-     * Defaults to false
+     * ```kotlin
+     * val config = PostHogAndroidConfig(projectToken = "phc_...").apply {
+     *     surveys = false
+     * }
+     * ```
      */
-    public var surveys: Boolean = false,
+    public var surveys: Boolean = true,
     /**
      * Configures an optional HTTP proxy for the PostHog API client.
      *
@@ -363,13 +369,15 @@ public open class PostHogConfig(
 
     /**
      * When set, PostHog injects tracing headers into OkHttp requests whose destination hostname
-     * exactly matches one of the configured hostnames.
+     * exactly matches one of the configured hostnames. Use it to link the app's network requests
+     * to the backend events, errors, and LLM traces that a server-side PostHog SDK captures.
      *
-     * Injected headers:
+     * Injected headers, each sent only when its value exists:
      * - `X-POSTHOG-DISTINCT-ID`
      * - `X-POSTHOG-SESSION-ID`
      *
      * Notes:
+     * - List hostnames only, with no protocol or path
      * - Requires installing [PostHogOkHttpInterceptor] on each [OkHttpClient] that should send tracing headers
      * - Hostname matching is exact and does not include ports or subdomain wildcards
      * - The Android SDK does not send `X-POSTHOG-WINDOW-ID` because mobile apps do not have a per-window/tab concept
