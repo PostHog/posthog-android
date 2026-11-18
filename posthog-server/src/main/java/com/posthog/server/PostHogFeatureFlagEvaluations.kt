@@ -114,6 +114,9 @@ public class PostHogFeatureFlagEvaluations internal constructor(
      * payload. The server returns payloads as JSON-encoded strings; use [getFlagPayloadAs] when
      * you want the deserialized value. Does not fire any event and does not record the access.
      *
+     * A remote config flag with an encrypted payload is not available here. Use
+     * [PostHogInterface.getRemoteConfigPayload].
+     *
      * @param key Feature flag key.
      * @return The raw JSON payload string, or null when absent.
      */

@@ -448,6 +448,8 @@ public sealed interface PostHogInterface {
     /**
      * Returns the feature flag payload
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
+     *
+     * A remote config flag with an encrypted payload is not available here. Use [getRemoteConfigPayload].
      * @param distinctId the distinctId
      * @param key the Key
      * @param defaultValue the default value if not found
@@ -772,6 +774,29 @@ public sealed interface PostHogInterface {
     public fun evaluateFlags(): PostHogFeatureFlagEvaluations {
         return evaluateFlags(distinctId = null)
     }
+
+    /**
+     * Returns the payload of a remote config feature flag by key, parsed from JSON, with no
+     * distinct ID. Use it for a remote config flag, and always when the payload is encrypted:
+     * flag evaluation does not return such a flag, so `evaluateFlags(distinctId).getFlagPayload(key)`
+     * and `getFeatureFlagPayload` cannot read it. Needs [PostHogConfig.personalApiKey]. A personal
+     * API key returns an encrypted payload decrypted. A project secret API key returns it redacted.
+     * Docs https://posthog.com/docs/feature-flags/remote-config
+     *
+     * Nothing is evaluated, no `$feature_flag_called` event is sent, and the result is not cached.
+     * The call blocks the calling thread for the HTTP request.
+     *
+     * The server stores the payload as a JSON-encoded string. This method parses it, and parses
+     * again when the result is still a string. If the second parse fails, the string is returned.
+     * The result is a Map, List, String, Number, Boolean, or null.
+     *
+     * @param key the feature flag key
+     * @return the parsed payload, or null when the client is disabled, no personal API key is set,
+     * the flag key is invalid, the request fails, the response body is not valid JSON, or the
+     * flag has no payload. An empty response means the flag has no payload, and is not a failure.
+     * A failure is logged as a warning.
+     */
+    public fun getRemoteConfigPayload(key: String): Any?
 
     /**
      * Reloads feature flag definitions from the server for use with local evaluation.
