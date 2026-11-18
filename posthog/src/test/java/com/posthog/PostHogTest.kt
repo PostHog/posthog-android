@@ -44,6 +44,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.collections.get
 import kotlin.concurrent.thread
@@ -4239,6 +4240,73 @@ internal class PostHogTest {
         assertReplayOffShape(capturedBatchEvents(http).first().properties!!)
 
         sut.close()
+    }
+
+    private fun sequencedRemoteConfigServer(vararg configBodies: String): MockWebServer {
+        val configCalls = AtomicInteger()
+        val http = httpServers.create()
+        http.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.path?.endsWith("/config") == true) {
+                        val index = configCalls.getAndIncrement().coerceAtMost(configBodies.lastIndex)
+                        return MockResponse().setBody(configBodies[index])
+                    }
+                    return MockResponse().setBody("")
+                }
+            }
+        http.start()
+        return http
+    }
+
+    private fun reloadRemoteConfig(sut: PostHogInterface) {
+        config.remoteConfigHolder!!.loadRemoteConfig(sut.distinctId(), anonymousId = null, groups = null)
+        remoteConfigExecutor.awaitExecution()
+    }
+
+    private fun assertRemoteOffThenOnRestoresReplayDebugKeys(
+        offConfig: String,
+        onConfig: String,
+    ) {
+        val http = sequencedRemoteConfigServer(offConfig, onConfig)
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 2,
+                preloadFeatureFlags = false,
+                integration = replayHandlerWithFullBundle(),
+                remoteConfig = true,
+                sessionReplay = true,
+            )
+        remoteConfigExecutor.awaitExecution()
+        sut.startSession()
+
+        sut.capture(SDK_EVENT)
+        reloadRemoteConfig(sut)
+        sut.capture(SDK_EVENT)
+
+        val events = capturedBatchEvents(http)
+        assertEquals(2, events.size)
+        assertReplayOffShape(events[0].properties!!)
+        assertReplayDebugKeysKept(events[1].properties!!)
+
+        sut.close()
+    }
+
+    @Test
+    fun `remote replay off then on restores replay debug keys`() {
+        assertRemoteOffThenOnRestoresReplayDebugKeys(
+            offConfig = """{"sessionRecording": false}""",
+            onConfig = """{"sessionRecording": {"endpoint": "/s/"}}""",
+        )
+    }
+
+    @Test
+    fun `lifted quota limit restores replay debug keys`() {
+        assertRemoteOffThenOnRestoresReplayDebugKeys(
+            offConfig = """{"sessionRecording": {"endpoint": "/s/"}, "quotaLimited": ["mobile_recordings"]}""",
+            onConfig = """{"sessionRecording": {"endpoint": "/s/"}}""",
+        )
     }
 
     @Test
