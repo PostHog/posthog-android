@@ -1853,7 +1853,8 @@ public class PostHogReplayIntegration(
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
                         val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
-                        val hasPassword = node.config.contains(SemanticsProperties.Password)
+                        // The unmerged tree keeps a merging container's password() off the Text it wraps.
+                        val hasPassword = node.selfOrAncestorContains(SemanticsProperties.Password)
                         val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
                         // isEnabled=false means the modifier has no effect, as if it was never applied
@@ -2082,6 +2083,17 @@ public class PostHogReplayIntegration(
      * modifier actively enabled (value is true).
      * This allows postHogMask and postHogUnmask to propagate to all descendants.
      */
+    private fun SemanticsNode.selfOrAncestorContains(key: SemanticsPropertyKey<*>): Boolean {
+        var current: SemanticsNode? = this
+        while (current != null) {
+            if (current.config.contains(key)) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
+    }
+
     private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
         var current: SemanticsNode? = this
         while (current != null) {
