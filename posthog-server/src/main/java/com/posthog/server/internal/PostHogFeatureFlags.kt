@@ -1,5 +1,8 @@
 package com.posthog.server.internal
 
+import com.google.gson.JsonParseException
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
 import com.posthog.PostHogOnFeatureFlags
@@ -1045,6 +1048,61 @@ internal class PostHogFeatureFlags(
 
     private fun logMissingPersonalApiKey() {
         config.logger.log("Fetching feature flag definitions requires a personal API key. This call will be ignored.")
+    }
+
+    fun getRemoteConfigPayload(flagKey: String): Any? {
+        val secretKey = personalApiKey
+        if (secretKey == null) {
+            config.logger.logWarning(
+                "Fetching a remote config payload requires a personal API key. This call will be ignored.",
+            )
+            return null
+        }
+        if (flagKey.isBlank() || flagKey == "." || flagKey == "..") {
+            config.logger.logWarning("The flag key '$flagKey' is not valid for a remote config payload. No request was sent.")
+            return null
+        }
+        val body =
+            try {
+                api.flagRemoteConfigPayload(flagKey, secretKey)
+            } catch (e: PostHogApiError) {
+                config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed with status ${e.statusCode}.")
+                return null
+            } catch (e: IOException) {
+                config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed: $e")
+                return null
+            } catch (e: Throwable) {
+                config.logger.logWarning("Loading the remote config payload for flag '$flagKey' failed unexpectedly: $e")
+                return null
+            }
+        // The server answers a flag that has no payload with an empty 2xx body.
+        if (body.isNullOrBlank()) return null
+        val parsed =
+            try {
+                parseStrictJson(body)
+            } catch (e: Throwable) {
+                config.logger.logWarning(
+                    "Loading the remote config payload for flag '$flagKey' failed: the response body is not valid JSON.",
+                )
+                return null
+            }
+        if (parsed !is String) return parsed
+        return try {
+            parseStrictJson(parsed)
+        } catch (e: IOException) {
+            parsed
+        } catch (e: JsonParseException) {
+            parsed
+        }
+    }
+
+    // The shared Gson is lenient, so this reads through a strict JsonReader instead of Gson.fromJson.
+    @Throws(IOException::class)
+    private fun parseStrictJson(json: String): Any? {
+        val reader = JsonReader(StringReader(json))
+        val value = config.serializer.gson.getAdapter(Any::class.java).read(reader)
+        if (reader.peek() != JsonToken.END_DOCUMENT) throw IOException("Trailing data after the JSON value")
+        return value
     }
 
     /**

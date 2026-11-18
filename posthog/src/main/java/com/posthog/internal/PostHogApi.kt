@@ -13,6 +13,7 @@ import com.posthog.internal.logs.PostHogLogsOTLP
 import com.posthog.logs.PostHogLogRecord
 import com.posthog.vendor.uuid.TimeBasedEpochGenerator
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType
@@ -776,6 +777,39 @@ public class PostHogApi(
             }
             // Empty body on success is anomalous - clear ETag to force fresh fetch next time
             return LocalEvaluationApiResponse.success(null, null)
+        }
+    }
+
+    // The body and request headers are not logged: a remote config payload can be a decrypted secret.
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun flagRemoteConfigPayload(
+        flagKey: String,
+        secretKey: String,
+    ): String? {
+        require(flagKey.isNotBlank() && flagKey != "." && flagKey != "..") { "Invalid flag key" }
+
+        val url =
+            theHost.toHttpUrl().newBuilder()
+                .addPathSegments("api/projects/@current/feature_flags")
+                .addPathSegment(flagKey)
+                .addPathSegment("remote_config")
+                .addQueryParameter("token", config.projectToken)
+                .build()
+
+        val request =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", config.userAgent)
+                .header("Content-Type", APP_JSON_UTF_8)
+                .header("Authorization", "Bearer $secretKey")
+                .get()
+                .build()
+
+        client.newCall(request).execute().use {
+            if (!it.isSuccessful) {
+                throw PostHogApiError(it.code, it.message, it.body)
+            }
+            return it.body?.string()
         }
     }
 

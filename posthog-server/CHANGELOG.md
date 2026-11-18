@@ -1,5 +1,11 @@
 ## Next
 
+## 2.25.0
+
+### Minor Changes
+
+- ebf5abb: Add `getRemoteConfigPayload(key)` to the server SDK. It returns the parsed payload of a remote config feature flag, with no distinct id. It needs `personalApiKey`, and returns `null` and logs a warning on a failure.
+
 ## 2.24.2
 
 ### Patch Changes
