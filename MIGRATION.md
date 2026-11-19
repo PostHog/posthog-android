@@ -92,7 +92,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 
 PostHog's managed reverse proxy already does this and needs no change.
 
-A proxy set up from PostHog's [proxy guides](https://posthog.com/docs/advanced/proxy) before 29 October 2026 strips `Authorization`, so PostHog answers `401` and the events are dropped. Update it from the current guide.
+A proxy set up from PostHog's [proxy guides](https://posthog.com/docs/advanced/proxy) before 29 October 2026 strips `Authorization`, so PostHog answers `401` and the events are dropped, with one warning in the logs. Update it from the current guide.
 
 The SDK doesn't fall back to `/batch`. It retries a 404, so the events stay queued until the path is served. The SDK prints one warning, even with `debug` off.
 
@@ -202,7 +202,7 @@ These changes apply to `posthog-server` too:
 
 ### Update PostHogStateless code
 
-Core `posthog` 7.x.x is only supported through `posthog-android` 4.x.x and `posthog-server`. `PostHogStateless.with` isn't a supported entry point in core 7.x.x.
+Core `posthog` 7.x.x is only supported through `posthog-android` 4.x.x and `posthog-server`. `PostHogStateless.with` isn't a supported entry point in core 7.x.x, and is deprecated.
 
 `PostHogStateless` has no queue of its own, so it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
 

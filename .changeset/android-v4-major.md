@@ -4,8 +4,8 @@
 ---
 
 - See the [posthog-android 3.x.x to 4.0.0 migration guide](https://github.com/PostHog/posthog-android/blob/main/MIGRATION.md) for upgrade steps
-- **Breaking:** stop supporting core `posthog` on its own through `PostHogStateless.with`. Use it through `posthog-android` or `posthog-server`
-- **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`. Reverse proxies must serve the path. A 404 keeps events queued, retries them and prints one warning even when `debug` is off
+- **Breaking:** stop supporting core `posthog` on its own through `PostHogStateless.with`, which is now deprecated. Use it through `posthog-android` or `posthog-server`
+- **Breaking:** send analytics events to capture v1 (`/i/v1/analytics/events`) with the project token in an `Authorization: Bearer` header, replacing any `Authorization` header in `requestHeaders`. Reverse proxies must serve the path. A 404 keeps events queued, retries them and prints one warning even when `debug` is off. A 401 drops the batch and prints one warning about proxies that strip `Authorization`
 - **Breaking:** drop events when a capture request gets a non-retryable status (including 3xx), a 2xx without per-event results, or a redirect other than a 307 or 308 to the same origin as `host` (followed at most 5 times). Retry 404, 408, 429, 500, 502, 503 and 504
 - **Breaking:** cap a `Retry-After` wait at 30 seconds, read it as a minimum wait and accept an HTTP date, and add up to 25% random jitter to the backoff, which still doubles from 1 to 30 seconds, for events, session replay and logs
 - **Breaking:** drop events with an empty name before sending them, including one `beforeSend` renames to `""`. PostHog also drops events with an empty distinct ID or a name or distinct ID over 200 bytes
