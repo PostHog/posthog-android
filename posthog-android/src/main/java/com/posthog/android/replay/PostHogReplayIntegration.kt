@@ -2078,11 +2078,6 @@ public class PostHogReplayIntegration(
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
     }
 
-    /**
-     * Checks if the given semantics node or any of its ancestors has the specified
-     * modifier actively enabled (value is true).
-     * This allows postHogMask and postHogUnmask to propagate to all descendants.
-     */
     private fun SemanticsNode.selfOrAncestorContains(key: SemanticsPropertyKey<*>): Boolean {
         var current: SemanticsNode? = this
         while (current != null) {
@@ -2094,6 +2089,11 @@ public class PostHogReplayIntegration(
         return false
     }
 
+    /**
+     * Checks if the given semantics node or any of its ancestors has the specified
+     * modifier actively enabled (value is true).
+     * This allows postHogMask and postHogUnmask to propagate to all descendants.
+     */
     private fun SemanticsNode.hasActiveModifier(key: SemanticsPropertyKey<Boolean>): Boolean {
         var current: SemanticsNode? = this
         while (current != null) {
