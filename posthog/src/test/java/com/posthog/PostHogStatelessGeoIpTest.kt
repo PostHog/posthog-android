@@ -22,6 +22,7 @@ internal class PostHogStatelessGeoIpTest {
     private lateinit var config: PostHogConfig
     private var client: PostHogStatelessInterface? = null
 
+    @Suppress("DEPRECATION")
     private fun getSut(
         disableGeoIp: Boolean = false,
         beforeSend: PostHogBeforeSend? = null,

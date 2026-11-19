@@ -976,6 +976,7 @@ public open class PostHogStateless protected constructor(
          * @param config SDK configuration.
          * @return The configured stateless PostHog client instance.
          */
+        @Deprecated("Not supported in core 7.x.x. Use posthog-server for server-side JVM apps.")
         public fun <T : PostHogConfig> with(config: T): PostHogStatelessInterface {
             val instance = PostHogStateless()
             instance.setup(config)
