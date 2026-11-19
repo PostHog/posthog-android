@@ -481,4 +481,21 @@ internal class PostHogTriggerGroupsEvaluatorTest {
         // activated through the screen leg, so the still-pending event leg is not reported
         assertTrue(decide().pendingConditions.isEmpty())
     }
+
+    private fun screenGroupWithFilter(filter: Map<String, Any?>) =
+        group(id = "g1", conditions = urlLeg("^/checkout") + mapOf("properties" to listOf(filter)))
+
+    @Test
+    fun `group-level event filters never match on the screen leg`() {
+        configure(screenGroupWithFilter(mapOf("key" to "\$screen_name", "operator" to "exact", "value" to "/checkout")))
+        assertFalse(screen(name = "/checkout"))
+        assertFalse(decide().shouldRecord)
+    }
+
+    @Test
+    fun `group-level negative event filters match on the screen leg`() {
+        configure(screenGroupWithFilter(mapOf("key" to "\$screen_name", "operator" to "is_not", "value" to "/checkout")))
+        assertTrue(screen(name = "/checkout"))
+        assertTrue(decide().shouldRecord)
+    }
 }

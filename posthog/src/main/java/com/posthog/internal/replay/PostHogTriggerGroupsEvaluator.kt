@@ -77,7 +77,8 @@ internal class PostHogTriggerGroupsEvaluator {
                             screenName != null &&
                             group.id !in screenActivatedGroupIds &&
                             conditions.urls.any { it.containsMatchIn(screenName) } &&
-                            matchTriggerPropertyFilters(conditions.properties, eventProperties, personProperties)
+                            // The url leg has no event to read properties from, so neither does the screen leg.
+                            matchTriggerPropertyFilters(conditions.properties, null, personProperties)
                     if (screenMatched) {
                         screenActivatedGroupIds.add(group.id)
                         anyNewlyActivated = true
