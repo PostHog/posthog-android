@@ -258,8 +258,33 @@ public class PostHogApi(
         groupProperties: Map<String, Map<String, Any?>>? = null,
         flagKeys: List<String>? = null,
         disableGeoip: Boolean = config.disableGeoIp,
-        personPropertyKeysKnownAbsent: Collection<String>? = null,
-        groupPropertyKeysKnownAbsent: Map<String, Collection<String>>? = null,
+    ): PostHogFlagsResponse? =
+        flags(
+            distinctId,
+            anonymousId,
+            deviceId,
+            groups,
+            personProperties,
+            groupProperties,
+            flagKeys,
+            disableGeoip,
+            personPropertyKeysKnownAbsent = null,
+            groupPropertyKeysKnownAbsent = null,
+        )
+
+    // A separate overload keeps the JVM signature above for modules compiled against older core.
+    @Throws(PostHogApiError::class, IOException::class)
+    public fun flags(
+        distinctId: String,
+        anonymousId: String?,
+        deviceId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>?,
+        disableGeoip: Boolean,
+        personPropertyKeysKnownAbsent: Collection<String>?,
+        groupPropertyKeysKnownAbsent: Map<String, Collection<String>>?,
     ): PostHogFlagsResponse? {
         val flagsRequest =
             PostHogFlagsRequest(
