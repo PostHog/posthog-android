@@ -1,5 +1,6 @@
 package com.posthog.internal.replay
 
+import com.posthog.internal.sampleOnProperty
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -147,11 +148,26 @@ internal class PostHogTriggerGroupsTest {
     }
 
     @Test
-    fun `a missing sample rate parses to null, a string rate parses and garbage samples out`() {
-        val config = config(group(sampleRate = MISSING), group(id = "g2", sampleRate = "0.5"), group(id = "g3", sampleRate = "abc"))
+    fun `a missing sample rate parses to null, a string rate parses and garbage samples in`() {
+        val config =
+            config(
+                group(sampleRate = MISSING),
+                group(id = "g2", sampleRate = "0.5"),
+                group(id = "g3", sampleRate = "abc"),
+                group(id = "g4", sampleRate = " 0.25 "),
+                group(id = "g5", sampleRate = "  "),
+                group(id = "g6", sampleRate = "NaN"),
+                group(id = "g7", sampleRate = "Infinity"),
+                group(id = "g8", sampleRate = "-Infinity"),
+            )
         assertEquals(null, config.groups[0].sampleRate)
         assertEquals(0.5, config.groups[1].sampleRate)
-        assertEquals(0.0, config.groups[2].sampleRate)
+        assertEquals(null, config.groups[2].sampleRate)
+        assertEquals(0.25, config.groups[3].sampleRate)
+        assertEquals(0.0, config.groups[4].sampleRate)
+        assertEquals(null, config.groups[5].sampleRate)
+        assertTrue(sampleOnProperty("session", config.groups[6].sampleRate!!))
+        assertFalse(sampleOnProperty("session", config.groups[7].sampleRate!!))
     }
 
     @Test

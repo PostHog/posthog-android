@@ -81,15 +81,15 @@ internal fun parseTriggerGroupsConfig(
     return PostHogTriggerGroupsConfig(groups)
 }
 
-// The API can send the rate as a string. One that doesn't parse samples out, as it does on web
-// (NaN never passes the threshold), and so does JSON null (`null * 100` is 0); only a missing rate samples in.
+// The API can send the rate as a string, coerced like a JS number: surrounding whitespace is ignored, a blank
+// string is 0 and samples out, and one that doesn't parse (NaN) samples in like a missing rate. JSON null is 0.
 private fun parseTriggerGroupSampleRate(
     group: Map<*, *>,
     raw: Any?,
 ): Double? =
     when (raw) {
         is Number -> raw.toDouble()
-        is String -> raw.toDoubleOrNull() ?: 0.0
+        is String -> raw.trim().let { if (it.isEmpty()) 0.0 else it.toDoubleOrNull()?.takeUnless(Double::isNaN) }
         null -> if (group.containsKey("sampleRate")) 0.0 else null
         else -> null
     }
