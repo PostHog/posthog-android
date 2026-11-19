@@ -192,7 +192,7 @@ It still sends events to `/batch`, not to capture v1. The API, endpoint, proxy, 
 
 `posthog-server` 2.26.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
 
-- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.26.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime.
+- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.26.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime, so Gradle upgrades them to 2.26.0.
 - **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.25.x or older. `posthog-server` 2.26.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
 
 These changes apply to `posthog-server` too:

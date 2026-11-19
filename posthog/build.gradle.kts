@@ -118,6 +118,12 @@ dependencies {
         api("com.posthog:posthog-android:$androidMajor.0.0") {
             because("posthog-android must match the major of the core posthog artifact")
         }
+        // posthog-server 2.25.x and older crash at runtime with NoSuchMethodError on this core major,
+        // and 2.26.0 is the first release built against it. Only applies when posthog-server is
+        // already in the graph, and raises it to at least that version.
+        api("com.posthog:posthog-server:2.26.0") {
+            because("posthog-server 2.25.x and older are not compatible with core posthog 7.x.x")
+        }
     }
     compileOnly("org.codehaus.mojo:animal-sniffer-annotations:${PosthogBuildConfig.Plugins.ANIMAL_SNIFFER_SDK_ANNOTATION}")
 
