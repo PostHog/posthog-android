@@ -85,6 +85,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
@@ -1199,6 +1201,12 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun requestStop(sut: PostHogReplayIntegration) {
+        // as PostHog.stopSessionReplay() does
+        sut.onStopRequested()
+        sut.stop()
+    }
+
     @Test
     fun `under React Native a remote config refresh does not restart a recorder JS stopped`() {
         PostHogSessionManager.isReactNative = true
@@ -1217,7 +1225,7 @@ internal class PostHogReplayIntegrationTest {
                 assertTrue(sut.isActive(), "setup; automaticReplay=$automaticReplay")
 
                 // JS found the session no longer eligible and stopped the recorder.
-                sut.stop()
+                requestStop(sut)
                 sut.onRemoteConfig()
                 shadowOf(Looper.getMainLooper()).idle()
                 assertFalse(sut.isActive(), "native refresh overrode the JS stop; automaticReplay=$automaticReplay")
@@ -1249,7 +1257,7 @@ internal class PostHogReplayIntegrationTest {
             assertTrue(sut.isActive())
 
             // JS found the session no longer eligible and stopped the recorder.
-            sut.stop()
+            requestStop(sut)
             sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
             assertFalse(sut.isActive(), "the JS stop must hold until JS asks again")
@@ -1278,7 +1286,7 @@ internal class PostHogReplayIntegrationTest {
         try {
             sut.start(resumeCurrent = true)
             shadowOf(Looper.getMainLooper()).idle()
-            sut.stop()
+            requestStop(sut)
             assertFalse(sut.isActive())
 
             // A fresh install (e.g. the JS SDK re-initialized) starts without the old JS stop.
@@ -1306,13 +1314,13 @@ internal class PostHogReplayIntegrationTest {
         try {
             sut.start(resumeCurrent = true)
             shadowOf(Looper.getMainLooper()).idle()
-            sut.stop()
+            requestStop(sut)
 
-            // optOut uninstalls and optIn reinstalls; the SDK then repeats the stop JS had made,
+            // optOut uninstalls and optIn reinstalls; the SDK then repeats the stop request JS had made,
             // on a recorder that never started in this installation.
             sut.uninstall()
             sut.install(postHog)
-            sut.stop()
+            sut.onStopRequested()
 
             sut.onRemoteConfig()
             shadowOf(Looper.getMainLooper()).idle()
@@ -1338,7 +1346,92 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
-    fun `outside React Native a remote config refresh can still resume after a stop`() {
+    fun `a remote config refresh does not restart a recorder the app stopped`() {
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(sessionId)
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            requestStop(sut)
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a refresh overrode the app's stop")
+
+            // Only the app's next start request lifts the stop.
+            sut.onStartRequested()
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a trigger group event does not restart a recorder the app stopped`() {
+        val sut = getSut(triggerGroupsEventConfig(permitted = true, localSamplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+
+        try {
+            PostHogSessionManager.startSession()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "setup")
+            requestStop(sut)
+
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "same session")
+
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            sut.onSessionIdChanged()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "new session")
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `trigger group events are not matched while replay is explicitly stopped`() {
+        val config = triggerGroupsEventConfig(permitted = true, localSamplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            requestStop(sut)
+
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            verify(remoteConfig, never()).onSessionRecordingTriggerEvent(any(), any(), any())
+            assertFalse(sut.isActive())
+
+            sut.onStartRequested()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            verify(remoteConfig).onSessionRecordingTriggerEvent(any(), any(), any())
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `an internal stop lets a remote config refresh resume`() {
         val sessionId = UUID.randomUUID()
         PostHogSessionManager.setSessionId(sessionId)
         val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))

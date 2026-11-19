@@ -1300,6 +1300,7 @@ public abstract interface class com/posthog/internal/replay/PostHogSessionReplay
 	public static synthetic fun onEvent$default (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public abstract fun onSessionIdChanged ()V
 	public fun onStartRequested ()V
+	public fun onStopRequested ()V
 	public abstract fun start (Z)V
 	public abstract fun stop ()V
 }
@@ -1307,6 +1308,7 @@ public abstract interface class com/posthog/internal/replay/PostHogSessionReplay
 public final class com/posthog/internal/replay/PostHogSessionReplayHandler$DefaultImpls {
 	public static synthetic fun onEvent$default (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static fun onStartRequested (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)V
+	public static fun onStopRequested (Lcom/posthog/internal/replay/PostHogSessionReplayHandler;)V
 }
 
 public final class com/posthog/internal/replay/RRCustomEvent : com/posthog/internal/replay/RREvent {

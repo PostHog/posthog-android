@@ -195,13 +195,11 @@ public class PostHog private constructor(
     // this is called if the feature flags are loaded for the first time and recording isn't started yet
     private val internalOnFeatureFlagsLoaded =
         PostHogOnFeatureFlags {
-            // under React Native the JS layer drives explicit starts; native automatic starts
-            // still happen via the integration's onRemoteConfig
-            if (PostHogSessionManager.isReactNative) return@PostHogOnFeatureFlags
             // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
             synchronized(setupLock) {
                 sessionReplayHandler?.let {
-                    if (isSessionReplayConfigEnabled()) {
+                    // an explicit stopSessionReplay holds until the app asks to start again
+                    if (isSessionReplayConfigEnabled() && sessionReplayWanted) {
                         // start will bail if session replay is already active anyway
                         startSessionReplayInternal(resumeCurrent = true)
                     }
@@ -1413,11 +1411,11 @@ public class PostHog private constructor(
                     PostHogSessionManager.startSession()
                 }
                 installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
-                // the uninstall on optOut dropped the React Native stop hold with the rest of the handler's
-                // state; put it back before the remote config below, or any later automatic start, can
-                // restart replay the JS layer had stopped (as on iOS)
-                if (!sessionReplayWanted && PostHogSessionManager.isReactNative) {
-                    sessionReplayHandler?.stop()
+                // the uninstall on optOut dropped the stop hold with the rest of the handler's state; put it
+                // back before the remote config below, or any later automatic start, can restart replay the
+                // app had stopped
+                if (!sessionReplayWanted) {
+                    sessionReplayHandler?.onStopRequested()
                 }
                 // install re-arms each integration from local config; re-apply the cached remote
                 // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
@@ -2655,8 +2653,8 @@ public class PostHog private constructor(
             // a start asked for while opted out is ignored, so it doesn't change the intent either
             if (!isOptedOut()) {
                 sessionReplayWanted = true
-                // an explicit request must lift the React Native stop latch even if the gates below
-                // refuse it, but not while opted out (as on iOS)
+                // an explicit request must lift the stop hold even if the gates below refuse it,
+                // but not while opted out
                 sessionReplayHandler?.onStartRequested()
             }
             startSessionReplayInternal(resumeCurrent)
@@ -2717,6 +2715,7 @@ public class PostHog private constructor(
             // also reached from optOut's uninstall, by which point consent is already opted out
             if (!isOptedOut()) {
                 sessionReplayWanted = false
+                sessionReplayHandler?.onStopRequested()
             }
             sessionReplayHandler?.stop() ?: run {
                 config?.logger?.log("Session replay isn't installed.")

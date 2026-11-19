@@ -257,11 +257,11 @@ public class PostHogReplayIntegration(
     @Volatile
     private var startedWithAutomaticDisabled: Boolean = false
 
-    // Under React Native the JS layer decides when to record and drives start()/stop(). Set by its explicit
-    // stop so no native callback (remote config, flags, session change) restarts the recorder behind its
-    // back; cleared by its next explicit start.
+    // Set by the app's explicit stop request so no automatic path (remote config, flags, session change,
+    // event trigger) restarts the recorder behind its back; cleared by its next start request. An internal
+    // stop() (e.g. session cleared) doesn't set it, so a later automatic start can still resume.
     @Volatile
-    private var stoppedByReactNative: Boolean = false
+    private var explicitlyStopped: Boolean = false
 
     // Event triggers for session recording
     private val eventTriggersLock = Any()
@@ -1120,7 +1120,7 @@ public class PostHogReplayIntegration(
                 synchronized(pixelCopyBitmapBuffer) {
                     synchronized(decorViews) {
                         startedWithAutomaticDisabled = false
-                        stoppedByReactNative = false
+                        explicitlyStopped = false
                         isSessionReplayActive = false
                         snapshotGeneration++
                         pixelCopyBitmapBuffer.close()
@@ -3302,20 +3302,24 @@ public class PostHogReplayIntegration(
         if (!config.sessionReplay) {
             startedWithAutomaticDisabled = true
         }
-        stoppedByReactNative = false
+        explicitlyStopped = false
 
         startRecording(resumeCurrent)
     }
 
-    // The request itself must lift the JS stop even when startSessionReplay is refused by a gate
+    // The request itself must lift the stop even when startSessionReplay is refused by a gate
     // before it ever reaches start() — otherwise later automatic starts stay blocked.
     override fun onStartRequested() {
-        stoppedByReactNative = false
+        explicitlyStopped = false
+    }
+
+    override fun onStopRequested() {
+        explicitlyStopped = true
     }
 
     // config.sessionReplay controls automatic starts; a recording the app started explicitly
-    // while it was off must survive them. Under React Native an explicit stop blocks them until the next explicit start.
-    private fun isAutomaticStartPermitted(): Boolean = !stoppedByReactNative && (config.sessionReplay || startedWithAutomaticDisabled)
+    // while it was off must survive them. An explicit stop blocks them until the next start request.
+    private fun isAutomaticStartPermitted(): Boolean = !explicitlyStopped && (config.sessionReplay || startedWithAutomaticDisabled)
 
     private fun startRecording(resumeCurrent: Boolean) {
         // Event triggers may change while an automatic start is queued on main.
@@ -3406,7 +3410,6 @@ public class PostHogReplayIntegration(
             synchronized(decorViews) {
                 if (resetManualStart) {
                     startedWithAutomaticDisabled = false
-                    stoppedByReactNative = PostHogSessionManager.isReactNative
                 }
                 isSessionReplayActive = false
                 snapshotGeneration++
@@ -3559,6 +3562,8 @@ public class PostHogReplayIntegration(
         event: String,
         properties: Map<String, Any>?,
     ) {
+        // A match while stopped would leave the group activated, and a later start would not wait for one.
+        if (explicitlyStopped) return
         val newlyActivated = remoteConfig.onSessionRecordingTriggerEvent(currentSessionId, event, properties)
         if (!newlyActivated) return
 

@@ -11,6 +11,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
     public var onStartRequestedCalled: Boolean = false
+    public var onStopRequestedCalled: Boolean = false
     public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
     public var throwOnDebugProperties: Boolean = false
 
@@ -26,6 +27,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         lastEventProperties = null
         onSessionIdChangedCalled = false
         onStartRequestedCalled = false
+        onStopRequestedCalled = false
     }
 
     override fun start(resumeCurrent: Boolean) {
@@ -36,6 +38,10 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun onStartRequested() {
         onStartRequestedCalled = true
+    }
+
+    override fun onStopRequested() {
+        onStopRequestedCalled = true
     }
 
     // runs at the start of each stop() call, before the handler goes inactive

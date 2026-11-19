@@ -1859,6 +1859,8 @@ internal class PostHogTest {
         integration.reset()
         sut.optIn()
 
+        // the reinstalled handler lost the stop with the uninstall: it is told again
+        assertTrue(integration.onStopRequestedCalled)
         assertFalse(integration.startCalled)
 
         sut.close()
@@ -1952,7 +1954,7 @@ internal class PostHogTest {
 
             // the reinstalled handler lost the stop with the uninstall: it is told again, so its
             // automatic starts stay held
-            assertTrue(integration.stopCalled)
+            assertTrue(integration.onStopRequestedCalled)
             assertFalse(integration.startCalled)
 
             // only the app's next start lifts the hold
@@ -1984,7 +1986,7 @@ internal class PostHogTest {
             integration.reset()
             // a remote config delivery is an automatic start path: the hold has to be back by then
             var heldBeforeRemoteConfig: Boolean? = null
-            integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.stopCalled }
+            integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.onStopRequestedCalled }
             sut.optIn()
 
             assertEquals(true, heldBeforeRemoteConfig)
@@ -2018,7 +2020,7 @@ internal class PostHogTest {
             sut.optIn()
 
             assertTrue(integration.startCalled)
-            assertFalse(integration.stopCalled)
+            assertFalse(integration.onStopRequestedCalled)
 
             sut.close()
         } finally {
@@ -2028,24 +2030,24 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `outside React Native optIn does not stop the reinstalled session replay handler`() {
-        val http = mockHttp()
+    fun `optIn holds stopped session replay before re-applying the cached remote config`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
         val url = http.url("/")
         val integration = PostHogSessionReplayHandlerFake(false)
-        val myPrefs = PostHogMemoryPreferences()
-        myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
 
-        val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
-        config.sessionReplay = true
-        sut.startSessionReplay()
+        val sut = getSut(url.toString(), remoteConfig = true, integration = integration, sessionReplay = true)
+        remoteConfigExecutor.shutdownAndAwaitTermination()
         sut.stopSessionReplay()
 
         sut.optOut()
         integration.reset()
+        // a remote config delivery is an automatic start path: the hold has to be back by then
+        var heldBeforeRemoteConfig: Boolean? = null
+        integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.onStopRequestedCalled }
         sut.optIn()
 
-        assertFalse(integration.stopCalled)
-        assertFalse(integration.startCalled)
+        assertEquals(true, heldBeforeRemoteConfig)
 
         sut.close()
     }
@@ -2161,6 +2163,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
         config.sessionReplay = true
+        PostHog::class.java.getDeclaredField("sessionReplayWanted").apply { isAccessible = true }.set(sut, true)
         val onFlagsLoaded =
             PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
                 .apply { isAccessible = true }
@@ -4055,6 +4058,7 @@ internal class PostHogTest {
                 )
 
             sut.stopSessionReplay()
+            assertTrue(integration.onStopRequestedCalled)
             sut.startSessionReplay()
 
             // the request must reach the handler even though the flag gate refused the start
@@ -4144,7 +4148,7 @@ internal class PostHogTest {
     }
 
     @Test
-    fun `outside React Native a flags reload still starts a recorder JS stopped`() {
+    fun `a flags reload does not restart a recorder the app stopped`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val url = http.url("/")
         val integration = PostHogSessionReplayHandlerFake(false)
@@ -4171,8 +4175,13 @@ internal class PostHogTest {
         sut.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
         assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags reload did not finish")
 
+        assertFalse(integration.startCalled)
+        assertFalse(integration.onStartRequestedCalled)
+
+        // the app's next start request starts it again
+        sut.startSessionReplay()
+        assertTrue(integration.onStartRequestedCalled)
         assertTrue(integration.startCalled)
-        assertTrue(integration.resumeCurrent == true)
     }
 
     @Test

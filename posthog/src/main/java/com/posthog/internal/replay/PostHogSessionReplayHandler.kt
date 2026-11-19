@@ -11,6 +11,11 @@ public interface PostHogSessionReplayHandler {
      */
     public fun onStartRequested() {}
 
+    /**
+     * Called when the app explicitly asks to stop recording.
+     */
+    public fun onStopRequested() {}
+
     public fun stop()
 
     public fun isActive(): Boolean
