@@ -68,6 +68,9 @@ public class PostHogApi(
     // A 404 keeps the events queued, so the warning is printed once instead of on every retry.
     private val warnedCaptureNotFound = AtomicBoolean(false)
 
+    // A 401 drops every batch, so the warning is printed once instead of on every batch.
+    private val warnedCaptureUnauthorized = AtomicBoolean(false)
+
     private val captureMediaType by lazy {
         try {
             APP_JSON.toMediaType()
@@ -243,17 +246,15 @@ public class PostHogApi(
                 config.logger.log("Response ${response.request.url}: ${response.code}")
 
                 if (response.code == 404 && warnedCaptureNotFound.compareAndSet(false, true)) {
-                    // Warnings log even with debug off, so drop any credentials or query the host carries.
-                    val safeUrl =
-                        response.request.url.newBuilder()
-                            .username("")
-                            .password("")
-                            .query(null)
-                            .fragment(null)
-                            .build()
                     config.logger.logWarning(
-                        "$safeUrl returned 404. Events stay queued and are retried. " +
+                        "${response.request.url.withoutCredentials()} returned 404. Events stay queued and are retried. " +
                             "If you use a reverse proxy or self-host PostHog, make sure it serves $path.",
+                    )
+                }
+                if (response.code == 401 && warnedCaptureUnauthorized.compareAndSet(false, true)) {
+                    config.logger.logWarning(
+                        "${response.request.url.withoutCredentials()} returned 401, events were dropped. " +
+                            "If you use a reverse proxy, make sure it forwards the Authorization header.",
                     )
                 }
                 if (response.code != 307 && response.code != 308) {
@@ -960,20 +961,14 @@ internal fun liftStringProperty(
     return null
 }
 
-/**
- * Whether capture reads [value] as a false flag option: `false`, a zero number, or a string such as
- * `"false"`, `"no"`, `"off"` or `"0"`, ignoring case and surrounding spaces.
- */
-internal fun isFalseOptionValue(value: Any?): Boolean {
-    return when (value) {
-        is Boolean -> !value
-        is Number -> value.toDouble() == 0.0
-        is String -> {
-            val text = value.trim().lowercase()
-            text in setOf("false", "f", "no", "n", "off") || text.toDoubleOrNull() == 0.0
-        }
-        else -> false
-    }
+// Warnings log even with debug off, so drop any credentials or query the host carries.
+private fun HttpUrl.withoutCredentials(): HttpUrl {
+    return newBuilder()
+        .username("")
+        .password("")
+        .query(null)
+        .fragment(null)
+        .build()
 }
 
 private fun jsonTypeName(value: Any): String {

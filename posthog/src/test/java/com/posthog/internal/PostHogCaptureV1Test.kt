@@ -497,6 +497,23 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `a 401 warns once even with debug off`() {
+        val http = httpServers.mockHttp(total = 2, response = MockResponse().setResponseCode(401))
+        val host = http.url("/").toString().trimEnd('/')
+        val sut = api(host)
+
+        repeat(2) { runCatching { sut.captureV1(listOf(event())) } }
+
+        assertEquals(
+            listOf(
+                "$host/i/v1/analytics/events returned 401, events were dropped. " +
+                    "If you use a reverse proxy, make sure it forwards the Authorization header.",
+            ),
+            logger.warnings,
+        )
+    }
+
+    @Test
     fun `the 404 warning leaves out credentials and the query in the host`() {
         val http = httpServers.mockHttp(response = MockResponse().setResponseCode(404))
         val origin = http.url("/").toString().trimEnd('/')
