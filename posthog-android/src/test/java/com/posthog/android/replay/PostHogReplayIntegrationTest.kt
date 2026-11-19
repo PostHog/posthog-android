@@ -85,6 +85,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.ParameterizedRobolectricTestRunner.Parameters
@@ -1199,6 +1201,258 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun requestStop(sut: PostHogReplayIntegration) {
+        // as PostHog.stopSessionReplay() does
+        sut.onStopRequested()
+        sut.stop()
+    }
+
+    @Test
+    fun `under React Native a remote config refresh does not restart a recorder JS stopped`() {
+        PostHogSessionManager.isReactNative = true
+
+        for (automaticReplay in listOf(false, true)) {
+            val sessionId = UUID.randomUUID()
+            PostHogSessionManager.setSessionId(sessionId)
+            val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true, sessionReplay = automaticReplay))
+            val postHog = mock<PostHogInterface>()
+            whenever(postHog.getSessionId()).thenReturn(sessionId)
+            sut.install(postHog)
+
+            try {
+                sut.start(resumeCurrent = true)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "setup; automaticReplay=$automaticReplay")
+
+                // JS found the session no longer eligible and stopped the recorder.
+                requestStop(sut)
+                sut.onRemoteConfig()
+                shadowOf(Looper.getMainLooper()).idle()
+                assertFalse(sut.isActive(), "native refresh overrode the JS stop; automaticReplay=$automaticReplay")
+
+                // Only the JS layer's next start resumes it.
+                sut.start(resumeCurrent = true)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertTrue(sut.isActive(), "JS start; automaticReplay=$automaticReplay")
+            } finally {
+                sut.uninstall()
+            }
+        }
+    }
+
+    @Test
+    fun `under React Native a start request lets a later remote config resume a JS stopped recorder`() {
+        PostHogSessionManager.isReactNative = true
+
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(sessionId)
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+
+            // JS found the session no longer eligible and stopped the recorder.
+            requestStop(sut)
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "the JS stop must hold until JS asks again")
+
+            // JS asks to start; the request itself lifts the stop even if the gates refuse right now.
+            sut.onStartRequested()
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "the later automatic start must go through after the JS request")
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `under React Native an uninstall clears the JS stop so a reinstall can start automatically`() {
+        PostHogSessionManager.isReactNative = true
+
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(sessionId)
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            requestStop(sut)
+            assertFalse(sut.isActive())
+
+            // A fresh install (e.g. the JS SDK re-initialized) starts without the old JS stop.
+            sut.uninstall()
+            sut.install(postHog)
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "the stop latch must not outlive the installation")
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `under React Native a stop re-applied after a reinstall holds every automatic start until JS asks again`() {
+        PostHogSessionManager.isReactNative = true
+
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            requestStop(sut)
+
+            // optOut uninstalls and optIn reinstalls; the SDK then repeats the stop request JS had made,
+            // on a recorder that never started in this installation.
+            sut.uninstall()
+            sut.install(postHog)
+            sut.onStopRequested()
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a remote config refresh overrode the re-applied JS stop")
+
+            sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a captured event overrode the re-applied JS stop")
+
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a session change overrode the re-applied JS stop")
+
+            // JS asks to start; from then on automatic starts go through again.
+            sut.onStartRequested()
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "the later automatic start must go through after the JS request")
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a remote config refresh does not restart a recorder the app stopped`() {
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(sessionId)
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            requestStop(sut)
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "a refresh overrode the app's stop")
+
+            // Only the app's next start request lifts the stop.
+            sut.onStartRequested()
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a trigger group event does not restart a recorder the app stopped`() {
+        val sut = getSut(triggerGroupsEventConfig(permitted = true, localSamplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+
+        try {
+            PostHogSessionManager.startSession()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive(), "setup")
+            requestStop(sut)
+
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "same session")
+
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            sut.onSessionIdChanged()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "new session")
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `trigger group events are not matched while replay is explicitly stopped`() {
+        val config = triggerGroupsEventConfig(permitted = true, localSamplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            requestStop(sut)
+
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            verify(remoteConfig, never()).onSessionRecordingTriggerEvent(any(), any(), any())
+            assertFalse(sut.isActive())
+
+            sut.onStartRequested()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+            verify(remoteConfig).onSessionRecordingTriggerEvent(any(), any(), any())
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `an internal stop lets a remote config refresh resume`() {
+        val sessionId = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(sessionId)
+        val sut = getSut(configWithSampling(flagActive = true, samplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(sessionId)
+        sut.install(postHog)
+
+        try {
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            sut.stop()
+            assertFalse(sut.isActive())
+
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
     @Test
     @LooperMode(LooperMode.Mode.PAUSED)
     fun `queued session rotation respects newly loaded event triggers`() {
@@ -1956,6 +2210,406 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun durationHoldFixture(minimum: java.util.concurrent.atomic.AtomicLong): Pair<RealQueueFixture, PostHogInterface> {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        whenever(fx.remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(fx.remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenReturn(false)
+        whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(true)
+        whenever(fx.remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(any()))
+            .thenAnswer { minimum.get() }
+        whenever(fx.remoteConfig.onSessionRecordingTriggerEvent(any(), any(), any())).thenReturn(true)
+        val session = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(session)
+        val client = mock<PostHogInterface>()
+        whenever(client.getSessionId()).thenReturn(session)
+        return fx to client
+    }
+
+    @Test
+    fun `event releasing duration hold migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event releasing duration hold after a stop migrates opening buffer when it resumes recording`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // The release must not run while the recorder is still stopped: the event resumes it first.
+            fx.sut.stop()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(fx.sut.isActive())
+
+            minimum.set(0)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event releasing duration hold for a session it may not record leaves the opening buffer unpersisted`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            fx.sut.stop()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            minimum.set(0)
+            whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(false)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertFalse(fx.sut.isActive())
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event keeping a positive duration hold leaves the opening buffer held`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+
+            minimum.set(20_000)
+            fx.sut.onEvent("purchase", emptyMap())
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload lowering the minimum and excluding the session does not persist the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload lowering the minimum for a still permitted session migrates the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            minimum.set(0)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `flags reload lowering the minimum for a still permitted session migrates the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // e.g. a flag-leg group with no minimum activates on identify
+            minimum.set(0)
+            fx.sut.onFeatureFlagsLoaded()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    // A flag turning off can leave every group pending: nothing is activated, so there is no minimum either.
+    private fun stubPendingTriggerGroups(
+        fx: RealQueueFixture,
+        minimum: java.util.concurrent.atomic.AtomicLong,
+        pending: AtomicBoolean,
+    ) {
+        whenever(fx.remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenAnswer { !pending.get() }
+        whenever(fx.remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(any()))
+            .thenAnswer { if (pending.get()) null else minimum.get() }
+    }
+
+    @Test
+    fun `flags reload activating a pending trigger group resumes and migrates the opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(fx.sut.isActive())
+
+            // the flag of a group with no minimum turns on; no remote config follows
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onFeatureFlagsLoaded()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `event releasing duration hold after trigger groups went pending migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            // The pending state stops the recorder and erases the 30s minimum the window is held under.
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload resuming after trigger groups went pending migrates opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // The reload only queues the resume on main, so the recorder is still stopped when it returns.
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `config reload resuming with a positive minimum after trigger groups went pending keeps the opening buffer held`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            minimum.set(20_000)
+            pending.set(false)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertTrue(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `explicit start after the minimum dropped while stopped migrates opening buffer`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = true,
+                minimumDurationMs = 30_000,
+                sessionReplay = false,
+            )
+        val session = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(session)
+        val client = mock<PostHogInterface>()
+        whenever(client.getSessionId()).thenReturn(session)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // Automatic replay is off, so the reload may neither resume the stopped recorder nor release its window.
+            fx.sut.stop()
+            whenever(fx.remoteConfig.getRecordingMinimumDurationMs()).thenReturn(0L)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertFalse(fx.sut.isActive())
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     @Test
     fun `routes snapshots to buffer while awaiting first remote config`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
@@ -2094,6 +2748,130 @@ internal class PostHogReplayIntegrationTest {
             assertFalse(fx.sut.isActive())
         } finally {
             fx.sut.uninstall()
+        }
+    }
+
+    private fun triggerGroupsConfig(
+        pending: AtomicBoolean,
+        permitted: AtomicBoolean,
+    ): PostHogAndroidConfig {
+        // The v1 sampling decision passes, so only the trigger group decision can refuse the start.
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        whenever(remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        whenever(remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenAnswer { permitted.get() }
+        return config
+    }
+
+    @Test
+    fun `explicit start respects a trigger group that sampled the session out`() {
+        val sut = getSut(triggerGroupsConfig(pending = AtomicBoolean(false), permitted = AtomicBoolean(false)))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `onRemoteConfig stops active recording when trigger groups become pending`() {
+        val pending = AtomicBoolean(false)
+        val permitted = AtomicBoolean(true)
+        val sut = getSut(triggerGroupsConfig(pending, permitted))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            assertTrue(sut.isActive())
+
+            // e.g. a flag-only group's flag reloads as false, or a config update adds an unmatched event
+            pending.set(true)
+            permitted.set(false)
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+        }
+    }
+
+    // An event-leg group that samples the session in (group rate 1.0); the local sample rate
+    // must still cap it, exactly as makeSamplingDecision does under v2.
+    private fun triggerGroupsEventConfig(
+        permitted: Boolean,
+        localSamplingPasses: Boolean,
+    ): PostHogAndroidConfig {
+        val config = configWithSampling(flagActive = true, samplingPasses = localSamplingPasses)
+        val remoteConfig = config.remoteConfigHolder!!
+        whenever(remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenReturn(false)
+        whenever(remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(permitted)
+        whenever(remoteConfig.onSessionRecordingTriggerEvent(any(), any(), any())).thenReturn(true)
+        return config
+    }
+
+    @Test
+    fun `trigger group event does not start recording when the local sample rate refuses the session`() {
+        val sut = getSut(triggerGroupsEventConfig(permitted = true, localSamplingPasses = false))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `trigger group event starts recording when the local sample rate permits the session`() {
+        val sut = getSut(triggerGroupsEventConfig(permitted = true, localSamplingPasses = true))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.onEvent("checkout_started", mapOf("plan" to "pro"))
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `explicit start respects the local sample rate under trigger groups`() {
+        val sut = getSut(triggerGroupsEventConfig(permitted = true, localSamplingPasses = false))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertFalse(sut.isActive())
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
         }
     }
 
@@ -2444,6 +3222,39 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(0, fx.replayQueue.bufferDepth)
             assertEquals(0, fx.replayQueue.depth)
             assertFalse(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config drops the buffer when trigger groups permit but the local sample rate refuses`() {
+        val fx =
+            createIntegrationWithRealQueue(
+                flagActive = true,
+                hasFetched = false,
+                samplingPasses = false,
+            )
+        whenever(fx.remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenReturn(true)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            fx.replayQueue.add(createTestEvent("snapshot_1"))
+            fx.replayQueue.add(createTestEvent("snapshot_2"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // The groups allow this session, but the local sample rate still caps them: the opening
+            // window must be discarded, not migrated to the persisted (and sent) queue.
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
         } finally {
             fx.sut.uninstall()
         }
@@ -6534,6 +7345,90 @@ internal class PostHogReplayIntegrationTest {
         val props = sut.debugProperties()
         assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
         assertEquals("trigger_disabled", props["\$sdk_debug_replay_event_trigger_status"])
+        assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+    }
+
+    @Test
+    fun `debugProperties appends pending trigger group conditions to the pending conditions`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        whenever(remoteConfig.sessionReplayLinkedFlagSnapshot()).thenReturn(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = false),
+        )
+        whenever(remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(any())).thenReturn(
+            mapOf(
+                "\$sdk_debug_replay_trigger_groups_count" to 1,
+                "\$sdk_debug_replay_pending_trigger_conditions" to listOf("trigger group \"Purchases\": event condition not matched"),
+            ),
+        )
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            assertEquals(
+                listOf("linked_flag", "trigger group \"Purchases\": event condition not matched"),
+                sut.debugProperties()["\$sdk_debug_replay_pending_trigger_conditions"],
+            )
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `debugProperties names pending trigger groups as a pending condition until one records or replay is uninstalled`() {
+        val pending = AtomicBoolean(true)
+        val remoteConfig =
+            mock<PostHogRemoteConfig> {
+                on { hasSessionRecordingTriggerGroups() } doReturn true
+                on { sessionReplayLinkedFlagSnapshot() } doReturn
+                    PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = false, activated = false)
+                on { hasRemoteConfigFetched() } doReturn true
+            }
+        // the remote config lists the pending group conditions only while no group records yet
+        whenever(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(any())).thenAnswer {
+            mapOf(
+                "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
+                "\$sdk_debug_replay_trigger_groups_count" to 1,
+            ) +
+                if (pending.get()) {
+                    mapOf(
+                        "\$sdk_debug_replay_pending_trigger_conditions" to
+                            listOf("trigger group \"Purchases\": event condition not matched"),
+                    )
+                } else {
+                    emptyMap()
+                }
+        }
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN).apply {
+                remoteConfigHolder = remoteConfig
+            }
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        PostHogSessionManager.startSession()
+
+        var props = sut.debugProperties()
+        assertEquals("v2_trigger_groups", props["\$sdk_debug_replay_remote_trigger_matching_config"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_event_trigger_status"])
+        assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
+        assertEquals(
+            listOf("trigger group \"Purchases\": event condition not matched"),
+            props["\$sdk_debug_replay_pending_trigger_conditions"],
+        )
+
+        // a group now records, or every group is ruled out
+        pending.set(false)
+        assertFalse(sut.debugProperties().containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
+
+        pending.set(true)
+        sut.uninstall()
+        props = sut.debugProperties()
         assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
     }
 

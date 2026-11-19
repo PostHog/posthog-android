@@ -10,6 +10,9 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventName: String? = null
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
+    public var onStartRequestedCalled: Boolean = false
+    public var onStopRequestedCalled: Boolean = false
+    public var onFeatureFlagsLoadedCalled: Boolean = false
     public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
     public var throwOnDebugProperties: Boolean = false
 
@@ -24,12 +27,23 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         lastEventName = null
         lastEventProperties = null
         onSessionIdChangedCalled = false
+        onStartRequestedCalled = false
+        onStopRequestedCalled = false
+        onFeatureFlagsLoadedCalled = false
     }
 
     override fun start(resumeCurrent: Boolean) {
         startCalled = true
         this.resumeCurrent = resumeCurrent
         isActive = activateOnStart
+    }
+
+    override fun onStartRequested() {
+        onStartRequestedCalled = true
+    }
+
+    override fun onStopRequested() {
+        onStopRequestedCalled = true
     }
 
     // runs at the start of each stop() call, before the handler goes inactive
@@ -67,5 +81,16 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun onSessionIdChanged() {
         onSessionIdChangedCalled = true
+    }
+
+    // runs on each remote config delivery, so a test can check what reached the handler before it
+    public var onRemoteConfigDelivered: (() -> Unit)? = null
+
+    override fun onRemoteConfig(loaded: Boolean) {
+        onRemoteConfigDelivered?.invoke()
+    }
+
+    override fun onFeatureFlagsLoaded() {
+        onFeatureFlagsLoadedCalled = true
     }
 }

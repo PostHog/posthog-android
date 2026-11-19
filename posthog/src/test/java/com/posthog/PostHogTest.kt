@@ -1800,6 +1800,49 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `session replay handler sees event properties as changed by beforeSend`() {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                beforeSend = { event ->
+                    // a copying hook, so the original map is left as the caller passed it
+                    event.copy(properties = event.properties?.toMutableMap()?.apply { this["amount"] = 50 })
+                },
+            )
+
+        sut.capture("purchase", properties = mapOf("amount" to 150))
+
+        assertEquals("purchase", integration.lastEventName)
+        assertEquals(50, integration.lastEventProperties?.get("amount"))
+
+        sut.close()
+    }
+
+    @Test
+    fun `session replay handler is not told about an event beforeSend dropped`() {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(true)
+        // an event the queue never saw must not reach the replay trigger matching
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                beforeSend = { event -> if (event.event == "purchase") null else event },
+            )
+
+        sut.capture("purchase", properties = mapOf("amount" to 150))
+
+        assertFalse(integration.onEventCalled)
+
+        sut.close()
+    }
+
+    @Test
     fun `optIn does not restart session replay the app stopped`() {
         val http = mockHttp()
         val url = http.url("/")
@@ -1816,6 +1859,8 @@ internal class PostHogTest {
         integration.reset()
         sut.optIn()
 
+        // the reinstalled handler lost the stop with the uninstall: it is told again
+        assertTrue(integration.onStopRequestedCalled)
         assertFalse(integration.startCalled)
 
         sut.close()
@@ -1882,6 +1927,127 @@ internal class PostHogTest {
         sut.optIn()
 
         assertTrue(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `under React Native optIn holds session replay the app stopped until it starts it again`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+            val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+            // Under React Native the native side doesn't create the session; JS hands it over.
+            PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+            config.sessionReplay = true
+            sut.startSessionReplay()
+            sut.stopSessionReplay()
+
+            sut.optOut()
+            integration.reset()
+            sut.optIn()
+
+            // the reinstalled handler lost the stop with the uninstall: it is told again, so its
+            // automatic starts stay held
+            assertTrue(integration.onStopRequestedCalled)
+            assertFalse(integration.startCalled)
+
+            // only the app's next start lifts the hold
+            sut.startSessionReplay()
+            assertTrue(integration.onStartRequestedCalled)
+            assertTrue(integration.startCalled)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native optIn holds stopped session replay before re-applying the cached remote config`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+            val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+
+            val sut = getSut(url.toString(), remoteConfig = true, integration = integration, sessionReplay = true)
+            remoteConfigExecutor.shutdownAndAwaitTermination()
+            sut.stopSessionReplay()
+
+            sut.optOut()
+            integration.reset()
+            // a remote config delivery is an automatic start path: the hold has to be back by then
+            var heldBeforeRemoteConfig: Boolean? = null
+            integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.onStopRequestedCalled }
+            sut.optIn()
+
+            assertEquals(true, heldBeforeRemoteConfig)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native optIn restarts session replay the app started without holding it`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, emptyMap<String, String>())
+
+            val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
+            // Under React Native the native side doesn't create the session; JS hands it over.
+            PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+            sut.startSessionReplay()
+
+            sut.optOut()
+            // ignored while opted out, so it must not turn into a hold either
+            sut.stopSessionReplay()
+            integration.reset()
+            sut.optIn()
+
+            assertTrue(integration.startCalled)
+            assertFalse(integration.onStopRequestedCalled)
+
+            sut.close()
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `optIn holds stopped session replay before re-applying the cached remote config`() {
+        val remoteConfigResponse = File("src/test/resources/json/basic-remote-config-no-flags.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigResponse))
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val sut = getSut(url.toString(), remoteConfig = true, integration = integration, sessionReplay = true)
+        remoteConfigExecutor.shutdownAndAwaitTermination()
+        sut.stopSessionReplay()
+
+        sut.optOut()
+        integration.reset()
+        // a remote config delivery is an automatic start path: the hold has to be back by then
+        var heldBeforeRemoteConfig: Boolean? = null
+        integration.onRemoteConfigDelivered = { heldBeforeRemoteConfig = integration.onStopRequestedCalled }
+        sut.optIn()
+
+        assertEquals(true, heldBeforeRemoteConfig)
 
         sut.close()
     }
@@ -1997,6 +2163,7 @@ internal class PostHogTest {
 
         val sut = getSut(url.toString(), cachePreferences = myPrefs, preloadFeatureFlags = false, integration = integration)
         config.sessionReplay = true
+        PostHog::class.java.getDeclaredField("sessionReplayWanted").apply { isAccessible = true }.set(sut, true)
         val onFlagsLoaded =
             PostHog::class.java.getDeclaredField("internalOnFeatureFlagsLoaded")
                 .apply { isAccessible = true }
@@ -3867,6 +4034,187 @@ internal class PostHogTest {
         assertEquals(currentSessionId, sut.getSessionId())
         assertTrue(integration.startCalled)
         assertTrue(integration.resumeCurrent == true)
+    }
+
+    @Test
+    fun `under React Native a refused start request still reaches the replay handler`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+
+            val myPrefs = PostHogMemoryPreferences()
+            // the linked flag is missing from the never-loaded flags: the replay flag is off
+            myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/", "linkedFlag" to "replay-flag"))
+
+            val sut =
+                getSut(
+                    url.toString(),
+                    preloadFeatureFlags = false,
+                    integration = integration,
+                    cachePreferences = myPrefs,
+                    sessionReplay = true,
+                )
+
+            sut.stopSessionReplay()
+            assertTrue(integration.onStopRequestedCalled)
+            sut.startSessionReplay()
+
+            // the request must reach the handler even though the flag gate refused the start
+            assertTrue(integration.onStartRequestedCalled)
+            assertFalse(integration.startCalled)
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native an opted out start request does not reach the replay handler`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp()
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+            val sut =
+                getSut(
+                    url.toString(),
+                    preloadFeatureFlags = false,
+                    integration = integration,
+                    cachePreferences = myPrefs,
+                    sessionReplay = true,
+                )
+
+            sut.stopSessionReplay()
+            sut.optOut()
+            integration.reset()
+            sut.startSessionReplay()
+
+            // opted out, the JS stop must keep holding: the request must not lift it
+            assertFalse(integration.onStartRequestedCalled)
+            assertFalse(integration.startCalled)
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `under React Native a flags reload does not restart a recorder JS stopped`() {
+        PostHogSessionManager.isReactNative = true
+        try {
+            val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+            val url = http.url("/")
+            val integration = PostHogSessionReplayHandlerFake(false)
+
+            val myPrefs = PostHogMemoryPreferences()
+            myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+            val sut =
+                getSut(
+                    url.toString(),
+                    preloadFeatureFlags = false,
+                    integration = integration,
+                    cachePreferences = myPrefs,
+                    sessionReplay = true,
+                )
+
+            // Under React Native the native side doesn't create the session; JS hands it over.
+            val sessionId = java.util.UUID.randomUUID()
+            PostHogSessionManager.setSessionId(sessionId)
+
+            sut.startSessionReplay()
+            assertTrue(integration.startCalled)
+            sut.stopSessionReplay()
+            assertFalse(integration.isActive())
+
+            integration.reset()
+            val loaded = CountDownLatch(1)
+            sut.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
+            assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags reload did not finish")
+
+            // The flags-loaded callback must not drive the explicit start and clear the JS stop.
+            assertFalse(integration.startCalled)
+            assertFalse(integration.isActive())
+        } finally {
+            PostHogSessionManager.isReactNative = false
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    fun `a flags reload notifies the replay handler even when replay is already active`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                cachePreferences = myPrefs,
+                sessionReplay = true,
+            )
+
+        sut.startSessionReplay()
+        assertTrue(integration.isActive())
+
+        integration.reset()
+        val loaded = CountDownLatch(1)
+        sut.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
+        assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags reload did not finish")
+
+        // flags can move the trigger group gates and minimum of a recording that is already running
+        assertTrue(integration.onFeatureFlagsLoadedCalled)
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
+    fun `a flags reload does not restart a recorder the app stopped`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                cachePreferences = myPrefs,
+                sessionReplay = true,
+            )
+
+        sut.startSessionReplay()
+        assertTrue(integration.startCalled)
+        sut.stopSessionReplay()
+        assertFalse(integration.isActive())
+
+        integration.reset()
+        val loaded = CountDownLatch(1)
+        sut.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
+        assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags reload did not finish")
+
+        assertFalse(integration.startCalled)
+        assertFalse(integration.onStartRequestedCalled)
+
+        // the app's next start request starts it again
+        sut.startSessionReplay()
+        assertTrue(integration.onStartRequestedCalled)
+        assertTrue(integration.startCalled)
     }
 
     @Test
