@@ -21,6 +21,8 @@ val config = PostHogAndroidConfig("<ph_project_token>", host = "<ph_client_api_h
 PostHogAndroid.setup(this, config)
 ```
 
+Versions before 3.72.0 take `apiKey` instead of `projectToken`.
+
 Capture an event and identify the user:
 
 ```kotlin

@@ -13,7 +13,7 @@ import com.posthog.internal.PostHogQueue
  *
  * @param projectToken Your PostHog project token, which starts with `phc_`. Required, no default.
  *   Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables.
- *   Leading and trailing whitespace is trimmed. Formerly named `apiKey`. Example:
+ *   Leading and trailing whitespace is trimmed. Versions before 3.72.0 take `apiKey`. Example:
  *   `PostHogAndroidConfig(projectToken = "phc_your_project_token")`.
  * @param host PostHog ingestion host. Defaults to [DEFAULT_HOST].
  * @property captureApplicationLifecycleEvents Whether to capture application lifecycle events
