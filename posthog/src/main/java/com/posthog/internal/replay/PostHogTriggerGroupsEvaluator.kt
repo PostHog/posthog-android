@@ -15,6 +15,8 @@ internal data class PostHogTriggerGroupsDecision(
     val minDurationMs: Long?,
     val groupsCount: Int,
     val matchedGroups: List<PostHogTriggerGroupMatch>,
+    // `trigger group "<name>": <leg> condition not matched` for each pending leg of each pending group.
+    val pendingConditions: List<String> = emptyList(),
 )
 
 // Sampling decisions are kept in memory only: they depend on (sessionId, groupId, sampleRate)
@@ -99,9 +101,11 @@ internal class PostHogTriggerGroupsEvaluator {
             var hasPendingGroups = false
             var minDurationMs: Long? = null
             val matchedGroups = mutableListOf<PostHogTriggerGroupMatch>()
+            val pendingConditions = mutableListOf<String>()
 
             for (group in groups) {
-                when (groupStatusLocked(group, flags, activatedSession)) {
+                val legs = legStatusesLocked(group, flags, activatedSession)
+                when (groupStatus(group, legs)) {
                     PostHogTriggerStatus.ACTIVATED -> {
                         val sampled = samplingDecisionLocked(group, sessionId)
                         matchedGroups.add(PostHogTriggerGroupMatch(group.id, group.name, sampled))
@@ -113,7 +117,10 @@ internal class PostHogTriggerGroupsEvaluator {
                             minDurationMs = duration
                         }
                     }
-                    PostHogTriggerStatus.PENDING -> hasPendingGroups = true
+                    PostHogTriggerStatus.PENDING -> {
+                        hasPendingGroups = true
+                        legs.pendingLabels().mapTo(pendingConditions) { "trigger group \"${group.name}\": $it" }
+                    }
                     PostHogTriggerStatus.DISABLED -> Unit
                 }
             }
@@ -124,6 +131,7 @@ internal class PostHogTriggerGroupsEvaluator {
                 minDurationMs = minDurationMs,
                 groupsCount = groups.size,
                 matchedGroups = matchedGroups,
+                pendingConditions = pendingConditions,
             )
         }
     }
@@ -134,17 +142,29 @@ internal class PostHogTriggerGroupsEvaluator {
         DISABLED,
     }
 
-    private fun groupStatusLocked(
+    private class LegStatuses(
+        val event: PostHogTriggerStatus,
+        val screen: PostHogTriggerStatus,
+        val flag: PostHogTriggerStatus,
+    ) {
+        // The screen leg stands in for the url leg, which is listed first.
+        fun pendingLabels(): List<String> =
+            listOf(
+                screen to "URL condition not matched",
+                event to "event condition not matched",
+                flag to "linked flag condition not matched",
+            ).filter { it.first == PostHogTriggerStatus.PENDING }.map { it.second }
+    }
+
+    private fun legStatusesLocked(
         group: PostHogTriggerGroup,
         flags: Map<String, Any?>?,
         activatedSession: Boolean,
-    ): PostHogTriggerStatus {
+    ): LegStatuses {
         val conditions = group.conditions
         val hasEvents = conditions.hasEventsLeg
         val hasUrls = conditions.hasUrlsLeg
         val hasFlag = conditions.hasFlagLeg
-
-        if (!hasEvents && !hasUrls && !hasFlag) return PostHogTriggerStatus.ACTIVATED
 
         val eventLeg =
             when {
@@ -159,11 +179,20 @@ internal class PostHogTriggerGroupsEvaluator {
                 else -> PostHogTriggerStatus.PENDING
             }
         val flagLeg = if (hasFlag) flagLegStatus(conditions.flag, flags) else PostHogTriggerStatus.DISABLED
+        return LegStatuses(eventLeg, screenLeg, flagLeg)
+    }
+
+    private fun groupStatus(
+        group: PostHogTriggerGroup,
+        legs: LegStatuses,
+    ): PostHogTriggerStatus {
+        val conditions = group.conditions
+        if (!conditions.hasEventsLeg && !conditions.hasUrlsLeg && !conditions.hasFlagLeg) return PostHogTriggerStatus.ACTIVATED
 
         return if (conditions.matchType == PostHogTriggerMatchType.ANY) {
-            orTriggerStatus(eventLeg, screenLeg, flagLeg)
+            orTriggerStatus(legs.event, legs.screen, legs.flag)
         } else {
-            andTriggerStatus(eventLeg, screenLeg, flagLeg)
+            andTriggerStatus(legs.event, legs.screen, legs.flag)
         }
     }
 

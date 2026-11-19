@@ -1533,21 +1533,28 @@ public class PostHogRemoteConfig(
     /** Lowest minDurationMs among the activated trigger groups for [sessionId]. */
     public fun getSessionRecordingTriggerGroupsMinimumDurationMs(sessionId: String): Long? = decideTriggerGroups(sessionId).minDurationMs
 
+    /** While no group records yet and some group is pending, also lists the pending group conditions. */
     public fun sessionRecordingTriggerGroupsDebugProperties(sessionId: String): Map<String, Any> {
         val decision = decideTriggerGroups(sessionId)
-        return mapOf(
-            "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
-            "\$sdk_debug_replay_trigger_groups_count" to decision.groupsCount,
-            "\$sdk_debug_replay_matched_recording_trigger_groups" to
-                decision.matchedGroups.map { group ->
-                    mapOf(
-                        "id" to group.id,
-                        "name" to group.name,
-                        "matched" to true,
-                        "sampled" to group.sampled,
-                    )
-                },
-        )
+        val pending =
+            decision.pendingConditions
+                .takeIf { !decision.shouldRecord && decision.hasPendingGroups && it.isNotEmpty() }
+                ?.let { mapOf("\$sdk_debug_replay_pending_trigger_conditions" to it) }
+                .orEmpty()
+        return pending +
+            mapOf(
+                "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
+                "\$sdk_debug_replay_trigger_groups_count" to decision.groupsCount,
+                "\$sdk_debug_replay_matched_recording_trigger_groups" to
+                    decision.matchedGroups.map { group ->
+                        mapOf(
+                            "id" to group.id,
+                            "name" to group.name,
+                            "matched" to true,
+                            "sampled" to group.sampled,
+                        )
+                    },
+            )
     }
 
     private fun decideTriggerGroups(sessionId: String) =

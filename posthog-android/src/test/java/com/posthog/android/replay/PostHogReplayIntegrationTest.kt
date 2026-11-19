@@ -7290,21 +7290,60 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `debugProperties appends pending trigger group conditions to the pending conditions`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        val remoteConfig = config.remoteConfigHolder!!
+        whenever(remoteConfig.sessionReplayLinkedFlagSnapshot()).thenReturn(
+            PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = true, activated = false),
+        )
+        whenever(remoteConfig.hasSessionRecordingTriggerGroups()).thenReturn(true)
+        whenever(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(any())).thenReturn(
+            mapOf(
+                "\$sdk_debug_replay_trigger_groups_count" to 1,
+                "\$sdk_debug_replay_pending_trigger_conditions" to listOf("trigger group \"Purchases\": event condition not matched"),
+            ),
+        )
+        val sut = getSut(config)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            assertEquals(
+                listOf("linked_flag", "trigger group \"Purchases\": event condition not matched"),
+                sut.debugProperties()["\$sdk_debug_replay_pending_trigger_conditions"],
+            )
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
     fun `debugProperties names pending trigger groups as a pending condition until one records or replay is uninstalled`() {
         val pending = AtomicBoolean(true)
         val remoteConfig =
             mock<PostHogRemoteConfig> {
                 on { hasSessionRecordingTriggerGroups() } doReturn true
-                on { sessionRecordingTriggerGroupsDebugProperties(any()) } doReturn
-                    mapOf(
-                        "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
-                        "\$sdk_debug_replay_trigger_groups_count" to 1,
-                    )
                 on { sessionReplayLinkedFlagSnapshot() } doReturn
                     PostHogRemoteConfig.SessionReplayLinkedFlagSnapshot(configured = false, activated = false)
                 on { hasRemoteConfigFetched() } doReturn true
             }
-        whenever(remoteConfig.hasPendingSessionRecordingTriggerGroups(any())).thenAnswer { pending.get() }
+        // the remote config lists the pending group conditions only while no group records yet
+        whenever(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(any())).thenAnswer {
+            mapOf(
+                "\$sdk_debug_replay_remote_trigger_matching_config" to "v2_trigger_groups",
+                "\$sdk_debug_replay_trigger_groups_count" to 1,
+            ) +
+                if (pending.get()) {
+                    mapOf(
+                        "\$sdk_debug_replay_pending_trigger_conditions" to
+                            listOf("trigger group \"Purchases\": event condition not matched"),
+                    )
+                } else {
+                    emptyMap()
+                }
+        }
         val config =
             PostHogAndroidConfig(PROJECT_TOKEN).apply {
                 remoteConfigHolder = remoteConfig
@@ -7319,7 +7358,10 @@ internal class PostHogReplayIntegrationTest {
         assertEquals("v2_trigger_groups", props["\$sdk_debug_replay_remote_trigger_matching_config"])
         assertEquals("trigger_disabled", props["\$sdk_debug_replay_event_trigger_status"])
         assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
-        assertEquals(listOf("trigger_groups"), props["\$sdk_debug_replay_pending_trigger_conditions"])
+        assertEquals(
+            listOf("trigger group \"Purchases\": event condition not matched"),
+            props["\$sdk_debug_replay_pending_trigger_conditions"],
+        )
 
         // a group now records, or every group is ruled out
         pending.set(false)

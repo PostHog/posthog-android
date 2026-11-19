@@ -436,4 +436,46 @@ internal class PostHogTriggerGroupsEvaluatorTest {
         assertFalse(decide(sessionId = "session-1").shouldRecord)
         assertTrue(decide(sessionId = "session-2").shouldRecord)
     }
+
+    @Test
+    fun `pending groups list each pending leg by group name`() {
+        configure(
+            group(
+                id = "checkout",
+                conditions = eventLeg(mapOf("name" to "purchase")) + urlLeg("^/checkout") + flagLeg("replay-flag"),
+            ),
+            group(id = "always", conditions = emptyMap()),
+        )
+        // the helper names a group after its id
+        assertEquals(
+            listOf(
+                "trigger group \"checkout\": URL condition not matched",
+                "trigger group \"checkout\": event condition not matched",
+                "trigger group \"checkout\": linked flag condition not matched",
+            ),
+            decide().pendingConditions,
+        )
+
+        assertTrue(screen(name = "/checkout"))
+        assertEquals(
+            listOf(
+                "trigger group \"checkout\": event condition not matched",
+                "trigger group \"checkout\": linked flag condition not matched",
+            ),
+            decide().pendingConditions,
+        )
+    }
+
+    @Test
+    fun `a group that is not pending lists no conditions`() {
+        configure(
+            group(
+                id = "any",
+                conditions = mapOf("matchType" to "any") + eventLeg(mapOf("name" to "purchase")) + urlLeg("^/checkout"),
+            ),
+        )
+        assertTrue(screen(name = "/checkout"))
+        // activated through the screen leg, so the still-pending event leg is not reported
+        assertTrue(decide().pendingConditions.isEmpty())
+    }
 }

@@ -3719,4 +3719,64 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
     }
+
+    @Test
+    fun `trigger group debug properties list the pending group conditions`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Purchases",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertEquals(
+            listOf("trigger group \"Purchases\": event condition not matched"),
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1")["\$sdk_debug_replay_pending_trigger_conditions"],
+        )
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", null))
+        assertFalse(
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1").containsKey("\$sdk_debug_replay_pending_trigger_conditions"),
+        )
+
+        sut.clear()
+    }
+
+    @Test
+    fun `trigger group debug properties omit pending conditions while another group records`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf("id" to "group-a", "name" to "Always on", "sampleRate" to 1.0, "conditions" to emptyMap<String, Any?>()),
+                        mapOf(
+                            "id" to "group-b",
+                            "name" to "Purchases",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1").containsKey("\$sdk_debug_replay_pending_trigger_conditions"),
+        )
+
+        sut.clear()
+    }
 }

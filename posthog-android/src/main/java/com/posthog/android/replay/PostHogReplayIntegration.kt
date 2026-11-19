@@ -3464,15 +3464,19 @@ public class PostHogReplayIntegration(
             )
         props["\$sdk_debug_replay_linked_flag_trigger_status"] = linkedFlagStatus
 
-        var triggerGroupsPending = false
+        var triggerGroupConditions = emptyList<String>()
         config.remoteConfigHolder?.let { remoteConfig ->
             if (remoteConfig.hasSessionRecordingTriggerGroups()) {
                 // Read-only like above: getSessionId() can rotate an idle session mid-snapshot.
                 PostHogSessionManager.peekSessionId()?.toString()?.let { sessionId ->
-                    props.putAll(remoteConfig.sessionRecordingTriggerGroupsDebugProperties(sessionId))
+                    val groupProps = remoteConfig.sessionRecordingTriggerGroupsDebugProperties(sessionId)
+                    props.putAll(groupProps - PENDING_TRIGGER_CONDITIONS)
                     // Not installed, no group can activate: same rule as the trigger statuses above.
-                    triggerGroupsPending =
-                        postHog != null && remoteConfig.hasPendingSessionRecordingTriggerGroups(sessionId)
+                    if (postHog != null) {
+                        // Present only while no group records yet and at least one can still activate.
+                        @Suppress("UNCHECKED_CAST")
+                        triggerGroupConditions = groupProps[PENDING_TRIGGER_CONDITIONS] as? List<String> ?: emptyList()
+                    }
                 }
             }
         }
@@ -3481,11 +3485,9 @@ public class PostHogReplayIntegration(
             listOfNotNull(
                 "event_trigger".takeIf { eventTriggerStatus == "trigger_pending" },
                 "linked_flag".takeIf { linkedFlagStatus == "trigger_pending" },
-                // As on iOS: no group records yet and at least one can still activate.
-                "trigger_groups".takeIf { triggerGroupsPending },
-            )
+            ) + triggerGroupConditions
         if (pendingConditions.isNotEmpty()) {
-            props["\$sdk_debug_replay_pending_trigger_conditions"] = pendingConditions
+            props[PENDING_TRIGGER_CONDITIONS] = pendingConditions
         }
 
         val captureMode = if (isScreenshotCapable) "screenshot" else "wireframe"
@@ -4046,6 +4048,7 @@ public class PostHogReplayIntegration(
     internal companion object {
         private const val DIM_LAYER_ID: Int = 10_000_000
         private const val FIRST_SCENE_IMAGE_ID: Int = 10_000_001
+        private const val PENDING_TRIGGER_CONDITIONS: String = "\$sdk_debug_replay_pending_trigger_conditions"
 
         const val PH_NO_CAPTURE_LABEL: String = "ph-no-capture"
         const val PH_NO_MASK_LABEL: String = "ph-no-mask"
