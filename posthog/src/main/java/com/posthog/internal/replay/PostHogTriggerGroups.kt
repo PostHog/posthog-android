@@ -70,7 +70,7 @@ internal fun parseTriggerGroupsConfig(
             PostHogTriggerGroup(
                 id = id,
                 name = map["name"] as? String ?: "",
-                sampleRate = parseTriggerGroupSampleRate(map["sampleRate"]),
+                sampleRate = parseTriggerGroupSampleRate(map, map["sampleRate"]),
                 minDurationMs = (map["minDurationMs"] as? Number)?.toLong(),
                 conditions = parseTriggerConditions(map["conditions"]),
             )
@@ -82,13 +82,35 @@ internal fun parseTriggerGroupsConfig(
 }
 
 // The API can send the rate as a string. One that doesn't parse samples out, as it does on web
-// (NaN never passes the threshold); only a missing rate samples in.
-private fun parseTriggerGroupSampleRate(raw: Any?): Double? =
+// (NaN never passes the threshold), and so does JSON null (`null * 100` is 0); only a missing rate samples in.
+private fun parseTriggerGroupSampleRate(
+    group: Map<*, *>,
+    raw: Any?,
+): Double? =
     when (raw) {
         is Number -> raw.toDouble()
         is String -> raw.toDoubleOrNull() ?: 0.0
+        null -> if (group.containsKey("sampleRate")) 0.0 else null
         else -> null
     }
+
+// The config cache drops null map entries, which would turn a null group rate (samples out) into a
+// missing one (samples in) after a restart, so the cached copy stores it as 0.
+internal fun normalizeTriggerGroupNullSampleRates(sessionRecording: Map<String, Any?>): Map<String, Any?> {
+    val rawGroups = sessionRecording["triggerGroups"] as? List<*> ?: return sessionRecording
+    if (rawGroups.none { it is Map<*, *> && it.containsKey("sampleRate") && it["sampleRate"] == null }) {
+        return sessionRecording
+    }
+    val groups =
+        rawGroups.map { raw ->
+            if (raw is Map<*, *> && raw.containsKey("sampleRate") && raw["sampleRate"] == null) {
+                raw + ("sampleRate" to 0.0)
+            } else {
+                raw
+            }
+        }
+    return sessionRecording + ("triggerGroups" to groups)
+}
 
 private fun parseTriggerConditions(conditions: Any?): PostHogTriggerConditions {
     val map = conditions as? Map<*, *>

@@ -148,10 +148,36 @@ internal class PostHogTriggerGroupsTest {
 
     @Test
     fun `a missing sample rate parses to null, a string rate parses and garbage samples out`() {
-        val config = config(group(sampleRate = null), group(id = "g2", sampleRate = "0.5"), group(id = "g3", sampleRate = "abc"))
+        val config = config(group(sampleRate = MISSING), group(id = "g2", sampleRate = "0.5"), group(id = "g3", sampleRate = "abc"))
         assertEquals(null, config.groups[0].sampleRate)
         assertEquals(0.5, config.groups[1].sampleRate)
         assertEquals(0.0, config.groups[2].sampleRate)
+    }
+
+    @Test
+    fun `a null sample rate samples out`() {
+        assertEquals(0.0, config(group(sampleRate = null)).groups.single().sampleRate)
+    }
+
+    @Test
+    fun `the cached copy keeps a null rate as 0 and leaves everything else alone`() {
+        val sessionRecording =
+            mapOf(
+                "version" to 2,
+                "endpoint" to "/s/",
+                "triggerGroups" to
+                    listOf(
+                        group(id = "a", sampleRate = null),
+                        group(id = "b", sampleRate = MISSING),
+                        group(id = "c", sampleRate = "0.5"),
+                    ),
+            )
+        val normalized = normalizeTriggerGroupNullSampleRates(sessionRecording)
+        val groups = normalized["triggerGroups"] as List<*>
+        assertEquals(0.0, (groups[0] as Map<*, *>)["sampleRate"])
+        assertEquals(group(id = "b", sampleRate = MISSING), groups[1])
+        assertEquals(group(id = "c", sampleRate = "0.5"), groups[2])
+        assertEquals(sessionRecording - "triggerGroups", normalized - "triggerGroups")
     }
 
     @Test
@@ -197,4 +223,7 @@ private fun group(
         "sampleRate" to sampleRate,
         "minDurationMs" to minDurationMs,
         "conditions" to conditions,
-    )
+    ).filterValues { it !== MISSING }
+
+// Leaves the sampleRate key out of a group, as opposed to sending it as JSON null.
+private val MISSING = Any()

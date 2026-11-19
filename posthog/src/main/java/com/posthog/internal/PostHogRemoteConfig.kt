@@ -19,6 +19,7 @@ import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.internal.replay.PostHogTriggerGroupsConfig
 import com.posthog.internal.replay.PostHogTriggerGroupsEvaluator
+import com.posthog.internal.replay.normalizeTriggerGroupNullSampleRates
 import com.posthog.internal.replay.parseTriggerGroupsConfig
 import com.posthog.surveys.Survey
 import java.util.concurrent.ExecutorService
@@ -608,7 +609,7 @@ public class PostHogRemoteConfig(
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(it["minimumDurationMilliseconds"])
 
                     if (persist) {
-                        config.cachePreferences?.setValue(SESSION_REPLAY, it)
+                        config.cachePreferences?.setValue(SESSION_REPLAY, normalizeTriggerGroupNullSampleRates(it))
                     }
 
                     // TODO:

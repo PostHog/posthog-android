@@ -3779,4 +3779,53 @@ internal class PostHogRemoteConfigTest {
 
         sut.clear()
     }
+
+    // Stores values the way the on-device cache does: through the SDK's Gson serializer, which drops null
+    // map entries. PostHogMemoryPreferences keeps them, so it can't show a difference between the two paths.
+    private class SerializingPreferences(
+        private val serializer: PostHogSerializer,
+        private val delegate: PostHogPreferences = PostHogMemoryPreferences(),
+    ) : PostHogPreferences by delegate {
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) {
+            val json = serializer.serializeObject(value) ?: return
+            delegate.setValue(key, serializer.deserializeString(json) ?: return)
+        }
+    }
+
+    @Test
+    fun `a null rate trigger group samples the same from config and from the cache`() {
+        val response =
+            """
+            {
+              "hasFeatureFlags": false,
+              "sessionRecording": {
+                "endpoint": "/s/",
+                "version": 2,
+                "triggerGroups": [{"id": "group-a", "name": "Null rate", "sampleRate": null, "conditions": {}}]
+              }
+            }
+            """.trimIndent()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val cache = SerializingPreferences(PostHogSerializer(PostHogConfig(PROJECT_TOKEN)))
+
+        val fromConfig = getSut(host = http.url("/").toString(), cachePreferences = cache)
+        fromConfig.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(fromConfig.hasSessionRecordingTriggerGroups())
+        assertFalse(fromConfig.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(fromConfig.makeSamplingDecision("session-1"))
+
+        val fromCache = getSut(host = "http://localhost:1/", cachePreferences = cache)
+        assertTrue(fromCache.hasSessionRecordingTriggerGroups())
+        assertFalse(fromCache.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(fromCache.makeSamplingDecision("session-1"))
+
+        fromConfig.clear()
+        fromCache.clear()
+        http.shutdown()
+    }
 }

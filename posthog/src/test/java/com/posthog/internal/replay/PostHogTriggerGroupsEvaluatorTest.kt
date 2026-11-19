@@ -5,6 +5,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+// Leaves the sampleRate key out of a group, as opposed to sending it as JSON null.
+private val NO_SAMPLE_RATE = Any()
+
 internal class PostHogTriggerGroupsEvaluatorTest {
     private val evaluator = PostHogTriggerGroupsEvaluator()
 
@@ -32,7 +35,7 @@ internal class PostHogTriggerGroupsEvaluatorTest {
             "sampleRate" to sampleRate,
             "minDurationMs" to minDurationMs,
             "conditions" to conditions,
-        )
+        ).filterValues { it !== NO_SAMPLE_RATE }
 
     private fun eventLeg(vararg events: Map<String, Any?>) = mapOf("events" to events.toList())
 
@@ -325,7 +328,7 @@ internal class PostHogTriggerGroupsEvaluatorTest {
 
     @Test
     fun `a missing sample rate is fully sampled`() {
-        configure(group(id = "group-1", sampleRate = null))
+        configure(group(id = "group-1", sampleRate = NO_SAMPLE_RATE))
         val decision = decide()
         assertTrue(decision.shouldRecord)
         assertEquals(listOf(true), decision.matchedGroups.map { it.sampled })
