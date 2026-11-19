@@ -4148,6 +4148,39 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `a flags reload notifies the replay handler even when replay is already active`() {
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val url = http.url("/")
+        val integration = PostHogSessionReplayHandlerFake(false)
+
+        val myPrefs = PostHogMemoryPreferences()
+        myPrefs.setValue(SESSION_REPLAY, mapOf("endpoint" to "/b/"))
+
+        val sut =
+            getSut(
+                url.toString(),
+                preloadFeatureFlags = false,
+                integration = integration,
+                cachePreferences = myPrefs,
+                sessionReplay = true,
+            )
+
+        sut.startSessionReplay()
+        assertTrue(integration.isActive())
+
+        integration.reset()
+        val loaded = CountDownLatch(1)
+        sut.reloadFeatureFlags(PostHogOnFeatureFlags { loaded.countDown() })
+        assertTrue(loaded.await(10, TimeUnit.SECONDS), "Feature flags reload did not finish")
+
+        // flags can move the trigger group gates and minimum of a recording that is already running
+        assertTrue(integration.onFeatureFlagsLoadedCalled)
+        assertFalse(integration.startCalled)
+
+        sut.close()
+    }
+
+    @Test
     fun `a flags reload does not restart a recorder the app stopped`() {
         val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
         val url = http.url("/")

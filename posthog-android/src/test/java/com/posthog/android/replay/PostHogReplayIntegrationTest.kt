@@ -2385,6 +2385,31 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    fun `flags reload lowering the minimum for a still permitted session migrates the held buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            // e.g. a flag-leg group with no minimum activates on identify
+            minimum.set(0)
+            fx.sut.onFeatureFlagsLoaded()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     // A flag turning off can leave every group pending: nothing is activated, so there is no minimum either.
     private fun stubPendingTriggerGroups(
         fx: RealQueueFixture,
@@ -2395,6 +2420,40 @@ internal class PostHogReplayIntegrationTest {
         whenever(fx.remoteConfig.isSessionRecordingPermittedByTriggerGroups(any())).thenAnswer { !pending.get() }
         whenever(fx.remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(any()))
             .thenAnswer { if (pending.get()) null else minimum.get() }
+    }
+
+    @Test
+    fun `flags reload activating a pending trigger group resumes and migrates the opening buffer`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val pending = AtomicBoolean(false)
+        val (fx, client) = durationHoldFixture(minimum)
+        stubPendingTriggerGroups(fx, minimum, pending)
+        fx.sut.install(client)
+        try {
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            pending.set(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(fx.sut.isActive())
+
+            // the flag of a group with no minimum turns on; no remote config follows
+            minimum.set(0)
+            pending.set(false)
+            fx.sut.onFeatureFlagsLoaded()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(fx.sut.isActive())
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
     }
 
     @Test

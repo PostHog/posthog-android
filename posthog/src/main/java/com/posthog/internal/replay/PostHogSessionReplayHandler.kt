@@ -41,4 +41,10 @@ public interface PostHogSessionReplayHandler {
      * Used to stop recording if event triggers are configured and the new session hasn't been activated.
      */
     public fun onSessionIdChanged()
+
+    /**
+     * Called when feature flags are loaded, before any automatic start.
+     * Flags can activate or deactivate session recording trigger groups.
+     */
+    public fun onFeatureFlagsLoaded() {}
 }

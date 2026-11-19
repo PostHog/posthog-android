@@ -198,6 +198,7 @@ public class PostHog private constructor(
             // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
             synchronized(setupLock) {
                 sessionReplayHandler?.let {
+                    it.onFeatureFlagsLoaded()
                     // an explicit stopSessionReplay holds until the app asks to start again
                     if (isSessionReplayConfigEnabled() && sessionReplayWanted) {
                         // start will bail if session replay is already active anyway

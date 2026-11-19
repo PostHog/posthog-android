@@ -12,6 +12,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var onSessionIdChangedCalled: Boolean = false
     public var onStartRequestedCalled: Boolean = false
     public var onStopRequestedCalled: Boolean = false
+    public var onFeatureFlagsLoadedCalled: Boolean = false
     public var debugProperties: Map<String, Any> = mapOf("\$recording_status" to "disabled")
     public var throwOnDebugProperties: Boolean = false
 
@@ -28,6 +29,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         onSessionIdChangedCalled = false
         onStartRequestedCalled = false
         onStopRequestedCalled = false
+        onFeatureFlagsLoadedCalled = false
     }
 
     override fun start(resumeCurrent: Boolean) {
@@ -86,5 +88,9 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun onRemoteConfig(loaded: Boolean) {
         onRemoteConfigDelivered?.invoke()
+    }
+
+    override fun onFeatureFlagsLoaded() {
+        onFeatureFlagsLoadedCalled = true
     }
 }

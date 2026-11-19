@@ -3582,6 +3582,20 @@ public class PostHogReplayIntegration(
         startRecording(resumeCurrent = true)
     }
 
+    override fun onFeatureFlagsLoaded() {
+        if (postHog == null) return
+        // Only trigger groups depend on flags.
+        if (config.remoteConfigHolder?.hasSessionRecordingTriggerGroups() != true) return
+
+        // A flags reload can activate or deactivate a flag-leg group, which moves the minimum and
+        // the gates, and never reaches onRemoteConfig.
+        updateCachedMinimumDuration()
+        reevaluateRecordingState()
+        if (isRecordingPermittedForCurrentSession()) {
+            releaseHeldBufferIfDue()
+        }
+    }
+
     /**
      * Called when the session ID changes. Stops recording if event triggers are configured
      * and the new session hasn't been activated yet, or re-initialises recording so the
