@@ -1756,13 +1756,17 @@ public class PostHogReplayIntegration(
         // Only adjust bounds for views that typically have significant padding or compound
         // drawables (EditText border/underline, Button background padding).
         if (this is EditText || this is Button) {
-            val textAreaLeft = rect.left + compoundPaddingLeft
-            val textAreaTop = rect.top + compoundPaddingTop
-            val textAreaRight = rect.right - compoundPaddingRight
-            val textAreaBottom = rect.bottom - compoundPaddingBottom
-            // Fall back to the full rect if the text area is too small
+            // Inset the unclipped bounds, then clip them to the visible rect. Insetting the visible
+            // rect instead would move an edge a scrolling parent already cut into the visible text.
+            val location = walk.scratchLocation
+            getLocationInWindow(location)
+            val textAreaLeft = location[0] + compoundPaddingLeft
+            val textAreaTop = location[1] + compoundPaddingTop
+            val textAreaRight = location[0] + width - compoundPaddingRight
+            val textAreaBottom = location[1] + height - compoundPaddingBottom
+            // Keep the full visible rect if the text area is too small or entirely clipped.
             if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
-                rect.set(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+                rect.intersect(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
             }
         }
         walk.addRect(rect)
