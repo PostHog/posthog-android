@@ -126,6 +126,9 @@ public interface PostHogInterface : PostHogCoreInterface {
      * 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events
      * are kept on disk; beyond that, the oldest are dropped.
      *
+     * The size check serializes the event on the calling thread, so call this off the main thread
+     * for large payloads such as images.
+     *
      * Example:
      * ```
      * PostHog.captureAi(
