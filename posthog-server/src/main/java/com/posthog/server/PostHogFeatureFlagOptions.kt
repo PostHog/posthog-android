@@ -10,12 +10,18 @@ package com.posthog.server
  * @property groups Groups for group-based flags, keyed by group type.
  * @property personProperties Person properties to use for flag evaluation.
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
+ * @property personPropertyKeysKnownAbsent Person property keys known to be absent for this
+ *   evaluation. See [PostHogEvaluateFlagsOptions.personPropertyKeysKnownAbsent].
+ * @property groupPropertyKeysKnownAbsent Group property keys known to be absent for this
+ *   evaluation, keyed by group type. See [PostHogEvaluateFlagsOptions.groupPropertyKeysKnownAbsent].
  */
 public class PostHogFeatureFlagOptions private constructor(
     public val defaultValue: Any?,
     public val groups: Map<String, String>?,
     public val personProperties: Map<String, Any?>?,
     public val groupProperties: Map<String, Map<String, Any?>>?,
+    public val personPropertyKeysKnownAbsent: List<String>?,
+    public val groupPropertyKeysKnownAbsent: Map<String, List<String>>?,
 ) {
     /**
      * Mutable builder for [PostHogFeatureFlagOptions].
@@ -32,6 +38,12 @@ public class PostHogFeatureFlagOptions private constructor(
 
         /** Group properties used for flag evaluation, keyed by group type. */
         public var groupProperties: MutableMap<String, MutableMap<String, Any?>>? = null
+
+        /** Person property keys known to be absent for this evaluation. */
+        public var personPropertyKeysKnownAbsent: MutableList<String>? = null
+
+        /** Group property keys known to be absent for this evaluation, keyed by group type. */
+        public var groupPropertyKeysKnownAbsent: MutableMap<String, MutableList<String>>? = null
 
         /**
          * Sets the default value to return if the feature flag is not found or unavailable.
@@ -127,6 +139,44 @@ public class PostHogFeatureFlagOptions private constructor(
         }
 
         /**
+         * Appends person property keys known to be absent for this evaluation. A listed key is
+         * treated as absent even when [personProperties] holds a value for it.
+         *
+         * @param keys Person property keys. Duplicates count toward the limit of 1000.
+         * @return This builder.
+         */
+        public fun personPropertyKeysKnownAbsent(keys: Collection<String>): Builder {
+            this.personPropertyKeysKnownAbsent = this.personPropertyKeysKnownAbsent.addBuilderValues(keys)
+            return this
+        }
+
+        /**
+         * Appends group property keys known to be absent for one group type in this evaluation.
+         *
+         * @param groupType Group type, for example `company`.
+         * @param keys Group property keys. Duplicates count toward the limit of 1000 per group type.
+         * @return This builder.
+         */
+        public fun groupPropertyKeysKnownAbsent(
+            groupType: String,
+            keys: Collection<String>,
+        ): Builder {
+            this.groupPropertyKeysKnownAbsent = this.groupPropertyKeysKnownAbsent.addBuilderGroupKeys(groupType, keys)
+            return this
+        }
+
+        /**
+         * Appends group property keys known to be absent for this evaluation, keyed by group type.
+         *
+         * @param keys Group property keys to merge, keyed by group type.
+         * @return This builder.
+         */
+        public fun groupPropertyKeysKnownAbsent(keys: Map<String, Collection<String>>): Builder {
+            keys.forEach { (groupType, groupKeys) -> groupPropertyKeysKnownAbsent(groupType, groupKeys) }
+            return this
+        }
+
+        /**
          * Builds an immutable [PostHogFeatureFlagOptions] instance.
          *
          * @return Feature-flag lookup options containing the accumulated values.
@@ -137,6 +187,8 @@ public class PostHogFeatureFlagOptions private constructor(
                 groups = groups.toBuilderMapSnapshot(),
                 personProperties = personProperties.toBuilderMapSnapshot(),
                 groupProperties = groupProperties.toBuilderGroupPropertiesSnapshot(),
+                personPropertyKeysKnownAbsent = personPropertyKeysKnownAbsent.toBuilderListSnapshot(),
+                groupPropertyKeysKnownAbsent = groupPropertyKeysKnownAbsent.toBuilderGroupKeysSnapshot(),
             )
     }
 

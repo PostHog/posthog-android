@@ -138,4 +138,34 @@ internal class PostHogFlagsRequestTest {
 
         assertEquals(listOf("my-flag"), request["flag_keys_to_evaluate"])
     }
+
+    @Test
+    fun `includes known-absent property keys when provided`() {
+        val request =
+            PostHogFlagsRequest(
+                PROJECT_TOKEN,
+                DISTINCT_ID,
+                personPropertyKeysKnownAbsent = linkedSetOf("plan"),
+                groupPropertyKeysKnownAbsent = mapOf("organization" to setOf("tier"), "project" to emptySet()),
+            )
+
+        assertEquals(listOf("plan"), request["person_property_keys_known_absent"])
+        assertEquals(mapOf("organization" to listOf("tier")), request["group_property_keys_known_absent"])
+    }
+
+    @Test
+    fun `excludes known-absent property keys when null or empty`() {
+        for (request in listOf(
+            PostHogFlagsRequest(PROJECT_TOKEN, DISTINCT_ID),
+            PostHogFlagsRequest(
+                PROJECT_TOKEN,
+                DISTINCT_ID,
+                personPropertyKeysKnownAbsent = emptySet(),
+                groupPropertyKeysKnownAbsent = mapOf("project" to emptySet()),
+            ),
+        )) {
+            assertFalse(request.containsKey("person_property_keys_known_absent"))
+            assertFalse(request.containsKey("group_property_keys_known_absent"))
+        }
+    }
 }
