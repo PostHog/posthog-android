@@ -47,6 +47,7 @@ public class EndpointSpec<Record> internal constructor(
     internal val maxBatchBytes: Long? = null,
     internal val maxQueueBytes: Long? = null,
 ) {
+    @PostHogInternal
     public companion object {
         @JvmStatic
         public fun batch(
