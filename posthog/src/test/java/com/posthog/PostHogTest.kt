@@ -4230,6 +4230,35 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `remote Boolean false keeps replay debug keys until the running recorder stops`() {
+        val http = replayRemoteConfigServer("""{"sessionRecording": false}""")
+        val handler = replayHandlerWithFullBundle()
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                flushAt = 2,
+                preloadFeatureFlags = false,
+                integration = handler,
+                remoteConfig = true,
+                sessionReplay = true,
+            )
+        remoteConfigExecutor.awaitExecution()
+        sut.startSession()
+        handler.start(resumeCurrent = false)
+        assertTrue(sut.isSessionReplayActive())
+
+        sut.capture(SDK_EVENT)
+        handler.stop()
+        sut.capture(SDK_EVENT)
+
+        val events = capturedBatchEvents(http)
+        assertReplayDebugKeysKept(events[0].properties!!)
+        assertReplayOffShape(events[1].properties!!)
+
+        sut.close()
+    }
+
+    @Test
     fun `remote config without a sessionRecording key sends only recording status`() {
         val http = replayRemoteConfigServer("""{"hasFeatureFlags": false}""")
         val sut = replayRemoteConfigSut(http)

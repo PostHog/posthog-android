@@ -2610,12 +2610,12 @@ public class PostHog private constructor(
     }
 
     // Not off while sampled out, awaiting remote config, or waiting on a trigger: those keys explain
-    // why replay isn't recording. A flags reload can restart the recorder after an explicit stop, so a
-    // running recorder is never off.
+    // why replay isn't recording. A running recorder is never off: a flags reload can restart it after
+    // an explicit stop, and a remote off stops it only after the app's flags callback has run.
     private fun isSessionReplayIntentionallyOff(): Boolean {
         val handler = sessionReplayHandler ?: return true
-        return (!sessionReplayWanted && !handler.isActive()) ||
-            remoteConfig?.isSessionRecordingRemotelyDisabled() == true
+        return !handler.isActive() &&
+            (!sessionReplayWanted || remoteConfig?.isSessionRecordingRemotelyDisabled() == true)
     }
 
     // this is used in cases where we know the session is already active
