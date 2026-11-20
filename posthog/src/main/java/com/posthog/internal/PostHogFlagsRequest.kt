@@ -16,6 +16,8 @@ internal class PostHogFlagsRequest(
     evaluationContexts: List<String>? = null,
     flagKeys: List<String>? = null,
     disableGeoip: Boolean = false,
+    personPropertyKeysKnownAbsent: Collection<String>? = null,
+    groupPropertyKeysKnownAbsent: Map<String, Collection<String>>? = null,
 ) : HashMap<String, Any>() {
     init {
         this["api_key"] = projectToken
@@ -39,5 +41,12 @@ internal class PostHogFlagsRequest(
             this["flag_keys_to_evaluate"] = flagKeys
         }
         this["geoip_disable"] = disableGeoip
+        if (personPropertyKeysKnownAbsent?.isNotEmpty() == true) {
+            this["person_property_keys_known_absent"] = personPropertyKeysKnownAbsent.toList()
+        }
+        val groupKeysKnownAbsent = groupPropertyKeysKnownAbsent?.filterValues { it.isNotEmpty() }
+        if (groupKeysKnownAbsent?.isNotEmpty() == true) {
+            this["group_property_keys_known_absent"] = groupKeysKnownAbsent.mapValues { it.value.toList() }
+        }
     }
 }

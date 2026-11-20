@@ -10,4 +10,5 @@ internal data class FeatureFlagCacheKey(
     val groupProperties: Map<String, Map<String, Any?>>?,
     val flagKeys: List<String>? = null,
     val disableGeoip: Boolean = false,
+    val knownAbsent: KnownAbsentPropertyKeys? = null,
 )

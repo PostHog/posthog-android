@@ -37,6 +37,15 @@ internal class FlagEvaluator(
         private const val MAX_LOCAL_REGEX_REPEAT_BOUND = 1000
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)
         private val NUMERIC_OPERATORS = setOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)
+        private val KNOWN_ABSENT_MATCHING_OPERATORS =
+            setOf(
+                PropertyOperator.IS_NOT_SET,
+                PropertyOperator.IS_NOT,
+                PropertyOperator.NOT_ICONTAINS,
+                PropertyOperator.NOT_STARTS_WITH,
+                PropertyOperator.NOT_ENDS_WITH,
+                PropertyOperator.NOT_REGEX,
+            )
         private val REGEX_DECIMAL = Regex("""[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?""")
         private val JSON = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
@@ -143,15 +152,21 @@ internal class FlagEvaluator(
     fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
-    ): Boolean = matchProperty(property, propertyValues, inCohort = false)
+        knownAbsentKeys: Set<String> = emptySet(),
+    ): Boolean = matchProperty(property, propertyValues, inCohort = false, knownAbsentKeys)
 
     private fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
         inCohort: Boolean,
+        knownAbsentKeys: Set<String>,
     ): Boolean =
         try {
-            matchPropertyValue(property, propertyValues, inCohort)
+            if (property.key in knownAbsentKeys) {
+                matchKnownAbsentProperty(property, inCohort)
+            } else {
+                matchPropertyValue(property, propertyValues, inCohort)
+            }
         } catch (e: InconclusiveMatchException) {
             // An unusable filter outranks missing context, so check the filter before blaming the call.
             if (e.reason == PostHogUnresolvedFlagReason.MISSING_CONTEXT) {
@@ -274,6 +289,35 @@ internal class FlagEvaluator(
                 PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             )
         }
+    }
+
+    /**
+     * Matches a filter whose key the caller listed as known absent, which wins over any supplied
+     * value. Unsupported operators and malformed filter values stay inconclusive, so they are
+     * checked before the result table.
+     */
+    private fun matchKnownAbsentProperty(
+        property: FlagProperty,
+        inCohort: Boolean,
+    ): Boolean {
+        assertFilterSupported(property, inCohort)
+        val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
+        if (propertyOperator == PropertyOperator.IS_SET || propertyOperator == PropertyOperator.IS_NOT_SET) {
+            return propertyOperator == PropertyOperator.IS_NOT_SET
+        }
+        val propertyValue =
+            property.propertyValue ?: throw InconclusiveMatchException(
+                "Filter on known-absent property '${property.key}' has no value",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        // A negated operator must not turn an invalid pattern into a match.
+        if (propertyOperator == PropertyOperator.NOT_REGEX) {
+            val pattern = propertyValue.toString()
+            if (pattern.isNotEmpty() && compileRegex(pattern) == null) {
+                return false
+            }
+        }
+        return propertyOperator in KNOWN_ABSENT_MATCHING_OPERATORS
     }
 
     /**
@@ -1263,6 +1307,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        knownAbsentKeys: Set<String> = emptySet(),
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
@@ -1286,6 +1331,7 @@ internal class FlagEvaluator(
             flagsByKey,
             evaluationCache,
             distinctId,
+            knownAbsentKeys,
         )
     }
 
@@ -1299,6 +1345,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        knownAbsentKeys: Set<String> = emptySet(),
     ): Boolean {
         val groupType = propertyGroup.type
         val properties = propertyGroup.values
@@ -1321,6 +1368,7 @@ internal class FlagEvaluator(
                                 flagsByKey,
                                 evaluationCache,
                                 distinctId,
+                                knownAbsentKeys,
                             )
 
                         if (groupType == LogicalOperator.AND) {
@@ -1357,6 +1405,7 @@ internal class FlagEvaluator(
                                         flagsByKey,
                                         evaluationCache,
                                         distinctId,
+                                        knownAbsentKeys,
                                     )
 
                                 PropertyType.FLAG ->
@@ -1379,9 +1428,10 @@ internal class FlagEvaluator(
                                             ),
                                         propertyValues,
                                         cohortProperties,
+                                        knownAbsentKeys,
                                     )
 
-                                else -> matchProperty(property, propertyValues, inCohort = true)
+                                else -> matchProperty(property, propertyValues, inCohort = true, knownAbsentKeys)
                             }
 
                         val negation = property.negation ?: false
@@ -1422,6 +1472,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
+        knownAbsentKeys: Set<String> = emptySet(),
     ): Boolean {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()
@@ -1443,6 +1494,7 @@ internal class FlagEvaluator(
                                     flagsByKey,
                                     evaluationCache,
                                     distinctId,
+                                    knownAbsentKeys,
                                 )
 
                             PropertyType.FLAG ->
@@ -1461,10 +1513,11 @@ internal class FlagEvaluator(
                                     distinctId,
                                     properties,
                                     cohortProperties,
+                                    knownAbsentKeys,
                                 )
 
                             else -> {
-                                if (!properties.containsKey(prop.key)) {
+                                if (prop.key !in knownAbsentKeys && !properties.containsKey(prop.key)) {
                                     // Same result as matchProperty for an absent key. Filters that passed the
                                     // load-time check skip it, since it can compile a regex or parse a date.
                                     if (featureFlag.key !in flagsWithSupportedFilters) {
@@ -1474,7 +1527,7 @@ internal class FlagEvaluator(
                                         pickUnresolvedReason(inconclusiveReason, PostHogUnresolvedFlagReason.MISSING_CONTEXT)
                                     continue
                                 }
-                                matchProperty(prop, properties)
+                                matchProperty(prop, properties, knownAbsentKeys)
                             }
                         }
                     } catch (e: InconclusiveMatchException) {
@@ -1526,6 +1579,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup> = emptyMap(),
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
+        knownAbsentKeys: Set<String> = emptySet(),
     ): Any? {
         if (flag.ensureExperienceContinuity) {
             throw InconclusiveMatchException(
@@ -1559,6 +1613,7 @@ internal class FlagEvaluator(
                         cohortProperties,
                         flagsByKey,
                         evaluationCache,
+                        knownAbsentKeys,
                     )
                 ) {
                     val variantOverride = condition.variant
@@ -1593,6 +1648,7 @@ internal class FlagEvaluator(
         distinctId: String,
         properties: Map<String, Any?>,
         cohortProperties: Map<String, PropertyGroup>,
+        knownAbsentKeys: Set<String> = emptySet(),
     ): Boolean {
         // A definition problem outranks whatever the chain evaluates to, so check it first.
         assertDependencySupported(property)
@@ -1635,6 +1691,7 @@ internal class FlagEvaluator(
                                     cohortProperties,
                                     flagsByKey,
                                     evaluationCache,
+                                    knownAbsentKeys,
                                 )
                             evaluationCache[depFlagKey] = depResult
                         } catch (e: InconclusiveMatchException) {

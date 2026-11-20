@@ -119,6 +119,15 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+    ): FeatureFlagResult? = getFeatureFlagResult(key, distinctId, groups, personProperties, groupProperties, knownAbsent = null)
+
+    internal fun getFeatureFlagResult(
+        key: String,
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): FeatureFlagResult? {
         if (distinctId == null) {
             return null
@@ -130,6 +139,7 @@ internal class PostHogFeatureFlags(
                 groups,
                 personProperties,
                 groupProperties,
+                knownAbsent,
             ) ?: return null
 
         if (flag.failed == true) return null
@@ -182,9 +192,10 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): FeatureFlag? {
         val cachedFlags =
-            getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties)
+            getFeatureFlagsFromCache(distinctId, groups, personProperties, groupProperties, knownAbsent)
         if (cachedFlags != null) {
             config.logger.log("Feature flags cache hit for distinctId: $distinctId")
             val flag = cachedFlags[key]
@@ -214,6 +225,7 @@ internal class PostHogFeatureFlags(
                             personProperties = props,
                             groups = groups,
                             groupProperties = groupProperties,
+                            knownAbsent = knownAbsent,
                         )
 
                     val flag = buildFeatureFlagFromResult(key, result, flagDef)
@@ -237,6 +249,7 @@ internal class PostHogFeatureFlags(
             groups,
             personProperties,
             groupProperties,
+            knownAbsent = knownAbsent,
         ).flags?.get(key)
     }
 
@@ -245,6 +258,7 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys? = null,
     ): Map<String, FeatureFlag>? {
         val cacheKey =
             FeatureFlagCacheKey(
@@ -252,6 +266,7 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                knownAbsent = knownAbsent,
             )
 
         return cache.get(cacheKey)
@@ -306,6 +321,7 @@ internal class PostHogFeatureFlags(
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
         flagKeys: List<String>?,
+        knownAbsent: KnownAbsentPropertyKeys? = null,
     ): LocalEvaluationOutcome? {
         if (!localEvaluation) {
             return null
@@ -343,6 +359,7 @@ internal class PostHogFeatureFlags(
                         personProperties = props,
                         groups = groups,
                         groupProperties = groupProperties,
+                        knownAbsent = knownAbsent,
                     )
 
                 localFlags[key] = buildFeatureFlagFromResult(key, result, flagDef)
@@ -391,6 +408,7 @@ internal class PostHogFeatureFlags(
         disableGeoip: Boolean = false,
         bypassCache: Boolean = false,
         onResponse: ((PostHogFlagsResponse) -> Unit)? = null,
+        knownAbsent: KnownAbsentPropertyKeys? = null,
     ): FeatureFlagCacheEntry {
         // A refresh replaces the cache; an in-flight response may only populate its original cache.
         val responseCache = cache
@@ -402,6 +420,7 @@ internal class PostHogFeatureFlags(
                 groupProperties = groupProperties,
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
+                knownAbsent = knownAbsent,
             )
 
         if (!bypassCache) {
@@ -423,6 +442,8 @@ internal class PostHogFeatureFlags(
                     groupProperties = groupProperties,
                     flagKeys = flagKeys,
                     disableGeoip = disableGeoip,
+                    personPropertyKeysKnownAbsent = knownAbsent?.person,
+                    groupPropertyKeysKnownAbsent = knownAbsent?.groups,
                 )
             val entry =
                 responseCache.put(
@@ -988,6 +1009,7 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): Any? {
         val flags = snapshot.flagsByKey ?: return null
         val flag = flags[key] ?: return null
@@ -999,7 +1021,7 @@ internal class PostHogFeatureFlags(
         // Check if this is a group-based flag
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
 
-        val (evaluationId, evaluationProperties) =
+        val (evaluationId, evaluationProperties, knownAbsentKeys) =
             if (aggregationGroupIndex != null) {
                 // Group-based flag - evaluate at group level
                 val groupTypeName = snapshot.groupTypeMapping?.get(aggregationGroupIndex.toString())
@@ -1025,10 +1047,10 @@ internal class PostHogFeatureFlags(
                 }
 
                 // Use group's key and properties for evaluation
-                Pair(groupKey, groupProperties?.get(groupTypeName))
+                Triple(groupKey, groupProperties?.get(groupTypeName), knownAbsent?.forGroupType(groupTypeName).orEmpty())
             } else {
                 // Person-based flag - use person's ID and properties
-                Pair(distinctId, personProperties)
+                Triple(distinctId, personProperties, knownAbsent?.person.orEmpty())
             }
 
         val evaluationCache = mutableMapOf<String, Any?>()
@@ -1039,6 +1061,7 @@ internal class PostHogFeatureFlags(
             cohortProperties = snapshot.cohorts ?: EMPTY_COHORT_PROPERTIES,
             flagsByKey = flags,
             evaluationCache = evaluationCache,
+            knownAbsentKeys = knownAbsentKeys,
         )
     }
 
@@ -1125,11 +1148,12 @@ internal class PostHogFeatureFlags(
         groupProperties: Map<String, Map<String, Any?>>?,
     ): Long? = getCacheEntry(distinctId, groups, personProperties, groupProperties)?.evaluatedAt
 
-    private fun getCacheEntry(
+    internal fun getCacheEntry(
         distinctId: String?,
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys? = null,
     ): FeatureFlagCacheEntry? {
         if (distinctId == null) {
             return null
@@ -1140,6 +1164,7 @@ internal class PostHogFeatureFlags(
                 groups = groups,
                 personProperties = personProperties,
                 groupProperties = groupProperties,
+                knownAbsent = knownAbsent,
             )
         return cache.getEntry(cacheKey)
     }
@@ -1165,19 +1190,7 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
-    ): FeatureFlag? {
-        if (distinctId == null) {
-            return null
-        }
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
-            )
-        return cache.getEntry(cacheKey)?.flags?.get(key)
-    }
+    ): FeatureFlag? = getCacheEntry(distinctId, groups, personProperties, groupProperties)?.flags?.get(key)
 
     /**
      * Resolve every flag for the given identity in a single pass, returning the rich envelope used
@@ -1195,6 +1208,7 @@ internal class PostHogFeatureFlags(
         flagKeys: List<String>?,
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
+        knownAbsent: KnownAbsentPropertyKeys? = null,
     ): EvaluateFlagsResult {
         if (flagKeys?.isEmpty() == true) {
             return EMPTY_EVALUATE_FLAGS_RESULT
@@ -1213,6 +1227,7 @@ internal class PostHogFeatureFlags(
                 groupProperties = groupProperties,
                 flagKeys = flagKeys,
                 disableGeoip = disableGeoip,
+                knownAbsent = knownAbsent,
             )
         // Without definitions there is nothing to evaluate locally, so an existing entry ends the
         // call. This keeps the cached-failure backoff, and caps the blocking `/local_evaluation`
@@ -1243,6 +1258,7 @@ internal class PostHogFeatureFlags(
                 personProperties,
                 groupProperties,
                 flagKeys,
+                knownAbsent,
             )
 
         val localFlags = local?.flags ?: EMPTY_FLAGS
@@ -1291,6 +1307,7 @@ internal class PostHogFeatureFlags(
                     disableGeoip,
                     missingDefinitionKeys,
                     local?.needsRemote == true,
+                    knownAbsent,
                 )
             } else {
                 cache.getEntry(cacheKey)
@@ -1301,6 +1318,7 @@ internal class PostHogFeatureFlags(
                         groupProperties,
                         flagKeys,
                         disableGeoip,
+                        knownAbsent = knownAbsent,
                     )
             }
 
@@ -1352,6 +1370,7 @@ internal class PostHogFeatureFlags(
         disableGeoip: Boolean,
         missingDefinitionKeys: Set<String>,
         localNeedsRemote: Boolean,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): FeatureFlagCacheEntry? {
         while (true) {
             val plan = planMissingFlagProbe(missingDefinitionKeys)
@@ -1383,6 +1402,7 @@ internal class PostHogFeatureFlags(
                         disableGeoip,
                         bypassCache = bypassCache,
                         onResponse = { response = it },
+                        knownAbsent = knownAbsent,
                     )
                 }
             } finally {
@@ -1503,20 +1523,23 @@ internal class PostHogFeatureFlags(
         groups: Map<String, String>?,
         personProperties: Map<String, Any?>?,
         groupProperties: Map<String, Map<String, Any?>>?,
+    ): String? = getFeatureFlagError(key, distinctId, groups, personProperties, groupProperties, knownAbsent = null)
+
+    internal fun getFeatureFlagError(
+        key: String,
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): String? {
         if (distinctId == null) {
             return null
         }
 
-        val cacheKey =
-            FeatureFlagCacheKey(
-                distinctId = distinctId,
-                groups = groups,
-                personProperties = personProperties,
-                groupProperties = groupProperties,
-            )
-
-        val entry = cache.getEntry(cacheKey) ?: return FeatureFlagError.UNKNOWN_ERROR
+        val entry =
+            getCacheEntry(distinctId, groups, personProperties, groupProperties, knownAbsent)
+                ?: return FeatureFlagError.UNKNOWN_ERROR
 
         // If request failed entirely (flags is null), return the cached error
         if (entry.flags == null) {

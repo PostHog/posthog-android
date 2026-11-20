@@ -21,6 +21,8 @@ import io.ktor.server.routing.routing
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.File
+import java.time.OffsetDateTime
+import java.util.Date
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.Condition
@@ -342,6 +344,7 @@ fun main() {
                     event = req.event,
                     distinctId = req.distinct_id,
                     properties = properties,
+                    timestamp = req.timestamp?.let { Date.from(OffsetDateTime.parse(it).toInstant()) },
                 )
 
                 // Get the UUID that was just captured (via beforeSend hook)
