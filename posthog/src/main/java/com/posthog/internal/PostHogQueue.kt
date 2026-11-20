@@ -516,7 +516,8 @@ public class PostHogQueue<Record>(
 
 internal class BatchLimits(
     var cap: Int,
-    var flushAt: Int,
+    // Halved on the queue executor and read on capture threads by backedUpSize.
+    @Volatile var flushAt: Int,
 ) {
     fun halve(actualBatchSize: Int) {
         cap =
