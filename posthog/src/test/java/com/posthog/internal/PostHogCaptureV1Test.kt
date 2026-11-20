@@ -407,6 +407,23 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `partial retry keeps only the first copy`() {
+        val e = event("same")
+        val http =
+            httpServers.mockHttp(
+                response = MockResponse().setBody("{\"results\":{\"${e.uuid}\":{\"result\":\"retry\",\"duplicates_dropped\":1}}}"),
+            )
+        val sut = queue(http, flushAt = 2)
+
+        sut.add(e)
+        sut.add(e)
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
     fun `clamps each duplicate count to the batch size`() {
         val first = event()
         val second = event()
