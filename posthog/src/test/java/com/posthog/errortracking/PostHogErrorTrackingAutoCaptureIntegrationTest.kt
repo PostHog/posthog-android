@@ -164,7 +164,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
 
         integration.uncaughtException(thread, throwable)
 
-        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull(), anyOrNull())
 
         integration.uninstall()
     }
@@ -193,7 +193,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         whenever(mockConfig.remoteConfigHolder).thenReturn(mockRemoteConfig)
         whenever(mockRemoteConfig.isAutocaptureExceptionsEnabled()).thenReturn(true)
         currentHandler = mockExceptionHandler
-        whenever(mockPostHog.captureException(any(), anyOrNull())).thenThrow(IllegalStateException("telemetry broke"))
+        whenever(mockPostHog.captureException(any(), anyOrNull(), anyOrNull())).thenThrow(IllegalStateException("telemetry broke"))
 
         val thread = Thread.currentThread()
         val throwable = RuntimeException("Test exception")
@@ -494,7 +494,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         val throwable = RuntimeException("crash while dormant")
         integration.uncaughtException(thread, throwable)
 
-        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull(), anyOrNull())
         verify(mockExceptionHandler).uncaughtException(thread, throwable)
 
         // Clear the process-wide install flag so it doesn't leak into the next test.
@@ -520,7 +520,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         val throwable = RuntimeException("crash after re-enable")
         integration.uncaughtException(thread, throwable)
 
-        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull(), anyOrNull())
         verify(mockExceptionHandler).uncaughtException(thread, throwable)
 
         // Clear the process-wide install flag so it doesn't leak into the next test.
@@ -540,7 +540,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         val throwable = RuntimeException("crash while remote-disabled")
         integration.uncaughtException(thread, throwable)
 
-        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockPostHog, never()).captureException(any<PostHogThrowable>(), anyOrNull(), anyOrNull())
         verify(mockExceptionHandler).uncaughtException(thread, throwable)
 
         // Clear the process-wide install flag so it doesn't leak into the next test.
@@ -577,7 +577,7 @@ internal class PostHogErrorTrackingAutoCaptureIntegrationTest {
         val throwable = RuntimeException("crash after re-setup")
         second.uncaughtException(thread, throwable)
 
-        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull())
+        verify(mockPostHog).captureException(any<PostHogThrowable>(), anyOrNull(), anyOrNull())
         verify(overlay).uncaughtException(thread, throwable)
 
         currentHandler = second
