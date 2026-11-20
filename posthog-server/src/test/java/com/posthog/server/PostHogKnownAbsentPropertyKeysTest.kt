@@ -201,6 +201,34 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `an unsupported operator in a cohort leaf on a listed key falls back before known absence`() {
+        for (negation in listOf(false, true)) {
+            val definitions =
+                """
+                {"flags": [
+                  {"id": 1, "key": "cohort-range", "name": "cohort-range", "active": true, "version": 1,
+                   "filters": {"groups": [{"properties": [
+                     {"key": "id", "type": "cohort", "value": 1}
+                   ], "rollout_percentage": 100}]}}
+                 ],
+                 "group_type_mapping": {},
+                 "cohorts": {"1": {"type": "OR", "values": [{"type": "AND", "values": [
+                   {"key": "plan", "type": "person", "operator": "not_between", "value": [1, 2], "negation": $negation}
+                 ]}]}}}
+                """.trimIndent()
+            withPostHog(definitions, createMultipleFlagsResponse("cohort-range" to true)) { postHog, dispatcher ->
+                val options =
+                    PostHogFeatureFlagOptions.builder()
+                        .personPropertyKeysKnownAbsent(listOf("plan"))
+                        .build()
+                assertEquals(true, postHog.getFeatureFlag("user-1", "cohort-range", options), "negation=$negation")
+                assertEquals(1, dispatcher.flagsBodies.size, "negation=$negation")
+                assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"])
+            }
+        }
+    }
+
+    @Test
     fun `more than 1000 keys returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),

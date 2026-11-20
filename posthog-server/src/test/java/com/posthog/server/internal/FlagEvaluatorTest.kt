@@ -4037,6 +4037,24 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
+    internal fun testKnownAbsentCohortLeafChecksOperatorSupportBeforeTheTable() {
+        val cohortFilter = FlagProperty("id", 1, PropertyOperator.IN, PropertyType.COHORT, false, null)
+        for (negation in listOf(false, true)) {
+            val cohort =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[""" +
+                        """{"key":"plan","value":[1,2],"operator":"not_between","type":"person","negation":$negation}]}""",
+                    PropertyGroup::class.java,
+                )
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("negation=$negation") {
+                    evaluator.matchCohort(cohortFilter, emptyMap(), mapOf("1" to cohort), null, null, null, setOf("plan"))
+                }
+            assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
+        }
+    }
+
+    @Test
     internal fun testFlagDependencyEvaluatesWithTheSameKnownAbsentKeys() {
         val dependency =
             config.serializer.gson.fromJson(
