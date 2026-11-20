@@ -1289,7 +1289,9 @@ public class PostHog private constructor(
                     aiLane,
                     claimReplayDebugBundle = { claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it } },
                 ) ?: return null
-            val postHogEvent = runBeforeSend(prepared.event, prepared.event.uuid)
+            // An AI event is measured on this thread but written later, so it gets its own nested
+            // values: the caller reusing a list can't grow it past the size check.
+            val postHogEvent = runBeforeSend(prepared.event, prepared.event.uuid, copyNested = aiLane)
             if (postHogEvent == null) {
                 logDroppedEvent(event)
                 return null

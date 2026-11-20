@@ -131,6 +131,24 @@ internal class PostHogCaptureAiTest {
     }
 
     @Test
+    fun `captureAi sends the payload admitted by the size check`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { captureAiMaxEventBytes = 4096 }
+        val messages = mutableListOf("first")
+        val release = CountDownLatch(1)
+        aiExecutor.execute { release.await() }
+        try {
+            assertNotNull(sut.captureAi("\$ai_generation", properties = mapOf("messages" to messages)))
+            messages.add("x".repeat(8192))
+        } finally {
+            release.countDown()
+        }
+
+        aiExecutor.awaitExecution()
+        assertEquals(listOf("first"), events(takeRequest(http)).single().properties()["messages"])
+    }
+
+    @Test
     fun `capture keeps an ai-named event on the analytics endpoint`() {
         val http = httpServers.mockHttp()
         val sut = getSut(http)
