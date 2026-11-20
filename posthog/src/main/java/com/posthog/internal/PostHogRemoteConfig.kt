@@ -1,9 +1,13 @@
 package com.posthog.internal
 
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.MalformedJsonException
 import com.posthog.FeatureFlagResult
 import com.posthog.PostHogConfig
+import com.posthog.PostHogFeatureFlagsCallback
+import com.posthog.PostHogFeatureFlagsLoaded
 import com.posthog.PostHogInternal
-import com.posthog.PostHogOnFeatureFlags
 import com.posthog.internal.PostHogPreferences.Companion.CAPTURE_PERFORMANCE
 import com.posthog.internal.PostHogPreferences.Companion.DEVICE_ID
 import com.posthog.internal.PostHogPreferences.Companion.ERRORS_WHILE_COMPUTING_FLAGS
@@ -18,6 +22,7 @@ import com.posthog.internal.PostHogPreferences.Companion.PUSH
 import com.posthog.internal.PostHogPreferences.Companion.SESSION_REPLAY
 import com.posthog.internal.PostHogPreferences.Companion.SURVEYS
 import com.posthog.surveys.Survey
+import java.io.StringReader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -60,8 +65,8 @@ public class PostHogRemoteConfig(
         val distinctId: String,
         val anonymousId: String?,
         val groups: Map<String, String>?,
-        val internalOnFeatureFlags: List<PostHogOnFeatureFlags>,
-        val onFeatureFlags: List<PostHogOnFeatureFlags>,
+        val internalOnFeatureFlags: List<(errorsLoading: Boolean) -> Unit>,
+        val onFeatureFlags: List<PostHogFeatureFlagsCallback>,
     )
 
     private var pendingFeatureFlagsRequest: PendingFeatureFlagsRequest? = null
@@ -113,6 +118,10 @@ public class PostHogRemoteConfig(
 
     @Volatile
     private var isFeatureFlagsLoaded = false
+
+    // Bumped by clear(), so a cache hydration that read the previous identity's flags before a reset
+    // doesn't commit them after it. Guarded by featureFlagsLock.
+    private var featureFlagsGeneration = 0
 
     // Whether a /flags response has been received this session. In-memory and reset each launch
     // (matching posthog-js), so a returning user still reports $used_bootstrap_value true while served
@@ -254,16 +263,24 @@ public class PostHogRemoteConfig(
         return recordingActive
     }
 
-    private fun List<PostHogOnFeatureFlags>.asSingleCallback(): PostHogOnFeatureFlags? =
+    @JvmName("asSingleInternalCallback")
+    private fun List<(errorsLoading: Boolean) -> Unit>.asSingleCallback(): ((errorsLoading: Boolean) -> Unit)? =
         when (size) {
             0 -> null
             1 -> first()
-            else -> PostHogOnFeatureFlags { forEach { it.runSafely() } }
+            else -> { errorsLoading -> forEach { runSafely { it(errorsLoading) } } }
         }
 
-    private fun PostHogOnFeatureFlags.runSafely() {
+    private fun List<PostHogFeatureFlagsCallback>.asSingleCallback(): PostHogFeatureFlagsCallback? =
+        when (size) {
+            0 -> null
+            1 -> first()
+            else -> PostHogFeatureFlagsCallback { result -> forEach { runSafely { it.loaded(result) } } }
+        }
+
+    private fun runSafely(callback: () -> Unit) {
         try {
-            loaded()
+            callback()
         } catch (e: Throwable) {
             try {
                 config.logger.log("Executing the feature flags callback failed: $e")
@@ -274,13 +291,21 @@ public class PostHogRemoteConfig(
     }
 
     private fun runOnFeatureFlagsCallbacks(
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
+        errorsLoading: Boolean,
     ) {
         // if we don't load the feature flags (because there are none), we need to call the callback
         // because the app might be waiting for it.
-        internalOnFeatureFlags?.runSafely()
-        onFeatureFlags?.runSafely()
+        if (internalOnFeatureFlags == null && onFeatureFlags == null) return
+        // a failed first load still reports the persisted flags, so hydrate them before either callback
+        runSafely { loadFeatureFlagsFromCacheIfNeeded() }
+        internalOnFeatureFlags?.let { runSafely { it(errorsLoading) } }
+        onFeatureFlags?.let { callback ->
+            runSafely {
+                callback.loaded(PostHogFeatureFlagsLoaded(getFeatureFlags() ?: emptyMap(), errorsLoading))
+            }
+        }
     }
 
     // Notifies that a remote config resolution attempt finished. Callers set
@@ -298,8 +323,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)? = null,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {
             if (config.networkStatus?.isConnected() == false) {
@@ -307,6 +332,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = true,
                 )
                 if (!remoteConfigHasFetched.get()) {
                     notifyRemoteConfigResolved()
@@ -387,6 +413,8 @@ public class PostHogRemoteConfig(
                         runOnFeatureFlagsCallbacks(
                             internalOnFeatureFlags = internalOnFeatureFlags,
                             onFeatureFlags = onFeatureFlags,
+                            // the project has flags, but the distinctId was invalid so none were loaded
+                            errorsLoading = it.hasFeatureFlags == true,
                         )
                     }
 
@@ -397,6 +425,7 @@ public class PostHogRemoteConfig(
                     runOnFeatureFlagsCallbacks(
                         internalOnFeatureFlags = internalOnFeatureFlags,
                         onFeatureFlags = onFeatureFlags,
+                        errorsLoading = true,
                     )
                     if (!remoteConfigHasFetched.get()) {
                         notifyRemoteConfigResolved()
@@ -410,6 +439,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = true,
                 )
                 config.logger.log("Loading remote config failed: $e")
                 if (!remoteConfigHasFetched.get()) {
@@ -836,8 +866,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags?,
-        onFeatureFlags: PostHogOnFeatureFlags?,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)?,
+        onFeatureFlags: PostHogFeatureFlagsCallback?,
         notifyRemoteConfigLoaded: Boolean = true,
     ) {
         if (config.networkStatus?.isConnected() == false) {
@@ -845,6 +875,7 @@ public class PostHogRemoteConfig(
             runOnFeatureFlagsCallbacks(
                 internalOnFeatureFlags = internalOnFeatureFlags,
                 onFeatureFlags = onFeatureFlags,
+                errorsLoading = true,
             )
             if (notifyRemoteConfigLoaded && !remoteConfigHasFetched.get()) {
                 notifyRemoteConfigResolved()
@@ -867,9 +898,9 @@ public class PostHogRemoteConfig(
                         distinctId = distinctId,
                         anonymousId = anonymousId,
                         groups = groups,
-                        // distinct(): the SDK's own listeners and config.onFeatureFlags are singleton
-                        // instances reused across reloads, so appending each queued reload would fire
-                        // them once per coalesced reload instead of once per response.
+                        // distinct(): the SDK's own listeners are singleton instances reused across reloads,
+                        // so appending each queued reload would fire them once per coalesced reload
+                        // instead of once per response.
                         internalOnFeatureFlags =
                             (displaced?.internalOnFeatureFlags.orEmpty() + listOfNotNull(internalOnFeatureFlags))
                                 .distinct(),
@@ -884,6 +915,7 @@ public class PostHogRemoteConfig(
             return
         }
 
+        var errorsLoading = true
         try {
             val deviceId = config.cachePreferences?.getValue(DEVICE_ID) as? String
 
@@ -925,6 +957,8 @@ public class PostHogRemoteConfig(
                         // remote config for the current identity — mark fetched + notify (outside the
                         // lock) so the replay buffer-and-decide gate disarms instead of staying stuck.
                         quotaLimited = true
+                        // like posthog-ios, a quota-limited response counts as loaded with the cached flags
+                        errorsLoading = false
                         return@let
                     }
 
@@ -1047,6 +1081,7 @@ public class PostHogRemoteConfig(
                 }
                 isFeatureFlagsLoaded = true
                 setFlagsLoadedFromRemote()
+                errorsLoading = false
 
                 if (notifyRemoteConfigLoaded) {
                     // The flags path also resolves the remote config for the current identity (it's
@@ -1076,6 +1111,7 @@ public class PostHogRemoteConfig(
                 runOnFeatureFlagsCallbacks(
                     internalOnFeatureFlags = internalOnFeatureFlags,
                     onFeatureFlags = onFeatureFlags,
+                    errorsLoading = errorsLoading,
                 )
             } catch (ignored: Throwable) {
                 // never skip the release below: leaving the claim set stops all future flag loads
@@ -1106,8 +1142,8 @@ public class PostHogRemoteConfig(
         distinctId: String,
         anonymousId: String?,
         groups: Map<String, String>?,
-        internalOnFeatureFlags: PostHogOnFeatureFlags? = null,
-        onFeatureFlags: PostHogOnFeatureFlags? = null,
+        internalOnFeatureFlags: ((errorsLoading: Boolean) -> Unit)? = null,
+        onFeatureFlags: PostHogFeatureFlagsCallback? = null,
     ) {
         executor.executeSafely {
             executeFeatureFlags(
@@ -1182,6 +1218,13 @@ public class PostHogRemoteConfig(
 
     private fun loadFeatureFlagsFromCache() {
         config.cachePreferences?.let { preferences ->
+            // unreadable storage (e.g. Direct Boot) would read as empty: skip the reads and don't latch,
+            // so a later read retries once it's readable
+            if (!preferences.isAvailable()) {
+                return
+            }
+            val generation = synchronized(featureFlagsLock) { featureFlagsGeneration }
+
             @Suppress("UNCHECKED_CAST")
             val flags =
                 preferences.getValue(
@@ -1197,11 +1240,12 @@ public class PostHogRemoteConfig(
                 ) as? Map<String, Any> ?: mapOf()
 
             @Suppress("UNCHECKED_CAST")
-            val payloads =
+            val cachedPayloads =
                 preferences.getValue(
                     FEATURE_FLAGS_PAYLOAD,
                     mapOf<String, Any?>(),
                 ) as? Map<String, Any?> ?: mapOf()
+            val payloads = withPayloadsFromCachedFlags(cachedPayloads, flags)
 
             val cachedRequestId = preferences.getValue(FEATURE_FLAG_REQUEST_ID) as? String
             val cachedEvaluatedAt = preferences.getValue(FEATURE_FLAG_EVALUATED_AT) as? Long
@@ -1211,6 +1255,9 @@ public class PostHogRemoteConfig(
             val failedKeys = flags.filterValues { isFailedFlag(it) }.keys
             val cachedErrorsWhileComputingFlags = preferences.getValue(ERRORS_WHILE_COMPUTING_FLAGS) == true
             synchronized(featureFlagsLock) {
+                if (generation != featureFlagsGeneration) {
+                    return
+                }
                 this.flags = flags
                 this.featureFlags = featureFlags.filterKeys { it !in failedKeys }
                 this.featureFlagPayloads = payloads.filterKeys { it !in failedKeys }
@@ -1225,26 +1272,54 @@ public class PostHogRemoteConfig(
         }
     }
 
-    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> {
-        val parsedPayloads = (featureFlagPayloads ?: mapOf()).toMutableMap()
-
-        for (item in parsedPayloads) {
-            val value = item.value
-
-            try {
-                // only try to parse if its a String, since the JSON values are stringified
-                if (value is String) {
-                    // try to deserialize as Any?
-                    config.serializer.deserializeString(value)?.let {
-                        parsedPayloads[item.key] = it
-                    }
+    // 3.x cached a malformed payload as its raw string, so after an upgrade the payload cache can hold
+    // one. The cached flag details keep each payload as the server serialized it: decode those instead,
+    // the same way a /flags response is decoded. Legacy caches without flag details are kept as they are.
+    private fun withPayloadsFromCachedFlags(
+        cachedPayloads: Map<String, Any?>,
+        flags: Map<String, Any>,
+    ): Map<String, Any?> {
+        val serializedPayloads =
+            flags.mapNotNull { (key, flag) ->
+                when (flag) {
+                    // Gson can hydrate retained failed records without the non-null metadata object.
+                    is FeatureFlag -> flag.metadata?.let { key to it.payload }
+                    is Map<*, *> -> (flag["metadata"] as? Map<*, *>)?.let { key to (it["payload"] as? String) }
+                    else -> null
                 }
-            } catch (ignored: Throwable) {
-                // if it fails, we keep the original value
-            }
+            }.toMap()
+        if (serializedPayloads.isEmpty()) {
+            return cachedPayloads
         }
-        return parsedPayloads
+        val decoded =
+            serializedPayloads.mapNotNull { (key, serialized) ->
+                serialized?.let { decodePayload(key, it) }?.let { key to it }
+            }.toMap()
+        return cachedPayloads.filterKeys { it !in serializedPayloads } + decoded
     }
+
+    private fun normalizePayloads(featureFlagPayloads: Map<String, Any?>?): Map<String, Any?> =
+        (featureFlagPayloads ?: mapOf()).mapValues { (key, value) ->
+            // payloads arrive as serialized JSON strings; other values are already decoded
+            if (value is String) decodePayload(key, value) else value
+        }
+
+    // Strict JSON, so a malformed, empty or whitespace-only payload is no payload (null), never the raw string.
+    private fun decodePayload(
+        key: String,
+        serialized: String,
+    ): Any? =
+        try {
+            val reader = JsonReader(StringReader(serialized))
+            val decoded = config.serializer.gson.getAdapter(Any::class.java).read(reader)
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                throw MalformedJsonException("Unexpected data after the JSON value")
+            }
+            decoded
+        } catch (e: Throwable) {
+            config.logger.log("Ignoring malformed payload for feature flag $key: $e")
+            null
+        }
 
     private fun normalizeFlagsResponse(flagsResponse: PostHogFlagsResponse): PostHogFlagsResponse {
         val flags = flagsResponse.flags
@@ -1275,7 +1350,9 @@ public class PostHogRemoteConfig(
     }
 
     private fun loadFeatureFlagsFromCacheIfNeeded() {
-        if (!isFeatureFlagsLoaded) {
+        // after a remote load this session the in-memory flags are newest; a failed reload must not
+        // hydrate over them, which would also reapply bootstrap
+        if (!isFeatureFlagsLoaded && !flagsLoadedFromRemote) {
             loadFeatureFlagsFromCache()
         }
     }
@@ -1296,7 +1373,7 @@ public class PostHogRemoteConfig(
             val (enabled, variant) =
                 when (value) {
                     is Boolean -> value to null
-                    is String -> true to value
+                    is String -> value.isNotEmpty() to value
                     else -> return null
                 }
 
@@ -1754,6 +1831,7 @@ public class PostHogRemoteConfig(
             sessionReplayLinkedFlagConfigured = false
             consoleLogRecordingEnabled = false
             isFeatureFlagsLoaded = false
+            featureFlagsGeneration++
             // Bootstrap is first-session only: drop the retained base layer and the "loaded from
             // remote" signal so a later identity is never served the previous user's bootstrapped
             // values and $used_bootstrap_value reports true again until its own /flags response.

@@ -21,6 +21,7 @@ public class LocalEvaluationApiResponse private constructor(
      */
     public val wasModified: Boolean,
 ) {
+    @PostHogInternal
     public companion object {
         /**
          * Creates a response for when the server returns 304 Not Modified.

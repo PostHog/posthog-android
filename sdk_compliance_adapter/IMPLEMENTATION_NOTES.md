@@ -18,9 +18,9 @@ This directory contains the compliance test adapter for the PostHog Android SDK.
 #### HTTP Request Tracking
 
 The adapter uses a custom OkHttpClient with a `TrackingInterceptor` that:
-- Intercepts all HTTP requests to the `/batch/` endpoint
+- Intercepts all HTTP requests to the `/i/v1/analytics/events` endpoint
 - Parses request bodies to extract event UUIDs using regex
-- Tracks request count, status codes, retry attempts, and event counts
+- Tracks request count, status codes, retry attempts (`PostHog-Attempt` minus one), and event counts
 - Updates adapter state with request metadata
 
 #### Event UUID Tracking
@@ -36,6 +36,7 @@ This dual approach ensures UUIDs are available immediately when events are captu
 The adapter configures the PostHog SDK for optimal testing:
 - `flushAt = 1` - Send events immediately (or as configured)
 - `flushIntervalSeconds` - Fast flush intervals for tests
+- `personProfiles = ALWAYS` - The harness never identifies and expects person processing on unless an event opts out
 - `debug = true` - Enable logging
 - `httpClient` - Custom OkHttpClient with tracking interceptor
 
@@ -75,11 +76,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local build and compliance test comma
 
 ## SDK Type
 
-The Android SDK uses **server SDK format**:
-- Endpoint: `/batch/`
-- Format: `{api_key: "...", batch: [{event}, {event}], sent_at: "..."}`
+The Android SDK advertises `capture_v1`, `capture_ai_v1`, `encoding_gzip`, `event_options`, `generated_payloads`, `log_capture`, `property_layers` and `fail_open`:
+- Endpoints: `POST /i/v1/analytics/events` (`/capture`) and `POST /i/v1/ai/events` (`/capture_ai`)
+- Format: `{created_at: "...", batch: [{event}, {event}]}` with the project token in an `Authorization: Bearer` header
 
-Tests run with `--sdk-type server` flag.
+Tests run with `--sdk-type server` flag; the harness selects the `capture_v1` and `capture_ai_v1` suites from the capabilities.
 
 ## API Endpoints
 
@@ -88,6 +89,7 @@ The adapter implements the standard compliance adapter API:
 - `GET /health` - Health check with SDK version info
 - `POST /init` - Initialize SDK with config
 - `POST /capture` - Capture a single event
+- `POST /capture_ai` - Capture a single AI event through `captureAi`
 - `POST /flush` - Force flush all pending events
 - `GET /state` - Get adapter state for assertions
 - `POST /reset` - Reset SDK and adapter state

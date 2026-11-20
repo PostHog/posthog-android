@@ -94,7 +94,7 @@ internal class PostHogPushSubscriptionManagerTest {
             PostHogConfig(PROJECT_TOKEN, host = http.url("/").toString()).apply {
                 this.storagePrefix = storagePrefix
                 this.networkStatus = networkStatus
-                this.maxRetries = maxRetries
+                this.pushNotificationSubscriptionMaxRetries = maxRetries
                 this.encryption = encryption
                 this.cachePreferences = preferences
                 this.dateProvider = clock
