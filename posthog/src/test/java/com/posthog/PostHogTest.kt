@@ -4120,6 +4120,29 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `a backed-up queue reports its size on the next event`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), flushAt = 3, preloadFeatureFlags = false, reloadFeatureFlags = false)
+        var connected = false
+        config.networkStatus =
+            object : PostHogNetworkStatus {
+                override fun isConnected(): Boolean = connected
+            }
+
+        repeat(3) { sut.capture(EVENT) }
+        queueExecutor.awaitExecution()
+        assertEquals(0, http.requestCount)
+        sut.capture(EVENT)
+
+        connected = true
+        sut.flush()
+        val events = capturedEvents(http)
+        assertEquals(listOf(null, null, null, 3), events.map { it.properties!!["\$sdk_debug_pending_queue_size"] })
+
+        sut.close()
+    }
+
+    @Test
     fun `replay debug bundle is attached at most once every 30 seconds while required keys stay on every event`() {
         val http = mockHttp()
         val clock = TestDateProvider(System.currentTimeMillis())
