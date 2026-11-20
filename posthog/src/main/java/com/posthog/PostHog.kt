@@ -846,6 +846,8 @@ public class PostHog private constructor(
         // extend(properties, sdkDebugProperties). After session resolution so the debug snapshot
         // never precedes a rotation triggered by getActiveSessionId() above.
         if (appendSharedProps) {
+            // SDK-owned: a registered or caller value must not make a healthy queue look backed up.
+            props.remove("\$sdk_debug_pending_queue_size")
             props.putAll(sdkDebugProperties(sessionIdString, timestamp, claimReplayDebugBundle))
         }
 
@@ -889,7 +891,7 @@ public class PostHog private constructor(
             if (claimed) {
                 sessionStart(sessionId, managerStart)?.let { props["\$sdk_debug_session_start"] = it }
             }
-            queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+            queue?.backedUpSize?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }

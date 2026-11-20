@@ -31,6 +31,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 internal class PostHogQueueTest {
@@ -219,6 +220,30 @@ internal class PostHogQueueTest {
         awaitQueue()
 
         assertEquals(0, http.requestCount)
+    }
+
+    @Test
+    fun `reports a backed-up size only once the queue reaches flushAt`() {
+        val http = mockHttp()
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                flushAt = 2,
+                networkStatus =
+                    object : PostHogNetworkStatus {
+                        override fun isConnected() = false
+                    },
+            )
+
+        assertNull(sut.backedUpSize)
+
+        sut.add(generateEvent())
+        awaitQueue()
+        assertNull(sut.backedUpSize)
+
+        sut.add(generateEvent())
+        awaitQueue()
+        assertEquals(2, sut.backedUpSize)
     }
 
     @Test

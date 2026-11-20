@@ -999,7 +999,7 @@ internal class PostHogTest {
         assertTrue(theEvent.properties!!.containsKey("\$active_feature_flags"))
         assertEquals("disabled", theEvent.properties!!["\$recording_status"])
         assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_session_start"))
-        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
 
         sut.close()
     }
@@ -3890,7 +3890,7 @@ internal class PostHogTest {
         assertEquals("trigger_pending", props["\$sdk_debug_replay_event_trigger_status"])
         assertEquals("trigger_disabled", props["\$sdk_debug_replay_linked_flag_trigger_status"])
         assertEquals(1, (props["\$sdk_debug_replay_internal_buffer_length"] as Number).toInt())
-        assertNotNull(props["\$sdk_debug_pending_queue_size"])
+        assertFalse(props.containsKey("\$sdk_debug_pending_queue_size"))
         assertFalse(props.containsKey("\$sdk_debug_replay_capture_mode"))
         assertFalse(props.containsKey("\$sdk_debug_replay_flush_hold_reason"))
         assertFalse(props.containsKey("\$sdk_debug_replay_pending_trigger_conditions"))
@@ -3926,7 +3926,7 @@ internal class PostHogTest {
         assertEquals("disabled", theEvent.properties!!["\$recording_status"])
         assertEquals("wireframe", theEvent.properties!!["\$sdk_debug_replay_capture_mode"])
         assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
         assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_replay_throttle_delay_ms"))
         assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_current_session_duration"))
 
@@ -3994,7 +3994,7 @@ internal class PostHogTest {
         val sut = getSut(url.toString(), preloadFeatureFlags = false, reloadFeatureFlags = false, integration = integration)
         sut.register("\$recording_status", "registered")
 
-        sut.capture(EVENT, properties = mapOf("\$recording_status" to "caller", "\$sdk_debug_pending_queue_size" to -1))
+        sut.capture(EVENT, properties = mapOf("\$recording_status" to "caller"))
 
         queueExecutor.shutdownAndAwaitTermination()
 
@@ -4004,7 +4004,6 @@ internal class PostHogTest {
 
         val theEvent = batch.batch.first()
         assertEquals("active", theEvent.properties!!["\$recording_status"])
-        assertNotEquals(-1, (theEvent.properties!!["\$sdk_debug_pending_queue_size"] as Number).toInt())
 
         sut.close()
     }
@@ -4063,7 +4062,7 @@ internal class PostHogTest {
         assertFalse(theEvent.properties!!.containsKey("\$recording_status"))
         // The session and queue keys do not come from the replay handler, so they survive its throw.
         assertNotNull(theEvent.properties!!["\$sdk_debug_session_start"])
-        assertNotNull(theEvent.properties!!["\$sdk_debug_pending_queue_size"])
+        assertFalse(theEvent.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
 
         sut.close()
     }
@@ -4105,6 +4104,22 @@ internal class PostHogTest {
         )
 
     @Test
+    fun `pending queue size is attached only once the queue reaches flushAt`() {
+        val http = mockHttp()
+        val sut = getSut(http.url("/").toString(), flushAt = 3, preloadFeatureFlags = false, reloadFeatureFlags = false)
+        sut.register("\$sdk_debug_pending_queue_size", -1)
+
+        sut.capture(EVENT, properties = mapOf("\$sdk_debug_pending_queue_size" to -2))
+        sut.capture(EVENT)
+        sut.capture(EVENT)
+
+        val events = capturedEvents(http)
+        assertEquals(listOf(false, false, false), events.map { it.properties!!.containsKey("\$sdk_debug_pending_queue_size") })
+
+        sut.close()
+    }
+
+    @Test
     fun `replay debug bundle is attached at most once every 30 seconds while required keys stay on every event`() {
         val http = mockHttp()
         val clock = TestDateProvider(System.currentTimeMillis())
@@ -4124,7 +4139,7 @@ internal class PostHogTest {
             assertEquals("trigger_pending", it.properties!!["\$sdk_debug_replay_event_trigger_status"])
             assertEquals("trigger_disabled", it.properties!!["\$sdk_debug_replay_linked_flag_trigger_status"])
             assertNotNull(it.properties!!["\$sdk_debug_replay_internal_buffer_length"])
-            assertNotNull(it.properties!!["\$sdk_debug_pending_queue_size"])
+            assertFalse(it.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
         }
 
         sut.close()
@@ -4182,7 +4197,7 @@ internal class PostHogTest {
         assertEquals(listOf(false, false, true), events.map { it.carriesReplayDebugBundle })
         events.forEach {
             assertEquals("buffering", it.properties!!["\$recording_status"])
-            assertNotNull(it.properties!!["\$sdk_debug_pending_queue_size"])
+            assertFalse(it.properties!!.containsKey("\$sdk_debug_pending_queue_size"))
         }
 
         sut.close()

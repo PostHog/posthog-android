@@ -1036,6 +1036,7 @@ public final class com/posthog/internal/PostHogQueue : com/posthog/internal/Post
 	public fun add (Ljava/lang/Object;)V
 	public fun clear ()V
 	public fun flush ()V
+	public fun getBackedUpSize ()Ljava/lang/Integer;
 	public final fun getQueueDirectory ()Ljava/io/File;
 	public fun getSize ()I
 	public final fun reloadFromDisk ()V
@@ -1048,6 +1049,7 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 	public abstract fun clear ()V
 	public abstract fun flush ()V
 	public fun flushForShutdown ()V
+	public fun getBackedUpSize ()Ljava/lang/Integer;
 	public abstract fun getSize ()I
 	public abstract fun start ()V
 	public abstract fun stop ()V
@@ -1055,6 +1057,7 @@ public abstract interface class com/posthog/internal/PostHogQueueInterface {
 
 public final class com/posthog/internal/PostHogQueueInterface$DefaultImpls {
 	public static fun flushForShutdown (Lcom/posthog/internal/PostHogQueueInterface;)V
+	public static fun getBackedUpSize (Lcom/posthog/internal/PostHogQueueInterface;)Ljava/lang/Integer;
 }
 
 public final class com/posthog/internal/PostHogRemoteConfig : com/posthog/internal/PostHogFeatureFlagsInterface {

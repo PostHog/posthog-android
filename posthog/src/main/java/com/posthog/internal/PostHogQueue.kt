@@ -54,6 +54,9 @@ public class PostHogQueue<Record>(
     override val size: Int
         get() = synchronized(dequeLock) { deque.size }
 
+    override val backedUpSize: Int?
+        get() = size.takeIf { it > 0 && it >= batchLimits.flushAt }
+
     public val queueDirectory: File?
         get() = spec.storagePrefix?.let { File(it, config.projectToken) }
 
