@@ -6,7 +6,6 @@ import android.os.Build
 import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.PostHogContext
 import com.posthog.internal.PostHogThreadFactory
-import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.Executor
 import java.util.concurrent.LinkedBlockingQueue
@@ -39,9 +38,10 @@ internal class PostHogAndroidContext(
     @Volatile
     private var networkCarrier: String? = null
     private val networkCarrierRefreshing = AtomicBoolean(false)
+    private val locales = PostHogLocales(context, config)
 
     init {
-        refreshNetworkCarrier()
+        refreshCachedContext()
     }
 
     private val cacheSdkInfo by lazy {
@@ -92,7 +92,14 @@ internal class PostHogAndroidContext(
 
     override fun getDynamicContext(): Map<String, Any> {
         val dynamicContext = mutableMapOf<String, Any>()
-        dynamicContext["\$locale"] = "${Locale.getDefault().language}-${Locale.getDefault().country}"
+        locales.deviceLocaleTag()?.let {
+            dynamicContext["\$locale"] = it
+        }
+        if (config.detectAppLanguage) {
+            locales.appLanguage()?.let {
+                dynamicContext["\$app_language"] = it
+            }
+        }
         System.getProperty("http.agent")?.let {
             dynamicContext["\$user_agent"] = it
             // Mirrored into $raw_user_agent, the standardized property PostHog's
@@ -106,15 +113,16 @@ internal class PostHogAndroidContext(
         networkCarrier?.let {
             dynamicContext["\$network_carrier"] = it
         }
-        refreshNetworkCarrier()
+        refreshCachedContext()
 
         return dynamicContext
     }
 
+    // Locale lookups share this worker because they make Binder calls too.
     // TelephonyManager.networkOperatorName can make a Binder call to the phone process when the
     // default subscription cache misses, so it's read on a worker thread and events use the last
     // value. TelephonyCallback isn't an option because it requires location permission.
-    private fun refreshNetworkCarrier() {
+    private fun refreshCachedContext() {
         if (!networkCarrierRefreshing.compareAndSet(false, true)) {
             return
         }
@@ -122,6 +130,11 @@ internal class PostHogAndroidContext(
             networkCarrierExecutor.execute {
                 try {
                     networkCarrier = context.telephonyManager()?.networkOperatorName?.ifEmpty { null }
+                } catch (ignored: Throwable) {
+                    // keep the last known value
+                }
+                try {
+                    locales.refresh()
                 } catch (ignored: Throwable) {
                     // keep the last known value
                 } finally {

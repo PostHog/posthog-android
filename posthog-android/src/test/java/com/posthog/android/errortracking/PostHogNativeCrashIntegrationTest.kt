@@ -177,6 +177,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             eq(Date(200)),
+            anyOrNull(),
         )
         assertEquals(200, watermark())
     }
@@ -196,6 +197,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             eq(Date(700_000)),
+            anyOrNull(),
         )
         assertEquals(900_000, watermark())
     }
@@ -216,6 +218,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             eq(Date(850_000)),
+            anyOrNull(),
         )
     }
 
@@ -237,6 +240,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             eq(Date(900_000)),
+            anyOrNull(),
         )
     }
 
@@ -289,6 +293,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
+            anyOrNull(),
         )
         assertEquals(200, watermark())
     }
@@ -307,6 +312,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
+            anyOrNull(),
         )
         assertEquals(300, watermark())
     }
@@ -318,7 +324,7 @@ internal class PostHogNativeCrashIntegrationTest {
         doNothing()
             .doThrow(RuntimeException("queue rejected"))
             .whenever(postHog)
-            .capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+            .capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
 
         install()
 
@@ -327,6 +333,7 @@ internal class PostHogNativeCrashIntegrationTest {
         // retries it instead of losing the failed record forever
         verify(postHog, times(2)).capture(
             any(),
+            anyOrNull(),
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
@@ -390,6 +397,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
+            anyOrNull(),
         )
         assertEquals(500, watermark())
     }
@@ -443,6 +451,7 @@ internal class PostHogNativeCrashIntegrationTest {
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
+            anyOrNull(),
         )
         // oversized is deterministic, so the record must not wedge the scanner
         // by holding the watermark below it forever
@@ -462,6 +471,7 @@ internal class PostHogNativeCrashIntegrationTest {
 
         verify(postHog, never()).capture(
             any(),
+            anyOrNull(),
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
@@ -501,6 +511,7 @@ internal class PostHogNativeCrashIntegrationTest {
 
         verify(postHog, times(1)).capture(
             any(),
+            anyOrNull(),
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
@@ -635,7 +646,7 @@ internal class PostHogNativeCrashIntegrationTest {
 
         install(consentExecutor = rejecting)
 
-        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
         assertEquals(0L, watermark())
     }
 
@@ -661,6 +672,7 @@ internal class PostHogNativeCrashIntegrationTest {
             eq("\$exception"),
             anyOrNull(),
             any(),
+            anyOrNull(),
             anyOrNull(),
             anyOrNull(),
             anyOrNull(),
@@ -739,6 +751,6 @@ internal class PostHogNativeCrashIntegrationTest {
 
         secondary.install(postHog)
 
-        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        verify(postHog, never()).capture(any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
     }
 }

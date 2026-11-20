@@ -67,7 +67,7 @@ internal class PostHogSurveysLinkedFlagVariantTest(
             val value = flagValues[it.getArgument<String>(0)]
             value == true || value is String
         }
-        whenever(postHog.getFeatureFlag(any(), anyOrNull(), anyOrNull())).thenAnswer {
+        whenever(postHog.getFeatureFlag(any(), anyOrNull())).thenAnswer {
             flagValues[it.getArgument<String>(0)]
         }
         val survey =

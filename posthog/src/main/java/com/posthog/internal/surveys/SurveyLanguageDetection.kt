@@ -36,8 +36,7 @@ public fun detectSurveyLanguage(
  * Returns the original-cased key from [translations] (so it can be reported verbatim
  * as `$survey_language`), or `null` if no match.
  */
-@PostHogInternal
-public fun <T> findBestTranslationMatch(
+internal fun <T> findBestTranslationMatch(
     translations: Map<String, T>?,
     targetLanguage: String?,
 ): String? {

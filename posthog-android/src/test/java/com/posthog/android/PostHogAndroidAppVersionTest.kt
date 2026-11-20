@@ -43,10 +43,9 @@ internal class PostHogAndroidAppVersionTest {
         events: MutableList<PostHogEvent>,
         configure: PostHogAndroidConfig.() -> Unit = {},
     ): PostHogAndroidConfig =
-        PostHogAndroidConfig(projectToken).apply {
+        PostHogAndroidConfig(projectToken, "http://127.0.0.1:1").apply {
             cachePreferences = preferences
             captureApplicationLifecycleEvents = captureLifecycle
-            remoteConfig = false
             preloadFeatureFlags = false
             configure()
             addBeforeSend {

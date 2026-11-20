@@ -270,7 +270,7 @@ internal class PostHogFeatureFlagsV1Test {
 
         assertTrue(sut.getFeatureFlagPayload("theBoolean", defaultValue = null) as Boolean)
         assertNull(sut.getFeatureFlagPayload("theNull", defaultValue = null))
-        assertEquals("[1, 2", sut.getFeatureFlagPayload("theBroken", defaultValue = null) as String)
+        assertNull(sut.getFeatureFlagPayload("theBroken", defaultValue = null))
     }
 
     @Test
@@ -328,7 +328,7 @@ internal class PostHogFeatureFlagsV1Test {
                         """
                         {
                             "featureFlags": {"flag1": true},
-                            "featureFlagPayloads": {"flag1": "payload1"}
+                            "featureFlagPayloads": {"flag1": "\"payload1\""}
                         }
                         """.trimIndent(),
                     ),

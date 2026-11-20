@@ -13,14 +13,13 @@ import java.util.concurrent.TimeoutException
 internal fun PostHogReplayIntegration.captureSnapshot(
     viewRef: WeakReference<View>,
     windowRef: WeakReference<Window>,
-    forceScreenshot: Boolean = false,
 ): Boolean {
     if (Looper.myLooper() != Looper.getMainLooper()) {
-        return generateSnapshot(viewRef, windowRef, forceScreenshot)
+        return generateSnapshot(viewRef, windowRef)
     }
     val executor = Executors.newSingleThreadExecutor()
     try {
-        val future = executor.submit(Callable { generateSnapshot(viewRef, windowRef, forceScreenshot) })
+        val future = executor.submit(Callable { generateSnapshot(viewRef, windowRef) })
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4)
         while (System.nanoTime() < deadline) {
             shadowOf(Looper.getMainLooper()).idle()
