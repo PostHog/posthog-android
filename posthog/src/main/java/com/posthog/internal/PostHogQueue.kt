@@ -482,11 +482,12 @@ public class PostHogQueue<Record>(
 
                 val recordId = spec.recordId
                 if (result.retryIds.isNotEmpty() && recordId != null) {
+                    // One copy per id: capture drops an id's later copies in a batch for good.
                     retained =
-                        batch.mapNotNull { (file, record) ->
-                            val id = recordId(record)
-                            if (id != null && id in result.retryIds) file else null
-                        }
+                        batch
+                            .filter { (_, record) -> recordId(record)?.let { it in result.retryIds } == true }
+                            .distinctBy { (_, record) -> recordId(record) }
+                            .map { it.first }
                     if (retained.isNotEmpty()) {
                         partialRetryAfterSeconds = result.retryAfterSeconds
                         keepForRetry(retained)

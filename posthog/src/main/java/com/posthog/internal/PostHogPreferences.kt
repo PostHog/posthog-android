@@ -34,6 +34,7 @@ public interface PostHogPreferences {
      */
     public fun isAvailable(): Boolean = true
 
+    @PostHogInternal
     public companion object {
         public const val GROUPS: String = "groups"
         public const val ANONYMOUS_ID: String = "anonymousId"

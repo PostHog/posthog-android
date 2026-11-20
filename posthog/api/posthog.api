@@ -598,18 +598,6 @@ public final class com/posthog/errortracking/PostHogExceptionStepsConfig {
 	public final fun setMaxBytes (I)V
 }
 
-public final class com/posthog/internal/EndpointSpec$Companion {
-	public final fun ai (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
-	public final fun batch (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
-	public final fun logs (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
-	public final fun snapshot (Lcom/posthog/PostHogConfig;Lcom/posthog/internal/PostHogApi;Ljava/lang/String;)Lcom/posthog/internal/EndpointSpec;
-}
-
-public final class com/posthog/internal/LocalEvaluationApiResponse$Companion {
-	public final fun notModified (Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
-	public final fun success (Lcom/posthog/internal/LocalEvaluationResponse;Ljava/lang/String;)Lcom/posthog/internal/LocalEvaluationApiResponse;
-}
-
 public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/internal/PostHogPreferences {
 	public fun <init> ()V
 	public fun clear (Ljava/util/List;)V
@@ -617,20 +605,6 @@ public final class com/posthog/internal/PostHogMemoryPreferences : com/posthog/i
 	public fun getValue (Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
 	public fun remove (Ljava/lang/String;)V
 	public fun setValue (Ljava/lang/String;Ljava/lang/Object;)V
-}
-
-public final class com/posthog/internal/PostHogPreferences$Companion {
-	public static final field ANONYMOUS_ID Ljava/lang/String;
-	public static final field BUILD Ljava/lang/String;
-	public static final field DEVICE_ID Ljava/lang/String;
-	public static final field DISTINCT_ID Ljava/lang/String;
-	public static final field GROUPS Ljava/lang/String;
-	public static final field LAST_SEEN_SURVEY_DATE Ljava/lang/String;
-	public static final field STRINGIFIED_KEYS Ljava/lang/String;
-	public static final field SURVEY_PROGRESS Ljava/lang/String;
-	public static final field SURVEY_SEEN Ljava/lang/String;
-	public static final field VERSION Ljava/lang/String;
-	public final fun getALL_INTERNAL_KEYS ()Ljava/util/Set;
 }
 
 public final class com/posthog/internal/PostHogRemoteConfig$SessionReplayLinkedFlagSnapshot {

@@ -370,16 +370,19 @@ public open class PostHogStateless protected constructor(
 
     /**
      * Runs the `beforeSend` chain on [postHogEvent]. Returns null when a hook drops the event or
-     * throws. When [uuid] is given, the result keeps it.
+     * throws. When [uuid] is given, the result keeps it. [copyNested] copies the nested values even
+     * without hooks, so the caller can't change the event after this returns.
      */
     internal fun runBeforeSend(
         postHogEvent: PostHogEvent,
         uuid: UUID?,
+        copyNested: Boolean = false,
     ): PostHogEvent? {
         val beforeSendList = config?.beforeSendList ?: emptyList()
 
         // Hooks get their own nested values, so an edit never reaches the caller's objects.
-        var eventChecked: PostHogEvent = if (beforeSendList.isEmpty()) postHogEvent else copyForHooks(postHogEvent)
+        var eventChecked: PostHogEvent =
+            if (beforeSendList.isEmpty() && !copyNested) postHogEvent else copyForHooks(postHogEvent)
 
         for (beforeSend in beforeSendList) {
             try {
@@ -976,6 +979,7 @@ public open class PostHogStateless protected constructor(
          * @param config SDK configuration.
          * @return The configured stateless PostHog client instance.
          */
+        @Deprecated("Not supported in core 7.x.x. Use posthog-server for server-side JVM apps.")
         public fun <T : PostHogConfig> with(config: T): PostHogStatelessInterface {
             val instance = PostHogStateless()
             instance.setup(config)

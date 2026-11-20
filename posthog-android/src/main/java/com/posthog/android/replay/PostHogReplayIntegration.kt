@@ -1755,17 +1755,41 @@ public class PostHogReplayIntegration(
         val rect = walk.scratchRect
         // Only adjust bounds for views that typically have significant padding or compound
         // drawables (EditText border/underline, Button background padding).
-        if (this is EditText || this is Button) {
-            val textAreaLeft = rect.left + compoundPaddingLeft
-            val textAreaTop = rect.top + compoundPaddingTop
-            val textAreaRight = rect.right - compoundPaddingRight
-            val textAreaBottom = rect.bottom - compoundPaddingBottom
-            // Fall back to the full rect if the text area is too small
-            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop) {
-                rect.set(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+        // A scaled or rotated view or ancestor changes the drawn size, which the padding and
+        // width below don't account for, so it keeps the full visible rect.
+        if ((this is EditText || this is Button) && !hasTransformInHierarchy()) {
+            // Inset the unclipped bounds, then clip them to the visible rect. Insetting the visible
+            // rect instead would move an edge a scrolling parent already cut into the visible text.
+            val location = walk.scratchLocation
+            getLocationInWindow(location)
+            val textAreaLeft = location[0] + compoundPaddingLeft
+            val textAreaTop = location[1] + compoundPaddingTop
+            val textAreaRight = location[0] + width - compoundPaddingRight
+            val textAreaBottom = location[1] + height - compoundPaddingBottom
+            // Keep the full visible rect if the text area is too small or entirely clipped.
+            if (textAreaRight > textAreaLeft && textAreaBottom > textAreaTop &&
+                rect.intersects(textAreaLeft, textAreaTop, textAreaRight, textAreaBottom)
+            ) {
+                rect.set(
+                    maxOf(rect.left, textAreaLeft),
+                    maxOf(rect.top, textAreaTop),
+                    minOf(rect.right, textAreaRight),
+                    minOf(rect.bottom, textAreaBottom),
+                )
             }
         }
         walk.addRect(rect)
+    }
+
+    private fun View.hasTransformInHierarchy(): Boolean {
+        var view: View? = this
+        while (view != null) {
+            if (!view.matrix.isIdentity) {
+                return true
+            }
+            view = view.parent as? View
+        }
+        return false
     }
 
     // Rendered per its flags, but its geometry is momentarily unknowable (mid animation,
@@ -1853,7 +1877,8 @@ public class PostHogReplayIntegration(
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
                         val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
-                        val hasPassword = node.config.contains(SemanticsProperties.Password)
+                        // The unmerged tree keeps a merging container's password() off the Text it wraps.
+                        val hasPassword = node.selfOrAncestorContains(SemanticsProperties.Password)
                         val hasImage = node.config.contains(SemanticsProperties.ContentDescription)
 
                         // isEnabled=false means the modifier has no effect, as if it was never applied
@@ -2075,6 +2100,17 @@ public class PostHogReplayIntegration(
 
     private fun androidx.compose.ui.geometry.Rect.toRect(): Rect {
         return Rect(left.toInt(), top.toInt(), right.toInt(), bottom.toInt())
+    }
+
+    private fun SemanticsNode.selfOrAncestorContains(key: SemanticsPropertyKey<*>): Boolean {
+        var current: SemanticsNode? = this
+        while (current != null) {
+            if (current.config.contains(key)) {
+                return true
+            }
+            current = current.parent
+        }
+        return false
     }
 
     /**

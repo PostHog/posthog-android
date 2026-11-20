@@ -286,6 +286,68 @@ internal class PostHogReplayIntegrationTest {
 
     // An unclipped no-capture container lets its children draw outside its own rect.
     @Test
+    fun `a padded text input scrolled past its parent's edge stays masked up to that edge`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        val scroller = FrameLayout(activity)
+        val input =
+            EditText(activity).apply {
+                setText("secret")
+                setPadding(20, 20, 20, 20)
+            }
+        scroller.addView(input)
+        root.addView(scroller)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 100, 400)
+        scroller.layout(0, 100, 100, 200)
+        // 30px of the input, including its 20px top padding, is scrolled above the parent.
+        input.layout(0, -30, 100, 70)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+
+        val visible = Rect().also { input.getGlobalVisibleRect(it) }
+        // The clipped top edge stays at the parent's edge; the unclipped edges drop their padding.
+        assertEquals(listOf(Rect(visible.left + 20, visible.top, visible.right - 20, visible.bottom - 20)), walk.rects)
+    }
+
+    @Test
+    fun `a padded text input inside a scaled parent keeps its full drawn bounds masked`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val root = FrameLayout(activity)
+        val scaled =
+            FrameLayout(activity).apply {
+                scaleX = 2f
+                scaleY = 2f
+                pivotX = 0f
+                pivotY = 0f
+            }
+        val input =
+            EditText(activity).apply {
+                setText("secret")
+                setPadding(20, 20, 20, 20)
+            }
+        scaled.addView(input)
+        root.addView(scaled)
+        activity.setContentView(root)
+        shadowOf(Looper.getMainLooper()).idle()
+        makeWindowVisible(activity.window.decorView)
+        root.layout(0, 0, 400, 400)
+        scaled.layout(0, 0, 100, 100)
+        input.layout(0, 0, 100, 100)
+        val sut = PostHogReplayIntegration(activity, PostHogAndroidConfig(PROJECT_TOKEN), MainHandler())
+
+        val walk = PostHogReplayIntegration.MaskWalk().also { sut.findMaskableWidgets(root, it) }
+
+        // Drawn at twice its layout size; the mask covers all of it rather than a padded 100px box.
+        val visible = Rect().also { input.getGlobalVisibleRect(it) }
+        assertEquals(200, visible.width())
+        assertEquals(listOf(visible), walk.rects)
+    }
+
+    @Test
     fun `no-capture container masks descendants that overflow its bounds`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         // getGlobalVisibleRect clips a child to its parent unless the grandparent is unclipped.

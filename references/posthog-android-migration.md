@@ -20,6 +20,7 @@ Read the checklist first, then the sections that apply to you.
 
 **Before you upgrade**
 
+- [ ] Your app is a React Native, Flutter, or Kotlin Multiplatform app → [Upgrade wrapper packages](#upgrade-wrapper-packages)
 - [ ] You send events to a self-hosted PostHog or a reverse proxy that doesn't serve `/i/v1/analytics/events` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You authenticate your proxy with an `Authorization` header in `requestHeaders` → [Prepare your proxy](#prepare-your-proxy)
 - [ ] You send events through a reverse proxy set up from PostHog's proxy guides before 29 October 2026, which strips `Authorization` → [Prepare your proxy](#prepare-your-proxy)
@@ -32,7 +33,7 @@ Read the checklist first, then the sections that apply to you.
 **During your upgrade**
 
 - [ ] You depend only on `posthog-android-surveys-compose` → [Upgrade your dependencies](#upgrade-your-dependencies)
-- [ ] You use `posthog-server` (2.25.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
+- [ ] You use `posthog-server` (2.26.0 and later need `posthog-android` 4.0.0 in the same project) → [Upgrade posthog-server](#upgrade-posthog-server)
 - [ ] You call `PostHogStateless.with`, or extend `PostHogStateless` → [Update PostHogStateless code](#update-posthogstateless-code)
 - [ ] You use `apiKey`, `propertiesSanitizer`, `evaluationEnvironments`, `debouncerDelayMs`, `screenshot`, or `drawableConverter` → [Fix removed APIs](#fix-removed-apis)
 - [ ] You pass `PostHogConfig` or `PostHogSessionReplayConfig` constructor arguments by position → [Fix removed APIs](#fix-removed-apis)
@@ -58,6 +59,7 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You register `$process_person_profile` as `false` and expect it to keep every event personless → [Check person processing](#check-person-processing)
 - [ ] You rely on a `Retry-After` longer than 30 seconds → [Check retries](#check-retries)
 - [ ] You set `maxRetries` on `PostHogConfig` or `PostHogAndroidConfig` → [Check retries](#check-retries)
+- [ ] You might go back to 3.x.x after you ship 4.x.x → [Plan your rollback](#plan-your-rollback)
 
 **Follow ups**
 
@@ -65,6 +67,14 @@ Read the checklist first, then the sections that apply to you.
 - [ ] You capture `$ai_` events with `capture()` → [Send AI events with captureAi](#send-ai-events-with-captureai)
 
 ## Before you upgrade
+
+### Upgrade wrapper packages
+
+Don't add the Android SDK 4.x.x to a React Native, Flutter, or Kotlin Multiplatform app yourself. These apps get the Android SDK through their PostHog package (`@posthog/react-native-plugin`, `posthog_flutter`, `posthog-kmp`).
+
+Upgrade to the version of that package that moves to the Android SDK 4.x.x, and follow its migration notes.
+
+Until then, keep core `posthog` 7.x.x and `posthog-server` 2.26.0 or later out of the app's build. Either one makes Gradle upgrade `posthog-android` to 4.x.x (see [Upgrade your dependencies](#upgrade-your-dependencies)), but the package's Android code is still built against 3.x.x, so it fails at runtime with errors such as `NoSuchMethodError`.
 
 ### Prepare your proxy
 
@@ -96,7 +106,7 @@ If you send events through your own reverse proxy, update it before you upgrade:
 
 PostHog's managed reverse proxy already does this and needs no change.
 
-A proxy set up from PostHog's [proxy guides](https://posthog.com/docs/advanced/proxy) before 29 October 2026 strips `Authorization`, so PostHog answers `401` and the events are dropped. Update it from the current guide.
+A proxy set up from PostHog's [proxy guides](https://posthog.com/docs/advanced/proxy) before 29 October 2026 strips `Authorization`, so PostHog answers `401` and the events are dropped, with one warning in the logs. Update it from the current guide.
 
 The SDK doesn't fall back to `/batch`. It retries a 404, so the events stay queued until the path is served. The SDK prints one warning, even with `debug` off.
 
@@ -170,13 +180,13 @@ Upgrade PostHog artifacts together:
 | `com.posthog:posthog-android` | 3.x.x to 4.0.0 |
 | `com.posthog:posthog` (core) | 6.x.x to 7.0.0 |
 | `com.posthog:posthog-android-surveys-compose` | Keep your version |
-| `com.posthog:posthog-server` | 2.25.0, together with `posthog-android` 4.0.0 (see [Upgrade posthog-server](#upgrade-posthog-server)) |
+| `com.posthog:posthog-server` | 2.26.0, together with `posthog-android` 4.0.0 (see [Upgrade posthog-server](#upgrade-posthog-server)) |
 
 With `posthog-android-surveys-compose`, declare `com.posthog:posthog-android` 4.0.0 or later in your build, so Gradle resolves 4.x.x instead of the 3.x.x version it pulls in.
 
 Core `posthog` 7.x.x isn't binary compatible with SDK versions built against core 6.x.x. The exception is `posthog-android-surveys-compose`, which works with both.
 
-When core 7.x.x is in a Gradle build, for example through `posthog-server` 2.25.0, Gradle upgrades `posthog-android` to 4.x.x, even over a range such as `[3.75.0,4.0.0)`. Code that still uses removed APIs then fails to compile.
+When core 7.x.x is in a Gradle build, for example through `posthog-server` 2.26.0, Gradle upgrades `posthog-android` to 4.x.x, even over a range such as `[3.75.0,4.0.0)`. Code that still uses removed APIs then fails to compile.
 
 Other mismatches fail at runtime with errors such as `NoSuchMethodError` or `NoClassDefFoundError`.
 
@@ -190,10 +200,10 @@ The [changelog](https://github.com/PostHog/posthog-android/blob/main/posthog-and
 
 It still sends events to `/batch`, not to capture v1. The API, endpoint, proxy, retry, and event option changes in this guide don't apply to it.
 
-`posthog-server` 2.25.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
+`posthog-server` 2.26.0 depends on core `posthog` 7.0.0, so upgrade it and `posthog-android` together:
 
-- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.25.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime.
-- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.24.x. `posthog-server` 2.25.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
+- **With `posthog-android` 4.x.x or core 7.x.x.** Use `posthog-server` 2.26.0 or later. Older `posthog-server` versions aren't compatible with core 7.x.x at runtime, so Gradle upgrades them to 2.26.0.
+- **With `posthog-android` 3.x.x.** Stay on `posthog-server` 2.25.x or older. `posthog-server` 2.26.0 brings in core 7.0.0, and Gradle then upgrades `posthog-android` to 4.x.x.
 
 These changes apply to `posthog-server` too:
 
@@ -206,7 +216,7 @@ These changes apply to `posthog-server` too:
 
 ### Update PostHogStateless code
 
-Core `posthog` 7.x.x is only supported through `posthog-android` 4.x.x and `posthog-server`. `PostHogStateless.with` isn't a supported entry point in core 7.x.x.
+Core `posthog` 7.x.x is only supported through `posthog-android` 4.x.x and `posthog-server`. `PostHogStateless.with` isn't a supported entry point in core 7.x.x, and is deprecated.
 
 `PostHogStateless` has no queue of its own, so it gets Android's capture v1 behavior, including the persisted-queue retries, which isn't a server-side contract. Use `posthog-server` for server-side JVM apps.
 
@@ -532,6 +542,7 @@ Compose masking also changed, including for apps that already set `screenshot = 
 - **Mask scope.** `Modifier.postHogMask()` and `Modifier.postHogUnmask()` apply only to the element and its children, not to siblings merged into the same clickable row.
 - **Overflowing text.** Text that draws past its layout box is masked in full.
 - **Cleared semantics.** Nodes that use `Modifier.clearAndSetSemantics` are masked while text or image masking is on. Use `Modifier.postHogUnmask()` to show them.
+- **Selectable text.** While text masking is on, a frame is dropped when a `Text` with `Modifier.clearAndSetSemantics` is inside a `SelectionContainer`. The SDK can't measure that text to mask it, so it records no frame instead of an unmasked one.
 
 A dialog's dim, and a dialog masked whole on Android 8.1 and lower, are sent as screenshot images instead of styled wireframe shapes.
 
@@ -674,6 +685,16 @@ These apply to analytics and AI event requests, unless a bullet names session re
 - **Request size.** A request carries at most `maxBatchSize` events and about 5 MiB. The SDK sends as soon as about 5 MiB of events is queued, even before `flushAt` is reached. In 3.x.x, batches were limited by event count only.
 - **Event size.** There's no size limit for one analytics event in the SDK, as in 3.x.x. An event larger than about 5 MiB is sent in a request of its own.
 - **413 responses.** A 413 still halves the batch until it fits, as in 3.x.x. An event that gets a 413 on its own is dropped.
+
+### Plan your rollback
+
+If you ship 4.x.x and then go back to 3.x.x, 3.x.x sends the events still queued on the device. 3.x.x doesn't read capture options:
+
+- **Personless events.** Events that 4.x.x marked as personless (`process_person_profile: false`) are processed as person events.
+- **Other options.** Options such as `cookieless_mode` passed through `options` are lost.
+- **AI events.** AI events queued by 4.x.x in their own queue aren't sent while the app runs 3.x.x. If you upgrade to 4.x.x again, 4.x.x sends them.
+
+Go back to core `posthog` 6.x.x and `posthog-server` 2.25.x or older at the same time. While core 7.x.x is in the build, Gradle keeps `posthog-android` on 4.x.x.
 
 ## Follow ups
 

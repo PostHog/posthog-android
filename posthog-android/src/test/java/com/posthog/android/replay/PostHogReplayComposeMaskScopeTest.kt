@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.getTextLayoutResult
+import androidx.compose.ui.semantics.password
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -120,6 +121,17 @@ internal class PostHogReplayComposeMaskScopeTest {
         }
 
         assertEquals(listOf(boundsOf("password")), maskRects(maskAllTextInputs = false))
+    }
+
+    @Test
+    fun `text inside a password container is masked when text masking is off`() {
+        compose.activity.setContent {
+            Row(Modifier.semantics(mergeDescendants = true) { password() }) {
+                BasicText("1234", textModifier.testTag("pin"))
+            }
+        }
+
+        assertEquals(listOf(boundsOf("pin")), maskRects(maskAllTextInputs = false))
     }
 
     @Test

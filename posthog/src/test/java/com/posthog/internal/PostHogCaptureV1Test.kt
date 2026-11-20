@@ -407,6 +407,23 @@ internal class PostHogCaptureV1Test {
     }
 
     @Test
+    fun `partial retry keeps only the first copy`() {
+        val e = event("same")
+        val http =
+            httpServers.mockHttp(
+                response = MockResponse().setBody("{\"results\":{\"${e.uuid}\":{\"result\":\"retry\",\"duplicates_dropped\":1}}}"),
+            )
+        val sut = queue(http, flushAt = 2)
+
+        sut.add(e)
+        sut.add(e)
+        executor.awaitExecution()
+
+        assertEquals(1, http.requestCount)
+        assertEquals(1, sut.dequeList.size)
+    }
+
+    @Test
     fun `clamps each duplicate count to the batch size`() {
         val first = event()
         val second = event()
@@ -491,6 +508,23 @@ internal class PostHogCaptureV1Test {
             listOf(
                 "$host/i/v1/analytics/events returned 404. Events stay queued and are retried. " +
                     "If you use a reverse proxy or self-host PostHog, make sure it serves /i/v1/analytics/events.",
+            ),
+            logger.warnings,
+        )
+    }
+
+    @Test
+    fun `a 401 warns once even with debug off`() {
+        val http = httpServers.mockHttp(total = 2, response = MockResponse().setResponseCode(401))
+        val host = http.url("/").toString().trimEnd('/')
+        val sut = api(host)
+
+        repeat(2) { runCatching { sut.captureV1(listOf(event())) } }
+
+        assertEquals(
+            listOf(
+                "$host/i/v1/analytics/events returned 401, events were dropped. " +
+                    "If you use a reverse proxy, make sure it forwards the Authorization header.",
             ),
             logger.warnings,
         )

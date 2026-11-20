@@ -967,6 +967,8 @@ internal class PostHogStatelessTest {
     @Test
     fun `with factory method creates configured instance`() {
         val config = createConfig()
+
+        @Suppress("DEPRECATION")
         val instance = PostHogStateless.with(config)
 
         // Since isEnabled is protected, we can only test through public interface

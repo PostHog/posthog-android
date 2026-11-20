@@ -1289,7 +1289,9 @@ public class PostHog private constructor(
                     aiLane,
                     claimReplayDebugBundle = { claimReplayDebugPropertiesWindow().also { claimedReplayDebugBundle = it } },
                 ) ?: return null
-            val postHogEvent = runBeforeSend(prepared.event, prepared.event.uuid)
+            // An AI event is measured on this thread but written later, so it gets its own nested
+            // values: the caller reusing a list can't grow it past the size check.
+            val postHogEvent = runBeforeSend(prepared.event, prepared.event.uuid, copyNested = aiLane)
             if (postHogEvent == null) {
                 logDroppedEvent(event)
                 return null
@@ -1694,7 +1696,8 @@ public class PostHog private constructor(
             // Copied before the hooks run, which can change the map in place.
             val handlerProperties =
                 if (surveysHandler != null || sessionReplayHandler != null) properties.toMap() else emptyMap()
-            val postHogEvent = runBeforeSend(builtEvent, uuid)
+            // As in captureInternal: an AI event is measured now but written later.
+            val postHogEvent = runBeforeSend(builtEvent, uuid, copyNested = ai)
             if (postHogEvent == null) {
                 logDroppedEvent(builtEvent.event)
                 return null
