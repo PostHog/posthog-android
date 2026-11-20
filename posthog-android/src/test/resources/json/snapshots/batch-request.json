@@ -45,7 +45,6 @@
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$set": {
             "plan": "pro"
           },
@@ -99,7 +98,6 @@
           "$sdk_debug_replay_capture_mode": "screenshot",
           "$sdk_debug_replay_internal_buffer_length": 0,
           "$sdk_debug_session_start": 1700000000123,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$set": {
             "email": "person@example.com"
           },
@@ -144,7 +142,6 @@
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$group_type": "company",
           "$group_key": "posthog",
           "$group_set": {
@@ -189,7 +186,6 @@
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$groups": {
             "company": "posthog"
           },
@@ -237,7 +233,6 @@
           "$sdk_debug_replay_event_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_linked_flag_trigger_status": "trigger_disabled",
           "$sdk_debug_replay_internal_buffer_length": 0,
-          "$sdk_debug_pending_queue_size": "<pending-queue-size>",
           "$groups": {
             "company": "posthog"
           },
