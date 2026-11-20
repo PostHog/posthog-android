@@ -1696,7 +1696,8 @@ public class PostHog private constructor(
             // Copied before the hooks run, which can change the map in place.
             val handlerProperties =
                 if (surveysHandler != null || sessionReplayHandler != null) properties.toMap() else emptyMap()
-            val postHogEvent = runBeforeSend(builtEvent, uuid)
+            // As in captureInternal: an AI event is measured now but written later.
+            val postHogEvent = runBeforeSend(builtEvent, uuid, copyNested = ai)
             if (postHogEvent == null) {
                 logDroppedEvent(builtEvent.event)
                 return null

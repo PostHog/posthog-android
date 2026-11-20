@@ -9,6 +9,7 @@ import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.Date
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
@@ -154,6 +155,26 @@ internal class PostHogWrapperEventTest {
         val request = takeRequest(http)
         assertEquals("/i/v1/ai/events", request.path)
         assertNotNull(events(request).single().properties()["\$sdk_debug_session_start"])
+    }
+
+    @Test
+    fun `send on the AI lane sends the payload admitted by the size check`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http) { captureAiMaxEventBytes = 4096 }
+        val built =
+            assertNotNull(sut.buildEventForWrapper("\$ai_generation", properties = mapOf("messages" to mutableListOf("first")), ai = true))
+        val release = CountDownLatch(1)
+        aiExecutor.execute { release.await() }
+        try {
+            assertNotNull(sut.sendBuiltEventForWrapper(built, ai = true))
+            @Suppress("UNCHECKED_CAST")
+            (built.properties!!["messages"] as MutableList<String>).add("x".repeat(8192))
+        } finally {
+            release.countDown()
+        }
+
+        aiExecutor.awaitExecution()
+        assertEquals(listOf("first"), events(takeRequest(http)).single().properties()["messages"])
     }
 
     @Test
