@@ -32,5 +32,6 @@ internal class GsonPropertyTypeAdapter :
             PropertyType.COHORT -> "cohort"
             PropertyType.FLAG -> "flag"
             PropertyType.PERSON -> "person"
+            PropertyType.UNSUPPORTED -> "unsupported"
         }
 }
