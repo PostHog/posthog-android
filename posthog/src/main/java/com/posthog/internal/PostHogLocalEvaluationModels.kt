@@ -203,6 +203,12 @@ public enum class PropertyType {
     COHORT,
     FLAG,
     PERSON,
+
+    /**
+     * A filter type local evaluation can't evaluate, such as `person_metadata`: a value `/flags`
+     * reads from the persons table rather than from the properties the caller passes.
+     */
+    UNSUPPORTED,
     ;
 
     public companion object {
@@ -210,8 +216,9 @@ public enum class PropertyType {
             return when (value) {
                 "cohort" -> COHORT
                 "flag" -> FLAG
-                "person" -> PERSON
-                else -> PERSON
+                // Group filters are matched against the group's properties like person filters.
+                "person", "group", "" -> PERSON
+                else -> UNSUPPORTED
             }
         }
 
