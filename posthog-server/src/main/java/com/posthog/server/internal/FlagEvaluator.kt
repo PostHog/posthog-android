@@ -390,6 +390,10 @@ internal class FlagEvaluator(
         if (flag.ensureExperienceContinuity) {
             return PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
         }
+        // Enrollment decides the flag before its group aggregation and release conditions are read.
+        if (flag.filters.featureEnrollment) {
+            return null
+        }
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
         if (aggregationGroupIndex != null && groupTypeMapping[aggregationGroupIndex.toString()] == null) {
             return PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
@@ -1534,6 +1538,10 @@ internal class FlagEvaluator(
             )
         }
 
+        if (flag.filters.featureEnrollment) {
+            return matchFeatureEnrollment(flag, properties)
+        }
+
         val flagConditions = flag.filters.groups ?: emptyList()
         var inconclusiveReason: PostHogUnresolvedFlagReason? = null
 
@@ -1581,6 +1589,26 @@ internal class FlagEvaluator(
 
         // We can only return False when either all conditions are False, or no condition was inconclusive
         return false
+    }
+
+    /**
+     * An early-access feature flag returns the person's enrollment at once: `true` or `"true"`
+     * means enrolled, and any other value that was passed, `null` included, means opted out.
+     * Without the enrollment property the flag can't be resolved locally.
+     */
+    fun matchFeatureEnrollment(
+        flag: FlagDefinition,
+        personProperties: Map<String, Any?>,
+    ): Boolean {
+        val enrollmentKey = "\$feature_enrollment/${flag.key}"
+        if (!personProperties.containsKey(enrollmentKey)) {
+            throw InconclusiveMatchException(
+                "Flag has feature enrollment and '$enrollmentKey' was not passed",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        }
+        val enrollment = personProperties[enrollmentKey]
+        return enrollment == true || enrollment == "true"
     }
 
     /**

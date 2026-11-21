@@ -996,6 +996,12 @@ internal class PostHogFeatureFlags(
             return false
         }
 
+        // Enrollment is a person property, so a group-aggregated flag reads it from the person
+        // properties, before any group is resolved. Experience continuity still takes precedence.
+        if (flag.filters.featureEnrollment && !flag.ensureExperienceContinuity) {
+            return snapshot.evaluator.matchFeatureEnrollment(flag, personProperties ?: EMPTY_PROPERTIES)
+        }
+
         // Check if this is a group-based flag
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
 

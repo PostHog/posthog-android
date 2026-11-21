@@ -47,6 +47,12 @@ public class FlagFilters(
     public val payloads: Map<String, Any?>?,
     @SerializedName("aggregation_group_type_index")
     public val aggregationGroupTypeIndex: Int?,
+    /**
+     * Marks an early-access feature flag: the person property `$feature_enrollment/<flag key>`
+     * decides the flag before its holdouts and release conditions.
+     */
+    @SerializedName("feature_enrollment")
+    public val featureEnrollment: Boolean = false,
 )
 
 /**
