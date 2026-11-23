@@ -217,7 +217,7 @@ public enum class PropertyType {
                 "cohort" -> COHORT
                 "flag" -> FLAG
                 // Group filters are matched against the group's properties like person filters.
-                "person", "group", "" -> PERSON
+                "person", "group" -> PERSON
                 else -> UNSUPPORTED
             }
         }

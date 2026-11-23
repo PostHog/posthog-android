@@ -3,7 +3,9 @@ package com.posthog.server.internal
 import com.posthog.PostHogConfig
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
+import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyType
+import com.posthog.server.PostHog
 import com.posthog.server.PostHogUnresolvedFlagReason
 import com.posthog.server.createFlagsResponse
 import com.posthog.server.createMockHttp
@@ -63,6 +65,84 @@ internal class PersonMetadataFilterTest {
             PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             evaluator.definitionUnresolvedReason(definition, mapOf("first-seen-flag" to definition), emptyMap(), emptyMap()),
         )
+    }
+
+    @Test
+    fun `evaluateFlags reports person_metadata filters as unsupported when nothing is passed`() {
+        val negated = firstSeen.replace("}", """, "negation": true}""")
+        val control = flag("").replace("first-seen-flag", "control-flag").replace(""""id": 1""", """"id": 4""")
+        val inCohort =
+            { key: String, id: Int, cohort: Int ->
+                flag("""{"key": "id", "type": "cohort", "value": $cohort}""")
+                    .replace("first-seen-flag", key)
+                    .replace(""""id": 1""", """"id": $id""")
+            }
+        val definitions =
+            """
+            {"flags": [${flag(firstSeen)}, ${inCohort("cohort-flag", 2, 7)}, ${inCohort("negated-flag", 3, 8)}, $control],
+             "group_type_mapping": {},
+             "cohorts": {"7": {"type": "AND", "values": [$firstSeen]}, "8": {"type": "AND", "values": [$negated]}}}
+            """.trimIndent()
+
+        // The unsupported filter outranks the missing property, and negation must not turn it into a match.
+        val unresolved = listOf("first-seen-flag", "cohort-flag", "negated-flag")
+        for (personProperties in listOf(emptyMap(), createdIn2026)) {
+            val server = createMockHttp(jsonResponse(definitions))
+            val client =
+                PostHog.with(
+                    com.posthog.server.PostHogConfig.builder("test-key")
+                        .host(server.url("/").toString())
+                        .personalApiKey("test-personal-key")
+                        .sendFeatureFlagEvent(false)
+                        .pollIntervalSeconds(3600)
+                        .flushIntervalSeconds(3600)
+                        .build(),
+                )
+            try {
+                val snapshot =
+                    client.evaluateFlags(
+                        distinctId = "user-123",
+                        personProperties = personProperties,
+                        onlyEvaluateLocally = true,
+                    )
+                assertEquals(
+                    unresolved.associateWith { PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION },
+                    snapshot.unresolvedFlags,
+                )
+                assertEquals(true, snapshot.isEnabled("control-flag"))
+                assertEquals(1, server.requestCount, "only the definitions were requested")
+            } finally {
+                client.close()
+                server.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun `the definition check reports a person_metadata filter in a cohort as unsupported`() {
+        val definition = parse(flag("""{"key": "id", "type": "cohort", "value": 7}"""))
+        val cohorts =
+            config.serializer.gson.fromJson(
+                """{"type": "AND", "values": [$firstSeen]}""",
+                PropertyGroup::class.java,
+            )
+        assertEquals(
+            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            evaluator.definitionUnresolvedReason(
+                definition,
+                mapOf("first-seen-flag" to definition),
+                emptyMap(),
+                mapOf("7" to cohorts),
+            ),
+        )
+    }
+
+    @Test
+    fun `an unsupported filter type survives the definitions cache`() {
+        val gson = config.serializer.gson
+        val json = gson.toJsonTree(PropertyType.UNSUPPORTED)
+        assertEquals("unsupported", json.asString)
+        assertEquals(PropertyType.UNSUPPORTED, gson.fromJson(json, PropertyType::class.java))
     }
 
     @Test
