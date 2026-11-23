@@ -46,7 +46,7 @@ The SDK keeps capturing events while the device is offline. It stores them in a 
 - `maxQueueSize` sets the maximum queue size. When the queue is full, the SDK deletes the oldest event first.
 - The SDK sends queued events when the app restarts and the device is online.
 - If you call `flush()` while the device is offline, it returns early and sends nothing.
-- `pushNotificationSubscriptionMaxRetries` limits only push-notification subscription retries, not event delivery. It was called `maxRetries` before version 4.0.
+- `pushNotificationSubscriptionMaxRetries` limits only push-notification subscription retries, not event delivery.
 
 ## Connect requests to backend events
 
@@ -78,4 +78,4 @@ The SDK declares `android.permission.INTERNET` and `android.permission.ACCESS_NE
 
 These docs cover version 4.x.x. To check your version, look at the `com.posthog:posthog-android` line in your Gradle files, or run `./gradlew dependencies` and search for `posthog-android`.
 
-If you use version 3.x.x, see the [3.x.x reference](/docs/libraries/android/3.x.x). To upgrade, follow the [migration guide](/docs/libraries/android/migration).
+If you use version 3.x.x, see the [3.x.x reference](https://posthog.com/docs/libraries/android/3.x.x). To upgrade, follow the [migration guide](https://posthog.com/docs/libraries/android/migration).
