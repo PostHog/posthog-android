@@ -8,7 +8,7 @@ on:
       - 'sdk_compliance_adapter/**'
       - '.github/workflows/sdk-compliance-tests.yml'
   pull_request:
-    branches: [ main, 'chore/v4-*', 'feat/v4-*' ]
+    branches: [ main ]
     paths:
       - 'posthog/**'
       - 'sdk_compliance_adapter/**'
