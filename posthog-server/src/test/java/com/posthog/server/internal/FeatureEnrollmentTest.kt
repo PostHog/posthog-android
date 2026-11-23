@@ -4,6 +4,7 @@ import com.posthog.PostHogConfig
 import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.server.PostHogUnresolvedFlagReason
+import com.posthog.server.TestLogger
 import com.posthog.server.createFlagsResponse
 import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
@@ -79,7 +80,7 @@ internal class FeatureEnrollmentTest {
 
     @Test
     fun `a false or absent marker keeps ordinary targeting`() {
-        for (marker in listOf(""""feature_enrollment": false,""", "")) {
+        for (marker in listOf(""""feature_enrollment": false,""", """"feature_enrollment": null,""", "")) {
             val groups = """"groups": [{"properties": [], "rollout_percentage": 100}]"""
             val flag = """{"id": 1, "key": "beta-feature", "active": true, "filters": {$marker $groups}}"""
             assertFalse(parse(flag).filters.featureEnrollment)
@@ -203,6 +204,171 @@ internal class FeatureEnrollmentTest {
         } finally {
             flags.shutDown()
             server.shutdown()
+        }
+    }
+
+    private val everyone = """"groups": [{"properties": [], "rollout_percentage": 100}]"""
+    private val noOne = """"groups": [{"properties": [], "rollout_percentage": 0}]"""
+    private val byCompany = """"aggregation_group_type_index": 0,"""
+    private val control = """{"id": 9, "key": "control", "active": true, "filters": {$everyone}}"""
+
+    private fun dependent(filters: String = ""): String =
+        """
+        {"id": 2, "key": "dependent", "active": true, "filters": {$filters "groups": [{"properties": [
+          {"key": "beta-feature", "type": "flag", "operator": "flag_evaluates_to", "value": true,
+           "dependency_chain": ["beta-feature"]}
+        ], "rollout_percentage": 100}]}}
+        """.trimIndent()
+
+    /** Loads the flags and evaluates them all locally: values by key, then why the others have none. */
+    private fun evaluateAll(
+        vararg definitions: String,
+        groups: Map<String, String>? = null,
+        personProperties: Map<String, Any?>? = null,
+        groupProperties: Map<String, Map<String, Any?>>? = null,
+        cohorts: String = "{}",
+        logger: TestLogger = TestLogger(),
+    ): Pair<Map<String, Boolean>, Map<String, PostHogUnresolvedFlagReason>> {
+        val server =
+            createMockHttp(
+                jsonResponse(
+                    """
+                    {"flags": [${definitions.joinToString()}], "group_type_mapping": {"0": "company"}, "cohorts": $cohorts}
+                    """.trimIndent(),
+                ),
+            )
+        val testConfig = createTestConfig(logger = logger, host = server.url("/").toString())
+        val flags =
+            PostHogFeatureFlags(
+                testConfig,
+                PostHogApi(testConfig),
+                60000,
+                100,
+                localEvaluation = true,
+                personalApiKey = "test-personal-key",
+                pollerEnabled = false,
+            )
+        try {
+            flags.loadFeatureFlagDefinitions()
+            val result =
+                flags.evaluateFlags(
+                    distinctId = "user-123",
+                    groups = groups,
+                    personProperties = personProperties,
+                    groupProperties = groupProperties,
+                    flagKeys = null,
+                    onlyEvaluateLocally = true,
+                    disableGeoip = false,
+                )
+            assertEquals(1, server.requestCount, "only the definitions were requested")
+            return result.flags.mapValues { it.value.enabled } to result.unresolvedFlags
+        } finally {
+            flags.shutDown()
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a group flag depending on an enrollment flag reads the person's enrollment`() {
+        val company = mapOf("company" to "acme")
+        val cases =
+            listOf(
+                // The group has other properties, or the opposite enrollment.
+                Triple(true, mapOf("plan" to "enterprise"), true),
+                Triple(false, mapOf(enrollmentKey to true), false),
+                Triple(true, mapOf(enrollmentKey to false), true),
+            )
+        for ((enrolled, group, expected) in cases) {
+            val (values, unresolved) =
+                evaluateAll(
+                    betaFeature(noOne),
+                    dependent(byCompany),
+                    groups = company,
+                    personProperties = mapOf(enrollmentKey to enrolled),
+                    groupProperties = mapOf("company" to group),
+                )
+            assertEquals(mapOf("beta-feature" to expected, "dependent" to expected), values)
+            assertEquals(emptyMap(), unresolved)
+        }
+    }
+
+    @Test
+    fun `a group flag depending on an enrollment flag through a cohort reads the person's enrollment`() {
+        val viaCohort =
+            """
+            {"id": 3, "key": "via-cohort", "active": true, "filters": {$byCompany "groups": [{"properties": [
+              {"key": "id", "type": "cohort", "value": 7}], "rollout_percentage": 100}]}}
+            """.trimIndent()
+        val (values, unresolved) =
+            evaluateAll(
+                betaFeature(noOne),
+                viaCohort,
+                groups = mapOf("company" to "acme"),
+                personProperties = mapOf(enrollmentKey to false),
+                groupProperties = mapOf("company" to mapOf(enrollmentKey to true)),
+                cohorts =
+                    """
+                    {"7": {"type": "AND", "values": [{"type": "AND", "values": [
+                      {"key": "beta-feature", "type": "flag", "operator": "flag_evaluates_to", "value": true,
+                       "dependency_chain": ["beta-feature"]}]}]}}
+                    """.trimIndent(),
+            )
+        assertEquals(mapOf("beta-feature" to false, "via-cohort" to false), values)
+        assertEquals(emptyMap(), unresolved)
+    }
+
+    @Test
+    fun `a group enrollment flag with experience continuity stays unresolved without groups`() {
+        val (values, unresolved) =
+            evaluateAll(
+                betaFeature("$byCompany $everyone", extra = """"ensure_experience_continuity": true,"""),
+                personProperties = mapOf(enrollmentKey to true),
+            )
+        assertEquals(emptyMap(), values)
+        assertEquals(mapOf("beta-feature" to PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY), unresolved)
+    }
+
+    @Test
+    fun `missing enrollment leaves only the flag and its dependents unresolved`() {
+        val (values, unresolved) = evaluateAll(betaFeature(), dependent(), control)
+        assertEquals(mapOf("control" to true), values)
+        assertEquals(
+            mapOf(
+                "beta-feature" to PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+                "dependent" to PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY,
+            ),
+            unresolved,
+        )
+    }
+
+    @Test
+    fun `group properties don't stand in for a missing enrollment`() {
+        val (values, unresolved) =
+            evaluateAll(
+                betaFeature("$byCompany $everyone"),
+                groups = mapOf("company" to "acme"),
+                groupProperties = mapOf("company" to mapOf(enrollmentKey to true)),
+            )
+        assertEquals(emptyMap(), values)
+        assertEquals(mapOf("beta-feature" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), unresolved)
+    }
+
+    @Test
+    fun `an enrollment flag with a static cohort only misses context and isn't warned about`() {
+        val logger = TestLogger()
+        val staticCohort = """"groups": [{"properties": [{"key": "id", "type": "cohort", "value": 123}], "rollout_percentage": 100}]"""
+        val (_, unresolved) = evaluateAll(betaFeature(staticCohort), logger = logger)
+        assertEquals(mapOf("beta-feature" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), unresolved)
+        assertEquals(emptyList<String>(), logger.warnings.toList())
+    }
+
+    @Test
+    fun `an inactive enrollment flag is off whatever was passed`() {
+        val inactive = betaFeature().replace(""""active": true""", """"active": false""")
+        for (properties in listOf(mapOf(enrollmentKey to true), null)) {
+            val (values, unresolved) = evaluateAll(inactive, personProperties = properties)
+            assertEquals(mapOf("beta-feature" to false), values)
+            assertEquals(emptyMap(), unresolved)
         }
     }
 }

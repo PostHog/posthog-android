@@ -1267,6 +1267,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        personProperties: Map<String, Any?> = propertyValues,
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
@@ -1290,6 +1291,7 @@ internal class FlagEvaluator(
             flagsByKey,
             evaluationCache,
             distinctId,
+            personProperties,
         )
     }
 
@@ -1303,6 +1305,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        personProperties: Map<String, Any?> = propertyValues,
     ): Boolean {
         val groupType = propertyGroup.type
         val properties = propertyGroup.values
@@ -1325,6 +1328,7 @@ internal class FlagEvaluator(
                                 flagsByKey,
                                 evaluationCache,
                                 distinctId,
+                                personProperties,
                             )
 
                         if (groupType == LogicalOperator.AND) {
@@ -1361,6 +1365,7 @@ internal class FlagEvaluator(
                                         flagsByKey,
                                         evaluationCache,
                                         distinctId,
+                                        personProperties,
                                     )
 
                                 PropertyType.FLAG ->
@@ -1383,6 +1388,7 @@ internal class FlagEvaluator(
                                             ),
                                         propertyValues,
                                         cohortProperties,
+                                        personProperties,
                                     )
 
                                 else -> matchProperty(property, propertyValues, inCohort = true)
@@ -1426,6 +1432,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
+        personProperties: Map<String, Any?> = properties,
     ): Boolean {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()
@@ -1447,6 +1454,7 @@ internal class FlagEvaluator(
                                     flagsByKey,
                                     evaluationCache,
                                     distinctId,
+                                    personProperties,
                                 )
 
                             PropertyType.FLAG ->
@@ -1465,6 +1473,7 @@ internal class FlagEvaluator(
                                     distinctId,
                                     properties,
                                     cohortProperties,
+                                    personProperties,
                                 )
 
                             else -> {
@@ -1522,6 +1531,9 @@ internal class FlagEvaluator(
     /**
      * Main evaluation function to match feature flag properties
      * Returns the flag value (true, false, or variant key)
+     *
+     * [properties] are the aggregation's: a group's for a group flag. [personProperties] stay the
+     * person's, for the enrollment of early-access flags it depends on.
      */
     fun matchFeatureFlagProperties(
         flag: FlagDefinition,
@@ -1530,6 +1542,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup> = emptyMap(),
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
+        personProperties: Map<String, Any?> = properties,
     ): Any? {
         if (flag.ensureExperienceContinuity) {
             throw InconclusiveMatchException(
@@ -1539,7 +1552,7 @@ internal class FlagEvaluator(
         }
 
         if (flag.filters.featureEnrollment) {
-            return matchFeatureEnrollment(flag, properties)
+            return matchFeatureEnrollment(flag, personProperties)
         }
 
         val flagConditions = flag.filters.groups ?: emptyList()
@@ -1567,6 +1580,7 @@ internal class FlagEvaluator(
                         cohortProperties,
                         flagsByKey,
                         evaluationCache,
+                        personProperties,
                     )
                 ) {
                     val variantOverride = condition.variant
@@ -1621,6 +1635,7 @@ internal class FlagEvaluator(
         distinctId: String,
         properties: Map<String, Any?>,
         cohortProperties: Map<String, PropertyGroup>,
+        personProperties: Map<String, Any?> = properties,
     ): Boolean {
         // A definition problem outranks whatever the chain evaluates to, so check it first.
         assertDependencySupported(property)
@@ -1663,6 +1678,7 @@ internal class FlagEvaluator(
                                     cohortProperties,
                                     flagsByKey,
                                     evaluationCache,
+                                    personProperties,
                                 )
                             evaluationCache[depFlagKey] = depResult
                         } catch (e: InconclusiveMatchException) {

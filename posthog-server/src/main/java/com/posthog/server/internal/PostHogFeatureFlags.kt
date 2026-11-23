@@ -996,9 +996,17 @@ internal class PostHogFeatureFlags(
             return false
         }
 
+        // Experience continuity outranks every other reason, as in the load-time warning.
+        if (flag.ensureExperienceContinuity) {
+            throw InconclusiveMatchException(
+                "Flag \"${flag.key}\" has experience continuity enabled",
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+            )
+        }
+
         // Enrollment is a person property, so a group-aggregated flag reads it from the person
-        // properties, before any group is resolved. Experience continuity still takes precedence.
-        if (flag.filters.featureEnrollment && !flag.ensureExperienceContinuity) {
+        // properties, before any group is resolved.
+        if (flag.filters.featureEnrollment) {
             return snapshot.evaluator.matchFeatureEnrollment(flag, personProperties ?: EMPTY_PROPERTIES)
         }
 
@@ -1014,12 +1022,7 @@ internal class PostHogFeatureFlags(
                     config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
                     throw InconclusiveMatchException(
                         "Flag has unknown group type index",
-                        // Experience continuity outranks every other reason, as in the load-time warning.
-                        if (flag.ensureExperienceContinuity) {
-                            PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
-                        } else {
-                            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
-                        },
+                        PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                     )
                 }
 
@@ -1045,6 +1048,7 @@ internal class PostHogFeatureFlags(
             cohortProperties = snapshot.cohorts ?: EMPTY_COHORT_PROPERTIES,
             flagsByKey = flags,
             evaluationCache = evaluationCache,
+            personProperties = personProperties ?: EMPTY_PROPERTIES,
         )
     }
 
