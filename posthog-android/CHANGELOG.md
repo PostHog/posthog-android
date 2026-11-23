@@ -1,5 +1,11 @@
 ## Next
 
+## 4.0.3
+
+### Patch Changes
+
+- beace75: Wait for a survey's activation event before evaluating its feature flags.
+
 ## 4.0.2
 
 ### Patch Changes
