@@ -468,6 +468,10 @@ public class PostHog private constructor(
                         pushExecutor,
                         { distinctId },
                         { remoteConfig?.getPushAppIds() },
+                        // identify() links the anonymous id through `$anon_distinct_id` and then keeps it
+                        // as anonymousId until reset(). Under reuseAnonymousId it sends no link, so no
+                        // earlier id is ever merged.
+                        { previousDistinctId -> !config.reuseAnonymousId && previousDistinctId == anonymousId },
                     )
 
                 if (config.errorTrackingConfig.exceptionSteps.enabled) {

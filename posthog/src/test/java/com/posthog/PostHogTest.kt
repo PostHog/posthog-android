@@ -7771,6 +7771,45 @@ internal class PostHogTest {
         assertEquals(0, pushOpens.size)
     }
 
+    private fun pushRequestsAfterIdentify(reuseAnonymousId: Boolean): Pair<String, List<Pair<String, String?>>> {
+        val http = mockHttp(total = 6)
+        val sut =
+            getSut(
+                http.url("/").toString(),
+                preloadFeatureFlags = false,
+                reloadFeatureFlags = false,
+                reuseAnonymousId = reuseAnonymousId,
+            )
+        val anonymousId = sut.distinctId()
+
+        // Push requests run on the SDK's own push thread, so read until the server goes quiet.
+        fun pushRequests() =
+            generateSequence { http.takeRequest(2, TimeUnit.SECONDS) }
+                .filter { it.path == "/api/push_subscriptions/" }
+                .map { it.method!! to serializer.deserialize<Map<String, Any>>(it.body.unGzip().reader())["distinct_id"] as? String }
+
+        sut.registerPushNotificationToken("fcm-token", "firebase-project")
+        val registered = pushRequests().first()
+        sut.identify("user-B")
+        queueExecutor.awaitExecution()
+
+        return anonymousId to listOf(registered) + pushRequests().toList()
+    }
+
+    @Test
+    fun `identify keeps the push subscription of the anonymous id it merges`() {
+        val (anonymousId, push) = pushRequestsAfterIdentify(reuseAnonymousId = false)
+
+        assertEquals(listOf("POST" to anonymousId, "POST" to "user-B"), push)
+    }
+
+    @Test
+    fun `identify with reuseAnonymousId unregisters the anonymous id it does not merge`() {
+        val (anonymousId, push) = pushRequestsAfterIdentify(reuseAnonymousId = true)
+
+        assertEquals(listOf("POST" to anonymousId, "DELETE" to anonymousId, "POST" to "user-B"), push)
+    }
+
     @Test
     fun `flush retries a push subscription registration deferred while offline`() {
         val http = mockHttp()

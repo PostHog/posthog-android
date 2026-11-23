@@ -88,6 +88,7 @@ internal class PostHogPushSubscriptionManagerTest {
         encryption: PostHogEncryption? = null,
         pushAppIds: List<String>? = null,
         pushAppIdsProvider: (() -> List<String>?)? = null,
+        mergesIntoCurrentIdentity: (String) -> Boolean = { true },
     ): Triple<PostHogPushSubscriptionManager, PostHogConfig, String?> {
         servers.track(http)
         val config =
@@ -100,7 +101,15 @@ internal class PostHogPushSubscriptionManagerTest {
                 this.dateProvider = clock
             }
         val api = PostHogApi(config)
-        val manager = PostHogPushSubscriptionManager(config, api, executor, { distinctId }, pushAppIdsProvider ?: { pushAppIds })
+        val manager =
+            PostHogPushSubscriptionManager(
+                config,
+                api,
+                executor,
+                { distinctId },
+                pushAppIdsProvider ?: { pushAppIds },
+                mergesIntoCurrentIdentity,
+            )
         managers.add(manager)
         return Triple(manager, config, storagePrefix)
     }
@@ -514,9 +523,11 @@ internal class PostHogPushSubscriptionManagerTest {
     }
 
     @Test
-    fun `resendIfDistinctIdChanged re-registers when the distinct id changes`() {
+    fun `resendIfDistinctIdChanged re-registers without a DELETE when identify merged the previous id`() {
         val http = mockHttp(total = 2, response = MockResponse().setBody(""))
-        val (sut, config, storagePrefix) = getSut(http)
+        // distinct-1 is the anonymous id identify() linked, so both ids are one person: a DELETE for
+        // distinct-1 could be applied after the POST and unset the live subscription.
+        val (sut, config, storagePrefix) = getSut(http, mergesIntoCurrentIdentity = { it == "distinct-1" })
 
         sut.register("fcm-token", "firebase-project")
         flush()
@@ -526,9 +537,116 @@ internal class PostHogPushSubscriptionManagerTest {
         sut.resendIfDistinctIdChanged()
         flush()
 
-        assertEquals(2, http.requestCount)
-        assertEquals("distinct-2", parsedDistinctId(http.takeRequest()))
+        val post = http.takeRequest()
+        assertEquals("POST", post.method)
+        assertEquals("distinct-2", parsedDistinctId(post))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
         assertEquals("distinct-2", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+        assertFalse(pendingUnregisterFile(storagePrefix).exists())
+    }
+
+    @Test
+    fun `resendIfDistinctIdChanged unregisters a previous identity that is not merged, then registers the new one`() {
+        val http = mockHttp(total = 2, response = MockResponse().setBody(""))
+        http.enqueue(MockResponse().setResponseCode(503))
+        http.enqueue(MockResponse().setBody(""))
+        val (sut, config, storagePrefix) = getSut(http, mergesIntoCurrentIdentity = { false })
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project")
+        flush()
+        assertEquals("user-A", parsedDistinctId(http.takeRequest()))
+
+        distinctId = "user-B"
+        sut.resendIfDistinctIdChanged()
+        flush()
+
+        val delete = http.takeRequest()
+        assertEquals("DELETE", delete.method)
+        assertEquals("user-A", parsedDistinctId(delete))
+        val failedPost = http.takeRequest()
+        assertEquals("POST" to "user-B", failedPost.method to parsedDistinctId(failedPost))
+        assertFalse(pendingUnregisterFile(storagePrefix!!).exists())
+
+        // The retry after the failed POST registers user-B again without a second DELETE for user-A.
+        clock.advance(60_000)
+        sut.retryPending()
+        flush()
+        val retriedPost = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals("POST" to "user-B", retriedPost.method to parsedDistinctId(retriedPost))
+        assertEquals(4, http.requestCount)
+        assertEquals("user-B", readRecord(config, pendingFile(storagePrefix))?.deliveredForDistinctId)
+    }
+
+    @Test
+    fun `retryPending unregisters an unmerged previous identity when it runs before the identify resend`() {
+        val http = mockHttp(total = 3, response = MockResponse().setBody(""))
+        val (sut, _, _) = getSut(http, mergesIntoCurrentIdentity = { false })
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project")
+        flush()
+        http.takeRequest()
+
+        // flush() from another thread reaches the manager after the id changed but before identify's
+        // resend task. The DELETE must not depend on which of the two runs first.
+        distinctId = "user-B"
+        sut.retryPending()
+        sut.resendIfDistinctIdChanged()
+        flush()
+
+        val delete = http.takeRequest()
+        assertEquals("DELETE", delete.method)
+        assertEquals("user-A", parsedDistinctId(delete))
+        assertEquals("user-B", parsedDistinctId(http.takeRequest()))
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
+    }
+
+    @Test
+    fun `an offline identity switch keeps a failing logout DELETE and replays both after a relaunch`() {
+        val http = mockHttp(total = 1, response = MockResponse().setBody(""))
+        var connected = true
+        val network =
+            object : PostHogNetworkStatus {
+                override fun isConnected() = connected
+            }
+        val (sut, config, storagePrefix) = getSut(http, networkStatus = network, mergesIntoCurrentIdentity = { false })
+
+        distinctId = "user-A"
+        sut.register("fcm-token", "firebase-project")
+        flush()
+        assertEquals("POST", http.takeRequest().method)
+
+        // An earlier logout's DELETE for user-X keeps failing and stays queued.
+        http.enqueue(MockResponse().setResponseCode(503))
+        sut.unregister("user-X", "fcm-token", "firebase-project")
+        flush()
+        assertEquals("DELETE", http.takeRequest().method)
+
+        // The identity switch happens offline: nothing is sent, and the new DELETE for user-A must not
+        // replace the one for user-X.
+        connected = false
+        distinctId = "user-B"
+        sut.resendIfDistinctIdChanged()
+        flush()
+        assertEquals(2, http.requestCount)
+        assertTrue(pendingUnregisterFile(storagePrefix!!).readText().trimStart().startsWith("["))
+
+        // Next launch, back online: both DELETEs go out, and user-B's registration drops neither.
+        connected = true
+        repeat(3) { http.enqueue(MockResponse().setBody("")) }
+        val (relaunched, _, _) =
+            getSut(http, storagePrefix = storagePrefix, networkStatus = network, mergesIntoCurrentIdentity = { false })
+        relaunched.retryPending()
+        flush()
+
+        val first = http.takeRequest(2, TimeUnit.SECONDS)!!
+        val second = http.takeRequest(2, TimeUnit.SECONDS)!!
+        val post = http.takeRequest(2, TimeUnit.SECONDS)!!
+        assertEquals(listOf("DELETE" to "user-X", "DELETE" to "user-A"), listOf(first, second).map { it.method to parsedDistinctId(it) })
+        assertEquals("POST" to "user-B", post.method to parsedDistinctId(post))
+        assertFalse(pendingUnregisterFile(storagePrefix).exists())
+        assertEquals("user-B", readRecord(config, pendingFile(storagePrefix))?.deliveredForDistinctId)
     }
 
     @Test
@@ -792,7 +910,8 @@ internal class PostHogPushSubscriptionManagerTest {
     @Test
     fun `handleReset unregisters the old identity then re-registers under the new anonymous id`() {
         val http = mockHttp(total = 3, response = MockResponse().setBody(""))
-        val (sut, config, storagePrefix) = getSut(http)
+        // Not merged, so the identity-switch DELETE would also apply if reset() didn't already send one.
+        val (sut, config, storagePrefix) = getSut(http, mergesIntoCurrentIdentity = { false })
 
         distinctId = "user-A"
         sut.register("fcm-token", "firebase-project")
@@ -815,6 +934,11 @@ internal class PostHogPushSubscriptionManagerTest {
 
         assertEquals(3, http.requestCount)
         assertEquals("anon-2", readRecord(config, pendingFile(storagePrefix!!))?.deliveredForDistinctId)
+
+        // The flush after reset() sends no second DELETE for user-A.
+        sut.retryPending()
+        flush()
+        assertNull(http.takeRequest(500, TimeUnit.MILLISECONDS))
     }
 
     @Test
