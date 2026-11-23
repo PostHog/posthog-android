@@ -22,6 +22,7 @@ internal class PostHogStatelessGeoIpTest {
     private lateinit var config: PostHogConfig
     private var client: PostHogStatelessInterface? = null
 
+    @Suppress("DEPRECATION")
     private fun getSut(
         disableGeoIp: Boolean = false,
         beforeSend: PostHogBeforeSend? = null,
@@ -49,7 +50,7 @@ internal class PostHogStatelessGeoIpTest {
     private fun flushedEvents(): List<PostHogEvent> {
         client!!.flush()
         val request = assertNotNull(http.takeRequest(10, TimeUnit.SECONDS))
-        assertEquals("/batch", request.path)
+        assertEquals("/i/v1/analytics/events", request.path)
         return config.serializer.deserialize<PostHogBatchEvent>(request.body.unGzip().reader()).batch
     }
 

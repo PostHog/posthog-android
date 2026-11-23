@@ -77,7 +77,7 @@ internal class PostHogSurveysSelectionTest {
             val value = flags[it.getArgument<String>(0)]
             value == true || value is String
         }
-        whenever(postHog.getFeatureFlag(any(), anyOrNull(), anyOrNull())).thenAnswer { flags[it.getArgument<String>(0)] }
+        whenever(postHog.getFeatureFlag(any(), anyOrNull())).thenAnswer { flags[it.getArgument<String>(0)] }
         val integration = PostHogSurveysIntegration(context, config)
         integration.install(postHog)
         try {

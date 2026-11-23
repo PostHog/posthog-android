@@ -44,7 +44,6 @@ internal class PostHogReplayMaskWalkBenchmark {
         assumeTrue(System.getenv("POSTHOG_BENCHMARK") == "1")
         val config =
             PostHogAndroidConfig(PROJECT_TOKEN).apply {
-                sessionReplayConfig.screenshot = true
                 sessionReplayConfig.verifyScreenshotMaskAlignment = true
             }
         sut = PostHogReplayIntegration(ApplicationProvider.getApplicationContext(), config, MainHandler())

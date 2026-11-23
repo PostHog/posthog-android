@@ -1,7 +1,6 @@
 package com.posthog.internal
 
 import com.posthog.PostHogConfig
-import com.posthog.PostHogInternal
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Request
@@ -13,8 +12,7 @@ import java.io.IOException
  * reverse proxy) to every request the SDK sends.
  * @property config The Config
  */
-@PostHogInternal
-public class CustomHeadersInterceptor(private val config: PostHogConfig) : Interceptor {
+internal class CustomHeadersInterceptor(private val config: PostHogConfig) : Interceptor {
     private companion object {
         // SDK-managed headers that custom values can't override (compared lowercase).
         private val RESERVED_HEADERS = setOf("content-type", "user-agent", "accept-encoding", "content-encoding")
