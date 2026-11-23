@@ -6,11 +6,11 @@ To send your first event, add the dependency, then call `PostHogAndroid.setup` o
 
 After `setup`, PostHog captures app lifecycle events, such as `Application Opened`, by itself. Use `capture` for your own events.
 
-Add the SDK to your app's `build.gradle.kts`:
+The SDK supports Android 6.0 (API level 23) and newer. Add it to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.posthog:posthog-android:<version>")
+    implementation("com.posthog:posthog-android:4.+")
 }
 ```
 
@@ -39,6 +39,15 @@ PostHog.close()
 
 Every `PostHog.*` method below is also available on the instance that `PostHogAndroid.with(context, config)` returns.
 
+## Offline behavior
+
+The SDK keeps capturing events while the device is offline. It stores them in a queue in the device's file storage and sends them when the device is online again.
+
+- `maxQueueSize` sets the maximum queue size. When the queue is full, the SDK deletes the oldest event first.
+- The SDK sends queued events when the app restarts and the device is online.
+- If you call `flush()` while the device is offline, it returns early and sends nothing.
+- `pushNotificationSubscriptionMaxRetries` limits only push-notification subscription retries, not event delivery.
+
 ## Connect requests to backend events
 
 Set `tracingHeaders` and install `PostHogOkHttpInterceptor` on each `OkHttpClient` whose requests should carry PostHog context. This links requests to backend events, errors and LLM traces captured by a server-side PostHog SDK.
@@ -64,3 +73,9 @@ Use exact hostnames, with no protocol, path, port or wildcard subdomain. Matchin
 ## Permissions
 
 The SDK declares `android.permission.INTERNET` and `android.permission.ACCESS_NETWORK_STATE`, and Android's manifest merger adds them to your app. It doesn't declare or need an Android `Service`.
+
+## Older versions
+
+These docs cover version 4.x.x. To check your version, look at the `com.posthog:posthog-android` line in your Gradle files, or run `./gradlew dependencies` and search for `posthog-android`.
+
+If you use version 3.x.x, see the [3.x.x reference](https://posthog.com/docs/libraries/android/3.x.x). To upgrade, follow the [migration guide](https://posthog.com/docs/libraries/android/migration).
