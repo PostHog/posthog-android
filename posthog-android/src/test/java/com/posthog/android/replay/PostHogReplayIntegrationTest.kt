@@ -2422,6 +2422,194 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    private fun remoteMinimumFixture(remoteMinimumMs: Long): Pair<RealQueueFixture, PostHogInterface> {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = remoteMinimumMs)
+        val session = UUID.randomUUID()
+        PostHogSessionManager.setSessionId(session)
+        val client = mock<PostHogInterface>()
+        whenever(client.getSessionId()).thenReturn(session)
+        return fx to client
+    }
+
+    private fun startRecordingOpeningWindow(fx: RealQueueFixture) {
+        fx.sut.start(resumeCurrent = true)
+        shadowOf(Looper.getMainLooper()).idle()
+        fx.replayQueue.add(createTestEvent("opening_meta"))
+        fx.replayQueue.add(createTestEvent("opening_full"))
+        awaitReplayExecutors()
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `minimum duration override above the remote minimum holds the buffer until the override elapses`() {
+        val (fx, client) = remoteMinimumFixture(50)
+        fx.sut.install(client)
+        try {
+            fx.sut.setSessionReplayMinimumDuration(400)
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            Thread.sleep(150)
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            Thread.sleep(300)
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `lowering the minimum duration override releases the held buffer`() {
+        val (fx, client) = remoteMinimumFixture(30_000)
+        fx.sut.install(client)
+        try {
+            startRecordingOpeningWindow(fx)
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            fx.sut.setSessionReplayMinimumDuration(0)
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `a zero minimum duration override holds nothing despite a remote minimum`() {
+        val (fx, client) = remoteMinimumFixture(30_000)
+        fx.sut.install(client)
+        try {
+            fx.sut.setSessionReplayMinimumDuration(0)
+            startRecordingOpeningWindow(fx)
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `clearing the minimum duration override goes back to the remote minimum`() {
+        val (fx, client) = remoteMinimumFixture(50)
+        fx.sut.install(client)
+        try {
+            fx.sut.setSessionReplayMinimumDuration(10_000)
+            fx.sut.start(resumeCurrent = true)
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("opening_meta"))
+            Thread.sleep(150)
+            fx.replayQueue.add(createTestEvent("opening_full"))
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            fx.sut.setSessionReplayMinimumDuration(null)
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `raising the minimum duration override does not hold snapshots again once released`() {
+        val (fx, client) = remoteMinimumFixture(30_000)
+        fx.sut.install(client)
+        try {
+            startRecordingOpeningWindow(fx)
+            fx.sut.setSessionReplayMinimumDuration(0)
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+
+            fx.sut.setSessionReplayMinimumDuration(60_000)
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `a negative minimum duration override is ignored`() {
+        val (fx, client) = remoteMinimumFixture(30_000)
+        fx.sut.install(client)
+        try {
+            fx.sut.setSessionReplayMinimumDuration(0)
+            fx.sut.setSessionReplayMinimumDuration(-1)
+            startRecordingOpeningWindow(fx)
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `the minimum duration override survives a session rotation`() {
+        val (fx, client) = remoteMinimumFixture(30_000)
+        fx.sut.install(client)
+        try {
+            fx.sut.setSessionReplayMinimumDuration(0)
+            val rotated = UUID.randomUUID()
+            PostHogSessionManager.setSessionId(rotated)
+            whenever(client.getSessionId()).thenReturn(rotated)
+            fx.sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            startRecordingOpeningWindow(fx)
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
+    fun `clearing the minimum duration override keeps native trigger groups deciding the minimum`() {
+        val minimum = java.util.concurrent.atomic.AtomicLong(30_000)
+        val (fx, client) = durationHoldFixture(minimum)
+        fx.sut.install(client)
+        try {
+            startRecordingOpeningWindow(fx)
+
+            fx.sut.setSessionReplayMinimumDuration(null)
+            awaitReplayExecutors()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+
+            minimum.set(0)
+            fx.sut.onEvent("purchase", emptyMap())
+            shadowOf(Looper.getMainLooper()).idle()
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 3 }
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     // A flag turning off can leave every group pending: nothing is activated, so there is no minimum either.
     private fun stubPendingTriggerGroups(
         fx: RealQueueFixture,

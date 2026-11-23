@@ -287,6 +287,10 @@ public class PostHogReplayIntegration(
     private var hasPassedMinimumDuration: Boolean = false
     private var cachedMinimumDurationMs: Long? = null
 
+    // Set by a wrapper SDK that evaluates trigger groups itself; wins over the remote config minimum.
+    @Volatile
+    private var minimumDurationOverrideMs: Long? = null
+
     // True while recording optimistically off the disk-cached session-replay flag and the first
     // live remote config is still pending. Snapshots are buffered (not persisted) until the server
     // confirms or rejects the flag. Always read/written under [bufferingLock].
@@ -1119,6 +1123,29 @@ public class PostHogReplayIntegration(
             } catch (e: Throwable) {
                 config.logger.log("Session Replay screenshot buffer cleanup failed: $e.")
             }
+        }
+    }
+
+    /**
+     * Overrides the minimum duration the replay buffer holds snapshots for, for first-party PostHog
+     * wrapper SDKs that evaluate trigger groups themselves. Not for app use.
+     *
+     * [milliseconds] 0 means no minimum, and null clears the override so the remote config decides
+     * again. Negative values are ignored. Takes effect at once: a lower value releases held snapshots,
+     * a higher one never recalls snapshots already released. The override survives session rotation.
+     */
+    @PostHogInternalReplayApi
+    public fun setSessionReplayMinimumDuration(milliseconds: Long?) {
+        try {
+            if (milliseconds != null && milliseconds < 0) {
+                config.logger.log("[Session Replay] Minimum duration must be non-negative, got $milliseconds. Ignoring.")
+                return
+            }
+            minimumDurationOverrideMs = milliseconds
+            updateCachedMinimumDuration()
+            releaseHeldBufferIfDue()
+        } catch (e: Throwable) {
+            config.logger.log("[Session Replay] setSessionReplayMinimumDuration failed: $e.")
         }
     }
 
@@ -3667,8 +3694,11 @@ public class PostHogReplayIntegration(
 
     private fun updateCachedMinimumDuration() {
         val remoteConfig = config.remoteConfigHolder
+        val override = minimumDurationOverrideMs
         val minimumDuration =
-            if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
+            if (override != null) {
+                override
+            } else if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
                 val sessionId = PostHogSessionManager.peekSessionId()?.toString()
                 sessionId?.let { remoteConfig.getSessionRecordingTriggerGroupsMinimumDurationMs(it) }
             } else {
