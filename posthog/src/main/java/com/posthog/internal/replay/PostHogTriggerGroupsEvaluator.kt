@@ -2,6 +2,7 @@ package com.posthog.internal.replay
 
 import com.posthog.internal.sampleOnProperty
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
+import java.util.Objects
 
 internal data class PostHogTriggerGroupMatch(
     val id: String,
@@ -261,7 +262,7 @@ internal class PostHogTriggerGroupsEvaluator {
         sessionId: String,
     ): Boolean {
         val stored = samplingDecisions[group.id]
-        if (stored != null && stored.sessionId == sessionId && stored.sampleRate == group.sampleRate) {
+        if (stored != null && stored.sessionId == sessionId && Objects.equals(stored.sampleRate, group.sampleRate)) {
             return stored.sampled
         }
 
