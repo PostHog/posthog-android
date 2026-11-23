@@ -36,6 +36,7 @@ internal class PostHogWrapperEventTest {
 
     private fun getSut(
         http: MockWebServer,
+        replay: Boolean = true,
         configure: PostHogConfig.() -> Unit = {},
     ): PostHogInterface {
         val storage = tmpDir.newFolder().absolutePath
@@ -50,6 +51,10 @@ internal class PostHogWrapperEventTest {
                 sendFeatureFlagEvent = false
                 cachePreferences = PostHogMemoryPreferences()
                 context = TestPostHogContext()
+                if (replay) {
+                    sessionReplay = true
+                    addIntegration(PostHogSessionReplayHandlerFake(true))
+                }
                 configure()
             }
         return PostHog.withInternal(
@@ -359,6 +364,21 @@ internal class PostHogWrapperEventTest {
         val sent = events(takeRequest(http)).single().properties()
         assertNotNull(sent["\$sdk_debug_session_start"])
         assertFalse(sent.containsKey("\$recording_status"))
+    }
+
+    @Test
+    fun `send without a replay handler drops the replay debug bundle`() {
+        val http = httpServers.mockHttp()
+        val sut = getSut(http, replay = false)
+        sut.startSession()
+        val event = assertNotNull(sut.buildEventForWrapper("\$first"))
+
+        assertNotNull(sut.sendBuiltEventForWrapper(event))
+
+        queueExecutor.awaitExecution()
+        val sent = events(takeRequest(http)).single().properties()
+        assertFalse(sent.containsKey("\$sdk_debug_session_start"))
+        assertEquals("disabled", sent["\$recording_status"])
     }
 
     @Test
