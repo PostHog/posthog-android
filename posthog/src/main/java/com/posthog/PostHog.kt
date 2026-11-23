@@ -1059,7 +1059,7 @@ public class PostHog private constructor(
             if (claimed) {
                 sessionStart(sessionId, managerStart)?.let { props["\$sdk_debug_session_start"] = it }
             }
-            queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+            queue?.backedUpSize?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }

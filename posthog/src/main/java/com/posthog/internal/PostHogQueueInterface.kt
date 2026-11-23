@@ -14,6 +14,13 @@ import com.posthog.PostHogInternal
 public interface PostHogQueueInterface<Record> {
     public val size: Int
 
+    /**
+     * The size once the queue has reached its flush threshold, else null: below it the queue is
+     * ordinary batching, not a backlog worth reporting.
+     */
+    public val backedUpSize: Int?
+        get() = null
+
     public fun add(record: Record)
 
     public fun flush()
