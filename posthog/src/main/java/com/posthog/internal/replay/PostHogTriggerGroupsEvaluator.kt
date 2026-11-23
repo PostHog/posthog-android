@@ -1,6 +1,7 @@
 package com.posthog.internal.replay
 
 import com.posthog.internal.sampleOnProperty
+import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
 internal data class PostHogTriggerGroupMatch(
     val id: String,
@@ -9,6 +10,7 @@ internal data class PostHogTriggerGroupMatch(
 )
 
 // Mirrors posthog-js triggerGroupsMatchSessionRecordingStatus.
+@IgnoreJRERequirement
 internal data class PostHogTriggerGroupsDecision(
     val shouldRecord: Boolean,
     val hasPendingGroups: Boolean,
