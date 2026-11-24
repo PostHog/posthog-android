@@ -3006,6 +3006,109 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // A real remote config, so the rotation runs through the real trigger group evaluation.
+    private fun cachedTriggerGroupConfig(conditions: Map<String, Any?>): PostHogAndroidConfig {
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue(
+            "sessionReplay",
+            mapOf(
+                "endpoint" to "/s/",
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(mapOf("id" to "g1", "name" to "g1", "sampleRate" to 1.0, "conditions" to conditions)),
+            ),
+        )
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN, host = "http://localhost").apply {
+                cachePreferences = preferences
+                sessionReplay = true
+            }
+        config.remoteConfigHolder = PostHogRemoteConfig(config, PostHogApi(config), createReplayExecutor())
+        return config
+    }
+
+    private val checkoutScreenGroup = mapOf("urls" to listOf(mapOf("url" to "checkout", "matching" to "regex")))
+
+    private fun withCachedTriggerGroup(
+        conditions: Map<String, Any?>,
+        test: (PostHogReplayIntegration) -> Unit,
+    ) {
+        val sut = getSut(cachedTriggerGroupConfig(conditions))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            test(sut)
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    private fun rotateSession(sut: PostHogReplayIntegration) {
+        PostHogSessionManager.setSessionId(UUID.randomUUID())
+        sut.onSessionIdChanged()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun captureEvent(
+        sut: PostHogReplayIntegration,
+        event: String,
+        properties: Map<String, Any> = emptyMap(),
+    ) {
+        sut.onEvent(event, properties)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun captureScreen(
+        sut: PostHogReplayIntegration,
+        name: String,
+    ) = captureEvent(sut, "\$screen", mapOf("\$screen_name" to name))
+
+    @Test
+    fun `a session rotation leaves an event trigger group pending until a matching event`() {
+        withCachedTriggerGroup(mapOf("events" to listOf(mapOf("name" to "purchase")))) { sut ->
+            captureEvent(sut, "purchase")
+            assertTrue(sut.isActive(), "session A")
+
+            rotateSession(sut)
+            assertFalse(sut.isActive(), "session B after the rotation")
+
+            captureEvent(sut, "other")
+            assertFalse(sut.isActive(), "session B after an event that does not match")
+
+            captureEvent(sut, "purchase")
+            assertTrue(sut.isActive(), "session B after the matching event")
+        }
+    }
+
+    @Test
+    fun `a session rotation on a matching screen records the new session without a new event`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session A")
+
+            rotateSession(sut)
+            assertTrue(sut.isActive(), "session B")
+        }
+    }
+
+    @Test
+    fun `a session rotation on a screen that does not match stays pending`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            captureScreen(sut, "/home")
+            assertTrue(sut.isActive(), "session A")
+
+            rotateSession(sut)
+            assertFalse(sut.isActive(), "session B after the rotation")
+
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session B after the matching screen")
+        }
+    }
+
     // An event-leg group that samples the session in (group rate 1.0); the local sample rate
     // must still cap it, exactly as makeSamplingDecision does under v2.
     private fun triggerGroupsEventConfig(
