@@ -291,6 +291,13 @@ public class PostHogReplayIntegration(
     // resolution act on the wrong window. Always read/written under [bufferingLock].
     private var bufferingGeneration: Int = 0
 
+    // Masking when the buffered snapshots were captured. Guarded by [bufferingLock].
+    private var armedMaskAllText: Boolean = false
+    private var armedMaskAllImages: Boolean = false
+
+    private val remoteMaskAllTextLogged = AtomicBoolean(false)
+    private val remoteMaskAllImagesLogged = AtomicBoolean(false)
+
     private val replayBufferDelegate =
         object : PostHogReplayBufferDelegate {
             override val isBuffering: Boolean
@@ -579,15 +586,15 @@ public class PostHogReplayIntegration(
         }
         val timestamp = config.dateProvider.currentTimeMillis()
         val colorMode = config.sessionReplayConfig.screenshotColorMode
-        val maskAllTextInputs = config.sessionReplayConfig.maskAllTextInputs
-        val maskAllImages = config.sessionReplayConfig.maskAllImages
+        val maskAllTextInputs = maskAllTextInputsInEffect
+        val maskAllImages = maskAllImagesInEffect
         val scene = mutableListOf<RRWireframe>()
         val sceneMasks = IdentityHashMap<View, List<Rect>>()
         val unmaskedWindows = mutableListOf<Window>()
 
         fun maskingSettingsChanged(): Boolean =
-            config.sessionReplayConfig.maskAllTextInputs != maskAllTextInputs ||
-                config.sessionReplayConfig.maskAllImages != maskAllImages
+            maskAllTextInputsInEffect != maskAllTextInputs ||
+                maskAllImagesInEffect != maskAllImages
 
         fun restoreDirty(layer: SceneLayer) {
             synchronized(decorViews) {
@@ -1043,10 +1050,7 @@ public class PostHogReplayIntegration(
         updateCachedMinimumDuration()
 
         // Buffer snapshots until the first live remote config resolves, unless it already has.
-        synchronized(bufferingLock) {
-            awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
-            bufferingGeneration++
-        }
+        armFirstRemoteConfigGate()
 
         // workaround for react native that is started after the window is added
         // Curtains.rootViews should be empty for normal apps yet
@@ -1452,14 +1456,55 @@ public class PostHogReplayIntegration(
         return (parent as? ViewGroup)?.isInLayout == true
     }
 
+    /**
+     * The masking flag in effect now: the local value OR the project value from remote config.
+     * For first-party wrapper SDKs only.
+     */
+    @PostHogInternalReplayApi
+    public fun resolvedMaskAllTextInputs(): Boolean = maskAllTextInputsInEffect
+
+    @PostHogInternalReplayApi
+    public fun resolvedMaskAllImages(): Boolean = maskAllImagesInEffect
+
+    private val maskAllTextInputsInEffect: Boolean
+        get() =
+            config.sessionReplayConfig.maskAllTextInputs ||
+                remoteMaskTurnedOn(
+                    config.remoteConfigHolder?.isSessionRecordingMaskAllTextEnabled() == true,
+                    remoteMaskAllTextLogged,
+                    "maskAllTextInputs",
+                )
+
+    private val maskAllImagesInEffect: Boolean
+        get() =
+            config.sessionReplayConfig.maskAllImages ||
+                remoteMaskTurnedOn(
+                    config.remoteConfigHolder?.isSessionRecordingMaskAllImagesEnabled() == true,
+                    remoteMaskAllImagesLogged,
+                    "maskAllImages",
+                )
+
+    private fun remoteMaskTurnedOn(
+        remote: Boolean,
+        logged: AtomicBoolean,
+        flag: String,
+    ): Boolean {
+        if (remote && !logged.get() && logged.compareAndSet(false, true)) {
+            config.logger.log(
+                "[Session Replay] The project setting turns on $flag, which is off in the app config. Masking stays on.",
+            )
+        }
+        return remote
+    }
+
     private fun View.isTextInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs)
+        return isNoCapture(maskAllTextInputsInEffect)
     }
 
     private fun View.isAnyInputSensitive(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return isNoCapture(config.sessionReplayConfig.maskAllTextInputs) || config.sessionReplayConfig.maskAllImages
+        return isNoCapture(maskAllTextInputsInEffect) || maskAllImagesInEffect
     }
 
     private fun TextView.shouldMaskTextView(ancestorUnmasked: Boolean = false): Boolean {
@@ -1874,6 +1919,8 @@ public class PostHogReplayIntegration(
                     val semanticsNodes = semanticsOwner.getAllSemanticsNodes(false)
                     val unmaskedLayouts = mutableSetOf<LayoutInfo>()
 
+                    val maskAllTextInputs = maskAllTextInputsInEffect
+                    val maskAllImages = maskAllImagesInEffect
                     semanticsNodes.forEach { node ->
                         val hasText = node.config.contains(SemanticsProperties.Text)
                         val hasEditableText = node.config.contains(SemanticsProperties.EditableText)
@@ -1901,24 +1948,24 @@ public class PostHogReplayIntegration(
                             else -> {
                                 when {
                                     (hasText || hasEditableText) &&
-                                        (config.sessionReplayConfig.maskAllTextInputs || hasPassword) -> {
+                                        (maskAllTextInputs || hasPassword) -> {
                                         maskableWidgets.add(node.maskBounds())
                                     }
 
-                                    hasImage && config.sessionReplayConfig.maskAllImages && !node.isScrim(view.rootView) -> {
+                                    hasImage && maskAllImages && !node.isScrim(view.rootView) -> {
                                         maskableWidgets.add(node.maskBounds())
                                     }
 
                                     // clearAndSetSemantics hides what the node draws, so assume it is sensitive.
                                     node.config.isClearingSemantics &&
-                                        (config.sessionReplayConfig.maskAllTextInputs || config.sessionReplayConfig.maskAllImages) -> {
+                                        (maskAllTextInputs || maskAllImages) -> {
                                         maskableWidgets.add(node.maskBounds())
                                     }
                                 }
                             }
                         }
                     }
-                    if (config.sessionReplayConfig.maskAllImages) {
+                    if (maskAllImages) {
                         collectComposeImageRects(
                             semanticsOwner.unmergedRootSemanticsNode.layoutInfo,
                             unmaskedLayouts,
@@ -2903,7 +2950,7 @@ public class PostHogReplayIntegration(
 
     private fun ImageView.shouldMaskImage(ancestorUnmasked: Boolean = false): Boolean {
         if (ancestorUnmasked || isUnmasked()) return false
-        return isNoCapture(config.sessionReplayConfig.maskAllImages) && drawable?.shouldMaskDrawable() == true
+        return isNoCapture(maskAllImagesInEffect) && drawable?.shouldMaskDrawable() == true
     }
 
     private fun Spinner.shouldMaskSpinner(ancestorUnmasked: Boolean = false): Boolean {
@@ -3357,6 +3404,7 @@ public class PostHogReplayIntegration(
         }
 
         updateCachedMinimumDuration()
+        dropBufferIfMaskingGotStricter()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
         // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
         // synchronously (notifyRemoteConfigLoaded=false) before this single callback fires, so the
@@ -3519,6 +3567,48 @@ public class PostHogReplayIntegration(
         }
     }
 
+    private fun armFirstRemoteConfigGate(resetMinimumDuration: Boolean = false) {
+        val maskAllText = maskAllTextInputsInEffect
+        val maskAllImages = maskAllImagesInEffect
+        synchronized(bufferingLock) {
+            if (resetMinimumDuration) {
+                hasPassedMinimumDuration = false
+            }
+            awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
+            bufferingGeneration++
+            rearmMaskingLocked(maskAllText, maskAllImages)
+        }
+    }
+
+    private fun rearmMaskingLocked(
+        maskAllText: Boolean,
+        maskAllImages: Boolean,
+    ): Boolean {
+        val stricter = (maskAllText && !armedMaskAllText) || (maskAllImages && !armedMaskAllImages)
+        armedMaskAllText = maskAllText
+        armedMaskAllImages = maskAllImages
+        return stricter
+    }
+
+    /**
+     * Drops unsent snapshots captured under weaker masking than remote config now requires.
+     * Forces a keyframe: the dropped window may hold the only full snapshot.
+     */
+    private fun dropBufferIfMaskingGotStricter() {
+        val maskAllText = maskAllTextInputsInEffect
+        val maskAllImages = maskAllImagesInEffect
+        val stricter = synchronized(bufferingLock) { rearmMaskingLocked(maskAllText, maskAllImages) }
+        if (!stricter) {
+            return
+        }
+        config.logger.log("[Session Replay] Remote config turned on masking. Dropping buffered snapshots.")
+        replayQueue?.clearBuffer()
+        clearSnapshotStates()
+        synchronized(decorViews) {
+            decorViews.keys.forEach { it.postInvalidate() }
+        }
+    }
+
     // MARK: - Buffering State
 
     /**
@@ -3526,15 +3616,11 @@ public class PostHogReplayIntegration(
      * as not yet passed minimum duration.
      */
     private fun resetBufferingState() {
-        synchronized(bufferingLock) {
-            hasPassedMinimumDuration = false
-            // Re-arm after reset()/identity change (PostHogRemoteConfig.clear() cleared its fetched
-            // flag); a plain session rotation keeps it disarmed since the config is still fetched.
-            awaitingFirstRemoteConfig = shouldAwaitFirstRemoteConfig()
-            // Supersede any in-flight resolveFirstRemoteConfig so it can't migrate or clear this
-            // session's buffer after we've re-armed and cleared it below.
-            bufferingGeneration++
-        }
+        // Re-arm after reset()/identity change (PostHogRemoteConfig.clear() cleared its fetched
+        // flag); a plain session rotation keeps it disarmed since the config is still fetched.
+        // Re-arming bumps the generation, which supersedes any in-flight resolveFirstRemoteConfig so
+        // it can't migrate or clear this session's buffer after we've re-armed and cleared it below.
+        armFirstRemoteConfigGate(resetMinimumDuration = true)
         // Clear any buffered events from previous session
         replayQueue?.clearBuffer()
     }

@@ -173,6 +173,12 @@ public class PostHogRemoteConfig(
     @Volatile
     private var sessionRecordingSampleRate: Double? = null
 
+    @Volatile
+    private var sessionRecordingMaskAllText = false
+
+    @Volatile
+    private var sessionRecordingMaskAllImages = false
+
     /**
      * Event triggers for session recording.
      * When configured, session recording only starts after one of these events is captured.
@@ -559,6 +565,12 @@ public class PostHogRemoteConfig(
         processSessionRecordingConfig(recordingConfig, persist = false)
     }
 
+    private fun parseMobileMasking(masking: Any?) {
+        val mobile = (masking as? Map<*, *>)?.get("mobile") as? Map<*, *>
+        sessionRecordingMaskAllText = mobile?.get("maskAllText") == true
+        sessionRecordingMaskAllImages = mobile?.get("maskAllImages") == true
+    }
+
     private fun processSessionRecordingConfig(
         sessionRecording: Any?,
         // persist=true writes the config to the cache (the /config path); false only evaluates it
@@ -574,6 +586,8 @@ public class PostHogRemoteConfig(
                     sessionReplayLinkedFlagConfigured = false
                 }
                 consoleLogRecordingEnabled = false
+                sessionRecordingMaskAllText = false
+                sessionRecordingMaskAllImages = false
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -612,13 +626,14 @@ public class PostHogRemoteConfig(
 
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(it["minimumDurationMilliseconds"])
 
+                    parseMobileMasking(it["masking"])
+
                     if (persist) {
                         config.cachePreferences?.setValue(SESSION_REPLAY, it)
                     }
 
                     // TODO:
                     // networkPayloadCapture -> Boolean or null, can also be networkPayloadCapture={recordBody=true, recordHeaders=true},
-                    // masking -> array of key/value eg blockSelector: img, maskAllInputs: true, maskTextSelector: *
                 }
             }
             else -> {
@@ -1211,6 +1226,8 @@ public class PostHogRemoteConfig(
                     sessionRecordingEventTriggers = parseEventTriggers(sessionRecording["eventTriggers"])
 
                     sessionRecordingMinimumDurationMs = parseMinimumDurationMs(sessionRecording["minimumDurationMilliseconds"])
+
+                    parseMobileMasking(sessionRecording["masking"])
                 }
             }
         }
@@ -1512,6 +1529,12 @@ public class PostHogRemoteConfig(
      * Returns the current session recording sample rate, or null if not set.
      */
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
+
+    /** True only when remote config sets sessionRecording.masking.mobile.maskAllText to true. */
+    public fun isSessionRecordingMaskAllTextEnabled(): Boolean = sessionRecordingMaskAllText
+
+    /** True only when remote config sets sessionRecording.masking.mobile.maskAllImages to true. */
+    public fun isSessionRecordingMaskAllImagesEnabled(): Boolean = sessionRecordingMaskAllImages
 
     /**
      * Returns the current event triggers for session recording, or null if not configured.
