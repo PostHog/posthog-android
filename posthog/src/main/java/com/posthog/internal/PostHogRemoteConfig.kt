@@ -558,7 +558,11 @@ public class PostHogRemoteConfig(
         return milliseconds
     }
 
-    private fun applyTriggerGroupsConfig(sessionRecording: Map<String, Any?>): PostHogTriggerGroupsConfig? {
+    private fun applyTriggerGroupsConfig(
+        sessionRecording: Map<String, Any?>,
+        // False for a config that was read again from the cache: the groups are the ones already checked.
+        groupsLoaded: Boolean,
+    ): PostHogTriggerGroupsConfig? {
         val parsed =
             parseTriggerGroupsConfig(sessionRecording) { message ->
                 config.logger.log(message)
@@ -567,6 +571,9 @@ public class PostHogRemoteConfig(
         // an evaluator that still holds no or stale groups.
         if (parsed != null) {
             triggerGroupsEvaluator.onConfig(parsed.groups)
+            if (groupsLoaded) {
+                triggerGroupsEvaluator.onGroupsLoaded()
+            }
         }
         sessionRecordingTriggerGroups = parsed
         return parsed
@@ -621,7 +628,7 @@ public class PostHogRemoteConfig(
                     config.snapshotEndpoint = it["endpoint"] as? String
                         ?: config.snapshotEndpoint
 
-                    val triggerGroups = applyTriggerGroupsConfig(it)
+                    val triggerGroups = applyTriggerGroupsConfig(it, groupsLoaded = persist)
                     val decisionConfig = linkedFlagFreeConfig(it, triggerGroups)
 
                     // Resolved before the lock: isRecordingActive fires the feature-flag-called
@@ -1232,7 +1239,7 @@ public class PostHogRemoteConfig(
                 val flags = preferences.getValue(FEATURE_FLAGS) as? Map<String, Any>
 
                 if (sessionRecording != null) {
-                    val triggerGroups = applyTriggerGroupsConfig(sessionRecording)
+                    val triggerGroups = applyTriggerGroupsConfig(sessionRecording, groupsLoaded = true)
                     val decisionConfig = linkedFlagFreeConfig(sessionRecording, triggerGroups)
 
                     sessionReplayLinkedFlagConfigured = decisionConfig["linkedFlag"] != null
@@ -1622,7 +1629,8 @@ public class PostHogRemoteConfig(
     /**
      * Checks the screen the app is already on against the trigger groups, once for a [sessionId] that has no
      * `$screen` event yet. Takes the current session id only. With [includeUnevaluatedScreen], also checks a
-     * screen of [sessionId] that was only remembered. Returns true when it activated at least one group.
+     * screen of [sessionId] that was only remembered, or that the last loaded trigger groups were not checked
+     * against. Returns true when it activated at least one group.
      */
     public fun checkSessionRecordingScreenOnNewSession(
         sessionId: String,

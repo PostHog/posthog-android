@@ -3592,6 +3592,44 @@ internal class PostHogRemoteConfigTest {
         sut.clear()
     }
 
+    private fun cachedScreenGroupForProPlan() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "g1",
+                            "sampleRate" to 1.0,
+                            "conditions" to
+                                mapOf(
+                                    "urls" to listOf(mapOf("url" to "checkout", "matching" to "regex")),
+                                    "properties" to listOf(mapOf("key" to "plan", "type" to "person", "value" to "pro")),
+                                ),
+                        ),
+                    ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a flags reload does not make the trigger groups check the screen again`() {
+        cachedScreenGroupForProPlan()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut = getSut(host = http.url("/").toString())
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "\$screen", mapOf("\$screen_name" to "/checkout")))
+        sut.setPersonPropertiesForFlags(mapOf("plan" to "pro"))
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.checkSessionRecordingScreenOnNewSession("session-1", includeUnevaluatedScreen = true))
+
+        sut.clear()
+        http.shutdown()
+    }
+
     @Test
     fun `v2 trigger groups ignore a leftover linkedFlag`() {
         preferences.setValue(

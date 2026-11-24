@@ -686,4 +686,56 @@ internal class PostHogTriggerGroupsEvaluatorTest {
 
         assertFalse(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
     }
+
+    @Test
+    fun `a group load checks a screen again that was evaluated live`() {
+        configure(screenGroupWithFilter(mapOf("key" to "plan", "type" to "person", "value" to "pro")))
+        assertFalse(screen(name = "/checkout", personProperties = mapOf("plan" to "free")))
+
+        evaluator.onGroupsLoaded()
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", mapOf("plan" to "pro")), "not without the request")
+        assertTrue(evaluator.checkScreenOnNewSession("session-1", mapOf("plan" to "pro"), includeUnevaluatedScreen = true))
+        assertTrue(decide().shouldRecord)
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", mapOf("plan" to "pro"), includeUnevaluatedScreen = true))
+    }
+
+    @Test
+    fun `a group load checks the screen of an older session in a session that was already checked`() {
+        configure(group(id = "g1", conditions = urlLeg("home")))
+        assertFalse(screen(name = "/checkout"))
+        assertFalse(evaluator.checkScreenOnNewSession("session-2", null))
+
+        configure(group(id = "g1", conditions = urlLeg("home")), group(id = "g2", conditions = urlLeg("checkout")))
+        evaluator.onGroupsLoaded()
+
+        assertTrue(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
+        assertEquals(listOf("g2"), decide(sessionId = "session-2").matchedGroups.map { it.id })
+    }
+
+    @Test
+    fun `a group load keeps an activated group activated`() {
+        configure(
+            group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))),
+            group(id = "g2", conditions = urlLeg("checkout")),
+        )
+        assertTrue(onEvent(event = "purchase"))
+        assertTrue(screen(name = "/checkout"))
+
+        evaluator.onGroupsLoaded()
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", null, includeUnevaluatedScreen = true))
+        assertEquals(listOf("g1", "g2"), decide().matchedGroups.map { it.id })
+    }
+
+    @Test
+    fun `a group load does not bring back the screen the app left`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        rememberScreen(name = "/checkout")
+        evaluator.skipScreenCheck("session-2")
+
+        evaluator.onGroupsLoaded()
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
+    }
 }

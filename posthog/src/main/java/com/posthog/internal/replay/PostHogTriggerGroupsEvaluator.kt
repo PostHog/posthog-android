@@ -36,7 +36,7 @@ internal class PostHogTriggerGroupsEvaluator {
     private var lastScreenSessionId: String? = null
     private var screenCheckedSessionId: String? = null
 
-    // The last seen screen was remembered, and no group was checked against it yet.
+    // The last seen screen was remembered, and the current groups were not checked against it yet.
     private var lastScreenUnevaluated = false
 
     private val samplingDecisions = mutableMapOf<String, StoredSamplingDecision>()
@@ -52,6 +52,14 @@ internal class PostHogTriggerGroupsEvaluator {
             if (groups == newGroups) return
             samplingDecisions.keys.retainAll(newGroups.map { it.id }.toSet())
             groups = newGroups
+        }
+    }
+
+    // A group load can change the result for the screen the app is on (other groups, other person
+    // properties), so the next check with includeUnevaluatedScreen takes that screen again.
+    fun onGroupsLoaded() {
+        synchronized(lock) {
+            lastScreenUnevaluated = true
         }
     }
 
@@ -118,6 +126,7 @@ internal class PostHogTriggerGroupsEvaluator {
     fun skipScreenCheck(sessionId: String) {
         synchronized(lock) {
             screenCheckedSessionId = sessionId
+            lastScreenName = null
             lastScreenUnevaluated = false
         }
     }

@@ -2999,7 +2999,7 @@ public class PostHogReplayIntegration(
     // before it ever reaches start() — otherwise later automatic starts stay blocked.
     override fun onStartRequested() {
         explicitlyStopped = false
-        // A screen captured while stopped was remembered, and no trigger group was checked against it.
+        // A screen captured while stopped, or trigger groups loaded while stopped: that check is still due.
         checkTriggerGroupsScreenOnNewSession(PostHogSessionManager.peekSessionId()?.toString(), includeUnevaluatedScreen = true)
     }
 
@@ -3540,6 +3540,9 @@ public class PostHogReplayIntegration(
             return
         }
 
+        // The loaded trigger groups were not checked against the screen the app is on. Before the minimum
+        // and the gates below: both read the activation.
+        checkTriggerGroupsScreenOnNewSession(PostHogSessionManager.peekSessionId()?.toString(), includeUnevaluatedScreen = true)
         updateCachedMinimumDuration()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
         // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and

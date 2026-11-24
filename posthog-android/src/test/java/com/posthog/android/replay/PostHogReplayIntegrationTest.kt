@@ -79,6 +79,8 @@ import com.posthog.internal.replay.RRWireframe
 import curtains.Curtains
 import curtains.DispatchState
 import curtains.OnRootViewsChangedListener
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -3210,6 +3212,114 @@ internal class PostHogReplayIntegrationTest {
 
             captureScreen(sut, "/checkout")
             assertTrue(sut.isActive(), "after the next screen event")
+        }
+    }
+
+    private fun screenGroupJson(
+        id: String,
+        pattern: String,
+    ) = """{"id":"$id","name":"$id","sampleRate":1.0,"conditions":{"urls":[{"url":"$pattern","matching":"regex"}]}}"""
+
+    // Loads a /config response with the given trigger groups and delivers it to the integration.
+    private fun loadTriggerGroups(
+        http: MockWebServer,
+        config: PostHogAndroidConfig,
+        sut: PostHogReplayIntegration,
+        vararg groups: String,
+    ) {
+        val sessionRecording = """{"endpoint":"/s/","version":2,"triggerGroups":[${groups.joinToString(",")}]}"""
+        http.enqueue(MockResponse().setBody("""{"hasFeatureFlags":false,"sessionRecording":$sessionRecording}"""))
+        config.remoteConfigHolder!!.loadRemoteConfig("distinct-id", anonymousId = null, groups = null)
+        awaitReplayExecutors()
+        sut.onRemoteConfig()
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private fun withLiveRemoteConfig(
+        cachedGroups: List<Map<String, Any?>>? = null,
+        test: (MockWebServer, PostHogAndroidConfig, PostHogReplayIntegration) -> Unit,
+    ) {
+        val http = MockWebServer()
+        http.start()
+        try {
+            val preferences = PostHogMemoryPreferences()
+            cachedGroups?.let {
+                preferences.setValue("sessionReplay", mapOf("endpoint" to "/s/", "version" to 2, "triggerGroups" to it))
+            }
+            val config =
+                PostHogAndroidConfig(PROJECT_TOKEN, host = http.url("/").toString()).apply {
+                    cachePreferences = preferences
+                    sessionReplay = true
+                }
+            config.remoteConfigHolder = PostHogRemoteConfig(config, PostHogApi(config), createReplayExecutor())
+            withInstalledSut(config) { sut -> test(http, config, sut) }
+        } finally {
+            http.shutdown()
+        }
+    }
+
+    @Test
+    fun `a matching screen before the first trigger group config records once the config arrives`() {
+        withLiveRemoteConfig { http, config, sut ->
+            captureScreen(sut, "/checkout")
+            assertFalse(sut.isActive(), "before the config")
+
+            loadTriggerGroups(http, config, sut, screenGroupJson("g1", "checkout"))
+            assertTrue(sut.isActive(), "after the config")
+        }
+    }
+
+    @Test
+    fun `a screen that does not match stays pending after the trigger group config arrives`() {
+        withLiveRemoteConfig { http, config, sut ->
+            captureScreen(sut, "/home")
+
+            loadTriggerGroups(http, config, sut, screenGroupJson("g1", "checkout"))
+            assertFalse(sut.isActive(), "after the config")
+
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "after the matching screen")
+        }
+    }
+
+    @Test
+    fun `a config reload that adds a matching trigger group records without a new event`() {
+        val homeGroup =
+            mapOf(
+                "id" to "g1",
+                "name" to "g1",
+                "sampleRate" to 1.0,
+                "conditions" to mapOf("urls" to listOf(mapOf("url" to "home", "matching" to "regex"))),
+            )
+        withLiveRemoteConfig(cachedGroups = listOf(homeGroup)) { http, config, sut ->
+            captureScreen(sut, "/checkout")
+            assertFalse(sut.isActive(), "evaluated live, no group matches")
+
+            loadTriggerGroups(http, config, sut, screenGroupJson("g1", "home"), screenGroupJson("g2", "checkout"))
+            assertTrue(sut.isActive(), "after the reload")
+        }
+    }
+
+    @Test
+    fun `a trigger group load while replay is stopped activates nothing until the next start`() {
+        val homeGroup =
+            mapOf(
+                "id" to "g1",
+                "name" to "g1",
+                "sampleRate" to 1.0,
+                "conditions" to mapOf("urls" to listOf(mapOf("url" to "home", "matching" to "regex"))),
+            )
+        withLiveRemoteConfig(cachedGroups = listOf(homeGroup)) { http, config, sut ->
+            val sessionId = PostHogSessionManager.peekSessionId().toString()
+            captureScreen(sut, "/checkout")
+            requestStop(sut)
+
+            loadTriggerGroups(http, config, sut, screenGroupJson("g1", "home"), screenGroupJson("g2", "checkout"))
+            assertFalse(config.remoteConfigHolder!!.isSessionRecordingPermittedByTriggerGroups(sessionId), "while stopped")
+            assertFalse(sut.isActive(), "while stopped")
+
+            requestStart(sut)
+            assertTrue(sut.isActive(), "after the start")
         }
     }
 
