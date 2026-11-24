@@ -35,6 +35,7 @@ internal fun BottomSection(
                 contentColor = appearance.submitButtonTextColor,
             ),
     ) {
-        Text(text = label)
+        // Button applies its own label style, so the survey font must be set explicitly.
+        Text(text = label, fontFamily = appearance.fontFamily)
     }
 }
