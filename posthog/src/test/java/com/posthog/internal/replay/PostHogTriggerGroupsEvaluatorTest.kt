@@ -9,7 +9,8 @@ import kotlin.test.assertTrue
 private val NO_SAMPLE_RATE = Any()
 
 internal class PostHogTriggerGroupsEvaluatorTest {
-    private val evaluator = PostHogTriggerGroupsEvaluator()
+    private var currentSessionId: String? = null
+    private val evaluator = PostHogTriggerGroupsEvaluator { currentSessionId }
 
     private fun configure(vararg groups: Map<String, Any?>) {
         val config =
@@ -838,5 +839,30 @@ internal class PostHogTriggerGroupsEvaluatorTest {
         assertFalse(evaluator.checkScreenOnNewSession("session-b", null, includeUnevaluatedScreen = true))
         assertTrue(decide(sessionId = "session-b").hasPendingGroups)
         assertTrue(screen(sessionId = "session-b", name = "/checkout"))
+    }
+
+    @Test
+    fun `a session that was left activates again once it is the current session`() {
+        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
+        assertTrue(onEvent(sessionId = "session-a", event = "purchase"))
+        assertFalse(onEvent(sessionId = "session-b", event = "other"))
+
+        currentSessionId = "session-a"
+        assertTrue(onEvent(sessionId = "session-a", event = "purchase"))
+        assertTrue(decide(sessionId = "session-a").shouldRecord)
+
+        assertFalse(onEvent(sessionId = "session-b", event = "purchase"), "session b was left and is not current")
+        assertTrue(decide(sessionId = "session-a").shouldRecord)
+    }
+
+    @Test
+    fun `a late call for a session that was left does not move activation while another session is current`() {
+        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
+        assertFalse(onEvent(sessionId = "session-a", event = "other"))
+        assertTrue(onEvent(sessionId = "session-b", event = "purchase"))
+
+        currentSessionId = "session-b"
+        assertFalse(onEvent(sessionId = "session-a", event = "purchase"))
+        assertTrue(decide(sessionId = "session-b").shouldRecord)
     }
 }

@@ -1,5 +1,6 @@
 package com.posthog.internal.replay
 
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.sampleOnProperty
 import org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 import java.util.Objects
@@ -24,14 +25,18 @@ internal data class PostHogTriggerGroupsDecision(
 
 // Sampling decisions are kept in memory only: they depend on (sessionId, groupId, sampleRate)
 // alone, so a restart re-derives the same decisions.
-internal class PostHogTriggerGroupsEvaluator {
+internal class PostHogTriggerGroupsEvaluator(
+    // Read-only: must not rotate the session.
+    private val currentSessionId: () -> String? = { PostHogSessionManager.peekSessionId()?.toString() },
+) {
     private val lock = Any()
 
     private var groups: List<PostHogTriggerGroup> = emptyList()
 
     private var activationSessionId: String? = null
 
-    // Sessions that activation moved away from. A call for one of them is late and must not take activation back.
+    // Sessions that activation moved away from. A call for one of them is late and must not take activation
+    // back, unless that session is the current one again (an app can restore an earlier session id).
     private val leftSessionIds = LinkedHashSet<String>()
     private val eventActivatedGroupIds = mutableSetOf<String>()
     private val screenActivatedGroupIds = mutableSetOf<String>()
@@ -384,7 +389,10 @@ internal class PostHogTriggerGroupsEvaluator {
     // Returns false for a session that activation already left.
     private fun moveActivationToSessionLocked(sessionId: String): Boolean {
         if (activationSessionId == sessionId) return true
-        if (sessionId in leftSessionIds) return false
+        if (sessionId in leftSessionIds) {
+            if (sessionId != currentSessionId()) return false
+            leftSessionIds.remove(sessionId)
+        }
         activationSessionId?.let { left ->
             leftSessionIds.add(left)
             if (leftSessionIds.size > MAX_LEFT_SESSIONS) {
