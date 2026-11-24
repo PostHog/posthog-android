@@ -545,6 +545,49 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a null key from a Java caller returns the unavailable result without evaluating or sending a request`() {
+        withPostHog(
+            createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),
+            createMultipleFlagsResponse("profile-incomplete" to true),
+        ) { postHog, dispatcher ->
+            @Suppress("UNCHECKED_CAST")
+            val withNull = java.util.Arrays.asList("plan", null) as List<String>
+            val snapshot =
+                postHog.evaluateFlags(
+                    "user-1",
+                    PostHogEvaluateFlagsOptions.builder().personPropertyKeysKnownAbsent(withNull).build(),
+                )
+            assertTrue(snapshot.keys.isEmpty())
+
+            @Suppress("UNCHECKED_CAST")
+            val groupWithNull = java.util.Arrays.asList("tier", null) as List<String>
+            val groupSnapshot =
+                postHog.evaluateFlags(
+                    "user-1",
+                    PostHogEvaluateFlagsOptions.builder().groupPropertyKeysKnownAbsent("organization", groupWithNull).build(),
+                )
+            assertTrue(groupSnapshot.keys.isEmpty())
+
+            val flagOptions =
+                PostHogFeatureFlagOptions.builder()
+                    .defaultValue("fallback")
+                    .personPropertyKeysKnownAbsent(withNull)
+                    .build()
+            assertEquals("fallback", postHog.getFeatureFlag("user-1", "profile-incomplete", flagOptions))
+            assertEquals("fallback", postHog.getFeatureFlagPayload("user-1", "profile-incomplete", flagOptions))
+            assertFalse(postHog.isFeatureEnabled("user-1", "profile-incomplete", flagOptions))
+            assertNull(
+                postHog.getFeatureFlagResult(
+                    "user-1",
+                    "profile-incomplete",
+                    PostHogFeatureFlagResultOptions.builder().groupPropertyKeysKnownAbsent("organization", groupWithNull).build(),
+                ),
+            )
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `more than 1000 keys returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),

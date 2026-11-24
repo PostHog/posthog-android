@@ -4162,8 +4162,8 @@ internal class FlagEvaluatorTest {
 
     @Test
     internal fun testKnownAbsentPropertyKeysLimitCountsDuplicatesPerList() {
-        assertEquals(null, KnownAbsentPropertyKeys.limitError(List(1000) { "plan" }, mapOf("organization" to List(1000) { "tier" })))
-        assertNotNull(KnownAbsentPropertyKeys.limitError(List(1001) { "plan" }, null))
-        assertNotNull(KnownAbsentPropertyKeys.limitError(null, mapOf("organization" to List(1001) { "tier" })))
+        assertEquals(null, KnownAbsentPropertyKeys.inputError(List(1000) { "plan" }, mapOf("organization" to List(1000) { "tier" })))
+        assertNotNull(KnownAbsentPropertyKeys.inputError(List(1001) { "plan" }, null))
+        assertNotNull(KnownAbsentPropertyKeys.inputError(null, mapOf("organization" to List(1001) { "tier" })))
     }
 }

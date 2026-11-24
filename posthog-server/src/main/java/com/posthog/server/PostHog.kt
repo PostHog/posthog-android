@@ -360,19 +360,20 @@ public class PostHog : PostHogStateless(), PostHogInterface {
 
     /**
      * A known-absent listing for one evaluation. [knownAbsent] is null when a list is over the
-     * `/flags` limit, in which case the caller returns its unavailable result.
+     * `/flags` limit or holds a null key, in which case the caller returns its unavailable result.
      */
     private class KnownAbsentLookup(val knownAbsent: KnownAbsentPropertyKeys?)
 
     /**
      * Returns null when nothing is listed, so the call keeps the existing path unchanged.
-     * Over the limit this logs a warning and nothing is evaluated or sent; lists are never truncated.
+     * Over the limit or with a null key this logs a warning and nothing is evaluated or sent; lists
+     * are never truncated or filtered.
      */
     private fun resolveKnownAbsentLookup(
         personPropertyKeysKnownAbsent: List<String>?,
         groupPropertyKeysKnownAbsent: Map<String, List<String>>?,
     ): KnownAbsentLookup? {
-        val error = KnownAbsentPropertyKeys.limitError(personPropertyKeysKnownAbsent, groupPropertyKeysKnownAbsent)
+        val error = KnownAbsentPropertyKeys.inputError(personPropertyKeysKnownAbsent, groupPropertyKeysKnownAbsent)
         if (error != null) {
             getConfig<com.posthog.PostHogConfig>()?.logger?.logWarning(
                 "PostHog: $error. No feature flags were evaluated and no request was sent.",

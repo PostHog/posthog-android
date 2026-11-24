@@ -22,26 +22,36 @@ internal data class KnownAbsentPropertyKeys(
         private const val PERSON_METADATA_KEY_PREFIX = "__posthog_person_metadata__"
 
         /**
-         * Returns a message naming the field when a list holds more than [MAX_KEYS] strings,
-         * or null when the input is within the limit.
+         * Returns a message naming the field when a list holds more than [MAX_KEYS] strings or a
+         * null element (possible from Java callers), or null when the input is valid.
          */
-        fun limitError(
+        fun inputError(
             person: List<String>?,
             groups: Map<String, List<String>>?,
         ): String? {
-            if (person != null && person.size > MAX_KEYS) {
-                return "person_property_keys_known_absent allows at most $MAX_KEYS keys, got ${person.size}"
+            if (person != null) {
+                if (person.size > MAX_KEYS) {
+                    return "person_property_keys_known_absent allows at most $MAX_KEYS keys, got ${person.size}"
+                }
+                if (person.containsNullElement()) {
+                    return "person_property_keys_known_absent must not contain null keys"
+                }
             }
             groups?.forEach { (groupType, keys) ->
                 if (keys.size > MAX_KEYS) {
                     return "group_property_keys_known_absent allows at most $MAX_KEYS keys per group type, " +
                         "got ${keys.size} for group type '$groupType'"
                 }
+                if (keys.containsNullElement()) {
+                    return "group_property_keys_known_absent must not contain null keys, found one for group type '$groupType'"
+                }
             }
             return null
         }
 
-        /** Returns null when nothing is listed. Call [limitError] first. */
+        private fun List<String>.containsNullElement(): Boolean = (this as List<String?>).contains(null)
+
+        /** Returns null when nothing is listed. Call [inputError] first. */
         fun of(
             person: List<String>?,
             groups: Map<String, List<String>>?,

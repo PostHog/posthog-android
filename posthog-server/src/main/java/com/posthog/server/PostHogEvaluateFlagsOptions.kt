@@ -25,9 +25,10 @@ package com.posthog.server
  *   `not_starts_with`, `not_ends_with` and `not_regex` match, and every other supported operator
  *   does not. A filter that local evaluation does not support still falls back to `/flags`. Keys
  *   starting with `__posthog_person_metadata__` are ignored. The keys are sent to `/flags` when the
- *   evaluation falls back to it. At most 1000 keys, counting duplicates. Over the limit the SDK logs
- *   a warning, evaluates nothing and sends no request: the snapshot or flag lookup returns its
- *   unavailable result (empty snapshot, default value, or null). Lists are never truncated.
+ *   evaluation falls back to it. At most 1000 keys, counting duplicates, and no null keys. Over the
+ *   limit or with a null key the SDK logs a warning, evaluates nothing and sends no request: the
+ *   snapshot or flag lookup returns its unavailable result (empty snapshot, default value, or null).
+ *   Lists are never truncated.
  * @property groupPropertyKeysKnownAbsent Group property keys the caller knows are absent for this
  *   evaluation, keyed by group type. A key applies only to filters of type `group` in flags
  *   aggregated on its own group type and wins over any value in [groupProperties] for that type. Otherwise this follows [personPropertyKeysKnownAbsent],
