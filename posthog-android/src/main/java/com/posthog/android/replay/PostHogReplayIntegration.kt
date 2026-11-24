@@ -119,6 +119,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -298,6 +299,11 @@ public class PostHogReplayIntegration(
     private val remoteMaskAllTextLogged = AtomicBoolean(false)
     private val remoteMaskAllImagesLogged = AtomicBoolean(false)
 
+    // Bumped when stricter masking drops the buffer. A frame enqueues outside the commit lock,
+    // so the queue discards one collected under an older generation that reaches it after the drop.
+    private val maskingGeneration = AtomicInteger(0)
+    private val captureMaskingGeneration = ThreadLocal<Int?>()
+
     private val replayBufferDelegate =
         object : PostHogReplayBufferDelegate {
             override val isBuffering: Boolean
@@ -309,6 +315,10 @@ public class PostHogReplayIntegration(
             override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {
                 this@PostHogReplayIntegration.onReplayBufferSnapshot(replayQueue)
             }
+
+            override fun currentCaptureMaskingGeneration(): Int? = captureMaskingGeneration.get()
+
+            override fun isMaskingGenerationStale(generation: Int): Boolean = generation != maskingGeneration.get()
         }
 
     internal fun onDrawCallback(drawState: WindowDrawState) {
@@ -586,6 +596,8 @@ public class PostHogReplayIntegration(
         }
         val timestamp = config.dateProvider.currentTimeMillis()
         val colorMode = config.sessionReplayConfig.screenshotColorMode
+        // Before the flags: a drop flips them before it bumps the generation.
+        val capturedMaskingGeneration = maskingGeneration.get()
         val maskAllTextInputs = maskAllTextInputsInEffect
         val maskAllImages = maskAllImagesInEffect
         val scene = mutableListOf<RRWireframe>()
@@ -796,7 +808,7 @@ public class PostHogReplayIntegration(
                 metadata.keyboardEvent?.let { result.add(it) }
                 result
             }
-        captureSnapshotEvents(postHog, events, sessionId)
+        captureSnapshotEvents(postHog, events, sessionId, capturedMaskingGeneration)
         return true
     }
 
@@ -1236,6 +1248,11 @@ public class PostHogReplayIntegration(
                 if (!isActive() || replaySessionId != sessionId) return false
                 (decorViews[view] ?: return false) to snapshotGeneration
             }
+        // After the snapshot generation: a stale stamp alongside a current generation could
+        // commit, and then discard, the keyframe forced by a masking drop.
+        val capturedMaskingGeneration = maskingGeneration.get()
+        val maskAllTextInputs = maskAllTextInputsInEffect
+        val maskAllImages = maskAllImagesInEffect
 
         // Check view is still alive to avoid native crashes
         if (!view.isAlive()) return false
@@ -1251,7 +1268,8 @@ public class PostHogReplayIntegration(
         val events =
             synchronized(decorViews) {
                 if (!isActive() || snapshotGeneration != generation || decorViews[view] !== status ||
-                    PostHogSessionManager.peekSessionId()?.toString() != sessionId
+                    PostHogSessionManager.peekSessionId()?.toString() != sessionId ||
+                    maskAllTextInputsInEffect != maskAllTextInputs || maskAllImagesInEffect != maskAllImages
                 ) {
                     return false
                 }
@@ -1260,26 +1278,34 @@ public class PostHogReplayIntegration(
 
         // Commit above is the producer boundary. Do not invoke SDK/user callbacks under its lock.
         // A rotation after commit must not relabel this frame during core enrichment.
-        captureSnapshotEvents(postHog, events, sessionId)
+        captureSnapshotEvents(postHog, events, sessionId, capturedMaskingGeneration)
         return true
     }
 
+    // PostHog.capture hands a $snapshot to the replay queue on this thread, so the queue reads
+    // the stamp from the thread-local.
     private fun captureSnapshotEvents(
         postHog: PostHogInterface,
         events: List<RREvent>,
         sessionId: String,
+        maskingGeneration: Int,
     ) {
         if (events.isNotEmpty()) {
-            postHog.capture(
-                PostHogEventName.SNAPSHOT.event,
-                properties =
-                    mapOf(
-                        "\$snapshot_data" to events,
-                        "\$snapshot_source" to "mobile",
-                        "\$session_id" to sessionId,
-                        "\$window_id" to sessionId,
-                    ),
-            )
+            captureMaskingGeneration.set(maskingGeneration)
+            try {
+                postHog.capture(
+                    PostHogEventName.SNAPSHOT.event,
+                    properties =
+                        mapOf(
+                            "\$snapshot_data" to events,
+                            "\$snapshot_source" to "mobile",
+                            "\$session_id" to sessionId,
+                            "\$window_id" to sessionId,
+                        ),
+                )
+            } finally {
+                captureMaskingGeneration.remove()
+            }
         }
     }
 
@@ -3399,19 +3425,21 @@ public class PostHogReplayIntegration(
             if (resolving) {
                 config.logger.log("[Session Replay] First remote config fetch failed. Falling back to the cached session replay flag.")
             }
-            resolveFirstRemoteConfig()
+            // A failed attempt can still have applied the project masking before failing.
+            val dropped = dropBufferIfMaskingGotStricter()
+            resolveFirstRemoteConfig(migrateBuffer = !dropped)
             return
         }
 
         updateCachedMinimumDuration()
-        dropBufferIfMaskingGotStricter()
+        val dropped = dropBufferIfMaskingGotStricter()
         // Snapshot the gate state BEFORE resolveFirstRemoteConfig disarms it, so reevaluateRecordingState
         // can tell whether this callback is the first delivery. loadRemoteConfig loads /flags nested and
         // synchronously (notifyRemoteConfigLoaded=false) before this single callback fires, so the
         // session-replay flag is already fresh here — resolve the buffer against it on this delivery
         // rather than deferring to a second callback the cold-start path never produces.
         val wasFirstDelivery = synchronized(bufferingLock) { awaitingFirstRemoteConfig }
-        resolveFirstRemoteConfig()
+        resolveFirstRemoteConfig(migrateBuffer = !dropped)
         reevaluateRecordingState(isFirstDelivery = wasFirstDelivery)
     }
 
@@ -3424,8 +3452,11 @@ public class PostHogReplayIntegration(
      * the fresh config sampling this session out — the capturer is stopped and the buffer dropped
      * before disarming, so an in-flight `add()` (which checks [isBuffering] and enqueues in separate
      * steps, not atomically with the disarm) can't route a stale snapshot to the persisted queue.
+     *
+     * [migrateBuffer] is false when this delivery dropped the buffer for stricter masking: that
+     * clear runs on the queue's executor, so a migrate here could persist the dropped frames first.
      */
-    private fun resolveFirstRemoteConfig() {
+    private fun resolveFirstRemoteConfig(migrateBuffer: Boolean = true) {
         val generation =
             synchronized(bufferingLock) {
                 if (!awaitingFirstRemoteConfig) {
@@ -3447,7 +3478,7 @@ public class PostHogReplayIntegration(
                         true
                     }
                 }
-            if (resolved) {
+            if (resolved && migrateBuffer) {
                 replayQueue?.let { migrateBufferIfMinimumDurationMet(it) }
             }
         } else {
@@ -3592,21 +3623,25 @@ public class PostHogReplayIntegration(
 
     /**
      * Drops unsent snapshots captured under weaker masking than remote config now requires.
-     * Forces a keyframe: the dropped window may hold the only full snapshot.
+     * Forces a keyframe: the dropped window may hold the only full snapshot. Returns whether it dropped.
      */
-    private fun dropBufferIfMaskingGotStricter() {
+    private fun dropBufferIfMaskingGotStricter(): Boolean {
         val maskAllText = maskAllTextInputsInEffect
         val maskAllImages = maskAllImagesInEffect
         val stricter = synchronized(bufferingLock) { rearmMaskingLocked(maskAllText, maskAllImages) }
         if (!stricter) {
-            return
+            return false
         }
         config.logger.log("[Session Replay] Remote config turned on masking. Dropping buffered snapshots.")
-        replayQueue?.clearBuffer()
+        // Bump before scheduling the clear: the queue's FIFO executor then either clears an older
+        // frame or sees its stale stamp and discards it.
+        maskingGeneration.incrementAndGet()
         clearSnapshotStates()
+        replayQueue?.clearBuffer()
         synchronized(decorViews) {
             decorViews.keys.forEach { it.postInvalidate() }
         }
+        return true
     }
 
     // MARK: - Buffering State

@@ -642,4 +642,59 @@ internal class PostHogReplayQueueTest {
         assertEquals(1, innerQueue.events.size)
         assertEquals("direct_after_disable", innerQueue.events.first().event)
     }
+
+    private class MaskingDelegate(override var isBuffering: Boolean) : PostHogReplayBufferDelegate {
+        override val isActive: Boolean = true
+        var captureGeneration: Int? = null
+        var generation: Int = 0
+
+        override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {}
+
+        override fun currentCaptureMaskingGeneration(): Int? = captureGeneration
+
+        override fun isMaskingGenerationStale(generation: Int): Boolean = generation != this.generation
+    }
+
+    @Test
+    fun `buffered add discards a frame whose masking generation went stale before its task ran`() {
+        val executor = createPausedExecutor()
+        val queue = createReplayQueue(createFakeQueue(), executor = executor)
+        executor.runNext()
+        val delegate = MaskingDelegate(isBuffering = true)
+        queue.bufferDelegate = delegate
+
+        delegate.captureGeneration = 0
+        queue.add(createTestEvent("stale"))
+        delegate.captureGeneration = null
+        delegate.generation = 1
+        executor.runNext()
+
+        delegate.captureGeneration = 1
+        queue.add(createTestEvent("current"))
+        delegate.captureGeneration = null
+        queue.add(createTestEvent("unstamped"))
+        executor.runNext()
+        executor.runNext()
+
+        assertEquals(2, queue.bufferDepth)
+    }
+
+    @Test
+    fun `direct add discards a frame with a stale masking generation`() {
+        val innerQueue = createFakeQueue()
+        val queue = createReplayQueue(innerQueue)
+        val delegate = MaskingDelegate(isBuffering = false)
+        queue.bufferDelegate = delegate
+        delegate.generation = 1
+
+        delegate.captureGeneration = 0
+        queue.add(createTestEvent("stale"))
+        delegate.captureGeneration = 1
+        queue.add(createTestEvent("current"))
+        delegate.captureGeneration = null
+        queue.add(createTestEvent("unstamped"))
+        awaitReplayExecutors()
+
+        assertEquals(listOf("current", "unstamped"), innerQueue.events.map { it.event })
+    }
 }

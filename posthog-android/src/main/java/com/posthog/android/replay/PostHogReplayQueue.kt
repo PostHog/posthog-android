@@ -65,8 +65,9 @@ internal class PostHogReplayQueue internal constructor(
         get() = innerQueue.size
 
     override fun add(record: PostHogEvent) {
+        val maskingGeneration = bufferDelegate?.currentCaptureMaskingGeneration()
         if (bufferDelegate?.isBuffering != true) {
-            if (shouldPersist()) {
+            if (shouldPersist() && !isMaskingStale(record, maskingGeneration)) {
                 innerQueue.add(record)
             }
             return
@@ -74,13 +75,27 @@ internal class PostHogReplayQueue internal constructor(
 
         executor.executeSafely {
             if (bufferDelegate?.isBuffering == true) {
+                // Checked on the executor: a masking drop bumps the generation before scheduling
+                // its clear here, so a stale frame lands before the clear or is discarded now.
+                if (isMaskingStale(record, maskingGeneration)) return@executeSafely
                 bufferQueue.add(record)
                 config.logger.log("Buffered replay event '${record.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
-            } else if (shouldPersist()) {
+            } else if (shouldPersist() && !isMaskingStale(record, maskingGeneration)) {
                 innerQueue.add(record)
             }
         }
+    }
+
+    private fun isMaskingStale(
+        record: PostHogEvent,
+        maskingGeneration: Int?,
+    ): Boolean {
+        if (maskingGeneration == null || bufferDelegate?.isMaskingGenerationStale(maskingGeneration) != true) {
+            return false
+        }
+        config.logger.log("Dropped replay event '${record.event}' captured before stricter masking applied.")
+        return true
     }
 
     // A delegate that reports recording inactive means a snapshot slipped through after recording

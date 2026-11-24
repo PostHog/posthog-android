@@ -27,4 +27,16 @@ internal interface PostHogReplayBufferDelegate {
      * the minimum duration has been met.
      */
     fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue)
+
+    /**
+     * The masking generation the snapshot being added on the current thread was collected under,
+     * or null when it carries none (e.g. a snapshot a wrapper SDK built). Read on the `add()` caller's thread.
+     */
+    fun currentCaptureMaskingGeneration(): Int? = null
+
+    /**
+     * Whether stricter masking dropped the buffer after a snapshot collected under [generation]
+     * was taken, so the queue must discard it.
+     */
+    fun isMaskingGenerationStale(generation: Int): Boolean = false
 }
