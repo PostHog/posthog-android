@@ -3032,8 +3032,13 @@ internal class PostHogReplayIntegrationTest {
     private fun withCachedTriggerGroup(
         conditions: Map<String, Any?>,
         test: (PostHogReplayIntegration) -> Unit,
+    ) = withInstalledSut(cachedTriggerGroupConfig(conditions), test)
+
+    private fun withInstalledSut(
+        config: PostHogAndroidConfig,
+        test: (PostHogReplayIntegration) -> Unit,
     ) {
-        val sut = getSut(cachedTriggerGroupConfig(conditions))
+        val sut = getSut(config)
         val postHog = mock<PostHogInterface>()
         whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
         sut.install(postHog)
@@ -3106,6 +3111,89 @@ internal class PostHogReplayIntegrationTest {
 
             captureScreen(sut, "/checkout")
             assertTrue(sut.isActive(), "session B after the matching screen")
+        }
+    }
+
+    private fun requestStart(sut: PostHogReplayIntegration) {
+        // as PostHog.startSessionReplay(resumeCurrent = true) does
+        sut.onStartRequested()
+        sut.start(resumeCurrent = true)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test
+    fun `a screen event is remembered while no trigger group is configured`() {
+        val config = configWithSampling(flagActive = true, samplingPasses = true)
+        withInstalledSut(config) { sut ->
+            val sessionId = PostHogSessionManager.peekSessionId().toString()
+            val properties = mapOf("\$screen_name" to "/checkout")
+            sut.onEvent("\$screen", properties)
+
+            verify(config.remoteConfigHolder!!).rememberSessionRecordingScreen(sessionId, "\$screen", properties)
+        }
+    }
+
+    @Test
+    fun `a screen captured while replay is stopped is the screen the next session is checked against`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session A")
+
+            requestStop(sut)
+            captureScreen(sut, "/home")
+            rotateSession(sut)
+            requestStart(sut)
+
+            assertFalse(sut.isActive(), "session B")
+        }
+    }
+
+    @Test
+    fun `an explicit start checks the screen for a session that changed while replay was stopped`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session A")
+
+            requestStop(sut)
+            rotateSession(sut)
+            assertFalse(sut.isActive(), "session B while stopped")
+
+            requestStart(sut)
+            assertTrue(sut.isActive(), "session B after the start")
+        }
+    }
+
+    private fun rotateSessionByScreenEvent(
+        sut: PostHogReplayIntegration,
+        name: String,
+    ) {
+        PostHogSessionManager.withScreenCaptureInFlight { rotateSession(sut) }
+        captureScreen(sut, name)
+    }
+
+    @Test
+    fun `a screen event that rotates the session is not checked against the screen the app left`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session A")
+
+            rotateSessionByScreenEvent(sut, "/home")
+            assertFalse(sut.isActive(), "session B")
+
+            // a later decision point must not fall back to the screen the app left
+            requestStart(sut)
+            assertFalse(sut.isActive(), "session B after a start")
+        }
+    }
+
+    @Test
+    fun `a screen event that rotates the session activates on its own screen`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/home")
+            assertFalse(sut.isActive(), "session A")
+
+            rotateSessionByScreenEvent(sut, "/checkout")
+            assertTrue(sut.isActive(), "session B")
         }
     }
 

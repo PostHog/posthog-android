@@ -2597,6 +2597,50 @@ internal class PostHogTest {
         sut.close()
     }
 
+    private fun screenCaptureInFlightOnRotationBy(capture: (PostHogInterface) -> Unit): Boolean? {
+        val http = mockHttp()
+        val integration = PostHogSessionReplayHandlerFake(true)
+        val sut = getSut(http.url("/").toString(), preloadFeatureFlags = false, integration = integration)
+
+        PostHogSessionManager.setAppInBackground(false)
+        val realNow = System.currentTimeMillis()
+        val fakeDate = TestDateProvider(realNow - 25L * 60 * 60 * 1000)
+        PostHogSessionManager.setDateProvider(fakeDate)
+        PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+        fakeDate.nowMs = realNow
+        integration.reset()
+
+        capture(sut)
+        val pending = integration.screenCaptureInFlightOnSessionIdChanged
+
+        PostHogSessionManager.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
+        sut.close()
+        http.shutdown()
+        return pending
+    }
+
+    @Test
+    fun `a screen capture that rotates the session runs the session listener with the screen capture in flight`() {
+        assertEquals(true, screenCaptureInFlightOnRotationBy { it.screen("checkout") })
+    }
+
+    @Test
+    fun `a capture that rotates the session runs the session listener with no screen capture in flight`() {
+        assertEquals(false, screenCaptureInFlightOnRotationBy { it.capture("purchase") })
+    }
+
+    @Test
+    fun `a rotation after a screen capture runs the session listener with no screen capture in flight`() {
+        assertEquals(
+            false,
+            screenCaptureInFlightOnRotationBy {
+                PostHogSessionManager.setDateProvider(com.posthog.internal.PostHogDeviceDateProvider())
+                it.screen("checkout")
+                PostHogSessionManager.setSessionId(java.util.UUID.randomUUID())
+            },
+        )
+    }
+
     private class TestDateProvider(var nowMs: Long) : com.posthog.internal.PostHogDateProvider {
         override fun currentDate(): java.util.Date = java.util.Date(nowMs)
 

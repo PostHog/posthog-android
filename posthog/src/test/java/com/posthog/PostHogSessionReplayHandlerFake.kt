@@ -1,5 +1,6 @@
 package com.posthog
 
+import com.posthog.internal.PostHogSessionManager
 import com.posthog.internal.replay.PostHogSessionReplayHandler
 
 public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : PostHogIntegration, PostHogSessionReplayHandler {
@@ -10,6 +11,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
     public var lastEventName: String? = null
     public var lastEventProperties: Map<String, Any>? = null
     public var onSessionIdChangedCalled: Boolean = false
+    public var screenCaptureInFlightOnSessionIdChanged: Boolean? = null
     public var onStartRequestedCalled: Boolean = false
     public var onStopRequestedCalled: Boolean = false
     public var onFeatureFlagsLoadedCalled: Boolean = false
@@ -27,6 +29,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
         lastEventName = null
         lastEventProperties = null
         onSessionIdChangedCalled = false
+        screenCaptureInFlightOnSessionIdChanged = null
         onStartRequestedCalled = false
         onStopRequestedCalled = false
         onFeatureFlagsLoadedCalled = false
@@ -84,6 +87,7 @@ public class PostHogSessionReplayHandlerFake(private var isActive: Boolean) : Po
 
     override fun onSessionIdChanged() {
         onSessionIdChangedCalled = true
+        screenCaptureInFlightOnSessionIdChanged = PostHogSessionManager.isScreenCaptureInFlight()
     }
 
     // runs on each remote config delivery, so a test can check what reached the handler before it

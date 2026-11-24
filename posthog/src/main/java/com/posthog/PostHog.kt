@@ -1426,7 +1426,7 @@ public class PostHog private constructor(
                 properties
             }
 
-        val mergedProperties =
+        val buildMergedProperties = {
             buildProperties(
                 newDistinctId,
                 properties = effectiveProperties,
@@ -1442,6 +1442,15 @@ public class PostHog private constructor(
                 claimReplayDebugBundle = { isReplayDebugEvent(event) && claimReplayDebugBundle() },
                 readReplayDebugProperties = readReplayDebugProperties,
             )
+        }
+        // buildProperties can rotate the session, and the session listener runs before the replay
+        // handler sees this event.
+        val mergedProperties =
+            if (event == PostHogEventName.SCREEN.event) {
+                PostHogSessionManager.withScreenCaptureInFlight(buildMergedProperties)
+            } else {
+                buildMergedProperties()
+            }
 
         val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
 

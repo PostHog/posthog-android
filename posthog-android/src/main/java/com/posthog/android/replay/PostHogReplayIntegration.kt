@@ -3019,6 +3019,7 @@ public class PostHogReplayIntegration(
             return
         }
 
+        checkTriggerGroupsScreenOnNewSession(postHog?.getSessionId()?.toString())
         if (shouldWaitForTriggerGroups()) {
             config.logger.log(
                 "[Session Replay] Trigger groups configured. Integration will not start until one activates for the current session.",
@@ -3205,9 +3206,12 @@ public class PostHogReplayIntegration(
     ) {
         val postHog = this.postHog ?: return
 
-        val currentSessionId = postHog.getSessionId()?.toString() ?: return
-
+        val sessionId = postHog.getSessionId()?.toString()
         val remoteConfig = config.remoteConfigHolder
+        // Before the gates below: the screen the app is on does not depend on what records.
+        remoteConfig?.rememberSessionRecordingScreen(sessionId, event, properties)
+        val currentSessionId = sessionId ?: return
+
         if (remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
             onTriggerGroupsEvent(remoteConfig, currentSessionId, event, properties)
             return
@@ -3300,9 +3304,11 @@ public class PostHogReplayIntegration(
 
         val remoteConfig = config.remoteConfigHolder
         // Before the minimum and the gates below: both read the activation of the new session.
-        // Skipped while stopped, like a live event.
-        if (currentSessionId != null && !explicitlyStopped && remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
-            remoteConfig.onSessionRecordingSessionChanged(currentSessionId)
+        // The $screen event that changed the session brings its own screen, the last seen one was left.
+        if (PostHogSessionManager.isScreenCaptureInFlight()) {
+            currentSessionId?.let { remoteConfig?.skipSessionRecordingScreenCheck(it) }
+        } else {
+            checkTriggerGroupsScreenOnNewSession(currentSessionId)
         }
         updateCachedMinimumDuration()
 
@@ -3375,6 +3381,14 @@ public class PostHogReplayIntegration(
         val currentSessionId = postHog.getSessionId()?.toString() ?: return false
         val state = eventTriggerState(currentSessionId)
         return state.configured && !state.activated
+    }
+
+    // Runs where recording is decided for a session, so the screen the app is already on counts for a
+    // session without a $screen event. A stopped recorder activates nothing until the app starts it again.
+    private fun checkTriggerGroupsScreenOnNewSession(sessionId: String?) {
+        val remoteConfig = config.remoteConfigHolder ?: return
+        if (sessionId == null || explicitlyStopped || !remoteConfig.hasSessionRecordingTriggerGroups()) return
+        remoteConfig.checkSessionRecordingScreenOnNewSession(sessionId)
     }
 
     private fun shouldWaitForTriggerGroups(): Boolean {

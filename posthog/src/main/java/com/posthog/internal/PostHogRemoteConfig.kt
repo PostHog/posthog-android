@@ -1610,9 +1610,27 @@ public class PostHogRemoteConfig(
             getPersonPropertiesForFlags(),
         )
 
-    /** Checks the last seen screen against the trigger groups for the new [sessionId]. Returns true when it activated at least one. */
-    public fun onSessionRecordingSessionChanged(sessionId: String): Boolean =
-        triggerGroupsEvaluator.onSessionChanged(sessionId, getPersonPropertiesForFlags())
+    /** Records the screen of a `$screen` event for [checkSessionRecordingScreenOnNewSession]. Takes every captured event. */
+    public fun rememberSessionRecordingScreen(
+        sessionId: String?,
+        eventName: String,
+        properties: Map<String, Any?>?,
+    ) {
+        triggerGroupsEvaluator.rememberScreen(sessionId, eventName, properties)
+    }
+
+    /**
+     * Checks the screen the app is already on against the trigger groups, once for a [sessionId] that has no
+     * `$screen` event yet. Takes the current session id only.
+     */
+    public fun checkSessionRecordingScreenOnNewSession(sessionId: String) {
+        triggerGroupsEvaluator.checkScreenOnNewSession(sessionId, getPersonPropertiesForFlags())
+    }
+
+    /** For a [sessionId] that a `$screen` event opened: that event brings the screen, so the check is not due. */
+    public fun skipSessionRecordingScreenCheck(sessionId: String) {
+        triggerGroupsEvaluator.skipScreenCheck(sessionId)
+    }
 
     /** True when some trigger group is activated and sampled in for [sessionId]. */
     public fun isSessionRecordingPermittedByTriggerGroups(sessionId: String): Boolean = decideTriggerGroups(sessionId).shouldRecord
