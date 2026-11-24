@@ -68,7 +68,7 @@ private fun matchesRegex(
 // them like lists. A primitive array would otherwise print as a JVM identity string such as "[I@1b6d3586".
 private fun stringifyValues(value: Any): List<String> =
     when (value) {
-        is List<*> -> value.map { jsToString(it) }
+        is Collection<*> -> value.map { jsToString(it) }
         is Array<*> -> value.map { jsToString(it) }
         is IntArray -> value.map { jsToString(it) }
         is LongArray -> value.map { jsToString(it) }

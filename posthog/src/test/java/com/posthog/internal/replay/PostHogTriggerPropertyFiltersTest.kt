@@ -1,6 +1,7 @@
 package com.posthog.internal.replay
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -282,5 +283,17 @@ internal class PostHogTriggerPropertyFiltersTest {
         assertTrue(matches(floatArrayOf(0.1f), "exact", 0.1))
         assertTrue(matches(booleanArrayOf(true), "exact", "true"))
         assertFalse(matches(intArrayOf(1, 3), "exact", 2))
+    }
+
+    @Test
+    fun `a set matches like a list of the same values`() {
+        val values = listOf("premium", "vip")
+        assertTrue(matches(values.toSet(), "exact", "vip"))
+        assertFalse(matches(values.toSet(), "is_not", "vip"))
+        listOf("exact", "is_not", "icontains", "not_icontains").forEach { operator ->
+            listOf("vip", "free").forEach { target ->
+                assertEquals(matches(values, operator, target), matches(values.toSet(), operator, target), "$operator $target")
+            }
+        }
     }
 }
