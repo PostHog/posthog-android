@@ -127,6 +127,23 @@ internal class PostHogTriggerGroupsTest {
     }
 
     @Test
+    fun `a screen pattern that does not compile is logged with its group`() {
+        val logs = mutableListOf<String>()
+        val config =
+            parseTriggerGroupsConfig(
+                mapOf(
+                    "version" to 2,
+                    "triggerGroups" to
+                        listOf(group(id = "g1", conditions = mapOf("urls" to listOf(mapOf("url" to "([invalid", "matching" to "regex"))))),
+                ),
+            ) { logs.add(it) }
+
+        assertTrue(config!!.groups.single().conditions.hasUrlsLeg)
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().startsWith("trigger group \"g1\": invalid screen pattern \"([invalid\": "), logs.single())
+    }
+
+    @Test
     fun `flag accepts a bare string or a flag and variant map`() {
         val bare = config(group(conditions = mapOf("flag" to "replay-flag")))
         assertEquals(PostHogTriggerFlag("replay-flag", null), bare.groups.single().conditions.flag)

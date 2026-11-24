@@ -75,7 +75,7 @@ internal fun parseTriggerGroupsConfig(
                 name = map["name"] as? String ?: "",
                 sampleRate = parseTriggerGroupSampleRate(map, map["sampleRate"]),
                 minDurationMs = (map["minDurationMs"] as? Number)?.toLong(),
-                conditions = parseTriggerConditions(map["conditions"]),
+                conditions = parseTriggerConditions(id, map["conditions"], log),
             )
         }
 
@@ -117,13 +117,17 @@ internal fun normalizeTriggerGroupNullSampleRates(sessionRecording: Map<String, 
     return sessionRecording + ("triggerGroups" to groups)
 }
 
-private fun parseTriggerConditions(conditions: Any?): PostHogTriggerConditions {
+private fun parseTriggerConditions(
+    groupId: String,
+    conditions: Any?,
+    log: (String) -> Unit,
+): PostHogTriggerConditions {
     val map = conditions as? Map<*, *>
     val rawFlag = map?.get("flag")
     return PostHogTriggerConditions(
         matchType = if (map?.get("matchType") == "any") PostHogTriggerMatchType.ANY else PostHogTriggerMatchType.ALL,
         events = parseTriggerEvents(map?.get("events")),
-        urls = parseTriggerUrls(map?.get("urls")),
+        urls = parseTriggerUrls(groupId, map?.get("urls"), log),
         flag = parseTriggerFlag(rawFlag),
         properties = parseTriggerPropertyFilters(map?.get("properties")),
         hasEventsLeg = (map?.get("events") as? List<*>).orEmpty().isNotEmpty(),
@@ -146,7 +150,11 @@ private fun parseTriggerEvents(events: Any?): List<PostHogTriggerEvent> =
         }
     }
 
-private fun parseTriggerUrls(urls: Any?): List<Regex> =
+private fun parseTriggerUrls(
+    groupId: String,
+    urls: Any?,
+    log: (String) -> Unit,
+): List<Regex> =
     (urls as? List<*>).orEmpty().mapNotNull { raw ->
         val map = raw as? Map<*, *>
         val pattern = map?.get("url") as? String ?: return@mapNotNull null
@@ -154,6 +162,7 @@ private fun parseTriggerUrls(urls: Any?): List<Regex> =
         try {
             Regex(pattern)
         } catch (e: Throwable) {
+            log("trigger group \"$groupId\": invalid screen pattern \"$pattern\": ${e.message}")
             null
         }
     }
