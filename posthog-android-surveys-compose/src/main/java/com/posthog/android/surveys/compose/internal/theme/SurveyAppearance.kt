@@ -1,9 +1,11 @@
 package com.posthog.android.surveys.compose.internal.theme
 
+import android.graphics.Typeface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 
@@ -14,6 +16,7 @@ import com.posthog.surveys.PostHogDisplaySurveyTextContentType
  * for every field the customer left unset.
  */
 internal data class ResolvedSurveyAppearance(
+    val fontFamily: FontFamily?,
     val backgroundColor: Color,
     val borderColor: Color,
     val submitButtonColor: Color,
@@ -126,6 +129,7 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
         this?.introScreenButtonText?.takeIf { it.isNotBlank() } ?: DEFAULT_INTRO_BUTTON
 
     return ResolvedSurveyAppearance(
+        fontFamily = resolveSurveyFontFamily(this?.fontFamily),
         backgroundColor = backgroundColor,
         borderColor = borderColor,
         submitButtonColor = submitButtonColor,
@@ -151,6 +155,32 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
         introScreenDescriptionContentType = introScreenDescriptionContentType,
         introScreenButtonText = introScreenButtonText,
     )
+}
+
+/**
+ * Maps the survey's CSS `font-family` to a system font.
+ *
+ * Android's system font config aliases common web fonts (e.g. `arial`, `times new roman`,
+ * `courier new`) to its own families, but the lookup is case-sensitive and lowercase. Unknown
+ * names fall back to the default typeface.
+ */
+private fun resolveSurveyFontFamily(input: String?): FontFamily? =
+    surveyFontFamilyName(input)?.let { FontFamily(Typeface.create(it, Typeface.NORMAL)) }
+
+/**
+ * Returns the first family of a CSS `font-family` value, lowercased, or null when the survey
+ * should keep the host app's font (unset, `inherit` or `system-ui`).
+ */
+internal fun surveyFontFamilyName(input: String?): String? {
+    val name =
+        input
+            ?.substringBefore(',')
+            ?.trim()
+            ?.trim('"', '\'')
+            ?.trim()
+            ?.lowercase()
+    if (name.isNullOrEmpty() || name == "inherit" || name == "system-ui") return null
+    return name
 }
 
 private fun parseSurveyColorOrDefault(

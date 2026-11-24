@@ -2,9 +2,9 @@ package com.posthog.android.surveys.compose.internal.theme
 
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.test.assertNull
 
 internal class SurveyAppearanceResolveTest {
     @Test
@@ -44,5 +44,19 @@ internal class SurveyAppearanceResolveTest {
         assertEquals("Welcome!", resolved.introScreenHeader)
         assertEquals("Two quick questions.", resolved.introScreenDescription)
         assertEquals("Let's go", resolved.introScreenButtonText)
+    }
+
+    @Test
+    fun `font family keeps the host font unless a specific family is configured`() {
+        listOf(null, "", "  ", "inherit", "system-ui", "\"\"").forEach { font ->
+            assertNull(surveyFontFamilyName(font), "font=$font")
+        }
+    }
+
+    @Test
+    fun `font family uses the lowercased first css family`() {
+        assertEquals("times new roman", surveyFontFamilyName("Times New Roman"))
+        assertEquals("courier new", surveyFontFamilyName(" 'Courier New' , monospace"))
+        assertEquals("arial", surveyFontFamilyName("\"Arial\", sans-serif"))
     }
 }

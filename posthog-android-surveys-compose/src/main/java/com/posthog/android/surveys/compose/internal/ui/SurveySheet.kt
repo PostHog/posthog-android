@@ -161,7 +161,11 @@ internal fun SurveySheet(
             // override (e.g. the question header).
             CompositionLocalProvider(
                 LocalSurveyAppearance provides appearance,
-                LocalTextStyle provides LocalTextStyle.current.copy(fontSize = 15.sp),
+                LocalTextStyle provides
+                    LocalTextStyle.current.copy(
+                        fontSize = 15.sp,
+                        fontFamily = appearance.fontFamily ?: LocalTextStyle.current.fontFamily,
+                    ),
                 LocalSaveableStateRegistry provides hostSaveableRegistry,
             ) {
                 Box(modifier = Modifier.fillMaxWidth()) {
