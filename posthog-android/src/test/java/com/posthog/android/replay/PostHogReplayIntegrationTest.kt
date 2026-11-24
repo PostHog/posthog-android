@@ -2540,6 +2540,54 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `masking drop is not undone by a buffered add queued ahead of the clear`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false, minimumDurationMs = 1L)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        val releaseFirst = CountDownLatch(1)
+        val releaseSecond = CountDownLatch(1)
+        try {
+            bufferTwoSnapshots(fx)
+            val queueExecutor = ReflectionHelpers.getField<ExecutorService>(fx.replayQueue, "executor")
+            val integrationExecutor = ReflectionHelpers.getField<ExecutorService>(fx.sut, "injectedExecutor")
+            val queueBusy = CountDownLatch(1)
+            queueExecutor.execute {
+                queueBusy.countDown()
+                releaseFirst.await(2, TimeUnit.SECONDS)
+            }
+            assertTrue(queueBusy.await(2, TimeUnit.SECONDS))
+            fx.replayQueue.add(createTestEvent("snapshot_3"))
+            val bufferedAddRan = CountDownLatch(1)
+            queueExecutor.execute {
+                bufferedAddRan.countDown()
+                releaseSecond.await(2, TimeUnit.SECONDS)
+            }
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            assertTrue(fx.sut.isActive())
+            releaseFirst.countDown()
+            assertTrue(bufferedAddRan.await(2, TimeUnit.SECONDS))
+            // A migrate that reaches the inner queue blocks on the queue executor, so wait for
+            // either it moving frames or the integration executor draining.
+            val integrationDrained = integrationExecutor.submit {}
+            awaitCondition { integrationDrained.isDone || fx.replayQueue.depth > 0 }
+            releaseSecond.countDown()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+            assertEquals(0, fx.replayQueue.bufferDepth)
+        } finally {
+            releaseFirst.countDown()
+            releaseSecond.countDown()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `a later remote config with masking still on keeps newly buffered frames`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000L)
         fx.config.sessionReplayConfig.maskAllImages = false

@@ -6,6 +6,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
 import java.io.File
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A replay queue that wraps an inner queue (for actual API sends) and a
@@ -54,6 +55,11 @@ internal class PostHogReplayQueue internal constructor(
      */
     internal val bufferDepth: Int
         get() = bufferQueue.depth
+
+    private val pendingBufferClears = AtomicInteger(0)
+
+    internal val isBufferClearPending: Boolean
+        get() = pendingBufferClears.get() > 0
 
     /**
      * Approximate number of events currently in the inner replay queue directory.
@@ -131,6 +137,10 @@ internal class PostHogReplayQueue internal constructor(
      * It should be scheduled off the caller/UI thread because migration does disk IO.
      */
     internal fun migrateBufferToQueue() {
+        if (isBufferClearPending) {
+            config.logger.log("Replay buffer migration skipped: a buffer clear is pending")
+            return
+        }
         val bufferedCount = bufferQueue.depth
         if (bufferedCount == 0) {
             config.logger.log("No buffered replay events to migrate")
@@ -153,9 +163,21 @@ internal class PostHogReplayQueue internal constructor(
      * still runs before any subsequently-scheduled add()/migrate; only the caller's wait is dropped.
      */
     internal fun clearBuffer() {
-        executor.executeSafely {
-            bufferQueue.clear()
-            config.logger.log("Replay buffer cleared")
+        // Counted before scheduling: a migrate running on another executor must not persist
+        // frames this clear is about to discard.
+        pendingBufferClears.incrementAndGet()
+        try {
+            executor.execute {
+                try {
+                    bufferQueue.clear()
+                    config.logger.log("Replay buffer cleared")
+                } finally {
+                    pendingBufferClears.decrementAndGet()
+                }
+            }
+        } catch (e: Throwable) {
+            pendingBufferClears.decrementAndGet()
+            config.logger.log("Replay buffer clear could not be scheduled: $e.")
         }
     }
 }

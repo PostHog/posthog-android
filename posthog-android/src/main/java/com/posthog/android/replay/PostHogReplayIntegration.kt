@@ -3377,6 +3377,10 @@ public class PostHogReplayIntegration(
      * callback on [isActive], the first-config resolve on [isRecordingPermittedForCurrentSession].
      */
     private fun migrateBufferIfMinimumDurationMet(replayQueue: PostHogReplayQueue) {
+        // The buffered window is about to be discarded, so its duration must not end buffering.
+        if (replayQueue.isBufferClearPending) {
+            return
+        }
         val minimumDurationMs = synchronized(bufferingLock) { cachedMinimumDurationMs }
 
         if (minimumDurationMs == null || minimumDurationMs <= 0) {

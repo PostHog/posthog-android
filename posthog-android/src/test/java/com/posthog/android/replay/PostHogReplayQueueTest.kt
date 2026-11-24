@@ -7,6 +7,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import org.junit.Rule
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -535,6 +537,82 @@ internal class PostHogReplayQueueTest {
         awaitReplayExecutors()
 
         assertEquals(0, queue.bufferDepth)
+    }
+
+    @Test
+    fun `migrateBufferToQueue is a no-op while a buffer clear is pending and works after it ran`() {
+        val fixture = createRealReplayQueue()
+        val queue = fixture.queue
+        queue.bufferDelegate = MockReplayBufferDelegate().apply { isBuffering = true }
+        queue.add(createTestEvent("snapshot_1"))
+        queue.add(createTestEvent("snapshot_2"))
+        awaitReplayExecutors()
+        val executor = executors.single()
+        val release = CountDownLatch(1)
+        val busy = CountDownLatch(1)
+        executor.execute {
+            busy.countDown()
+            release.await(2, TimeUnit.SECONDS)
+        }
+        assertTrue(busy.await(2, TimeUnit.SECONDS))
+
+        try {
+            queue.clearBuffer()
+            assertTrue(queue.isBufferClearPending)
+
+            queue.migrateBufferToQueue()
+
+            assertEquals(2, queue.bufferDepth)
+            assertEquals(0, queue.depth)
+        } finally {
+            release.countDown()
+        }
+        awaitReplayExecutors()
+        assertFalse(queue.isBufferClearPending)
+        assertEquals(0, queue.bufferDepth)
+
+        queue.add(createTestEvent("snapshot_3"))
+        awaitReplayExecutors()
+        queue.migrateBufferToQueue()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(listOf("snapshot_3"), eventNamesInDirectory(fixture.config, fixture.targetDir))
+    }
+
+    @Test
+    fun `pending buffer clear count returns to zero when the clear task throws`() {
+        val config =
+            PostHogConfig(PROJECT_TOKEN, "http://localhost:9001").apply {
+                logger =
+                    object : PostHogLogger {
+                        override fun log(message: String) {
+                            if (message == "Replay buffer cleared") throw IllegalStateException("boom")
+                        }
+
+                        override fun isEnabled(): Boolean = true
+                    }
+            }
+        val executor = createPausedExecutor()
+        val queue = PostHogReplayQueue(config, createFakeQueue(), tmpDir.newFolder().absolutePath, executor)
+        executor.runNext()
+
+        queue.clearBuffer()
+        assertTrue(queue.isBufferClearPending)
+
+        assertFailsWith<IllegalStateException> { executor.runNext() }
+        assertFalse(queue.isBufferClearPending)
+    }
+
+    @Test
+    fun `pending buffer clear count returns to zero when the clear cannot be scheduled`() {
+        val executor = createReplayExecutor()
+        val queue = createReplayQueue(createFakeQueue(), executor = executor)
+        awaitReplayExecutors()
+        executor.shutdown()
+
+        queue.clearBuffer()
+
+        assertFalse(queue.isBufferClearPending)
     }
 
     @Test
