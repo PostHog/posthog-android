@@ -1610,6 +1610,10 @@ public class PostHogRemoteConfig(
             getPersonPropertiesForFlags(),
         )
 
+    /** Checks the last seen screen against the trigger groups for the new [sessionId]. Returns true when it activated at least one. */
+    public fun onSessionRecordingSessionChanged(sessionId: String): Boolean =
+        triggerGroupsEvaluator.onSessionChanged(sessionId, getPersonPropertiesForFlags())
+
     /** True when some trigger group is activated and sampled in for [sessionId]. */
     public fun isSessionRecordingPermittedByTriggerGroups(sessionId: String): Boolean = decideTriggerGroups(sessionId).shouldRecord
 

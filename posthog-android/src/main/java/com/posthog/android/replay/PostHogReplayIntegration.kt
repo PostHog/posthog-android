@@ -3297,9 +3297,15 @@ public class PostHogReplayIntegration(
         // Invalidate immediately; reinitialization may be queued behind UI work.
         if (replaySessionId != currentSessionId) stopRecording()
         resetSessionStateIfNeeded(currentSessionId)
-        updateCachedMinimumDuration()
 
         val remoteConfig = config.remoteConfigHolder
+        // Before the minimum and the gates below: both read the activation of the new session.
+        // Skipped while stopped, like a live event.
+        if (currentSessionId != null && !explicitlyStopped && remoteConfig?.hasSessionRecordingTriggerGroups() == true) {
+            remoteConfig.onSessionRecordingSessionChanged(currentSessionId)
+        }
+        updateCachedMinimumDuration()
+
         val triggers = remoteConfig?.getEventTriggers()
 
         val activatedSession = synchronized(eventTriggersLock) { triggerActivatedSessionId }

@@ -32,6 +32,7 @@ internal class PostHogTriggerGroupsEvaluator {
     private var activationSessionId: String? = null
     private val eventActivatedGroupIds = mutableSetOf<String>()
     private val screenActivatedGroupIds = mutableSetOf<String>()
+    private var lastScreenName: String? = null
 
     private val samplingDecisions = mutableMapOf<String, StoredSamplingDecision>()
 
@@ -57,9 +58,14 @@ internal class PostHogTriggerGroupsEvaluator {
         personProperties: Map<String, Any?>?,
     ): Boolean {
         synchronized(lock) {
-            resetActivationForNewSessionLocked(sessionId)
+            val screenName =
+                if (eventName == SCREEN_EVENT_NAME) eventProperties?.get(SCREEN_NAME_PROPERTY) as? String else null
+            // Set before the session check, so a new session never matches the screen it just left.
+            if (screenName != null) {
+                lastScreenName = screenName
+            }
 
-            var anyNewlyActivated = false
+            var anyNewlyActivated = moveActivationToSessionLocked(sessionId, personProperties)
             for (group in groups) {
                 val conditions = group.conditions
 
@@ -72,28 +78,46 @@ internal class PostHogTriggerGroupsEvaluator {
                     anyNewlyActivated = true
                 }
 
-                if (eventName == SCREEN_EVENT_NAME) {
-                    val screenName = eventProperties?.get(SCREEN_NAME_PROPERTY) as? String
-                    // Screens stand in for the web url leg.
-                    val screenMatched =
-                        conditions.urls.isNotEmpty() &&
-                            screenName != null &&
-                            group.id !in screenActivatedGroupIds &&
-                            conditions.urls.any { it.containsMatchIn(screenName) } &&
-                            // The url leg has no event to read properties from, so neither does the screen leg.
-                            matchTriggerPropertyFilters(conditions.properties, null, personProperties)
-                    if (screenMatched) {
-                        screenActivatedGroupIds.add(group.id)
-                        anyNewlyActivated = true
-                    }
+                if (screenName != null && activateScreenLegLocked(group, screenName, personProperties)) {
+                    anyNewlyActivated = true
                 }
             }
             return anyNewlyActivated
         }
     }
 
+    // A new session has no screen event of its own yet, so the last seen screen stands in for it.
+    // Returns true when at least one group activated.
+    fun onSessionChanged(
+        sessionId: String,
+        personProperties: Map<String, Any?>?,
+    ): Boolean {
+        synchronized(lock) {
+            return moveActivationToSessionLocked(sessionId, personProperties)
+        }
+    }
+
+    // Screens stand in for the web url leg.
+    private fun activateScreenLegLocked(
+        group: PostHogTriggerGroup,
+        screenName: String,
+        personProperties: Map<String, Any?>?,
+    ): Boolean {
+        val conditions = group.conditions
+        val matched =
+            conditions.urls.isNotEmpty() &&
+                group.id !in screenActivatedGroupIds &&
+                conditions.urls.any { it.containsMatchIn(screenName) } &&
+                // The url leg has no event to read properties from, so neither does the screen leg.
+                matchTriggerPropertyFilters(conditions.properties, null, personProperties)
+        if (matched) {
+            screenActivatedGroupIds.add(group.id)
+        }
+        return matched
+    }
+
     // Read-only for activation: a caller holding a stale session id must not wipe the current
-    // session's activated groups. Only onEvent moves activation to a new session.
+    // session's activated groups. Only onEvent and onSessionChanged move activation to a new session.
     fun evaluate(
         sessionId: String,
         flags: Map<String, Any?>?,
@@ -274,12 +298,18 @@ internal class PostHogTriggerGroupsEvaluator {
         return sampled
     }
 
-    private fun resetActivationForNewSessionLocked(sessionId: String) {
-        if (activationSessionId != sessionId) {
-            activationSessionId = sessionId
-            eventActivatedGroupIds.clear()
-            screenActivatedGroupIds.clear()
-        }
+    // Returns true when the last seen screen activated at least one group for the new session.
+    private fun moveActivationToSessionLocked(
+        sessionId: String,
+        personProperties: Map<String, Any?>?,
+    ): Boolean {
+        if (activationSessionId == sessionId) return false
+        activationSessionId = sessionId
+        eventActivatedGroupIds.clear()
+        screenActivatedGroupIds.clear()
+
+        val screenName = lastScreenName ?: return false
+        return groups.count { activateScreenLegLocked(it, screenName, personProperties) } > 0
     }
 
     private companion object {

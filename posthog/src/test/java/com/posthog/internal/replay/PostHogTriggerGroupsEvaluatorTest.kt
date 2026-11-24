@@ -498,4 +498,91 @@ internal class PostHogTriggerGroupsEvaluatorTest {
         assertTrue(screen(name = "/checkout"))
         assertTrue(decide().shouldRecord)
     }
+
+    @Test
+    fun `a new session checks the last seen screen again`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(name = "/checkout"))
+
+        assertTrue(evaluator.onSessionChanged("session-2", null))
+        assertTrue(decide(sessionId = "session-2").shouldRecord)
+        // already activated, so the same screen activates nothing new
+        assertFalse(screen(sessionId = "session-2", name = "/checkout"))
+    }
+
+    @Test
+    fun `a new session on a screen that does not match stays pending`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(name = "/checkout"))
+        assertFalse(screen(name = "/home"))
+
+        assertFalse(evaluator.onSessionChanged("session-2", null))
+        val decision = decide(sessionId = "session-2")
+        assertFalse(decision.shouldRecord)
+        assertTrue(decision.hasPendingGroups)
+    }
+
+    @Test
+    fun `a new session without a seen screen stays pending`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+
+        assertFalse(evaluator.onSessionChanged("session-2", null))
+        assertTrue(decide(sessionId = "session-2").hasPendingGroups)
+    }
+
+    @Test
+    fun `the first event of a new session checks the last seen screen again`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(name = "/checkout"))
+
+        assertTrue(onEvent(sessionId = "session-2", event = "other"))
+        assertTrue(decide(sessionId = "session-2").shouldRecord)
+    }
+
+    @Test
+    fun `a new session that opens on another screen does not match the screen it left`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(name = "/checkout"))
+
+        assertFalse(screen(sessionId = "session-2", name = "/home"))
+        assertTrue(decide(sessionId = "session-2").hasPendingGroups)
+    }
+
+    @Test
+    fun `a new session does not check the event leg again`() {
+        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
+        assertTrue(onEvent(event = "purchase"))
+
+        assertFalse(evaluator.onSessionChanged("session-2", null))
+        assertTrue(decide(sessionId = "session-2").hasPendingGroups)
+    }
+
+    @Test
+    fun `a new session checks the last seen screen against the current person properties`() {
+        configure(screenGroupWithFilter(mapOf("key" to "plan", "type" to "person", "value" to "pro")))
+        assertTrue(evaluator.onEvent("session-1", "\$screen", mapOf("\$screen_name" to "/checkout"), mapOf("plan" to "pro")))
+
+        assertFalse(evaluator.onSessionChanged("session-2", mapOf("plan" to "free")))
+        assertTrue(decide(sessionId = "session-2").hasPendingGroups)
+        assertTrue(evaluator.onSessionChanged("session-3", mapOf("plan" to "pro")))
+        assertTrue(decide(sessionId = "session-3").shouldRecord)
+    }
+
+    @Test
+    fun `a new session checks the last seen screen without event properties`() {
+        configure(screenGroupWithFilter(mapOf("key" to "\$screen_name", "operator" to "exact", "value" to "/checkout")))
+        assertFalse(screen(name = "/checkout"))
+
+        assertFalse(evaluator.onSessionChanged("session-2", null))
+        assertFalse(decide(sessionId = "session-2").shouldRecord)
+    }
+
+    @Test
+    fun `a session change to the same session activates nothing`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(name = "/checkout"))
+
+        assertFalse(evaluator.onSessionChanged("session-1", null))
+        assertTrue(decide().shouldRecord)
+    }
 }
