@@ -3552,6 +3552,47 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `v2 with no usable trigger group records nothing and ignores the v1 fields`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to listOf(mapOf("id" to "", "sampleRate" to 0)),
+                "sampleRate" to "1.0",
+                "eventTriggers" to listOf("purchase"),
+                "minimumDurationMilliseconds" to 0,
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        assertNull(sut.getEventTriggers())
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertFalse(sut.makeSamplingDecision("session-1"))
+        assertNull(sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "purchase", null))
+        assertEquals(0, sut.sessionRecordingTriggerGroupsDebugProperties("session-1")["\$sdk_debug_replay_trigger_groups_count"])
+
+        sut.clear()
+    }
+
+    @Test
+    fun `v2 with an empty trigger group list uses the v1 fields`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf("version" to 2, "triggerGroups" to emptyList<Any>(), "eventTriggers" to listOf("purchase")),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertFalse(sut.hasSessionRecordingTriggerGroups())
+        assertEquals(setOf("purchase"), sut.getEventTriggers())
+        assertTrue(sut.makeSamplingDecision("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
     fun `v2 trigger groups ignore a leftover linkedFlag`() {
         preferences.setValue(
             SESSION_REPLAY,

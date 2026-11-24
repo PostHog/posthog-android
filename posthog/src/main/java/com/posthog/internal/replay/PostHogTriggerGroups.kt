@@ -49,7 +49,8 @@ internal data class PostHogTriggerPropertyFilter(
     val value: Any?,
 )
 
-// Null means v1: posthog-js keeps the v1 strategy unless version is 2 and a group parses.
+// Null means v1: posthog-js keeps the v1 strategy unless version is 2 and the config lists a group.
+// A v2 config whose groups are all unusable stays v2 with no group, so nothing records.
 internal fun parseTriggerGroupsConfig(
     sessionRecording: Map<String, Any?>,
     log: (String) -> Unit = {},
@@ -58,6 +59,7 @@ internal fun parseTriggerGroupsConfig(
     if (version != 2) return null
 
     val rawGroups = sessionRecording["triggerGroups"] as? List<*> ?: return null
+    if (rawGroups.isEmpty()) return null
 
     val groups =
         rawGroups.mapNotNull { raw ->
@@ -76,7 +78,9 @@ internal fun parseTriggerGroupsConfig(
             )
         }
 
-    if (groups.isEmpty()) return null
+    if (groups.isEmpty()) {
+        log("Session recording has no usable trigger group. The v1 recording conditions stay ignored and nothing records.")
+    }
 
     return PostHogTriggerGroupsConfig(groups)
 }

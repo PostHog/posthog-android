@@ -3007,17 +3007,12 @@ internal class PostHogReplayIntegrationTest {
     }
 
     // A real remote config, so the rotation runs through the real trigger group evaluation.
-    private fun cachedTriggerGroupConfig(conditions: Map<String, Any?>): PostHogAndroidConfig {
+    private fun cachedTriggerGroupConfig(conditions: Map<String, Any?>): PostHogAndroidConfig =
+        cachedTriggerGroupsConfig(listOf(mapOf("id" to "g1", "name" to "g1", "sampleRate" to 1.0, "conditions" to conditions)))
+
+    private fun cachedTriggerGroupsConfig(groups: List<Map<String, Any?>>): PostHogAndroidConfig {
         val preferences = PostHogMemoryPreferences()
-        preferences.setValue(
-            "sessionReplay",
-            mapOf(
-                "endpoint" to "/s/",
-                "version" to 2,
-                "triggerGroups" to
-                    listOf(mapOf("id" to "g1", "name" to "g1", "sampleRate" to 1.0, "conditions" to conditions)),
-            ),
-        )
+        preferences.setValue("sessionReplay", mapOf("endpoint" to "/s/", "version" to 2, "triggerGroups" to groups))
         val config =
             PostHogAndroidConfig(PROJECT_TOKEN, host = "http://localhost").apply {
                 cachePreferences = preferences
@@ -3111,6 +3106,19 @@ internal class PostHogReplayIntegrationTest {
 
             captureScreen(sut, "/checkout")
             assertTrue(sut.isActive(), "session B after the matching screen")
+        }
+    }
+
+    @Test
+    fun `v2 with no usable trigger group records nothing`() {
+        withInstalledSut(cachedTriggerGroupsConfig(listOf(mapOf("id" to "", "sampleRate" to 0)))) { sut ->
+            sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(sut.isActive(), "after the config")
+
+            captureScreen(sut, "/checkout")
+            requestStart(sut)
+            assertFalse(sut.isActive(), "after an explicit start")
         }
     }
 

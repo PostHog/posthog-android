@@ -17,13 +17,20 @@ internal class PostHogTriggerGroupsTest {
     }
 
     @Test
-    fun `version 2 without usable groups keeps the v1 config`() {
+    fun `version 2 without a group list keeps the v1 config`() {
         assertNull(parseTriggerGroupsConfig(mapOf("version" to 2)))
         assertNull(parseTriggerGroupsConfig(mapOf("version" to 2, "triggerGroups" to emptyList<Any>())))
-        // a group without an id cannot be identified, so it is dropped and v1 stays in effect
-        assertNull(
-            parseTriggerGroupsConfig(mapOf("version" to 2, "triggerGroups" to listOf(mapOf("name" to "no id")))),
-        )
+    }
+
+    @Test
+    fun `version 2 with no usable group stays v2 with no group`() {
+        val logs = mutableListOf<String>()
+        val unusable = listOf(mapOf("name" to "no id"), mapOf("id" to "", "sampleRate" to 0), "not a group")
+
+        val config = parseTriggerGroupsConfig(mapOf("version" to 2, "triggerGroups" to unusable)) { logs.add(it) }
+
+        assertEquals(PostHogTriggerGroupsConfig(emptyList()), config)
+        assertEquals(1, logs.count { it.contains("no usable trigger group") })
     }
 
     @Test
