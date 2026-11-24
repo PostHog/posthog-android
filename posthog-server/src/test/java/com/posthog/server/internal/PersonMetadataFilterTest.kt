@@ -5,12 +5,15 @@ import com.posthog.internal.FlagDefinition
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PropertyGroup
 import com.posthog.internal.PropertyType
+import com.posthog.server.CountingDispatcher
 import com.posthog.server.PostHog
 import com.posthog.server.PostHogUnresolvedFlagReason
+import com.posthog.server.createEmptyFlagsResponse
 import com.posthog.server.createFlagsResponse
 import com.posthog.server.createMockHttp
 import com.posthog.server.createTestConfig
 import com.posthog.server.jsonResponse
+import okhttp3.mockwebserver.MockWebServer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -87,7 +90,15 @@ internal class PersonMetadataFilterTest {
         // The unsupported filter outranks the missing property, and negation must not turn it into a match.
         val unresolved = listOf("first-seen-flag", "cohort-flag", "negated-flag")
         for (personProperties in listOf(emptyMap(), createdIn2026)) {
-            val server = createMockHttp(jsonResponse(definitions))
+            // Routed by path, because the poller loads the definitions on its own thread too.
+            val dispatcher =
+                CountingDispatcher(
+                    localEvaluationResponse = { jsonResponse(definitions) },
+                    flagsResponse = { jsonResponse(createEmptyFlagsResponse()) },
+                )
+            val server = MockWebServer()
+            server.dispatcher = dispatcher
+            server.start()
             val client =
                 PostHog.with(
                     com.posthog.server.PostHogConfig.builder("test-key")
@@ -110,7 +121,7 @@ internal class PersonMetadataFilterTest {
                     snapshot.unresolvedFlags,
                 )
                 assertEquals(true, snapshot.isEnabled("control-flag"))
-                assertEquals(1, server.requestCount, "only the definitions were requested")
+                assertEquals(0, dispatcher.flagsCalls.get(), "onlyEvaluateLocally must not call /flags")
             } finally {
                 client.close()
                 server.shutdown()
