@@ -3152,6 +3152,21 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    fun `an event of a new session before the session change records on the screen the app is on`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "session A")
+
+            PostHogSessionManager.setSessionId(UUID.randomUUID())
+            captureEvent(sut, "other")
+            sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+
+            assertTrue(sut.isActive(), "session B")
+        }
+    }
+
     private fun requestStart(sut: PostHogReplayIntegration) {
         // as PostHog.startSessionReplay(resumeCurrent = true) does
         sut.onStartRequested()

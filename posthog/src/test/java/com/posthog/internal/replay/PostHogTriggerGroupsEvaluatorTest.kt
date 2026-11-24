@@ -815,4 +815,15 @@ internal class PostHogTriggerGroupsEvaluatorTest {
 
         assertTrue(evaluator.checkScreenOnNewSession("session-b", null, includeUnevaluatedScreen = true))
     }
+
+    @Test
+    fun `an event of a new session before its session change checks the last seen screen`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(sessionId = "session-a", name = "/checkout"))
+
+        assertTrue(onEvent(sessionId = "session-b", event = "other"))
+        assertFalse(evaluator.checkScreenOnNewSession("session-b", null))
+
+        assertTrue(decide(sessionId = "session-b").shouldRecord)
+    }
 }
