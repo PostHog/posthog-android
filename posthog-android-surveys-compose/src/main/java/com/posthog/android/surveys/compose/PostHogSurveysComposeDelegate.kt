@@ -63,16 +63,18 @@ import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
  *
  * - Only the first family of a CSS list is used, case-insensitively
  *   (`"Times New Roman", serif` is read as `times new roman`).
- * - `inherit`, `system-ui` or no value keep the host app's font.
+ * - `inherit`, `system-ui` or no value use the device's default system font.
+ *   The sheet renders in its own dialog outside the host app's theme, so a
+ *   custom app font isn't inherited.
  * - Web fonts are matched through Android's system font aliases. On stock
  *   Android, `Times New Roman` and `Georgia` render as the system serif font,
  *   `Courier New` as the system monospace font, and `Arial`, `Helvetica`,
  *   `Verdana` and `Tahoma` as the default sans-serif font, so they look the
- *   same as the app's default.
+ *   same as the system default.
  * - Fonts the device doesn't know (e.g. `Trebuchet MS`) fall back to the
  *   default font.
- * - Bold text (question titles, selected choices) uses the matched font's
- *   bold weight.
+ * - Bold text (question titles, selected choices) and medium-weight button
+ *   labels use the matched font's face for that weight when it has one.
  *
  * Aliases come from the device's system font config, so results can differ
  * between Android versions and manufacturers.

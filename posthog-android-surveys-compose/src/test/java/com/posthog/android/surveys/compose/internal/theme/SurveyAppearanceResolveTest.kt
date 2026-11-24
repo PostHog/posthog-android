@@ -1,5 +1,9 @@
 package com.posthog.android.surveys.compose.internal.theme
 
+import androidx.compose.ui.text.font.DeviceFontFamilyName
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -48,8 +52,9 @@ internal class SurveyAppearanceResolveTest {
 
     @Test
     fun `font family keeps the host font unless a specific family is configured`() {
-        listOf(null, "", "  ", "inherit", "system-ui", "\"\"").forEach { font ->
+        listOf(null, "", "  ", "inherit", "INHERIT", "system-ui", "System-UI", "\"\"", ", serif").forEach { font ->
             assertNull(surveyFontFamilyName(font), "font=$font")
+            assertNull(PostHogDisplaySurveyAppearance(fontFamily = font).resolve().fontFamily, "font=$font")
         }
     }
 
@@ -58,5 +63,18 @@ internal class SurveyAppearanceResolveTest {
         assertEquals("times new roman", surveyFontFamilyName("Times New Roman"))
         assertEquals("courier new", surveyFontFamilyName(" 'Courier New' , monospace"))
         assertEquals("arial", surveyFontFamilyName("\"Arial\", sans-serif"))
+    }
+
+    @Test
+    fun `configured font family resolves to the device font for every survey weight`() {
+        val family = DeviceFontFamilyName("times new roman")
+        assertEquals(
+            FontFamily(
+                Font(family, FontWeight.Normal),
+                Font(family, FontWeight.Medium),
+                Font(family, FontWeight.Bold),
+            ),
+            PostHogDisplaySurveyAppearance(fontFamily = "Times New Roman").resolve().fontFamily,
+        )
     }
 }

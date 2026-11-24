@@ -168,14 +168,19 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
  */
 private fun resolveSurveyFontFamily(input: String?): FontFamily? =
     surveyFontFamilyName(input)?.let { name ->
-        // One entry per weight the survey uses, so bold text keeps the family's bold face.
+        // One entry per weight the survey uses (Medium is the Material 3 button label), so each
+        // keeps the family's matching face instead of falling back to Normal.
         val family = DeviceFontFamilyName(name)
-        FontFamily(Font(family, FontWeight.Normal), Font(family, FontWeight.Bold))
+        FontFamily(
+            Font(family, FontWeight.Normal),
+            Font(family, FontWeight.Medium),
+            Font(family, FontWeight.Bold),
+        )
     }
 
 /**
  * Returns the first family of a CSS `font-family` value, lowercased, or null when the survey
- * should keep the host app's font (unset, `inherit` or `system-ui`).
+ * should use the default system font (unset, `inherit` or `system-ui`).
  */
 internal fun surveyFontFamilyName(input: String?): String? {
     val name =
