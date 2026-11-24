@@ -3163,6 +3163,48 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    fun `an explicit start checks a matching screen captured while replay was stopped`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            captureScreen(sut, "/home")
+            requestStop(sut)
+            captureScreen(sut, "/checkout")
+            assertFalse(sut.isActive(), "stopped")
+
+            requestStart(sut)
+            assertTrue(sut.isActive(), "after the start")
+        }
+    }
+
+    @Test
+    fun `an explicit start stays pending on a screen captured while stopped that does not match`() {
+        withCachedTriggerGroup(checkoutScreenGroup) { sut ->
+            requestStop(sut)
+            captureScreen(sut, "/home")
+
+            requestStart(sut)
+            assertFalse(sut.isActive())
+        }
+    }
+
+    @Test
+    fun `an explicit start does not check a screen again that was evaluated live`() {
+        val proPlanOnly = mapOf("properties" to listOf(mapOf("key" to "plan", "type" to "person", "value" to "pro")))
+        val config = cachedTriggerGroupConfig(checkoutScreenGroup + proPlanOnly)
+        withInstalledSut(config) { sut ->
+            captureScreen(sut, "/checkout")
+            assertFalse(sut.isActive(), "person filter not matched")
+
+            config.remoteConfigHolder!!.setPersonPropertiesForFlags(mapOf("plan" to "pro"))
+            requestStop(sut)
+            requestStart(sut)
+            assertFalse(sut.isActive(), "after the start")
+
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "after the next screen event")
+        }
+    }
+
     private fun rotateSessionByScreenEvent(
         sut: PostHogReplayIntegration,
         name: String,

@@ -36,6 +36,9 @@ internal class PostHogTriggerGroupsEvaluator {
     private var lastScreenSessionId: String? = null
     private var screenCheckedSessionId: String? = null
 
+    // The last seen screen was remembered, and no group was checked against it yet.
+    private var lastScreenUnevaluated = false
+
     private val samplingDecisions = mutableMapOf<String, StoredSamplingDecision>()
 
     private data class StoredSamplingDecision(
@@ -61,7 +64,7 @@ internal class PostHogTriggerGroupsEvaluator {
     ): Boolean {
         synchronized(lock) {
             val screenName = screenNameOf(eventName, eventProperties)
-            rememberScreenLocked(sessionId, screenName)
+            rememberScreenLocked(sessionId, screenName, evaluated = true)
             resetActivationForNewSessionLocked(sessionId)
 
             var anyNewlyActivated = checkScreenOnNewSessionLocked(sessionId, personProperties)
@@ -93,19 +96,21 @@ internal class PostHogTriggerGroupsEvaluator {
     ) {
         val screenName = screenNameOf(eventName, eventProperties) ?: return
         synchronized(lock) {
-            rememberScreenLocked(sessionId, screenName)
+            rememberScreenLocked(sessionId, screenName, evaluated = false)
         }
     }
 
     // A session that started after the last $screen event gets none for the screen the app is already
     // on, so the screen leg is checked against that screen, once per session. Returns true when at
     // least one group activated. Moves activation to sessionId, so it takes the current session id only.
+    // With includeUnevaluatedScreen, a screen that was only remembered is checked in its own session too.
     fun checkScreenOnNewSession(
         sessionId: String,
         personProperties: Map<String, Any?>?,
+        includeUnevaluatedScreen: Boolean = false,
     ): Boolean {
         synchronized(lock) {
-            return checkScreenOnNewSessionLocked(sessionId, personProperties)
+            return checkScreenOnNewSessionLocked(sessionId, personProperties, includeUnevaluatedScreen)
         }
     }
 
@@ -113,6 +118,7 @@ internal class PostHogTriggerGroupsEvaluator {
     fun skipScreenCheck(sessionId: String) {
         synchronized(lock) {
             screenCheckedSessionId = sessionId
+            lastScreenUnevaluated = false
         }
     }
 
@@ -124,19 +130,24 @@ internal class PostHogTriggerGroupsEvaluator {
     private fun rememberScreenLocked(
         sessionId: String?,
         screenName: String?,
+        evaluated: Boolean,
     ) {
         if (screenName == null) return
         lastScreenName = screenName
         lastScreenSessionId = sessionId
+        lastScreenUnevaluated = !evaluated
     }
 
     private fun checkScreenOnNewSessionLocked(
         sessionId: String,
         personProperties: Map<String, Any?>?,
+        includeUnevaluatedScreen: Boolean = false,
     ): Boolean {
-        val screenName = lastScreenName
-        if (screenName == null || sessionId == lastScreenSessionId || sessionId == screenCheckedSessionId) return false
+        val screenName = lastScreenName ?: return false
+        val sessionCovered = sessionId == lastScreenSessionId || sessionId == screenCheckedSessionId
+        if (sessionCovered && !(includeUnevaluatedScreen && lastScreenUnevaluated)) return false
         screenCheckedSessionId = sessionId
+        lastScreenUnevaluated = false
         resetActivationForNewSessionLocked(sessionId)
         return groups.count { activateScreenLegLocked(it, screenName, personProperties) } > 0
     }

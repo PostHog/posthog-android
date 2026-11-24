@@ -1621,11 +1621,13 @@ public class PostHogRemoteConfig(
 
     /**
      * Checks the screen the app is already on against the trigger groups, once for a [sessionId] that has no
-     * `$screen` event yet. Takes the current session id only.
+     * `$screen` event yet. Takes the current session id only. With [includeUnevaluatedScreen], also checks a
+     * screen of [sessionId] that was only remembered. Returns true when it activated at least one group.
      */
-    public fun checkSessionRecordingScreenOnNewSession(sessionId: String) {
-        triggerGroupsEvaluator.checkScreenOnNewSession(sessionId, getPersonPropertiesForFlags())
-    }
+    public fun checkSessionRecordingScreenOnNewSession(
+        sessionId: String,
+        includeUnevaluatedScreen: Boolean = false,
+    ): Boolean = triggerGroupsEvaluator.checkScreenOnNewSession(sessionId, getPersonPropertiesForFlags(), includeUnevaluatedScreen)
 
     /** For a [sessionId] that a `$screen` event opened: that event brings the screen, so the check is not due. */
     public fun skipSessionRecordingScreenCheck(sessionId: String) {

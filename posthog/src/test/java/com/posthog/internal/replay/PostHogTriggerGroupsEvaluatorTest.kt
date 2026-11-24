@@ -647,4 +647,43 @@ internal class PostHogTriggerGroupsEvaluatorTest {
         assertFalse(screen(sessionId = "session-2", name = "/home"))
         assertTrue(screen(sessionId = "session-2", name = "/checkout"))
     }
+
+    @Test
+    fun `a remembered screen is checked in its own session only on request`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        rememberScreen(name = "/checkout")
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", null))
+
+        assertTrue(evaluator.checkScreenOnNewSession("session-1", null, includeUnevaluatedScreen = true))
+        assertTrue(decide().shouldRecord)
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", null, includeUnevaluatedScreen = true))
+    }
+
+    @Test
+    fun `a remembered screen is checked on request in a session that was already checked`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertFalse(screen(name = "/home"))
+        assertFalse(evaluator.checkScreenOnNewSession("session-2", null))
+        rememberScreen(sessionId = "session-2", name = "/checkout")
+
+        assertTrue(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
+    }
+
+    @Test
+    fun `a screen evaluated live is not checked again in its session`() {
+        configure(screenGroupWithFilter(mapOf("key" to "plan", "type" to "person", "value" to "pro")))
+        assertFalse(screen(name = "/checkout", personProperties = mapOf("plan" to "free")))
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-1", mapOf("plan" to "pro"), includeUnevaluatedScreen = true))
+        assertTrue(decide().hasPendingGroups)
+    }
+
+    @Test
+    fun `a skipped screen check drops the remembered screen the app left`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        rememberScreen(name = "/checkout")
+        evaluator.skipScreenCheck("session-2")
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
+    }
 }

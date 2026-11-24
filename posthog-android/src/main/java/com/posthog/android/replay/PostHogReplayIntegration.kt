@@ -2999,6 +2999,8 @@ public class PostHogReplayIntegration(
     // before it ever reaches start() — otherwise later automatic starts stay blocked.
     override fun onStartRequested() {
         explicitlyStopped = false
+        // A screen captured while stopped was remembered, and no trigger group was checked against it.
+        checkTriggerGroupsScreenOnNewSession(PostHogSessionManager.peekSessionId()?.toString(), includeUnevaluatedScreen = true)
     }
 
     override fun onStopRequested() {
@@ -3385,10 +3387,15 @@ public class PostHogReplayIntegration(
 
     // Runs where recording is decided for a session, so the screen the app is already on counts for a
     // session without a $screen event. A stopped recorder activates nothing until the app starts it again.
-    private fun checkTriggerGroupsScreenOnNewSession(sessionId: String?) {
+    private fun checkTriggerGroupsScreenOnNewSession(
+        sessionId: String?,
+        includeUnevaluatedScreen: Boolean = false,
+    ) {
         val remoteConfig = config.remoteConfigHolder ?: return
         if (sessionId == null || explicitlyStopped || !remoteConfig.hasSessionRecordingTriggerGroups()) return
-        remoteConfig.checkSessionRecordingScreenOnNewSession(sessionId)
+        if (remoteConfig.checkSessionRecordingScreenOnNewSession(sessionId, includeUnevaluatedScreen)) {
+            updateCachedMinimumDuration()
+        }
     }
 
     private fun shouldWaitForTriggerGroups(): Boolean {
