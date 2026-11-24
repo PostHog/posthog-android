@@ -281,6 +281,23 @@ internal class PostHogTriggerGroupsEvaluatorTest {
     }
 
     @Test
+    fun `flag leg with a non-string variant matches no variant but a boolean true`() {
+        configure(group(id = "g1", conditions = flagLeg(mapOf("flag" to "replay-flag", "variant" to 123))))
+
+        assertFalse(decide(flags = mapOf("replay-flag" to "control")).shouldRecord)
+        assertTrue(decide(flags = mapOf("replay-flag" to "control")).hasPendingGroups)
+        assertFalse(decide(flags = mapOf("replay-flag" to "123")).shouldRecord)
+        assertTrue(decide(flags = mapOf("replay-flag" to true)).shouldRecord)
+    }
+
+    @Test
+    fun `flag leg with a null variant matches any non-empty variant`() {
+        configure(group(id = "g1", conditions = flagLeg(mapOf("flag" to "replay-flag", "variant" to null))))
+
+        assertTrue(decide(flags = mapOf("replay-flag" to "control")).shouldRecord)
+    }
+
+    @Test
     fun `flag leg without variant matches any non-empty variant`() {
         configure(group(id = "g1", conditions = flagLeg("replay-flag")))
 

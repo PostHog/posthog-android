@@ -37,9 +37,10 @@ internal data class PostHogTriggerEvent(
     val properties: List<PostHogTriggerPropertyFilter>,
 )
 
+// A variant that is not a string is kept as is, so it never equals a string flag value.
 internal data class PostHogTriggerFlag(
     val flag: String,
-    val variant: String?,
+    val variant: Any?,
 )
 
 internal data class PostHogTriggerPropertyFilter(
@@ -162,7 +163,7 @@ private fun parseTriggerFlag(flag: Any?): PostHogTriggerFlag? =
         is String -> PostHogTriggerFlag(flag, null)
         is Map<*, *> ->
             (flag["flag"] as? String)?.let { name ->
-                PostHogTriggerFlag(name, flag["variant"] as? String)
+                PostHogTriggerFlag(name, flag["variant"])
             }
         else -> null
     }
