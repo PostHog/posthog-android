@@ -1,3 +1,7 @@
+public abstract interface class com/posthog/PostHogOnFeatureFlags {
+	public abstract fun loaded ()V
+}
+
 public final class com/posthog/server/PostHog : com/posthog/PostHogStateless, com/posthog/server/PostHogInterface {
 	public static final field Companion Lcom/posthog/server/PostHog$Companion;
 	public fun <init> ()V

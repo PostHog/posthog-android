@@ -13,23 +13,20 @@ import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
 /**
  * Default Compose-based UI for PostHog surveys on Android.
  *
- * > ⚠️ **Pre-1.0 (`0.x`).** This module's public surface may change between
- * > minor versions until `1.0.0`, and it is excluded from binary-compatibility
- * > validation. Surveys are also disabled by default
- * > (`PostHogConfig.surveys = false`) and require enabling in your PostHog
- * > project settings.
+ * > Surveys must also be enabled in your PostHog project settings.
  *
- * ### Recommended: zero-wiring opt-in
+ * ### Recommended: zero-wiring setup
  *
- * Add this module to your dependencies and enable surveys — the core SDK
- * auto-discovers this delegate from the classpath, so you do **not** need to
- * set `surveysConfig.surveysDelegate` yourself:
+ * Add this module to your dependencies. Surveys are enabled by default
+ * (`PostHogConfig.surveys = true`) and the core SDK auto-discovers this
+ * delegate from the classpath, so you do **not** need to set
+ * `surveysConfig.surveysDelegate` yourself:
  * ```
  * // build.gradle.kts
  * implementation("com.posthog:posthog-android-surveys-compose:<version>")
  *
  * // app init
- * val config = PostHogAndroidConfig(projectToken).apply { surveys = true }
+ * val config = PostHogAndroidConfig(projectToken)
  * PostHogAndroid.setup(applicationContext, config)
  * ```
  *

@@ -53,7 +53,7 @@ internal class InteractionDetectorActivityTest {
     @Suppress("DEPRECATION")
     private fun setup() {
         val config =
-            PostHogAndroidConfig("test").apply {
+            PostHogAndroidConfig("test", "http://127.0.0.1:1").apply {
                 captureRageClicks = true
                 captureDeadClicks = true
                 sessionReplay = false
@@ -62,7 +62,6 @@ internal class InteractionDetectorActivityTest {
                 captureDeepLinks = false
                 capturePushNotificationOpened = false
                 capturePushNotificationSubscriptions = false
-                remoteConfig = false
                 preloadFeatureFlags = false
                 addBeforeSend { event ->
                     events += event

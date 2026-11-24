@@ -250,7 +250,7 @@ internal class PostHogPushSubscriptionManager(
                 return@executeSafely
             }
             // retryCount deliberately not reset: the exponential ladder persists across triggers, so
-            // repeated failures still exhaust maxRetries and halt for the session.
+            // repeated failures still exhaust pushNotificationSubscriptionMaxRetries and halt for the session.
             attempt(resetStateOnFold = false)
         }
     }
@@ -644,7 +644,7 @@ internal class PostHogPushSubscriptionManager(
         }
 
         retryCount++
-        if (retryCount > config.maxRetries) {
+        if (retryCount > config.pushNotificationSubscriptionMaxRetries) {
             config.logger.log(
                 "Push subscription retries exhausted after $retryCount attempts; " +
                     "will retry on next SDK startup.",
