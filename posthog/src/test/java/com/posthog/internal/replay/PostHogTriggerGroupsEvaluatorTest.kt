@@ -738,4 +738,64 @@ internal class PostHogTriggerGroupsEvaluatorTest {
 
         assertFalse(evaluator.checkScreenOnNewSession("session-2", null, includeUnevaluatedScreen = true))
     }
+
+    @Test
+    fun `a late event for a session that was left does not clear the newer session`() {
+        configure(group(id = "g1", conditions = eventLeg(mapOf("name" to "purchase"))))
+        assertTrue(onEvent(sessionId = "session-a", event = "purchase"))
+        assertTrue(onEvent(sessionId = "session-b", event = "purchase"))
+
+        assertFalse(onEvent(sessionId = "session-a", event = "purchase"))
+
+        assertTrue(decide(sessionId = "session-b").shouldRecord)
+        assertFalse(decide(sessionId = "session-a").shouldRecord)
+    }
+
+    @Test
+    fun `a late screen check for a session that was left does not clear the newer session`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(sessionId = "session-0", name = "/checkout"))
+        assertTrue(evaluator.checkScreenOnNewSession("session-a", null))
+        assertTrue(evaluator.checkScreenOnNewSession("session-b", null))
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-a", null, includeUnevaluatedScreen = true))
+
+        assertTrue(decide(sessionId = "session-b").shouldRecord)
+    }
+
+    @Test
+    fun `a late skipped check for a session that was left keeps the remembered screen`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(sessionId = "session-a", name = "/checkout"))
+        assertTrue(evaluator.checkScreenOnNewSession("session-b", null))
+
+        evaluator.skipScreenCheck("session-a")
+
+        assertTrue(evaluator.checkScreenOnNewSession("session-c", null))
+    }
+
+    @Test
+    fun `a late screen event for a session that was left does not replace the screen of the newer session`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertFalse(screen(sessionId = "session-a", name = "/home"))
+        assertFalse(screen(sessionId = "session-b", name = "/home"))
+
+        assertFalse(screen(sessionId = "session-a", name = "/checkout"))
+        rememberScreen(sessionId = "session-a", name = "/checkout")
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-b", null, includeUnevaluatedScreen = true))
+        assertFalse(evaluator.checkScreenOnNewSession("session-c", null))
+    }
+
+    @Test
+    fun `a late screen event is remembered and not evaluated while the newer session has no screen`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertFalse(screen(sessionId = "session-a", name = "/home"))
+        assertFalse(onEvent(sessionId = "session-b", event = "other"))
+
+        assertFalse(screen(sessionId = "session-a", name = "/checkout"))
+        assertFalse(decide(sessionId = "session-b").shouldRecord)
+
+        assertTrue(evaluator.checkScreenOnNewSession("session-b", null, includeUnevaluatedScreen = true))
+    }
 }

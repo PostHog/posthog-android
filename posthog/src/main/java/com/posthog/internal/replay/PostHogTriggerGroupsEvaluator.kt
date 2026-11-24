@@ -30,6 +30,9 @@ internal class PostHogTriggerGroupsEvaluator {
     private var groups: List<PostHogTriggerGroup> = emptyList()
 
     private var activationSessionId: String? = null
+
+    // Sessions that activation moved away from. A call for one of them is late and must not take activation back.
+    private val leftSessionIds = LinkedHashSet<String>()
     private val eventActivatedGroupIds = mutableSetOf<String>()
     private val screenActivatedGroupIds = mutableSetOf<String>()
     private var lastScreenName: String? = null
@@ -72,8 +75,9 @@ internal class PostHogTriggerGroupsEvaluator {
     ): Boolean {
         synchronized(lock) {
             val screenName = screenNameOf(eventName, eventProperties)
-            rememberScreenLocked(sessionId, screenName, evaluated = true)
-            resetActivationForNewSessionLocked(sessionId)
+            val late = !moveActivationToSessionLocked(sessionId)
+            rememberScreenLocked(sessionId, screenName, evaluated = !late)
+            if (late) return false
 
             var anyNewlyActivated = checkScreenOnNewSessionLocked(sessionId, personProperties)
             for (group in groups) {
@@ -125,6 +129,7 @@ internal class PostHogTriggerGroupsEvaluator {
     // For a session that a $screen event opened: that event brings the screen, the last seen one was left.
     fun skipScreenCheck(sessionId: String) {
         synchronized(lock) {
+            if (!moveActivationToSessionLocked(sessionId)) return
             screenCheckedSessionId = sessionId
             lastScreenName = null
             lastScreenUnevaluated = false
@@ -142,6 +147,9 @@ internal class PostHogTriggerGroupsEvaluator {
         evaluated: Boolean,
     ) {
         if (screenName == null) return
+        // A late event of a session that was left is older than the screen of a newer session.
+        val newerSessionId = lastScreenSessionId?.takeUnless { it in leftSessionIds }
+        if (newerSessionId != null && sessionId in leftSessionIds) return
         lastScreenName = screenName
         lastScreenSessionId = sessionId
         lastScreenUnevaluated = !evaluated
@@ -155,9 +163,9 @@ internal class PostHogTriggerGroupsEvaluator {
         val screenName = lastScreenName ?: return false
         val sessionCovered = sessionId == lastScreenSessionId || sessionId == screenCheckedSessionId
         if (sessionCovered && !(includeUnevaluatedScreen && lastScreenUnevaluated)) return false
+        if (!moveActivationToSessionLocked(sessionId)) return false
         screenCheckedSessionId = sessionId
         lastScreenUnevaluated = false
-        resetActivationForNewSessionLocked(sessionId)
         return groups.count { activateScreenLegLocked(it, screenName, personProperties) } > 0
     }
 
@@ -181,7 +189,8 @@ internal class PostHogTriggerGroupsEvaluator {
     }
 
     // Read-only for activation: a caller holding a stale session id must not wipe the current
-    // session's activated groups. Only onEvent and checkScreenOnNewSession move activation to a new session.
+    // session's activated groups. Only onEvent, checkScreenOnNewSession and skipScreenCheck move activation
+    // to a new session.
     fun evaluate(
         sessionId: String,
         flags: Map<String, Any?>?,
@@ -362,16 +371,25 @@ internal class PostHogTriggerGroupsEvaluator {
         return sampled
     }
 
-    private fun resetActivationForNewSessionLocked(sessionId: String) {
-        if (activationSessionId != sessionId) {
-            activationSessionId = sessionId
-            eventActivatedGroupIds.clear()
-            screenActivatedGroupIds.clear()
+    // Returns false for a session that activation already left.
+    private fun moveActivationToSessionLocked(sessionId: String): Boolean {
+        if (activationSessionId == sessionId) return true
+        if (sessionId in leftSessionIds) return false
+        activationSessionId?.let { left ->
+            leftSessionIds.add(left)
+            if (leftSessionIds.size > MAX_LEFT_SESSIONS) {
+                leftSessionIds.remove(leftSessionIds.first())
+            }
         }
+        activationSessionId = sessionId
+        eventActivatedGroupIds.clear()
+        screenActivatedGroupIds.clear()
+        return true
     }
 
     private companion object {
         const val SCREEN_EVENT_NAME: String = "\$screen"
         const val SCREEN_NAME_PROPERTY: String = "\$screen_name"
+        const val MAX_LEFT_SESSIONS: Int = 16
     }
 }
