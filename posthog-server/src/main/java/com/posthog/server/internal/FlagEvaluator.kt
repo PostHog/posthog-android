@@ -163,7 +163,7 @@ internal class FlagEvaluator(
     ): Boolean =
         try {
             if (property.key in knownAbsentKeys) {
-                matchKnownAbsentProperty(property, inCohort)
+                matchKnownAbsentProperty(property)
             } else {
                 matchPropertyValue(property, propertyValues, inCohort)
             }
@@ -293,29 +293,28 @@ internal class FlagEvaluator(
 
     /**
      * Matches a filter whose key the caller listed as known absent, which wins over any supplied
-     * value. Unsupported operators and malformed filter values stay inconclusive, so they are
-     * checked before the result table.
+     * value. Like the flags service, it does not parse a present filter value. Unsupported
+     * operators and an omitted or null filter value stay inconclusive.
      */
-    private fun matchKnownAbsentProperty(
-        property: FlagProperty,
-        inCohort: Boolean,
-    ): Boolean {
-        assertFilterSupported(property, inCohort)
+    private fun matchKnownAbsentProperty(property: FlagProperty): Boolean {
         val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
+        if (propertyOperator == PropertyOperator.UNKNOWN ||
+            propertyOperator == PropertyOperator.IN ||
+            propertyOperator == PropertyOperator.FLAG_EVALUATES_TO
+        ) {
+            throw InconclusiveMatchException(
+                "Unknown operator: ${property.propertyOperator}",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
         if (propertyOperator == PropertyOperator.IS_SET || propertyOperator == PropertyOperator.IS_NOT_SET) {
             return propertyOperator == PropertyOperator.IS_NOT_SET
         }
-        val propertyValue =
-            property.propertyValue ?: throw InconclusiveMatchException(
+        if (property.propertyValue == null) {
+            throw InconclusiveMatchException(
                 "Filter on known-absent property '${property.key}' has no value",
                 PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             )
-        // A negated operator must not turn an invalid pattern into a match.
-        if (propertyOperator == PropertyOperator.NOT_REGEX) {
-            val pattern = propertyValue.toString()
-            if (pattern.isNotEmpty() && compileRegex(pattern) == null) {
-                return false
-            }
         }
         return propertyOperator in KNOWN_ABSENT_MATCHING_OPERATORS
     }

@@ -3991,7 +3991,7 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testKnownAbsentKeyKeepsUnsupportedAndMalformedFiltersInconclusive() {
+    internal fun testKnownAbsentKeyKeepsUnsupportedOperatorsAndOmittedValuesInconclusive() {
         for ((operator, value) in listOf(
             "icontains_multi" to "[\"pro\"]",
             "not_icontains_multi" to "[\"pro\"]",
@@ -4003,18 +4003,33 @@ internal class FlagEvaluatorTest {
                 }
             assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
         }
-        for ((operator, value) in listOf(
-            "gt" to "\"9px\"",
-            "is_date_before" to "\"not-a-date\"",
-            "semver_neq" to "\"x.y\"",
-            "is_not" to null,
+        for (value in listOf(null, "null")) {
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("is_not with $value") {
+                    evaluator.matchProperty(knownAbsentProperty("is_not", value), emptyMap(), knownAbsentKeys = setOf("plan"))
+                }
+            assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentKeyDoesNotParseAPresentConditionValue() {
+        for ((operator, value, expected) in listOf(
+            Triple("gt", "\"9px\"", false),
+            Triple("is_date_before", "\"not-a-date\"", false),
+            Triple("semver_neq", "\"x.y\"", false),
+            Triple("regex", "\"[\"", false),
+            Triple("not_regex", "\"[\"", true),
+            Triple("not_regex", "\"\\\\p{L}\"", true),
         )) {
-            kotlin.test.assertFailsWith<InconclusiveMatchException>(operator) {
-                evaluator.matchProperty(knownAbsentProperty(operator, value), emptyMap(), knownAbsentKeys = setOf("plan"))
+            for (negation in listOf(false, true)) {
+                assertEquals(
+                    "$operator with $value, negation=$negation",
+                    expected,
+                    evaluator.matchProperty(knownAbsentProperty(operator, value, negation), emptyMap(), knownAbsentKeys = setOf("plan")),
+                )
             }
         }
-        // An invalid pattern never becomes a match through negation.
-        assertFalse(evaluator.matchProperty(knownAbsentProperty("not_regex", "\"[\""), emptyMap(), knownAbsentKeys = setOf("plan")))
     }
 
     @Test

@@ -266,6 +266,87 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a listed key resolves without reading a present condition value`() {
+        val cases =
+            listOf(
+                Triple("not_regex", "\"[\"", true),
+                Triple("regex", "\"[\"", false),
+                Triple("not_regex", "\"\\\\p{L}\"", true),
+                Triple("regex", "\"\\\\p{L}\"", false),
+                Triple("gt", "\"not-a-number\"", false),
+                Triple("gte", "\"not-a-number\"", false),
+                Triple("lt", "\"not-a-number\"", false),
+                Triple("lte", "\"not-a-number\"", false),
+                Triple("semver_gt", "\"not-a-version\"", false),
+                Triple("semver_eq", "\"not-a-version\"", false),
+                Triple("semver_tilde", "\"not-a-version\"", false),
+                Triple("semver_caret", "\"not-a-version\"", false),
+                Triple("semver_wildcard", "\"not-a-version\"", false),
+                Triple("is_date_before", "\"not-a-date\"", false),
+                Triple("is_date_after", "\"not-a-date\"", false),
+            )
+        for ((operator, value, expected) in cases) {
+            val label = "$operator with $value"
+            withPostHog(
+                createLocalEvaluationResponseFrom(personFlag("malformed", operator, valueField = ", \"value\": $value")),
+                createMultipleFlagsResponse("malformed" to !expected),
+            ) { postHog, dispatcher ->
+                val localOnly =
+                    PostHogEvaluateFlagsOptions.builder()
+                        .personProperty("plan", "pro")
+                        .personPropertyKeysKnownAbsent(listOf("plan"))
+                        .onlyEvaluateLocally(true)
+                        .build()
+                val snapshot = postHog.evaluateFlags("user-1", localOnly)
+                assertTrue(snapshot.unresolvedFlags.isEmpty(), label)
+                assertEquals(expected, snapshot.isEnabled("malformed"), label)
+
+                val options =
+                    PostHogFeatureFlagOptions.builder()
+                        .personPropertyKeysKnownAbsent(listOf("plan"))
+                        .build()
+                assertEquals(expected, postHog.getFeatureFlag("user-1", "malformed", options), label)
+                assertEquals(0, dispatcher.flagsBodies.size, label)
+            }
+        }
+    }
+
+    @Test
+    fun `an operator the SDK does not implement on a listed key stays unsupported and falls back to flags`() {
+        val cases =
+            listOf(
+                "icontains_multi" to "[\"pro\"]",
+                "not_icontains_multi" to "[\"pro\"]",
+                "between" to "[1, 2]",
+                "not_between" to "[1, 2]",
+                "future_operator" to "\"pro\"",
+            )
+        for ((operator, value) in cases) {
+            withPostHog(
+                createLocalEvaluationResponseFrom(personFlag("unsupported", operator, valueField = ", \"value\": $value")),
+                createMultipleFlagsResponse("unsupported" to true),
+            ) { postHog, dispatcher ->
+                val localOnly =
+                    PostHogEvaluateFlagsOptions.builder()
+                        .personPropertyKeysKnownAbsent(listOf("plan"))
+                        .onlyEvaluateLocally(true)
+                        .build()
+                val snapshot = postHog.evaluateFlags("user-1", localOnly)
+                assertEquals(mapOf("unsupported" to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION), snapshot.unresolvedFlags, operator)
+                assertEquals(0, dispatcher.flagsBodies.size, operator)
+
+                val options =
+                    PostHogFeatureFlagOptions.builder()
+                        .personPropertyKeysKnownAbsent(listOf("plan"))
+                        .build()
+                assertEquals(true, postHog.getFeatureFlag("user-1", "unsupported", options), operator)
+                assertEquals(1, dispatcher.flagsBodies.size, operator)
+                assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"], operator)
+            }
+        }
+    }
+
+    @Test
     fun `is_set and is_not_set with a null condition value on a listed key keep their known-absent result`() {
         val definitions =
             createLocalEvaluationResponseFrom(
