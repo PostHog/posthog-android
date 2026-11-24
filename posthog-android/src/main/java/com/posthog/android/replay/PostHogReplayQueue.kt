@@ -65,7 +65,7 @@ internal class PostHogReplayQueue internal constructor(
         get() = innerQueue.size
 
     override fun add(record: PostHogEvent) {
-        if (bufferDelegate?.isBuffering != true) {
+        if (bufferDelegate?.shouldBufferSnapshot() != true) {
             if (shouldPersist()) {
                 innerQueue.add(record)
             }
@@ -73,7 +73,7 @@ internal class PostHogReplayQueue internal constructor(
         }
 
         executor.executeSafely {
-            if (bufferDelegate?.isBuffering == true) {
+            if (bufferDelegate?.shouldBufferSnapshot() == true) {
                 bufferQueue.add(record)
                 config.logger.log("Buffered replay event '${record.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)

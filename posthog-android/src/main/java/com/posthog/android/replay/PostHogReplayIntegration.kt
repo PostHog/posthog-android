@@ -307,6 +307,8 @@ public class PostHogReplayIntegration(
             override val isBuffering: Boolean
                 get() = this@PostHogReplayIntegration.isBuffering
 
+            override fun shouldBufferSnapshot(): Boolean = this@PostHogReplayIntegration.shouldBufferSnapshot()
+
             override val isActive: Boolean
                 get() = this@PostHogReplayIntegration.isSessionReplayActive
 
@@ -3457,6 +3459,17 @@ public class PostHogReplayIntegration(
             val minimumDuration = cachedMinimumDurationMs
             val buffering = minimumDuration != null && minimumDuration > 0 && !hasPassedMinimumDuration
             BufferingSnapshot(active = active, buffering = buffering, awaitingRemoteConfig = false)
+        }
+
+    // Once a snapshot of the session persisted directly, the session is already sent, so a later
+    // positive minimum must not hold snapshots again: a rotation would drop that held window.
+    private fun shouldBufferSnapshot(): Boolean =
+        synchronized(bufferingLock) {
+            val snapshot = bufferingSnapshot()
+            if (!snapshot.buffering && snapshot.active) {
+                hasPassedMinimumDuration = true
+            }
+            snapshot.buffering
         }
 
     private data class BufferingSnapshot(val active: Boolean, val buffering: Boolean, val awaitingRemoteConfig: Boolean)

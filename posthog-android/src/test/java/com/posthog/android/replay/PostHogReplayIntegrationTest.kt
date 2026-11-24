@@ -2549,6 +2549,34 @@ internal class PostHogReplayIntegrationTest {
 
     @Test
     @OptIn(PostHogInternalReplayApi::class)
+    fun `raising the minimum duration after snapshots persisted directly does not hold snapshots again`() {
+        val (fx, client) = remoteMinimumFixture(0)
+        fx.sut.install(client)
+        try {
+            startRecordingOpeningWindow(fx)
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+
+            fx.sut.setSessionReplayMinimumDuration(5000)
+            fx.replayQueue.add(createTestEvent("later_incremental"))
+            awaitReplayExecutors()
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(3, fx.replayQueue.depth)
+
+            val rotated = UUID.randomUUID()
+            PostHogSessionManager.setSessionId(rotated)
+            whenever(client.getSessionId()).thenReturn(rotated)
+            fx.sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            assertEquals(3, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    @Test
+    @OptIn(PostHogInternalReplayApi::class)
     fun `a negative minimum duration override is ignored`() {
         val (fx, client) = remoteMinimumFixture(30_000)
         fx.sut.install(client)
