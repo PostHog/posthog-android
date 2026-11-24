@@ -3167,6 +3167,34 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @Test
+    fun `a screen seen before an uninstall is not checked after the next install`() {
+        val sut = getSut(cachedTriggerGroupConfig(checkoutScreenGroup))
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenAnswer { PostHogSessionManager.peekSessionId() }
+        sut.install(postHog)
+        try {
+            PostHogSessionManager.startSession()
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "before the uninstall")
+
+            // as optOut() does; the $screen events captured while opted out never reach replay
+            sut.uninstall()
+            sut.install(postHog)
+            PostHogSessionManager.endSession()
+            PostHogSessionManager.startSession()
+            sut.onSessionIdChanged()
+            requestStart(sut)
+            assertFalse(sut.isActive(), "after the next install")
+
+            captureScreen(sut, "/checkout")
+            assertTrue(sut.isActive(), "after the next matching screen")
+        } finally {
+            sut.uninstall()
+            PostHogSessionManager.endSession()
+        }
+    }
+
     private fun requestStart(sut: PostHogReplayIntegration) {
         // as PostHog.startSessionReplay(resumeCurrent = true) does
         sut.onStartRequested()

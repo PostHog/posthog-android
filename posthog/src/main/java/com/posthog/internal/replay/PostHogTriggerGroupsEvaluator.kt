@@ -126,6 +126,16 @@ internal class PostHogTriggerGroupsEvaluator {
         }
     }
 
+    // While events do not reach the evaluator, the app can change screen, so the last seen one is unknown.
+    fun forgetScreen() {
+        synchronized(lock) {
+            lastScreenName = null
+            lastScreenSessionId = null
+            lastScreenUnevaluated = false
+            screenCheckedSessionId = null
+        }
+    }
+
     // For a session that a $screen event opened: that event brings the screen, the last seen one was left.
     fun skipScreenCheck(sessionId: String) {
         synchronized(lock) {

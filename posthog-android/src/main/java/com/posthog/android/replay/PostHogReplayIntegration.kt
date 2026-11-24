@@ -1082,6 +1082,8 @@ public class PostHogReplayIntegration(
         try {
             stopRecording()
             this.postHog = null
+            // Uninstalled (opt-out), no $screen event reaches replay, so the remembered screen goes stale.
+            config.remoteConfigHolder?.forgetSessionRecordingScreen()
 
             // Clear buffer delegate
             replayQueue?.bufferDelegate = null

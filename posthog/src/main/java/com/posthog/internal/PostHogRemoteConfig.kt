@@ -1626,6 +1626,11 @@ public class PostHogRemoteConfig(
         triggerGroupsEvaluator.rememberScreen(sessionId, eventName, properties)
     }
 
+    /** Drops the remembered screen, for a time in which captured events do not reach session replay. */
+    public fun forgetSessionRecordingScreen() {
+        triggerGroupsEvaluator.forgetScreen()
+    }
+
     /**
      * Checks the screen the app is already on against the trigger groups, once for a [sessionId] that has no
      * `$screen` event yet. Takes the current session id only. With [includeUnevaluatedScreen], also checks a

@@ -826,4 +826,17 @@ internal class PostHogTriggerGroupsEvaluatorTest {
 
         assertTrue(decide(sessionId = "session-b").shouldRecord)
     }
+
+    @Test
+    fun `a forgotten screen is not checked for a new session`() {
+        configure(group(id = "g1", conditions = urlLeg("checkout")))
+        assertTrue(screen(sessionId = "session-a", name = "/checkout"))
+
+        evaluator.forgetScreen()
+        evaluator.onGroupsLoaded()
+
+        assertFalse(evaluator.checkScreenOnNewSession("session-b", null, includeUnevaluatedScreen = true))
+        assertTrue(decide(sessionId = "session-b").hasPendingGroups)
+        assertTrue(screen(sessionId = "session-b", name = "/checkout"))
+    }
 }
