@@ -1,11 +1,13 @@
 package com.posthog.android.surveys.compose.internal.theme
 
-import android.graphics.Typeface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.DeviceFontFamilyName
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import com.posthog.surveys.PostHogDisplaySurveyAppearance
 import com.posthog.surveys.PostHogDisplaySurveyTextContentType
 
@@ -161,11 +163,15 @@ internal fun PostHogDisplaySurveyAppearance?.resolve(): ResolvedSurveyAppearance
  * Maps the survey's CSS `font-family` to a system font.
  *
  * Android's system font config aliases common web fonts (e.g. `arial`, `times new roman`,
- * `courier new`) to its own families, but the lookup is case-sensitive and lowercase. Unknown
- * names fall back to the default typeface.
+ * `courier new`) to its own families, but the lookup is case-sensitive and lowercase. Names the
+ * device doesn't know fall back to the default typeface.
  */
 private fun resolveSurveyFontFamily(input: String?): FontFamily? =
-    surveyFontFamilyName(input)?.let { FontFamily(Typeface.create(it, Typeface.NORMAL)) }
+    surveyFontFamilyName(input)?.let { name ->
+        // One entry per weight the survey uses, so bold text keeps the family's bold face.
+        val family = DeviceFontFamilyName(name)
+        FontFamily(Font(family, FontWeight.Normal), Font(family, FontWeight.Bold))
+    }
 
 /**
  * Returns the first family of a CSS `font-family` value, lowercased, or null when the survey
