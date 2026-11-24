@@ -152,17 +152,17 @@ internal class FlagEvaluator(
     fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Boolean = matchProperty(property, propertyValues, inCohort = false, knownAbsentKeys)
 
     private fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
         inCohort: Boolean,
-        knownAbsentKeys: Set<String>,
+        knownAbsentKeys: KnownAbsentKeyScope,
     ): Boolean =
         try {
-            if (property.key in knownAbsentKeys) {
+            if (knownAbsentKeys.isKnownAbsent(property)) {
                 matchKnownAbsentProperty(property)
             } else {
                 matchPropertyValue(property, propertyValues, inCohort)
@@ -1306,7 +1306,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
@@ -1344,7 +1344,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Boolean {
         val groupType = propertyGroup.type
         val properties = propertyGroup.values
@@ -1471,7 +1471,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Boolean {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()
@@ -1516,7 +1516,7 @@ internal class FlagEvaluator(
                                 )
 
                             else -> {
-                                if (prop.key !in knownAbsentKeys && !properties.containsKey(prop.key)) {
+                                if (!knownAbsentKeys.isKnownAbsent(prop) && !properties.containsKey(prop.key)) {
                                     // Same result as matchProperty for an absent key. Filters that passed the
                                     // load-time check skip it, since it can compile a regex or parse a date.
                                     if (featureFlag.key !in flagsWithSupportedFilters) {
@@ -1578,7 +1578,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup> = emptyMap(),
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Any? {
         if (flag.ensureExperienceContinuity) {
             throw InconclusiveMatchException(
@@ -1647,7 +1647,7 @@ internal class FlagEvaluator(
         distinctId: String,
         properties: Map<String, Any?>,
         cohortProperties: Map<String, PropertyGroup>,
-        knownAbsentKeys: Set<String> = emptySet(),
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
     ): Boolean {
         // A definition problem outranks whatever the chain evaluates to, so check it first.
         assertDependencySupported(property)
@@ -1690,7 +1690,7 @@ internal class FlagEvaluator(
                                     cohortProperties,
                                     flagsByKey,
                                     evaluationCache,
-                                    knownAbsentKeys,
+                                    knownAbsentKeys.forDependency(depFlag),
                                 )
                             evaluationCache[depFlagKey] = depResult
                         } catch (e: InconclusiveMatchException) {

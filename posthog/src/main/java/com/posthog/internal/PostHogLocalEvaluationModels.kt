@@ -74,7 +74,15 @@ public data class FlagProperty(
     val negation: Boolean?,
     @SerializedName("dependency_chain")
     val dependencyChain: List<String>?,
-)
+) {
+    /**
+     * The filter's `type` as sent by the server, such as `group` or `person_metadata`, which
+     * [type] maps to [PropertyType.PERSON]. Null when the property was not parsed from JSON.
+     */
+    @Transient
+    public var rawType: String? = null
+        internal set
+}
 
 /**
  * Multivariate configuration for A/B testing

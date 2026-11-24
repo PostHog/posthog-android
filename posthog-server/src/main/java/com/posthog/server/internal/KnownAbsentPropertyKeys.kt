@@ -1,5 +1,8 @@
 package com.posthog.server.internal
 
+import com.posthog.internal.FlagDefinition
+import com.posthog.internal.FlagProperty
+
 /**
  * Property keys the caller knows are absent for one evaluation. A listed key is absent even when
  * the supplied properties hold a value for it. Empty inputs are represented by no instance at all,
@@ -53,5 +56,37 @@ internal data class KnownAbsentPropertyKeys(
             }
             return KnownAbsentPropertyKeys(personKeys, groupKeys)
         }
+    }
+}
+
+/**
+ * The known-absent keys that apply while evaluating one flag. A person listing applies only to
+ * filters of type `person`, and a group listing only to filters of type `group` in a flag
+ * aggregated on that group type. Other filter types, such as `person_metadata`, never resolve
+ * from a listing.
+ */
+internal class KnownAbsentKeyScope private constructor(
+    private val keys: Set<String>,
+    private val filterType: String,
+    private val aggregationGroupTypeIndex: Int?,
+) {
+    fun isKnownAbsent(property: FlagProperty): Boolean = property.rawType == filterType && property.key in keys
+
+    /** A dependency aggregated differently from the flag that references it gets no keys. */
+    fun forDependency(dependency: FlagDefinition): KnownAbsentKeyScope =
+        if (dependency.filters.aggregationGroupTypeIndex == aggregationGroupTypeIndex) this else NONE
+
+    internal companion object {
+        private const val PERSON_FILTER_TYPE = "person"
+        private const val GROUP_FILTER_TYPE = "group"
+
+        val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE, null)
+
+        fun person(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, PERSON_FILTER_TYPE, null)
+
+        fun group(
+            keys: Set<String>,
+            aggregationGroupTypeIndex: Int,
+        ): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, GROUP_FILTER_TYPE, aggregationGroupTypeIndex)
     }
 }

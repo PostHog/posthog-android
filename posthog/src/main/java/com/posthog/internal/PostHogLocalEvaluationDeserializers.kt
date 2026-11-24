@@ -1,10 +1,18 @@
 package com.posthog.internal
 
+import com.google.gson.Gson
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
+import com.google.gson.TypeAdapter
+import com.google.gson.TypeAdapterFactory
+import com.google.gson.reflect.TypeToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
 import com.google.gson.stream.MalformedJsonException
 import java.lang.reflect.Type
 
@@ -129,10 +137,8 @@ internal class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
                 PropertyOperator.fromStringOrNull(it)
             }
 
-        val type =
-            jsonObject.get("type")?.asString?.let {
-                PropertyType.fromStringOrNull(it)
-            }
+        val rawType = jsonObject.get("type")?.asString
+        val type = PropertyType.fromStringOrNull(rawType)
 
         val negation = jsonObject.get("negation")?.asBoolean
 
@@ -152,7 +158,48 @@ internal class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
             type = type,
             negation = negation,
             dependencyChain = dependencyChain,
-        )
+        ).also { it.rawType = rawType }
+    }
+}
+
+/**
+ * Keeps a flag condition filter's `type` string in [FlagProperty.rawType] when parsing, and writes
+ * it back when serializing so a definitions cache round trip does not turn it into `person`.
+ */
+internal class FlagPropertyTypeAdapterFactory : TypeAdapterFactory {
+    override fun <T> create(
+        gson: Gson,
+        type: TypeToken<T>,
+    ): TypeAdapter<T>? {
+        if (type.rawType != FlagProperty::class.java) return null
+        val delegate = gson.getDelegateAdapter(this, TypeToken.get(FlagProperty::class.java))
+        val elementAdapter = gson.getAdapter(JsonElement::class.java)
+        val adapter =
+            object : TypeAdapter<FlagProperty>() {
+                override fun write(
+                    out: JsonWriter,
+                    value: FlagProperty?,
+                ) {
+                    val tree = delegate.toJsonTree(value)
+                    val rawType = value?.rawType
+                    if (rawType != null && tree.isJsonObject) {
+                        tree.asJsonObject.addProperty("type", rawType)
+                    }
+                    elementAdapter.write(out, tree)
+                }
+
+                override fun read(input: JsonReader): FlagProperty? {
+                    val tree = elementAdapter.read(input)
+                    val property = delegate.fromJsonTree(tree) ?: return null
+                    val rawType = (tree as? JsonObject)?.get("type")
+                    if (rawType is JsonPrimitive && rawType.isString) {
+                        property.rawType = rawType.asString
+                    }
+                    return property
+                }
+            }
+        @Suppress("UNCHECKED_CAST")
+        return adapter as TypeAdapter<T>
     }
 }
 

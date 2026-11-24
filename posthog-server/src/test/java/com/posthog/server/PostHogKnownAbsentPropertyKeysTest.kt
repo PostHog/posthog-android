@@ -368,6 +368,183 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a listed person_metadata key never resolves from the listing`() {
+        val cohortLeaf = { operator: String, value: String ->
+            """{"key": "created_at", "type": "person_metadata", "operator": "$operator"$value}"""
+        }
+        for ((operator, value) in listOf("is_not_set" to "", "is_date_before" to ", \"value\": \"2020-01-01\"")) {
+            val definitions =
+                """
+                {"flags": [
+                  {"id": 1, "key": "new-user-only", "name": "new-user-only", "active": true, "version": 1,
+                   "filters": {"groups": [{"properties": [${cohortLeaf(operator, value)}], "rollout_percentage": 100}]}},
+                  {"id": 2, "key": "new-user-cohort", "name": "new-user-cohort", "active": true, "version": 1,
+                   "filters": {"groups": [{"properties": [{"key": "id", "type": "cohort", "value": 1}], "rollout_percentage": 100}]}}
+                 ],
+                 "group_type_mapping": {},
+                 "cohorts": {"1": {"type": "OR", "values": [{"type": "AND", "values": [${cohortLeaf(operator, value)}]}]}}}
+                """.trimIndent()
+            withPostHog(
+                definitions,
+                createMultipleFlagsResponse("new-user-only" to false, "new-user-cohort" to false),
+            ) { postHog, dispatcher ->
+                val options =
+                    PostHogEvaluateFlagsOptions.builder()
+                        .personPropertyKeysKnownAbsent(listOf("created_at"))
+                        .build()
+                val snapshot = postHog.evaluateFlags("user-1", options)
+                assertFalse(snapshot.isEnabled("new-user-only"), operator)
+                assertFalse(snapshot.isEnabled("new-user-cohort"), operator)
+                assertEquals(1, dispatcher.flagsBodies.size, operator)
+                assertEquals(listOf("created_at"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"], operator)
+            }
+        }
+    }
+
+    @Test
+    fun `a person listing does not resolve a group filter`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-incomplete", "name": "org-incomplete", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "person-flag-group-filter", "name": "person-flag-group-filter", "active": true, "version": 1,
+               "filters": {"groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {}}
+            """.trimIndent()
+        withPostHog(
+            definitions,
+            createMultipleFlagsResponse("org-incomplete" to false, "person-flag-group-filter" to false),
+        ) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .personPropertyKeysKnownAbsent(listOf("tier"))
+                    .build()
+            val snapshot = postHog.evaluateFlags("user-1", options)
+            assertFalse(snapshot.isEnabled("org-incomplete"))
+            assertFalse(snapshot.isEnabled("person-flag-group-filter"))
+            assertEquals(1, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a group listing does not resolve a person filter or person cohort leaf on a group flag`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-person-filter", "name": "org-person-filter", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "person", "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "org-cohort-flag", "name": "org-cohort-flag", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "id", "type": "cohort", "value": 1}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {"1": {"type": "OR", "values": [{"type": "AND", "values": [
+               {"key": "tier", "type": "person", "operator": "is_not_set"}
+             ]}]}}}
+            """.trimIndent()
+        withPostHog(
+            definitions,
+            createMultipleFlagsResponse("org-person-filter" to false, "org-cohort-flag" to false),
+        ) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            val snapshot = postHog.evaluateFlags("user-1", options)
+            assertFalse(snapshot.isEnabled("org-person-filter"))
+            assertFalse(snapshot.isEnabled("org-cohort-flag"))
+            assertEquals(1, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a flag dependency with a different aggregation does not use the parent's listing`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "group-dep", "name": "group-dep", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "person-parent", "name": "person-parent", "active": true, "version": 1,
+               "filters": {"groups": [{"properties": [
+                 {"key": "group-dep", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["group-dep"]}
+               ], "rollout_percentage": 100}]}},
+              {"id": 3, "key": "person-dep", "name": "person-dep", "active": true, "version": 1,
+               "filters": {"groups": [{"properties": [
+                 {"key": "tier", "type": "person", "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 4, "key": "group-parent", "name": "group-parent", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "person-dep", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["person-dep"]}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {}}
+            """.trimIndent()
+        val remote = createMultipleFlagsResponse("person-parent" to false, "group-parent" to false)
+        withPostHog(definitions, remote) { postHog, dispatcher ->
+            val personListing =
+                PostHogEvaluateFlagsOptions.builder()
+                    .flagKeys(listOf("person-parent"))
+                    .group("organization", "org-1")
+                    .personPropertyKeysKnownAbsent(listOf("tier"))
+                    .build()
+            assertFalse(postHog.evaluateFlags("user-1", personListing).isEnabled("person-parent"))
+            assertEquals(1, dispatcher.flagsBodies.size)
+
+            val groupListing =
+                PostHogEvaluateFlagsOptions.builder()
+                    .flagKeys(listOf("group-parent"))
+                    .group("organization", "org-1")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            assertFalse(postHog.evaluateFlags("user-1", groupListing).isEnabled("group-parent"))
+            assertEquals(2, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a flag dependency with the same aggregation uses the listing`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-dep", "name": "org-dep", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "org-parent", "name": "org-parent", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "org-dep", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["org-dep"]}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {}}
+            """.trimIndent()
+        withPostHog(definitions) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            assertTrue(postHog.evaluateFlags("user-1", options).isEnabled("org-parent"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `more than 1000 keys returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),

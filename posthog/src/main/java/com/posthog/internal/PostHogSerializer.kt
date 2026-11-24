@@ -81,6 +81,7 @@ public class PostHogSerializer(private val config: PostHogConfig) {
             registerTypeAdapter(PropertyValue::class.java, GsonPropertyValueAdapter())
             registerTypeAdapter(PropertyOperator::class.java, GsonPropertyOperatorAdapter())
             registerTypeAdapter(PropertyType::class.java, GsonPropertyTypeAdapter())
+            registerTypeAdapterFactory(FlagPropertyTypeAdapterFactory())
         }.create()
 
     @Throws(JsonIOException::class, IOException::class)

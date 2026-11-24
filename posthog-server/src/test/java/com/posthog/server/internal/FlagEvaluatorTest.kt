@@ -3973,7 +3973,7 @@ internal class FlagEvaluatorTest {
                 assertEquals(
                     "$operator with $supplied",
                     case.second,
-                    evaluator.matchProperty(property, supplied, knownAbsentKeys = setOf("plan")),
+                    evaluator.matchProperty(property, supplied, knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan"))),
                 )
             }
         }
@@ -3984,7 +3984,11 @@ internal class FlagEvaluatorTest {
         for (operator in listOf("is_not_set", "is_not", "not_icontains")) {
             val error =
                 kotlin.test.assertFailsWith<InconclusiveMatchException> {
-                    evaluator.matchProperty(knownAbsentProperty(operator, "\"pro\""), emptyMap(), knownAbsentKeys = setOf("region"))
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, "\"pro\""),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("region")),
+                    )
                 }
             assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, error.reason)
         }
@@ -3999,14 +4003,22 @@ internal class FlagEvaluatorTest {
         )) {
             val error =
                 kotlin.test.assertFailsWith<InconclusiveMatchException>(operator) {
-                    evaluator.matchProperty(knownAbsentProperty(operator, value), emptyMap(), knownAbsentKeys = setOf("plan"))
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, value),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    )
                 }
             assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
         }
         for (value in listOf(null, "null")) {
             val error =
                 kotlin.test.assertFailsWith<InconclusiveMatchException>("is_not with $value") {
-                    evaluator.matchProperty(knownAbsentProperty("is_not", value), emptyMap(), knownAbsentKeys = setOf("plan"))
+                    evaluator.matchProperty(
+                        knownAbsentProperty("is_not", value),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    )
                 }
             assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
         }
@@ -4026,7 +4038,11 @@ internal class FlagEvaluatorTest {
                 assertEquals(
                     "$operator with $value, negation=$negation",
                     expected,
-                    evaluator.matchProperty(knownAbsentProperty(operator, value, negation), emptyMap(), knownAbsentKeys = setOf("plan")),
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, value, negation),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    ),
                 )
             }
         }
@@ -4041,7 +4057,15 @@ internal class FlagEvaluatorTest {
             )
         val cohortFilter = FlagProperty("id", 1, PropertyOperator.IN, PropertyType.COHORT, false, null)
         assertTrue(
-            evaluator.matchCohort(cohortFilter, mapOf("plan" to "pro"), mapOf("1" to cohort), null, null, null, setOf("plan")),
+            evaluator.matchCohort(
+                cohortFilter,
+                mapOf("plan" to "pro"),
+                mapOf("1" to cohort),
+                null,
+                null,
+                null,
+                KnownAbsentKeyScope.person(setOf("plan")),
+            ),
         )
         assertFalse(
             evaluator.matchCohort(cohortFilter, mapOf("plan" to "pro"), mapOf("1" to cohort), null, null, null),
@@ -4063,7 +4087,15 @@ internal class FlagEvaluatorTest {
                 )
             val error =
                 kotlin.test.assertFailsWith<InconclusiveMatchException>("negation=$negation") {
-                    evaluator.matchCohort(cohortFilter, emptyMap(), mapOf("1" to cohort), null, null, null, setOf("plan"))
+                    evaluator.matchCohort(
+                        cohortFilter,
+                        emptyMap(),
+                        mapOf("1" to cohort),
+                        null,
+                        null,
+                        null,
+                        KnownAbsentKeyScope.person(setOf("plan")),
+                    )
                 }
             assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
         }
@@ -4099,7 +4131,7 @@ internal class FlagEvaluatorTest {
                 mapOf("distinct_id" to "user-1"),
                 flagsByKey = flagsByKey,
                 evaluationCache = mutableMapOf(),
-                knownAbsentKeys = setOf("plan"),
+                knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
             ),
         )
         kotlin.test.assertFailsWith<InconclusiveMatchException> {

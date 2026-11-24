@@ -1047,10 +1047,14 @@ internal class PostHogFeatureFlags(
                 }
 
                 // Use group's key and properties for evaluation
-                Triple(groupKey, groupProperties?.get(groupTypeName), knownAbsent?.forGroupType(groupTypeName).orEmpty())
+                Triple(
+                    groupKey,
+                    groupProperties?.get(groupTypeName),
+                    KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty(), aggregationGroupIndex),
+                )
             } else {
                 // Person-based flag - use person's ID and properties
-                Triple(distinctId, personProperties, knownAbsent?.person.orEmpty())
+                Triple(distinctId, personProperties, KnownAbsentKeyScope.person(knownAbsent?.person.orEmpty()))
             }
 
         val evaluationCache = mutableMapOf<String, Any?>()

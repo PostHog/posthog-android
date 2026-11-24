@@ -19,8 +19,9 @@ package com.posthog.server
  * @property disableGeoip Whether to send `geoip_disable=true` during remote evaluation.
  * @property personPropertyKeysKnownAbsent Person property keys the caller knows are absent for
  *   this evaluation. A listed key is absent even when [personProperties] holds a value for it, or
- *   when the SDK would add one itself, such as `distinct_id`. Local evaluation resolves a filter on
- *   a listed key without remote fallback: `is_not_set`, `is_not`, `not_icontains`,
+ *   when the SDK would add one itself, such as `distinct_id`. A listed key applies only to filters
+ *   of type `person`, never to other filter types such as `person_metadata`. Local evaluation
+ *   resolves such a filter on a listed key without remote fallback: `is_not_set`, `is_not`, `not_icontains`,
  *   `not_starts_with`, `not_ends_with` and `not_regex` match, and every other supported operator
  *   does not. A filter that local evaluation does not support still falls back to `/flags`. Keys
  *   starting with `__posthog_person_metadata__` are ignored. The keys are sent to `/flags` when the
@@ -28,8 +29,8 @@ package com.posthog.server
  *   a warning, evaluates nothing and sends no request: the snapshot or flag lookup returns its
  *   unavailable result (empty snapshot, default value, or null). Lists are never truncated.
  * @property groupPropertyKeysKnownAbsent Group property keys the caller knows are absent for this
- *   evaluation, keyed by group type. A key applies only to its own group type and wins over any
- *   value in [groupProperties] for that type. Otherwise this follows [personPropertyKeysKnownAbsent],
+ *   evaluation, keyed by group type. A key applies only to filters of type `group` in flags
+ *   aggregated on its own group type and wins over any value in [groupProperties] for that type. Otherwise this follows [personPropertyKeysKnownAbsent],
  *   with the limit of 1000 keys applying to each group type.
  *
  * Known-absent keys are not available on [PostHogCaptureOptions]; evaluate a snapshot with these
