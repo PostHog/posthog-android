@@ -1,0 +1,8 @@
+public final class com/posthog/android/surveys/compose/PostHogSurveysComposeDelegate : com/posthog/surveys/PostHogSurveysResumeAwareDelegate {
+	public static final field $stable I
+	public fun <init> (Landroid/content/Context;)V
+	public fun cleanupSurveys ()V
+	public fun getSupportsSurveyResume ()Z
+	public fun renderSurvey (Lcom/posthog/surveys/PostHogDisplaySurvey;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function1;)V
+}
+
