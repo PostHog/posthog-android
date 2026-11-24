@@ -1267,7 +1267,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
-        personProperties: Map<String, Any?> = propertyValues,
+        personProperties: Map<String, Any?>,
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
@@ -1432,7 +1432,7 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
-        personProperties: Map<String, Any?> = properties,
+        personProperties: Map<String, Any?>,
     ): Boolean {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()

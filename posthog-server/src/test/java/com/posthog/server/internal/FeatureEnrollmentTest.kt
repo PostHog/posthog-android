@@ -132,7 +132,8 @@ internal class FeatureEnrollmentTest {
         val definitions =
             """
             {"flags": [${betaFeature(
-                """"aggregation_group_type_index": 0, "groups": [{"properties": [], "rollout_percentage": $rollout}]""",
+                """"aggregation_group_type_index": 0, "payloads": {"true": "{\"plan\":\"beta\"}"},
+                "groups": [{"properties": [], "rollout_percentage": $rollout}]""",
             )}],
              "group_type_mapping": {"0": "company"}, "cohorts": {}}
             """.trimIndent()
@@ -185,6 +186,23 @@ internal class FeatureEnrollmentTest {
                     groupProperties = mapOf("company" to mapOf(enrollmentKey to true)),
                 ),
             )
+            assertEquals(1, server.requestCount, "evaluated locally, no /flags request")
+        } finally {
+            flags.shutDown()
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `an enrolled flag has its payload and an opted-out one has none`() {
+        val (flags, server) = groupFlagClient(rollout = 100, remoteEnabled = true)
+        try {
+            for ((enrolled, payload) in listOf(true to "{\"plan\":\"beta\"}", false to null)) {
+                val properties = mapOf(enrollmentKey to enrolled)
+                val result = flags.getFeatureFlagResult("beta-feature", "user-123", null, properties, null)
+                assertEquals(enrolled, result?.enabled)
+                assertEquals(payload, result?.payload)
+            }
             assertEquals(1, server.requestCount, "evaluated locally, no /flags request")
         } finally {
             flags.shutDown()
