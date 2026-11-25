@@ -3,7 +3,9 @@ package com.posthog.server
 /**
  * Java-friendly options builder for [PostHogInterface.evaluateFlags].
  *
- * Kotlin callers should prefer named arguments on the method itself.
+ * Kotlin callers may use named arguments on the method itself for the other fields, but
+ * [personPropertyKeysKnownAbsent] and [groupPropertyKeysKnownAbsent] are only available through
+ * these options.
  *
  * @property groups Groups for group-based flags, keyed by group type.
  * @property personProperties Person properties to use for flag evaluation.
