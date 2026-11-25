@@ -786,6 +786,28 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a person listing resolves a person filter that carries a group_type_index`() {
+        val definitions =
+            createLocalEvaluationResponseFrom(
+                """
+                {"id": 1, "key": "pro-only", "name": "pro-only", "active": true, "version": 1,
+                 "filters": {"groups": [{"properties": [
+                   {"key": "plan", "type": "person", "group_type_index": 1, "operator": "exact", "value": "pro"}
+                 ], "rollout_percentage": 100}]}}
+                """.trimIndent(),
+            )
+        withPostHog(definitions) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .personProperty("plan", "pro")
+                    .personPropertyKeysKnownAbsent(listOf("plan"))
+                    .build()
+            assertFalse(postHog.evaluateFlags("user-1", options).isEnabled("pro-only"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `a flag dependency with the same aggregation uses the listing`() {
         val definitions =
             """

@@ -85,7 +85,7 @@ internal class KnownAbsentKeyScope private constructor(
             property.key in keys &&
             !(filterType == PERSON_FILTER_TYPE && property.key.startsWith(PERSON_METADATA_KEY_PREFIX)) &&
             // A group filter without an index reads the flag's group type.
-            (property.groupTypeIndex == null || property.groupTypeIndex == groupTypeIndex)
+            (filterType != GROUP_FILTER_TYPE || property.groupTypeIndex == null || property.groupTypeIndex == groupTypeIndex)
 
     internal companion object {
         private const val PERSON_FILTER_TYPE = "person"
