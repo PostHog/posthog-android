@@ -1422,9 +1422,20 @@ internal class FlagEvaluator(
     }
 
     /**
-     * Check if a condition matches for a given distinct ID
+     * Outcome of one condition group: its filters and rollout matched, a filter did not
+     * match, or every filter matched (or it has none) but the rollout excluded the user.
+     * Only the last one can stop evaluation, when `early_exit` is on.
      */
-    fun isConditionMatch(
+    internal enum class ConditionMatch {
+        MATCH,
+        NO_MATCH,
+        OUT_OF_ROLLOUT,
+    }
+
+    /**
+     * Evaluate a condition for a given distinct ID
+     */
+    internal fun evaluateCondition(
         featureFlag: FlagDefinition,
         distinctId: String,
         condition: FlagConditionGroup,
@@ -1433,7 +1444,7 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         personProperties: Map<String, Any?>,
-    ): Boolean {
+    ): ConditionMatch {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()
 
@@ -1502,7 +1513,7 @@ internal class FlagEvaluator(
                     }
 
                 if (!matches) {
-                    return false
+                    return ConditionMatch.NO_MATCH
                 }
             }
 
@@ -1512,7 +1523,7 @@ internal class FlagEvaluator(
 
             // All properties matched, check rollout
             if (rolloutPercentage == null) {
-                return true
+                return ConditionMatch.MATCH
             }
         }
 
@@ -1522,10 +1533,10 @@ internal class FlagEvaluator(
                 distinctId,
             ) > (rolloutPercentage / 100.0)
         ) {
-            return false
+            return ConditionMatch.OUT_OF_ROLLOUT
         }
 
-        return true
+        return ConditionMatch.MATCH
     }
 
     /**
@@ -1562,17 +1573,12 @@ internal class FlagEvaluator(
         val flagVariants = flag.filters.multivariate?.variants ?: emptyList()
         val validVariantKeys = flagVariants.map { it.key }.toSet()
 
-        // Sort conditions with variant overrides to the top
-        // This ensures that if overrides are present, they are evaluated first
-        val sortedFlagConditions =
-            flagConditions.sortedBy {
-                if (it.variant != null) 0 else 1
-            }
-
-        for (condition in sortedFlagConditions) {
-            try {
-                // If any one condition resolves to True, we can short-circuit and return the matching variant
-                if (isConditionMatch(
+        // Condition groups are ordered alternatives, evaluated in the order they are stored, as
+        // /flags does: a group with a variant override is not moved ahead of earlier groups.
+        for (condition in flagConditions) {
+            val outcome =
+                try {
+                    evaluateCondition(
                         flag,
                         distinctId,
                         condition,
@@ -1582,7 +1588,12 @@ internal class FlagEvaluator(
                         evaluationCache,
                         personProperties,
                     )
-                ) {
+                } catch (e: InconclusiveMatchException) {
+                    inconclusiveReason = pickUnresolvedReason(inconclusiveReason, e.reason)
+                    continue
+                }
+            when (outcome) {
+                ConditionMatch.MATCH -> {
                     val variantOverride = condition.variant
                     val variant =
                         if (variantOverride != null && variantOverride in validVariantKeys) {
@@ -1592,8 +1603,11 @@ internal class FlagEvaluator(
                         }
                     return variant ?: true
                 }
-            } catch (e: InconclusiveMatchException) {
-                inconclusiveReason = pickUnresolvedReason(inconclusiveReason, e.reason)
+                // With early_exit, a group whose filters all match but whose rollout excludes the
+                // user decides the flag: later groups are not evaluated. An earlier inconclusive
+                // group still wins below, so the flag falls back instead of returning false.
+                ConditionMatch.OUT_OF_ROLLOUT -> if (flag.filters.earlyExit) break
+                ConditionMatch.NO_MATCH -> {}
             }
         }
 

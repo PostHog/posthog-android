@@ -1,5 +1,5 @@
 ---
-title: "PostHog Android SDK 4.x (experimental)"
+title: "PostHog Android SDK 4.x"
 sidebar: Docs
 showTitle: true
 contentMaxWidthClass: max-w-full
@@ -139,11 +139,11 @@ To send your first event, add the dependency, then call `PostHogAndroid.setup` o
 
 After `setup`, PostHog captures app lifecycle events, such as `Application Opened`, by itself. Use `capture` for your own events.
 
-Add the SDK to your app's `build.gradle.kts`:
+The SDK supports Android 6.0 (API level 23) and newer. Add it to your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.posthog:posthog-android:<version>")
+    implementation("com.posthog:posthog-android:4.+")
 }
 ```
 
@@ -153,6 +153,8 @@ Initialize it once, in `Application.onCreate`:
 val config = PostHogAndroidConfig("<ph_project_token>", host = "<ph_client_api_host>")
 PostHogAndroid.setup(this, config)
 ```
+
+Versions before 3.72.0 take `apiKey` instead of `projectToken`.
 
 Capture an event and identify the user:
 
@@ -169,6 +171,15 @@ PostHog.close()
 ```
 
 Every `PostHog.*` method below is also available on the instance that `PostHogAndroid.with(context, config)` returns.
+
+### Offline behavior
+
+The SDK keeps capturing events while the device is offline. It stores them in a queue in the device's file storage and sends them when the device is online again.
+
+- `maxQueueSize` sets the maximum queue size. When the queue is full, the SDK deletes the oldest event first.
+- The SDK sends queued events when the app restarts and the device is online.
+- If you call `flush()` while the device is offline, it returns early and sends nothing.
+- `pushNotificationSubscriptionMaxRetries` limits only push-notification subscription retries, not event delivery.
 
 ### Connect requests to backend events
 
@@ -195,6 +206,12 @@ Use exact hostnames, with no protocol, path, port or wildcard subdomain. Matchin
 ### Permissions
 
 The SDK declares `android.permission.INTERNET` and `android.permission.ACCESS_NETWORK_STATE`, and Android's manifest merger adds them to your app. It doesn't declare or need an Android `Service`.
+
+### Older versions
+
+These docs cover version 4.x.x. To check your version, look at the `com.posthog:posthog-android` line in your Gradle files, or run `./gradlew dependencies` and search for `posthog-android`.
+
+If you use version 3.x.x, see the [3.x.x reference](https://posthog.com/docs/libraries/android/3.x.x). To upgrade, follow the [migration guide](https://posthog.com/docs/libraries/android/migration).
 
 ## Setup
 
@@ -353,6 +370,8 @@ Captures an AI observability event, such as `$ai_generation`, `$ai_span`, `$ai_t
 Takes the same arguments as capture, merges properties in the same order and goes through the same `beforeSend` hooks. The event is queued on disk separately from other events and sent unchanged: the SDK doesn't redact or truncate prompts, outputs or media. PostHog drops an event sent here whose name doesn't start with `$ai_`, and the SDK logs a debug message when it's given one. capture never sends events here, even ones named `$ai_*`.
 
 AI events use PostHogConfig.flushAt, PostHogConfig.maxBatchSize and PostHogConfig.flushIntervalSeconds, like other events, and PostHogConfig.captureAiCompression, PostHogConfig.captureAiMaxQueueSize and PostHogConfig.captureAiTimeout instead of `compression`, `maxQueueSize` and the default timeouts. A serialized event over PostHogConfig.captureAiMaxEventBytes (8 MiB + 64 KiB by default) is dropped, with a log line naming the event and the limit. Requests carry up to about 5 MiB of events, and the SDK sends as soon as that much is queued. Up to 50 MiB of AI events are kept on disk; beyond that, the oldest are dropped.
+
+The size check serializes the event on the calling thread, so call this off the main thread for large payloads such as images.
 
 Example:
 
@@ -665,7 +684,7 @@ Disables the SDK to capture events until you optIn again
 fun register(key: String, value: Any)
 ```
 
-Register a property to always be sent with all the following events until you call unregister with the same key. The property persists across app restarts. PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only.
+Register a property to always be sent with all the following events until you call unregister with the same key. The property persists across app restarts. PostHogPreferences.ALL\_INTERNAL\_KEYS are not allowed since they are internal and used by the SDK only. A registered `$process_person_profile` isn't sent with `$identify`, `$create_alias`, `$merge_dangerously`, `$groupidentify`, `$set` or `$set_once`, so it can't stop those events from updating persons and groups. A value passed on the call still applies.
 
 #### Parameters
 
@@ -1175,7 +1194,7 @@ Android SDK configuration.
 
 #### Parameters
 
-- `projectToken`: Your PostHog project token, which starts with `phc_`. Required, no default. Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace is trimmed. Formerly named `apiKey`. Example: `PostHogAndroidConfig(projectToken = "phc_your_project_token")`.
+- `projectToken`: Your PostHog project token, which starts with `phc_`. Required, no default. Find it in your PostHog project settings: https://us.posthog.com/settings/project-details#variables. Leading and trailing whitespace is trimmed. Versions before 3.72.0 take `apiKey`. Example: `PostHogAndroidConfig(projectToken = "phc_your_project_token")`.
 - `host`: PostHog ingestion host. Defaults to DEFAULT\_HOST.
 
 #### Properties
@@ -1277,7 +1296,7 @@ Controls whether request bodies are compressed before being sent to the PostHog 
 ### `PostHogConfig`
 
 ```kotlin
-class PostHogConfig(projectToken: String, host: String = DEFAULT_HOST, var debug: Boolean = false, var optOut: Boolean = false, var sendFeatureFlagEvent: Boolean = true, var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE, var preloadFeatureFlags: Boolean = true, var evaluationContexts: List<String>? = null, var setDefaultPersonProperties: Boolean = true, var flushAt: Int = DEFAULT_FLUSH_AT, var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE, var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE, var pushNotificationSubscriptionMaxRetries: Int = 3, var featureFlagRequestMaxRetries: Int = 1, var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS, var encryption: PostHogEncryption? = null, var sessionReplay: Boolean = false, var getAnonymousId: (UUID) -> UUID = { it }, var reuseAnonymousId: Boolean = false, var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY, var surveys: Boolean = false, var proxy: Proxy? = null, var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(), var logs: PostHogLogsConfig = PostHogLogsConfig(), val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService, PostHogDefaultPersonPropertiesProvider?, PostHogOnRemoteConfigLoaded?, PostHogFeatureFlagCalledProvider?) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER, val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER, val errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(), var releaseIdentifier: String? = null, var bootstrap: PostHogBootstrapConfig? = null, var pushIdentityProvider: (distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit? = null)
+class PostHogConfig(projectToken: String, host: String = DEFAULT_HOST, var debug: Boolean = false, var optOut: Boolean = false, var sendFeatureFlagEvent: Boolean = true, var featureFlagCalledCacheSize: Int = DEFAULT_FEATURE_FLAG_CALLED_CACHE_SIZE, var preloadFeatureFlags: Boolean = true, var evaluationContexts: List<String>? = null, var setDefaultPersonProperties: Boolean = true, var flushAt: Int = DEFAULT_FLUSH_AT, var maxQueueSize: Int = DEFAULT_MAX_QUEUE_SIZE, var maxBatchSize: Int = DEFAULT_MAX_BATCH_SIZE, var pushNotificationSubscriptionMaxRetries: Int = 3, var featureFlagRequestMaxRetries: Int = 1, var flushIntervalSeconds: Int = DEFAULT_FLUSH_INTERVAL_SECONDS, var encryption: PostHogEncryption? = null, var sessionReplay: Boolean = false, var getAnonymousId: (UUID) -> UUID = { it }, var reuseAnonymousId: Boolean = false, var personProfiles: PersonProfiles = PersonProfiles.IDENTIFIED_ONLY, var surveys: Boolean = true, var proxy: Proxy? = null, var surveysConfig: PostHogSurveysConfig = PostHogSurveysConfig(), var logs: PostHogLogsConfig = PostHogLogsConfig(), val remoteConfigProvider: (PostHogConfig, PostHogApi, ExecutorService, PostHogDefaultPersonPropertiesProvider?, PostHogOnRemoteConfigLoaded?, PostHogFeatureFlagCalledProvider?) -> PostHogFeatureFlagsInterface = DEFAULT_REMOTE_CONFIG_PROVIDER, val queueProvider: (PostHogConfig, PostHogApi, PostHogApiEndpoint, String?, ExecutorService) -> PostHogQueueInterface<PostHogEvent> = DEFAULT_QUEUE_PROVIDER, val errorTrackingConfig: PostHogErrorTrackingConfig = PostHogErrorTrackingConfig(), var releaseIdentifier: String? = null, var bootstrap: PostHogBootstrapConfig? = null, var pushIdentityProvider: (distinctId: String, appId: String, completion: (String?) -> Unit) -> Unit? = null)
 ```
 
 The SDK Config
@@ -1292,6 +1311,7 @@ The SDK Config
 - `var captureAiTimeout: Int`: How long, in seconds, a PostHog.captureAi request can go without network activity before it times out: its HTTP client's read and write timeouts.
 - `var compression: PostHogCompression`: How the SDK compresses request bodies before sending them to the PostHog API.
 - `var debug: Boolean`: Logs the debug logs to the logger if enabled Defaults to false
+- `@Volatilevar disableGeoIp: Boolean`: Skip server-side GeoIP enrichment for captured events and feature flag requests. When enabled, the server won't infer the user's location from their IP address.
 - `var encryption: PostHogEncryption?`: Hook for encrypt and decrypt events Devices are sandbox so likely not needed Defaults to no encryption
 - `val errorTrackingConfig: PostHogErrorTrackingConfig`: Configuration for PostHog Error Tracking feature.
 - `var evaluationContexts: List<String>?`: Optional list of evaluation context tags for feature flag evaluation When specified, only feature flags that have at least one matching evaluation tag will be evaluated Feature flags with no evaluation tags will always be evaluated for backward compatibility Example: listOf("production", "web", "checkout") Defaults to null (evaluate all flags)
@@ -1319,7 +1339,7 @@ The SDK Config
 - `var sendFeatureFlagEvent: Boolean`: Send a $feature\_flag\_called event when a feature flag is used automatically Used by experiments
 - `var sessionReplay: Boolean`: Enable Recording of Session Replays for Android Requires Record user sessions to be enabled in the PostHog Project Settings Defaults to false
 - `var setDefaultPersonProperties: Boolean`: Automatically set common device and app properties as person properties for feature flag evaluation.
-- `var surveys: Boolean`: Enable Surveys for Android (Intended for internal use only)
+- `var surveys: Boolean`: Whether the SDK loads surveys and shows the ones that match.
 - `var surveysConfig: PostHogSurveysConfig`: Configuration for PostHog Surveys feature. (Intended for internal use only)
 - `var tracingHeaders: List<String>?`: When set, PostHog injects tracing headers into OkHttp requests whose destination hostname exactly matches one of the configured hostnames. Use it to link the app's network requests to the backend events, errors, and LLM traces that a server-side PostHog SDK captures.
 
@@ -1442,7 +1462,7 @@ Represents the appearance configuration for a survey.
 - `val descriptionTextColor: String? = null`: Optional color for description text as web color
 - `val displayIntroScreen: Boolean = false`: Whether to show an intro screen before the first question
 - `val displayThankYouMessage: Boolean = false`: Whether to show a thank you message after survey completion
-- `val fontFamily: String? = null`: Optional font family to use throughout the survey
+- `val fontFamily: String? = null`: Optional CSS font family to use throughout the survey (e.g. "Times New Roman"). Android can't load CSS fonts directly, so custom survey UIs need to map it to an available font. The Compose survey UI uses the closest system font; see `PostHogSurveysComposeDelegate` for the mapping.
 - `val inputBackground: String? = null`: Optional background color for input fields as web color
 - `val inputTextColor: String? = null`: Optional text color for input fields as web color
 - `val introScreenButtonText: String? = null`: Optional custom text for the button that advances past the intro screen

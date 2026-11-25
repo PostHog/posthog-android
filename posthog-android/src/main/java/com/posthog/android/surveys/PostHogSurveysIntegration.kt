@@ -281,18 +281,11 @@ public class PostHogSurveysIntegration(
             // 3.5. Filter out surveys whose wait period has not passed
             if (!hasWaitPeriodPassed(survey, getLastSeenSurveyDate(), config.dateProvider.currentDate())) return@filter false
 
-            // 4. Check feature flags (collect all non-empty keys and verify they're enabled)
-            val featureFlagsMatch = matchesFeatureFlags(survey, postHog)
+            // 4. For event-based surveys, wait for activation before evaluating flags
+            if (hasEvents(survey) && !isSurveyEventActivated(survey)) return@filter false
 
-            // 5. For event-based surveys, check if they have been activated by the event
-            val eventActivationCheck =
-                if (hasEvents(survey)) {
-                    isSurveyEventActivated(survey)
-                } else {
-                    true
-                }
-
-            featureFlagsMatch && eventActivationCheck
+            // 5. Check that all configured feature flags match
+            matchesFeatureFlags(survey, postHog)
         }.sortedByDescending(::hasProgress)
     }
 

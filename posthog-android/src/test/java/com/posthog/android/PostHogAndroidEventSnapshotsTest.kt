@@ -31,6 +31,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -269,11 +270,7 @@ internal class PostHogAndroidEventSnapshotsTest {
             event["uuid"] = "<uuid>"
             val properties = event.map("properties")
             normalizeSdkVersion(properties)
-            // Depends on how many earlier captures the async queueExecutor has drained by the time
-            // this event's properties are built on the calling thread -- not deterministic run to run.
-            if (properties.containsKey("\$sdk_debug_pending_queue_size")) {
-                properties["\$sdk_debug_pending_queue_size"] = "<pending-queue-size>"
-            }
+            assertFalse(properties.containsKey("\$sdk_debug_pending_queue_size"))
         }
 
         val featureFlagEvent = batch.single { (it as Map<*, *>)["event"] == "\$feature_flag_called" } as Map<*, *>

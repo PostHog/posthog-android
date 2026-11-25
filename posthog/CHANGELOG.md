@@ -1,5 +1,17 @@
 ## Next
 
+## 7.0.2
+
+### Patch Changes
+
+- 9884270: Stop sending `$sdk_debug_replay_*` and `$sdk_debug_session_start` on events while session replay is intentionally off (disabled in config, stopped by the app, or turned off remotely). `$recording_status` is still sent as `disabled`. Sampled-out and trigger-pending sessions are unchanged.
+
+## 7.0.1
+
+### Patch Changes
+
+- b41e72d: Only attach `$sdk_debug_pending_queue_size` once the event queue reaches `flushAt`, so healthy queues no longer add it to every event
+
 ## 7.0.0
 
 ### Major Changes

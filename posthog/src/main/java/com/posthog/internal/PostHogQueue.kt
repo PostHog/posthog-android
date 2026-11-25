@@ -93,6 +93,9 @@ public class PostHogQueue<Record>(
     override val size: Int
         get() = synchronized(dequeLock) { deque.size }
 
+    override val backedUpSize: Int?
+        get() = size.takeIf { it > 0 && it >= batchLimits.flushAt }
+
     public val queueDirectory: File?
         get() = spec.storagePrefix?.let { File(it, config.projectToken) }
 
@@ -771,7 +774,8 @@ public class PostHogQueue<Record>(
 
 internal class BatchLimits(
     var cap: Int,
-    var flushAt: Int,
+    // Halved on the queue executor and read on capture threads by backedUpSize.
+    @Volatile var flushAt: Int,
 ) {
     fun halve(actualBatchSize: Int) {
         cap =
