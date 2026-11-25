@@ -53,6 +53,12 @@ public class FlagFilters(
      */
     @SerializedName("early_exit")
     public val earlyExit: Boolean = false,
+    /**
+     * Marks an early-access feature flag: the person property `$feature_enrollment/<flag key>`
+     * decides the flag before its holdouts and release conditions.
+     */
+    @SerializedName("feature_enrollment")
+    public val featureEnrollment: Boolean = false,
 )
 
 /**
