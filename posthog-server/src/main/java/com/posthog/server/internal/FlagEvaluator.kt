@@ -1654,8 +1654,8 @@ internal class FlagEvaluator(
         }
 
         val groupKey = context.groups?.get(groupTypeName)
-        if (groupKey == null) {
-            // Group not provided - flag is off, don't failover to API
+        if (groupKey.isNullOrEmpty()) {
+            // Group not provided, or an empty key the flags service treats as none - flag is off, don't failover to API
             config.logger.log("Can't compute group flag '${flag.key}' without group '$groupTypeName'")
             return false
         }
