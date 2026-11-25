@@ -1667,7 +1667,7 @@ internal class FlagEvaluator(
             cohortProperties,
             flagsByKey,
             evaluationCache,
-            KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty()),
+            KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty(), aggregationGroupIndex),
             context,
         )
     }

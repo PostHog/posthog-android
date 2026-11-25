@@ -139,6 +139,7 @@ internal class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
 
         val rawType = jsonObject.get("type")?.asString
         val type = PropertyType.fromStringOrNull(rawType)
+        val groupTypeIndex = jsonObject.get("group_type_index").groupTypeIndexOrNull()
 
         val negation = jsonObject.get("negation")?.asBoolean
 
@@ -158,13 +159,19 @@ internal class PropertyValueDeserializer : JsonDeserializer<PropertyValue> {
             type = type,
             negation = negation,
             dependencyChain = dependencyChain,
-        ).also { it.rawType = rawType }
+        ).also {
+            it.rawType = rawType
+            it.groupTypeIndex = groupTypeIndex
+        }
     }
 }
 
+private fun JsonElement?.groupTypeIndexOrNull(): Int? = if (this is JsonPrimitive && isNumber) asNumber.toInt() else null
+
 /**
- * Keeps a flag condition filter's `type` string in [FlagProperty.rawType] when parsing, and writes
- * it back when serializing so a definitions cache round trip does not turn it into `person`.
+ * Keeps a flag condition filter's `type` string in [FlagProperty.rawType] and its
+ * `group_type_index` in [FlagProperty.groupTypeIndex] when parsing, and writes them back when
+ * serializing so a definitions cache round trip does not turn the type into `person` or drop the index.
  */
 internal class FlagPropertyTypeAdapterFactory : TypeAdapterFactory {
     override fun <T> create(
@@ -185,6 +192,10 @@ internal class FlagPropertyTypeAdapterFactory : TypeAdapterFactory {
                     if (rawType != null && tree.isJsonObject) {
                         tree.asJsonObject.addProperty("type", rawType)
                     }
+                    val groupTypeIndex = value?.groupTypeIndex
+                    if (groupTypeIndex != null && tree.isJsonObject) {
+                        tree.asJsonObject.addProperty("group_type_index", groupTypeIndex)
+                    }
                     elementAdapter.write(out, tree)
                 }
 
@@ -195,6 +206,7 @@ internal class FlagPropertyTypeAdapterFactory : TypeAdapterFactory {
                     if (rawType is JsonPrimitive && rawType.isString) {
                         property.rawType = rawType.asString
                     }
+                    property.groupTypeIndex = (tree as? JsonObject)?.get("group_type_index").groupTypeIndexOrNull()
                     return property
                 }
             }

@@ -690,6 +690,32 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a group listing does not resolve a group filter for a different group_type_index`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-with-project-filter", "name": "org-with-project-filter", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 1, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization", "1": "project"},
+             "cohorts": {}}
+            """.trimIndent()
+        withPostHog(definitions, createMultipleFlagsResponse("org-with-project-filter" to false)) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .group("project", "proj-1")
+                    .groupProperty("project", "tier", "enterprise")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            assertFalse(postHog.evaluateFlags("user-1", options).isEnabled("org-with-project-filter"))
+            assertEquals(1, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `a flag dependency with the same aggregation uses the listing`() {
         val definitions =
             """

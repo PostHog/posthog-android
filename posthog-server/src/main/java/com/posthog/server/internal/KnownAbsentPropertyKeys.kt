@@ -68,18 +68,21 @@ internal data class KnownAbsentPropertyKeys(
 /**
  * The known-absent keys that apply while evaluating one flag. A person listing applies only to
  * filters of type `person`, and a group listing only to filters of type `group` in a flag
- * aggregated on that group type. Other filter types, such as `person_metadata`, never resolve
- * from a listing. A listed person key with the `__posthog_person_metadata__` prefix is still sent to
+ * aggregated on that group type whose `group_type_index` is omitted or names that group type.
+ * Other filter types, such as `person_metadata`, never resolve from a listing. A listed person key with the `__posthog_person_metadata__` prefix is still sent to
  * `/flags` unchanged, but never resolves a filter locally, as the flags service ignores it.
  */
 internal class KnownAbsentKeyScope private constructor(
     private val keys: Set<String>,
     private val filterType: String,
+    private val groupTypeIndex: Int?,
 ) {
     fun isKnownAbsent(property: FlagProperty): Boolean =
         property.rawType == filterType &&
             property.key in keys &&
-            !(filterType == PERSON_FILTER_TYPE && property.key.startsWith(PERSON_METADATA_KEY_PREFIX))
+            !(filterType == PERSON_FILTER_TYPE && property.key.startsWith(PERSON_METADATA_KEY_PREFIX)) &&
+            // A group filter without an index reads the flag's group type.
+            (property.groupTypeIndex == null || property.groupTypeIndex == groupTypeIndex)
 
     internal companion object {
         private const val PERSON_FILTER_TYPE = "person"
@@ -88,10 +91,14 @@ internal class KnownAbsentKeyScope private constructor(
         // Known absence never hides a persons-table field such as `created_at`.
         private const val PERSON_METADATA_KEY_PREFIX = "__posthog_person_metadata__"
 
-        val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE)
+        val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE, groupTypeIndex = null)
 
-        fun person(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, PERSON_FILTER_TYPE)
+        fun person(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, PERSON_FILTER_TYPE, groupTypeIndex = null)
 
-        fun group(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, GROUP_FILTER_TYPE)
+        /** [groupTypeIndex] is the aggregation group type index the [keys] were listed for. */
+        fun group(
+            keys: Set<String>,
+            groupTypeIndex: Int,
+        ): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, GROUP_FILTER_TYPE, groupTypeIndex)
     }
 }

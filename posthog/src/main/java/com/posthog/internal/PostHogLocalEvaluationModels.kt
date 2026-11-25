@@ -88,6 +88,14 @@ public data class FlagProperty(
     @Transient
     public var rawType: String? = null
         internal set
+
+    /**
+     * The filter's `group_type_index`, naming the group type a `group` filter reads. Null when the
+     * filter omits it, so it reads the group type of the flag's aggregation.
+     */
+    @Transient
+    public var groupTypeIndex: Int? = null
+        internal set
 }
 
 /**

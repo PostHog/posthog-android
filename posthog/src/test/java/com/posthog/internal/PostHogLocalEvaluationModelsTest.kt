@@ -382,7 +382,7 @@ public class PostHogLocalEvaluationModelsTest {
     }
 
     @Test
-    public fun testFlagPropertyRawTypeSurvivesASerializerRoundTrip() {
+    public fun testFlagPropertyRawTypeAndGroupTypeIndexSurviveASerializerRoundTrip() {
         val serializer = PostHogSerializer(com.posthog.PostHogConfig("test"))
         val json =
             """
@@ -406,6 +406,10 @@ public class PostHogLocalEvaluationModelsTest {
         serializer.serialize(parsed, writer)
         val reparsed = serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(writer.toString()))
         assertEquals(listOf("person_metadata", "group", "person_metadata"), rawTypes(reparsed))
+        assertEquals(
+            listOf(null, 0),
+            reparsed.flags!!.single().filters.groups!!.single().properties!!.map { it.groupTypeIndex },
+        )
     }
 
     @Test
