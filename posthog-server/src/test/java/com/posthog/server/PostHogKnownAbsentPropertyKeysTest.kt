@@ -545,6 +545,65 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a group filter without an index reads the flag's group type and its listing`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-enterprise", "name": "org-enterprise", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "operator": "exact", "value": "enterprise"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "org-no-tier", "name": "org-no-tier", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {}}
+            """.trimIndent()
+        withPostHog(definitions) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .groupProperty("organization", "tier", "enterprise")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            val snapshot = postHog.evaluateFlags("user-1", options)
+            assertFalse(snapshot.isEnabled("org-enterprise"))
+            assertTrue(snapshot.isEnabled("org-no-tier"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a flag dependency with the same aggregation uses the listing`() {
+        val definitions =
+            """
+            {"flags": [
+              {"id": 1, "key": "org-dep", "name": "org-dep", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+               ], "rollout_percentage": 100}]}},
+              {"id": 2, "key": "org-parent", "name": "org-parent", "active": true, "version": 1,
+               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
+                 {"key": "org-dep", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["org-dep"]}
+               ], "rollout_percentage": 100}]}}
+             ],
+             "group_type_mapping": {"0": "organization"},
+             "cohorts": {}}
+            """.trimIndent()
+        withPostHog(definitions) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .group("organization", "org-1")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            assertTrue(postHog.evaluateFlags("user-1", options).isEnabled("org-parent"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `a null key from a Java caller returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),
