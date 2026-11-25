@@ -1,5 +1,11 @@
 # posthog-android-surveys-compose
 
+## 1.1.0
+
+### Minor Changes
+
+- 85a6815: feat: apply the survey appearance `fontFamily` to the Compose survey UI
+
 ## 1.0.0
 
 ### Major Changes

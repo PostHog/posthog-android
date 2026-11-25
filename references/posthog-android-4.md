@@ -1462,7 +1462,7 @@ Represents the appearance configuration for a survey.
 - `val descriptionTextColor: String? = null`: Optional color for description text as web color
 - `val displayIntroScreen: Boolean = false`: Whether to show an intro screen before the first question
 - `val displayThankYouMessage: Boolean = false`: Whether to show a thank you message after survey completion
-- `val fontFamily: String? = null`: Optional font family to use throughout the survey
+- `val fontFamily: String? = null`: Optional CSS font family to use throughout the survey (e.g. "Times New Roman"). Android can't load CSS fonts directly, so custom survey UIs need to map it to an available font. The Compose survey UI uses the closest system font; see `PostHogSurveysComposeDelegate` for the mapping.
 - `val inputBackground: String? = null`: Optional background color for input fields as web color
 - `val inputTextColor: String? = null`: Optional text color for input fields as web color
 - `val introScreenButtonText: String? = null`: Optional custom text for the button that advances past the intro screen
