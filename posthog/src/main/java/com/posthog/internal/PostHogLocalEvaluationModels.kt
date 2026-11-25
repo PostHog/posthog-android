@@ -47,6 +47,12 @@ public class FlagFilters(
     public val payloads: Map<String, Any?>?,
     @SerializedName("aggregation_group_type_index")
     public val aggregationGroupTypeIndex: Int?,
+    /**
+     * When true, evaluation stops with `false` at the first condition group whose
+     * property filters all match (or that has none) but whose rollout excludes the user.
+     */
+    @SerializedName("early_exit")
+    public val earlyExit: Boolean = false,
 )
 
 /**
