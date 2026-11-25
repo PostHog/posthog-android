@@ -386,7 +386,10 @@ public class PostHogLocalEvaluationModelsTest {
         assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("person"))
         assertEquals(PropertyType.COHORT, PropertyType.fromStringOrNull("cohort"))
         assertEquals(PropertyType.FLAG, PropertyType.fromStringOrNull("flag"))
-        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("group"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("person_metadata"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull(""))
         assertNull(PropertyType.fromStringOrNull(null))
     }
 

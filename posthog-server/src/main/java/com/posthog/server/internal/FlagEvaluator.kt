@@ -151,6 +151,7 @@ internal class FlagEvaluator(
         inCohort: Boolean,
     ): Boolean =
         try {
+            assertPropertyTypeSupported(property)
             matchPropertyValue(property, propertyValues, inCohort)
         } catch (e: InconclusiveMatchException) {
             // An unusable filter outranks missing context, so check the filter before blaming the call.
@@ -277,14 +278,29 @@ internal class FlagEvaluator(
     }
 
     /**
+     * Only person (and group) filters are matched against the properties the caller passes.
+     * Any other filter type, such as `person_metadata`, could disagree with `/flags` if it were
+     * matched against a caller property with the same key, so it can't be evaluated locally.
+     */
+    private fun assertPropertyTypeSupported(property: FlagProperty) {
+        if (property.type == PropertyType.UNSUPPORTED) {
+            throw InconclusiveMatchException(
+                "Can't evaluate the filter on '${property.key}' locally: its type is not a person or group property",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+    }
+
+    /**
      * Throws an [PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION] error when local evaluation
-     * cannot use the filter, whatever the call supplies: an unknown operator, or a filter value
-     * that the operator cannot parse.
+     * cannot use the filter, whatever the call supplies: an unsupported filter type, an unknown
+     * operator, or a filter value that the operator cannot parse.
      */
     private fun assertFilterSupported(
         property: FlagProperty,
         inCohort: Boolean,
     ) {
+        assertPropertyTypeSupported(property)
         val value = property.propertyValue
         when (property.propertyOperator ?: PropertyOperator.EXACT) {
             PropertyOperator.EXACT, PropertyOperator.IS_NOT -> (value as? List<*> ?: listOf(value)).forEach { valueToString(it) }
