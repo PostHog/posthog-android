@@ -4142,17 +4142,21 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testKnownAbsentPropertyKeysIgnorePersonMetadataKeysAndEmptyLists() {
+    internal fun testKnownAbsentPropertyKeysKeepPersonMetadataKeysAndDropEmptyLists() {
         val keys =
             KnownAbsentPropertyKeys.of(
                 listOf("plan", "plan", "__posthog_person_metadata__created_at"),
                 mapOf("organization" to listOf("tier"), "project" to emptyList()),
             )
-        assertEquals(setOf("plan"), keys?.person)
+        assertEquals(setOf("plan", "__posthog_person_metadata__created_at"), keys?.person)
         assertEquals(mapOf("organization" to setOf("tier")), keys?.groups)
         assertEquals(setOf("tier"), keys?.forGroupType("organization"))
         assertEquals(emptySet<String>(), keys?.forGroupType("project"))
-        assertEquals(null, KnownAbsentPropertyKeys.of(listOf("__posthog_person_metadata__created_at"), mapOf("project" to emptyList())))
+        assertEquals(
+            setOf("__posthog_person_metadata__created_at"),
+            KnownAbsentPropertyKeys.of(listOf("__posthog_person_metadata__created_at"), mapOf("project" to emptyList()))?.person,
+        )
+        assertEquals(null, KnownAbsentPropertyKeys.of(emptyList(), mapOf("project" to emptyList())))
         assertEquals(null, KnownAbsentPropertyKeys.of(null, null))
     }
 

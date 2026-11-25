@@ -24,7 +24,8 @@ package com.posthog.server
  *   resolves such a filter on a listed key without remote fallback: `is_not_set`, `is_not`, `not_icontains`,
  *   `not_starts_with`, `not_ends_with` and `not_regex` match, and every other supported operator
  *   does not. A filter that local evaluation does not support still falls back to `/flags`. Keys
- *   starting with `__posthog_person_metadata__` are ignored. The keys are sent to `/flags` when the
+ *   starting with `__posthog_person_metadata__` never resolve a filter locally and are sent to
+ *   `/flags` unchanged, where they are ignored. The keys are sent to `/flags` when the
  *   evaluation falls back to it. At most 1000 keys, counting duplicates, and no null keys. Over the
  *   limit or with a null key the SDK logs a warning, evaluates nothing and sends no request: the
  *   snapshot or flag lookup returns its unavailable result (empty snapshot, default value, or null).

@@ -157,7 +157,10 @@ internal class PostHogKnownAbsentPropertyKeysTest {
             postHog.evaluateFlags("user-3", PostHogEvaluateFlagsOptions.builder().personPropertyKeysKnownAbsent(emptyList()).build())
 
             assertEquals(3, dispatcher.flagsBodies.size)
-            assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"])
+            assertEquals(
+                listOf("plan", "__posthog_person_metadata__created_at"),
+                dispatcher.flagsBodies[0]["person_property_keys_known_absent"],
+            )
             assertEquals(mapOf("organization" to listOf("tier")), dispatcher.flagsBodies[0]["group_property_keys_known_absent"])
             for (body in dispatcher.flagsBodies.drop(1)) {
                 assertFalse(body.containsKey("person_property_keys_known_absent"))
@@ -398,6 +401,23 @@ internal class PostHogKnownAbsentPropertyKeysTest {
                 assertEquals(1, dispatcher.flagsBodies.size, operator)
                 assertEquals(listOf("created_at"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"], operator)
             }
+        }
+    }
+
+    @Test
+    fun `a listed person-metadata prefixed key is forwarded unchanged but never resolves a person filter locally`() {
+        val metadataKey = "__posthog_person_metadata__created_at"
+        withPostHog(
+            createLocalEvaluationResponseFrom(personFlag("metadata-unset", "is_not_set", metadataKey, valueField = "")),
+            createMultipleFlagsResponse("metadata-unset" to false),
+        ) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .personPropertyKeysKnownAbsent(listOf(metadataKey))
+                    .build()
+            assertFalse(postHog.evaluateFlags("user-1", options).isEnabled("metadata-unset"))
+            assertEquals(1, dispatcher.flagsBodies.size)
+            assertEquals(listOf(metadataKey), dispatcher.flagsBodies[0]["person_property_keys_known_absent"])
         }
     }
 

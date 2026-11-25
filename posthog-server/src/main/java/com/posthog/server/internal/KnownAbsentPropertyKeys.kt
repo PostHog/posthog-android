@@ -17,9 +17,6 @@ internal data class KnownAbsentPropertyKeys(
         /** The `/flags` limit per array, counted with duplicates and per group type. */
         internal const val MAX_KEYS: Int = 1000
 
-        // Known absence never hides a persons-table field such as `created_at`.
-        private const val PERSON_METADATA_KEY_PREFIX = "__posthog_person_metadata__"
-
         /**
          * Returns a message naming the field when a list holds more than [MAX_KEYS] strings or a
          * null element (possible from Java callers), or null when the input is valid.
@@ -55,7 +52,7 @@ internal data class KnownAbsentPropertyKeys(
             person: List<String>?,
             groups: Map<String, List<String>>?,
         ): KnownAbsentPropertyKeys? {
-            val personKeys = person.orEmpty().filterNotTo(LinkedHashSet()) { it.startsWith(PERSON_METADATA_KEY_PREFIX) }
+            val personKeys = person.orEmpty().toCollection(LinkedHashSet())
             val groupKeys =
                 groups.orEmpty()
                     .mapValues { (_, keys) -> keys.toCollection(LinkedHashSet()) }
@@ -72,17 +69,24 @@ internal data class KnownAbsentPropertyKeys(
  * The known-absent keys that apply while evaluating one flag. A person listing applies only to
  * filters of type `person`, and a group listing only to filters of type `group` in a flag
  * aggregated on that group type. Other filter types, such as `person_metadata`, never resolve
- * from a listing.
+ * from a listing. A listed person key with the `__posthog_person_metadata__` prefix is still sent to
+ * `/flags` unchanged, but never resolves a filter locally, as the flags service ignores it.
  */
 internal class KnownAbsentKeyScope private constructor(
     private val keys: Set<String>,
     private val filterType: String,
 ) {
-    fun isKnownAbsent(property: FlagProperty): Boolean = property.rawType == filterType && property.key in keys
+    fun isKnownAbsent(property: FlagProperty): Boolean =
+        property.rawType == filterType &&
+            property.key in keys &&
+            !(filterType == PERSON_FILTER_TYPE && property.key.startsWith(PERSON_METADATA_KEY_PREFIX))
 
     internal companion object {
         private const val PERSON_FILTER_TYPE = "person"
         private const val GROUP_FILTER_TYPE = "group"
+
+        // Known absence never hides a persons-table field such as `created_at`.
+        private const val PERSON_METADATA_KEY_PREFIX = "__posthog_person_metadata__"
 
         val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE)
 
