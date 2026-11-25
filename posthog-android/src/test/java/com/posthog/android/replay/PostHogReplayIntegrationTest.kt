@@ -3195,6 +3195,109 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    // A full SDK with a cached group that waits for a purchase event.
+    private fun withPurchaseGroupSdk(
+        optedOut: Boolean = false,
+        sessionReplay: Boolean = false,
+        test: (PostHog, PostHogReplayIntegration, PostHogAndroidConfig) -> Unit,
+    ) {
+        val preferences = PostHogMemoryPreferences()
+        preferences.setValue(
+            "sessionReplay",
+            mapOf(
+                "endpoint" to "/s/",
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "g1",
+                            "name" to "g1",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val config =
+            PostHogAndroidConfig(PROJECT_TOKEN, "http://127.0.0.1:1").apply {
+                cachePreferences = preferences
+                preloadFeatureFlags = false
+                this.sessionReplay = sessionReplay
+                optOut = optedOut
+            }
+        val sut = getSut(config)
+        config.addIntegration(sut)
+        val core = PostHog.with(config) as PostHog
+        try {
+            idleMain()
+            test(core, sut, config)
+        } finally {
+            core.close()
+            PostHogSessionManager.endSession()
+        }
+    }
+
+    private fun idleMain() = shadowOf(Looper.getMainLooper()).idle()
+
+    private fun PostHog.capturePurchase() {
+        capture("purchase")
+        idleMain()
+    }
+
+    private fun PostHog.startReplay() {
+        startSessionReplay(resumeCurrent = true)
+        idleMain()
+    }
+
+    private fun PostHogAndroidConfig.purchaseGroupPending(): Boolean =
+        PostHogSessionManager.peekSessionId()?.toString()?.let {
+            remoteConfigHolder?.hasPendingSessionRecordingTriggerGroups(it)
+        } == true
+
+    @Test
+    fun `after opt-in a started replay records once a trigger group event comes`() {
+        withPurchaseGroupSdk(optedOut = true) { core, sut, _ ->
+            core.optIn()
+            idleMain()
+
+            core.startReplay()
+            core.capturePurchase()
+            assertTrue(sut.isActive())
+        }
+    }
+
+    @Test
+    fun `a started replay records once a trigger group event comes when the app never opted out`() {
+        withPurchaseGroupSdk { core, sut, _ ->
+            core.startReplay()
+            core.capturePurchase()
+            assertTrue(sut.isActive())
+        }
+    }
+
+    @Test
+    fun `with automatic replay off an event before the start does not activate a trigger group`() {
+        withPurchaseGroupSdk { core, sut, config ->
+            core.capturePurchase()
+            assertTrue(config.purchaseGroupPending(), "after an event before the start")
+
+            core.startReplay()
+            assertFalse(sut.isActive(), "after the start")
+            assertTrue(config.purchaseGroupPending(), "after the start")
+
+            core.capturePurchase()
+            assertTrue(sut.isActive(), "after an event after the start")
+        }
+    }
+
+    @Test
+    fun `with automatic replay on an event before any manual call activates a trigger group`() {
+        withPurchaseGroupSdk(sessionReplay = true) { core, sut, _ ->
+            core.capturePurchase()
+            assertTrue(sut.isActive())
+        }
+    }
+
     private fun requestStart(sut: PostHogReplayIntegration) {
         // as PostHog.startSessionReplay(resumeCurrent = true) does
         sut.onStartRequested()

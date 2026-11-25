@@ -260,6 +260,11 @@ public class PostHogReplayIntegration(
     @Volatile
     private var explicitlyStopped: Boolean = false
 
+    // Set by the app's start request while config.sessionReplay is false, even one the core gates refuse.
+    // Until then trigger groups evaluate nothing. Only uninstall() clears it; an explicit stop holds it.
+    @Volatile
+    private var replayRequested: Boolean = false
+
     // Event triggers for session recording
     private val eventTriggersLock = Any()
 
@@ -1119,6 +1124,7 @@ public class PostHogReplayIntegration(
                     synchronized(decorViews) {
                         startedWithAutomaticDisabled = false
                         explicitlyStopped = false
+                        replayRequested = false
                         isSessionReplayActive = false
                         snapshotGeneration++
                         pixelCopyBitmapBuffer.close()
@@ -2993,6 +2999,7 @@ public class PostHogReplayIntegration(
         // defer it, so the intent must be recorded before checking that gate.
         if (!config.sessionReplay) {
             startedWithAutomaticDisabled = true
+            replayRequested = true
         }
         explicitlyStopped = false
 
@@ -3003,6 +3010,7 @@ public class PostHogReplayIntegration(
     // before it ever reaches start() — otherwise later automatic starts stay blocked.
     override fun onStartRequested() {
         explicitlyStopped = false
+        replayRequested = true
         // A screen captured while stopped, or trigger groups loaded while stopped: that check is still due.
         checkTriggerGroupsScreenOnNewSession(PostHogSessionManager.peekSessionId()?.toString(), includeUnevaluatedScreen = true)
     }
@@ -3014,6 +3022,8 @@ public class PostHogReplayIntegration(
     // config.sessionReplay controls automatic starts; a recording the app started explicitly
     // while it was off must survive them. An explicit stop blocks them until the next start request.
     private fun isAutomaticStartPermitted(): Boolean = !explicitlyStopped && (config.sessionReplay || startedWithAutomaticDisabled)
+
+    private fun isTriggerGroupsEvaluationPermitted(): Boolean = !explicitlyStopped && (config.sessionReplay || replayRequested)
 
     private fun startRecording(resumeCurrent: Boolean) {
         // Event triggers may change while an automatic start is queued on main.
@@ -3261,8 +3271,9 @@ public class PostHogReplayIntegration(
         event: String,
         properties: Map<String, Any>?,
     ) {
-        // A match while stopped would leave the group activated, and a later start would not wait for one.
-        if (explicitlyStopped) return
+        // A match while stopped, or before replay is on or started, would leave the group activated, and a
+        // later start would not wait for one.
+        if (!isTriggerGroupsEvaluationPermitted()) return
         val newlyActivated = remoteConfig.onSessionRecordingTriggerEvent(currentSessionId, event, properties)
         if (!newlyActivated) return
 
@@ -3396,7 +3407,7 @@ public class PostHogReplayIntegration(
         includeUnevaluatedScreen: Boolean = false,
     ) {
         val remoteConfig = config.remoteConfigHolder ?: return
-        if (sessionId == null || explicitlyStopped || !remoteConfig.hasSessionRecordingTriggerGroups()) return
+        if (sessionId == null || !isTriggerGroupsEvaluationPermitted() || !remoteConfig.hasSessionRecordingTriggerGroups()) return
         if (remoteConfig.checkSessionRecordingScreenOnNewSession(sessionId, includeUnevaluatedScreen)) {
             updateCachedMinimumDuration()
         }
