@@ -1,6 +1,5 @@
 package com.posthog.server.internal
 
-import com.posthog.internal.FlagDefinition
 import com.posthog.internal.FlagProperty
 
 /**
@@ -78,25 +77,17 @@ internal data class KnownAbsentPropertyKeys(
 internal class KnownAbsentKeyScope private constructor(
     private val keys: Set<String>,
     private val filterType: String,
-    private val aggregationGroupTypeIndex: Int?,
 ) {
     fun isKnownAbsent(property: FlagProperty): Boolean = property.rawType == filterType && property.key in keys
-
-    /** A dependency aggregated differently from the flag that references it gets no keys. */
-    fun forDependency(dependency: FlagDefinition): KnownAbsentKeyScope =
-        if (dependency.filters.aggregationGroupTypeIndex == aggregationGroupTypeIndex) this else NONE
 
     internal companion object {
         private const val PERSON_FILTER_TYPE = "person"
         private const val GROUP_FILTER_TYPE = "group"
 
-        val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE, null)
+        val NONE: KnownAbsentKeyScope = KnownAbsentKeyScope(emptySet(), PERSON_FILTER_TYPE)
 
-        fun person(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, PERSON_FILTER_TYPE, null)
+        fun person(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, PERSON_FILTER_TYPE)
 
-        fun group(
-            keys: Set<String>,
-            aggregationGroupTypeIndex: Int,
-        ): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, GROUP_FILTER_TYPE, aggregationGroupTypeIndex)
+        fun group(keys: Set<String>): KnownAbsentKeyScope = KnownAbsentKeyScope(keys, GROUP_FILTER_TYPE)
     }
 }

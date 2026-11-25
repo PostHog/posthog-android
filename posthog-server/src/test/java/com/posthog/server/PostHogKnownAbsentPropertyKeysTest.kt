@@ -470,7 +470,7 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
-    fun `a flag dependency with a different aggregation does not use the parent's listing`() {
+    fun `a flag dependency with a different aggregation uses the listing for its own aggregation`() {
         val definitions =
             """
             {"flags": [
@@ -513,33 +513,127 @@ internal class PostHogKnownAbsentPropertyKeysTest {
                     .build()
             assertFalse(postHog.evaluateFlags("user-1", groupListing).isEnabled("group-parent"))
             assertEquals(2, dispatcher.flagsBodies.size)
+
+            val dependencyGroupListing =
+                PostHogEvaluateFlagsOptions.builder()
+                    .flagKeys(listOf("person-parent"))
+                    .group("organization", "org-1")
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            assertTrue(postHog.evaluateFlags("user-1", dependencyGroupListing).isEnabled("person-parent"))
+
+            val dependencyPersonListing =
+                PostHogEvaluateFlagsOptions.builder()
+                    .flagKeys(listOf("group-parent"))
+                    .group("organization", "org-1")
+                    .personPropertyKeysKnownAbsent(listOf("tier"))
+                    .build()
+            assertTrue(postHog.evaluateFlags("user-1", dependencyPersonListing).isEnabled("group-parent"))
+            assertEquals(2, dispatcher.flagsBodies.size)
+        }
+    }
+
+    private fun crossAggregationDefinitions(
+        orgParentFilter: String,
+        orgParentRollout: Int = 100,
+    ): String =
+        """
+        {"flags": [
+          {"id": 1, "key": "org-parent", "name": "org-parent", "active": true, "version": 1,
+           "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [$orgParentFilter],
+             "rollout_percentage": $orgParentRollout}]}},
+          {"id": 2, "key": "person-child", "name": "person-child", "active": true, "version": 1,
+           "filters": {"groups": [{"properties": [
+             {"key": "org-parent", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["org-parent"]}
+           ], "rollout_percentage": 100}]}}
+         ],
+         "group_type_mapping": {"0": "organization"},
+         "cohorts": {}}
+        """.trimIndent()
+
+    @Test
+    fun `a group dependency reads its group's properties, not the person's`() {
+        val definitions =
+            crossAggregationDefinitions(
+                """{"key": "region", "type": "group", "group_type_index": 0, "operator": "exact", "value": ["us"]}""",
+            )
+        withPostHog(definitions, createMultipleFlagsResponse("org-parent" to true, "person-child" to true)) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .personProperty("region", "us")
+                    .group("organization", "org-1")
+                    .groupProperty("organization", "region", "eu")
+                    .build()
+            val snapshot = postHog.evaluateFlags("user-1", options)
+            assertFalse(snapshot.isEnabled("org-parent"))
+            assertFalse(snapshot.isEnabled("person-child"))
+            assertEquals(0, dispatcher.flagsBodies.size)
         }
     }
 
     @Test
-    fun `a flag dependency with the same aggregation uses the listing`() {
+    fun `a group dependency without its group is false and does not fall back`() {
+        val definitions =
+            crossAggregationDefinitions("""{"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}""")
+        withPostHog(definitions, createMultipleFlagsResponse("org-parent" to true, "person-child" to true)) { postHog, dispatcher ->
+            val options =
+                PostHogEvaluateFlagsOptions.builder()
+                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
+                    .build()
+            val snapshot = postHog.evaluateFlags("user-1", options)
+            assertFalse(snapshot.isEnabled("org-parent"))
+            assertFalse(snapshot.isEnabled("person-child"))
+            assertFalse(postHog.evaluateFlags("user-1").isEnabled("person-child"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a group dependency is bucketed on its group key`() {
+        withPostHog(crossAggregationDefinitions("", orgParentRollout = 50)) { postHog, dispatcher ->
+            val parentValues =
+                (1..40).map { index ->
+                    val options = PostHogEvaluateFlagsOptions.builder().group("organization", "org-$index").build()
+                    val snapshot = postHog.evaluateFlags("user-1", options)
+                    assertEquals(snapshot.isEnabled("org-parent"), snapshot.isEnabled("person-child"), "org-$index")
+                    snapshot.isEnabled("org-parent")
+                }
+            assertEquals(setOf(true, false), parentValues.toSet())
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
+    fun `a person dependency of a group flag reads the person's properties and distinct id`() {
         val definitions =
             """
             {"flags": [
-              {"id": 1, "key": "org-dep", "name": "org-dep", "active": true, "version": 1,
+              {"id": 1, "key": "person-parent", "name": "person-parent", "active": true, "version": 1,
+               "filters": {"groups": [{"properties": [
+                 {"key": "region", "type": "person", "operator": "exact", "value": ["us"]}
+               ], "rollout_percentage": 50}]}},
+              {"id": 2, "key": "org-child", "name": "org-child", "active": true, "version": 1,
                "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
-                 {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
-               ], "rollout_percentage": 100}]}},
-              {"id": 2, "key": "org-parent", "name": "org-parent", "active": true, "version": 1,
-               "filters": {"aggregation_group_type_index": 0, "groups": [{"properties": [
-                 {"key": "org-dep", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["org-dep"]}
+                 {"key": "person-parent", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["person-parent"]}
                ], "rollout_percentage": 100}]}}
              ],
              "group_type_mapping": {"0": "organization"},
              "cohorts": {}}
             """.trimIndent()
         withPostHog(definitions) { postHog, dispatcher ->
-            val options =
-                PostHogEvaluateFlagsOptions.builder()
-                    .group("organization", "org-1")
-                    .groupPropertyKeysKnownAbsent("organization", listOf("tier"))
-                    .build()
-            assertTrue(postHog.evaluateFlags("user-1", options).isEnabled("org-parent"))
+            val parentValues =
+                (1..40).map { index ->
+                    val options =
+                        PostHogEvaluateFlagsOptions.builder()
+                            .personProperty("region", "us")
+                            .group("organization", "org-1")
+                            .groupProperty("organization", "region", "eu")
+                            .build()
+                    val snapshot = postHog.evaluateFlags("user-$index", options)
+                    assertEquals(snapshot.isEnabled("person-parent"), snapshot.isEnabled("org-child"), "user-$index")
+                    snapshot.isEnabled("person-parent")
+                }
+            assertEquals(setOf(true, false), parentValues.toSet())
             assertEquals(0, dispatcher.flagsBodies.size)
         }
     }

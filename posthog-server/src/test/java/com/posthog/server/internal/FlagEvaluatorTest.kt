@@ -4102,7 +4102,7 @@ internal class FlagEvaluatorTest {
     }
 
     @Test
-    internal fun testFlagDependencyEvaluatesWithTheSameKnownAbsentKeys() {
+    internal fun testFlagDependencyReadsTheKnownAbsentKeysOfTheTopLevelContext() {
         val dependency =
             config.serializer.gson.fromJson(
                 """
@@ -4123,25 +4123,21 @@ internal class FlagEvaluatorTest {
                 FlagDefinition::class.java,
             )
         val flagsByKey = mapOf("dep" to dependency, "parent" to parent)
+
+        fun context(knownAbsent: KnownAbsentPropertyKeys?) =
+            FlagEvaluationContext("user-1", null, mapOf("distinct_id" to "user-1"), null, knownAbsent, null)
         assertEquals(
             true,
-            evaluator.matchFeatureFlagProperties(
+            evaluator.computeFlag(
                 parent,
-                "user-1",
-                mapOf("distinct_id" to "user-1"),
-                flagsByKey = flagsByKey,
-                evaluationCache = mutableMapOf(),
-                knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                context(KnownAbsentPropertyKeys.of(listOf("plan"), null)),
+                emptyMap(),
+                flagsByKey,
+                mutableMapOf(),
             ),
         )
         kotlin.test.assertFailsWith<InconclusiveMatchException> {
-            evaluator.matchFeatureFlagProperties(
-                parent,
-                "user-1",
-                mapOf("distinct_id" to "user-1"),
-                flagsByKey = flagsByKey,
-                evaluationCache = mutableMapOf(),
-            )
+            evaluator.computeFlag(parent, context(null), emptyMap(), flagsByKey, mutableMapOf())
         }
     }
 

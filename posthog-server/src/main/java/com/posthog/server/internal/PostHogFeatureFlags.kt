@@ -1014,58 +1014,20 @@ internal class PostHogFeatureFlags(
         val flags = snapshot.flagsByKey ?: return null
         val flag = flags[key] ?: return null
 
-        if (!flag.active) {
-            return false
-        }
-
-        // Check if this is a group-based flag
-        val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
-
-        val (evaluationId, evaluationProperties, knownAbsentKeys) =
-            if (aggregationGroupIndex != null) {
-                // Group-based flag - evaluate at group level
-                val groupTypeName = snapshot.groupTypeMapping?.get(aggregationGroupIndex.toString())
-
-                if (groupTypeName == null) {
-                    config.logger.log("Unknown group type index $aggregationGroupIndex for flag '$key'")
-                    throw InconclusiveMatchException(
-                        "Flag has unknown group type index",
-                        // Experience continuity outranks every other reason, as in the load-time warning.
-                        if (flag.ensureExperienceContinuity) {
-                            PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
-                        } else {
-                            PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
-                        },
-                    )
-                }
-
-                val groupKey = groups?.get(groupTypeName)
-                if (groupKey == null) {
-                    // Group not provided - flag is off, don't failover to API
-                    config.logger.log("Can't compute group flag '$key' without group '$groupTypeName'")
-                    return false
-                }
-
-                // Use group's key and properties for evaluation
-                Triple(
-                    groupKey,
-                    groupProperties?.get(groupTypeName),
-                    KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty(), aggregationGroupIndex),
-                )
-            } else {
-                // Person-based flag - use person's ID and properties
-                Triple(distinctId, personProperties, KnownAbsentKeyScope.person(knownAbsent?.person.orEmpty()))
-            }
-
-        val evaluationCache = mutableMapOf<String, Any?>()
-        return snapshot.evaluator.matchFeatureFlagProperties(
+        return snapshot.evaluator.computeFlag(
             flag = flag,
-            distinctId = evaluationId,
-            properties = evaluationProperties ?: EMPTY_PROPERTIES,
+            context =
+                FlagEvaluationContext(
+                    distinctId = distinctId,
+                    groups = groups,
+                    personProperties = personProperties ?: EMPTY_PROPERTIES,
+                    groupProperties = groupProperties,
+                    knownAbsent = knownAbsent,
+                    groupTypeMapping = snapshot.groupTypeMapping,
+                ),
             cohortProperties = snapshot.cohorts ?: EMPTY_COHORT_PROPERTIES,
             flagsByKey = flags,
-            evaluationCache = evaluationCache,
-            knownAbsentKeys = knownAbsentKeys,
+            evaluationCache = mutableMapOf(),
         )
     }
 
