@@ -18,11 +18,15 @@ public class PostHogSessionReplayConfig
         /**
          * Enable masking of all text and text input fields
          * Defaults to true
+         * When the project's mobile replay setting turns on text masking in remote config, masking stays on
+         * even if this is false. Remote config never turns local masking off.
          */
         public var maskAllTextInputs: Boolean = true,
         /**
          * Enable masking of all images to a placeholder
          * Defaults to true
+         * When the project's mobile replay setting turns on image masking in remote config, masking stays on
+         * even if this is false. Remote config never turns local masking off.
          */
         public var maskAllImages: Boolean = true,
         /**

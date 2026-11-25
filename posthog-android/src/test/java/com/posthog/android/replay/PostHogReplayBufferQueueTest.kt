@@ -355,6 +355,83 @@ internal class PostHogReplayBufferQueueTest {
     }
 
     @Test
+    fun `clear on the shared executor does not deadlock with a migrate whose reload is pending`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val bufferDir = File(tmpDir.newFolder(), "buffer")
+        val targetStoragePrefix = tmpDir.newFolder().absolutePath
+        val sharedExecutor = createPausedExecutor()
+        val targetQueue = createTargetQueue(config, targetStoragePrefix, sharedExecutor)
+        val queue = createQueue(bufferDir = bufferDir, config = config)
+        queue.add(createEvent("snapshot_1"))
+        Thread.sleep(10)
+        queue.add(createEvent("snapshot_2"))
+
+        val migrated = AtomicInteger(-1)
+        val migrator =
+            Thread { migrated.set(queue.migrateAllTo(targetQueue)) }.apply {
+                isDaemon = true
+                start()
+            }
+        sharedExecutor.awaitQueuedTask()
+        // Stands in for the shared single-threaded executor running a clear queued ahead of the reload.
+        val executorThread =
+            Thread {
+                queue.clear()
+                sharedExecutor.runNext()
+            }.apply {
+                isDaemon = true
+                start()
+            }
+
+        executorThread.join(2_000)
+        migrator.join(2_000)
+
+        assertFalse(executorThread.isAlive, "clear blocked behind the migrate")
+        assertFalse(migrator.isAlive, "migrate blocked on the reload")
+        assertEquals(2, migrated.get())
+        assertEquals(0, queue.depth)
+    }
+
+    @Test
+    fun `concurrent migrate and clear on a shared executor both finish`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val sharedExecutor = createExecutor()
+        val targetQueue = createTargetQueue(config, tmpDir.newFolder().absolutePath, sharedExecutor)
+        val queue = createQueue(config = config)
+
+        repeat(50) { iteration ->
+            queue.add(createEvent("snapshot_$iteration"))
+            val migrator =
+                Thread { queue.migrateAllTo(targetQueue) }.apply {
+                    isDaemon = true
+                    start()
+                }
+            val cleared = sharedExecutor.submit { queue.clear() }
+
+            cleared.get(2, TimeUnit.SECONDS)
+            migrator.join(2_000)
+            assertFalse(migrator.isAlive, "migrate did not finish on iteration $iteration")
+        }
+    }
+
+    @Test
+    fun `migrateAllTo moves nothing when the abort check holds`() {
+        val config = PostHogConfig(PROJECT_TOKEN)
+        val bufferDir = File(tmpDir.newFolder(), "buffer")
+        val targetStoragePrefix = tmpDir.newFolder().absolutePath
+        val targetQueue = createTargetQueue(config, targetStoragePrefix)
+        val queue = createQueue(bufferDir = bufferDir, config = config)
+        queue.add(createEvent("snapshot_1"))
+
+        val migrated = queue.migrateAllTo(targetQueue) { true }
+
+        assertEquals(0, migrated)
+        assertEquals(1, queue.depth)
+        assertEquals(listOf("snapshot_1"), eventNamesInDirectory(config, bufferDir))
+        assertTrue(File(targetStoragePrefix, PROJECT_TOKEN).listFiles().isNullOrEmpty())
+    }
+
+    @Test
     fun `migrateAllTo preserves existing target items in order`() {
         val config = PostHogConfig(PROJECT_TOKEN)
         val bufferDir = File(tmpDir.newFolder(), "buffer")

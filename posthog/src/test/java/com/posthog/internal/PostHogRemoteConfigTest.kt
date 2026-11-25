@@ -2239,7 +2239,7 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
-    fun `sessionRecording false resets masking getters`() {
+    fun `sessionRecording false keeps masking getters latched and drops the cache for the next launch`() {
         val http = mockHttp(response = MockResponse().setBody(remoteConfigWithMasking))
         http.enqueue(MockResponse().setBody(File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()))
         val sut = getSut(host = http.url("/").toString())
@@ -2249,8 +2249,56 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
 
         sut.loadRemoteConfigAndAwait()
+        assertTrue(sut.isSessionRecordingMaskAllTextEnabled())
+        assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
+        assertNull(preferences.getValue(SESSION_REPLAY))
+
+        val nextLaunch = getSut(host = http.url("/").toString())
+        assertFalse(nextLaunch.isSessionRecordingMaskAllTextEnabled())
+        assertFalse(nextLaunch.isSessionRecordingMaskAllImagesEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `flags reload after sessionRecording false keeps the latched masks`() {
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigWithMasking))
+        http.enqueue(MockResponse().setBody(File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()))
+        http.enqueue(MockResponse().setBody(responseFlagsApi))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfigAndAwait()
+        sut.loadRemoteConfigAndAwait()
+        val flagsLoaded = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogFeatureFlagsCallback { flagsLoaded.countDown() },
+        )
+        assertTrue(flagsLoaded.await(5, TimeUnit.SECONDS))
+
+        assertTrue(sut.isSessionRecordingMaskAllTextEnabled())
+        assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `masking map after sessionRecording false replaces the latched masks`() {
+        val http = mockHttp(response = MockResponse().setBody(remoteConfigWithMasking))
+        http.enqueue(MockResponse().setBody(File("src/test/resources/json/basic-remote-config-features-disabled.json").readText()))
+        http.enqueue(MockResponse().setBody(remoteConfigWithMasking("""{"mobile": {"maskAllText": false, "maskAllImages": true}}""")))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfigAndAwait()
+        sut.loadRemoteConfigAndAwait()
+        sut.loadRemoteConfigAndAwait()
+
         assertFalse(sut.isSessionRecordingMaskAllTextEnabled())
-        assertFalse(sut.isSessionRecordingMaskAllImagesEnabled())
+        assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
 
         sut.clear()
         http.shutdown()
@@ -2268,6 +2316,78 @@ internal class PostHogRemoteConfigTest {
         assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
 
         http.shutdown()
+    }
+
+    @Test
+    fun `cold start sessionRecording false preserves remote masking until onRemoteConfigLoaded runs`() {
+        assertRemoteMaskingPreservedUntilOnRemoteConfigLoaded(
+            """{"hasFeatureFlags":true,"sessionRecording":false,"surveys":false}""",
+        )
+    }
+
+    @Test
+    fun `cold start mobile quota limit preserves remote masking until onRemoteConfigLoaded runs`() {
+        assertRemoteMaskingPreservedUntilOnRemoteConfigLoaded(
+            """{"hasFeatureFlags":true,"quotaLimited":["mobile_recordings"],"sessionRecording":{"endpoint":"/s/",""" +
+                """"masking":{"mobile":{"maskAllText":true,"maskAllImages":true}}},"surveys":false}""",
+        )
+    }
+
+    private fun assertRemoteMaskingPreservedUntilOnRemoteConfigLoaded(configBody: String) {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "endpoint" to "/s/",
+                "masking" to mapOf("mobile" to mapOf("maskAllText" to true, "maskAllImages" to true)),
+            ),
+        )
+        val flagsStarted = CountDownLatch(1)
+        val releaseFlags = CountDownLatch(1)
+        val onRemoteConfigCalled = CountDownLatch(1)
+        val http =
+            servers.create().apply {
+                dispatcher =
+                    object : Dispatcher() {
+                        override fun dispatch(request: RecordedRequest): MockResponse {
+                            return when {
+                                request.path?.contains("/config") == true -> MockResponse().setBody(configBody)
+                                request.path?.contains("/flags") == true -> {
+                                    flagsStarted.countDown()
+                                    releaseFlags.await(5, TimeUnit.SECONDS)
+                                    MockResponse().setBody(responseFlagsApi)
+                                }
+                                else -> MockResponse().setResponseCode(404)
+                            }
+                        }
+                    }
+                start()
+            }
+        val sut =
+            getSut(
+                host = http.url("/").toString(),
+                onRemoteConfigLoaded = PostHogOnRemoteConfigLoaded { onRemoteConfigCalled.countDown() },
+            )
+        try {
+            assertTrue(sut.isSessionRecordingMaskAllTextEnabled())
+            assertTrue(sut.isSessionRecordingMaskAllImagesEnabled())
+
+            sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+            assertTrue(flagsStarted.await(5, TimeUnit.SECONDS))
+            assertEquals(1L, onRemoteConfigCalled.count)
+
+            val textMaskDuringFlags = sut.isSessionRecordingMaskAllTextEnabled()
+            val imageMaskDuringFlags = sut.isSessionRecordingMaskAllImagesEnabled()
+
+            releaseFlags.countDown()
+            assertTrue(onRemoteConfigCalled.await(5, TimeUnit.SECONDS))
+
+            assertTrue(textMaskDuringFlags, "text masking was cleared before onRemoteConfigLoaded stopped replay")
+            assertTrue(imageMaskDuringFlags, "image masking was cleared before onRemoteConfigLoaded stopped replay")
+        } finally {
+            releaseFlags.countDown()
+            sut.clear()
+            http.shutdown()
+        }
     }
 
     @Test

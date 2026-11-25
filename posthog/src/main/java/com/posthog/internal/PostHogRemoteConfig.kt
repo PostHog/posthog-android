@@ -586,8 +586,6 @@ public class PostHogRemoteConfig(
                     sessionReplayLinkedFlagConfigured = false
                 }
                 consoleLogRecordingEnabled = false
-                sessionRecordingMaskAllText = false
-                sessionRecordingMaskAllImages = false
 
                 if (!sessionRecording) {
                     config.cachePreferences?.remove(SESSION_REPLAY)
@@ -1530,10 +1528,16 @@ public class PostHogRemoteConfig(
      */
     public fun getSessionRecordingSampleRate(): Double? = sessionRecordingSampleRate
 
-    /** True only when remote config sets sessionRecording.masking.mobile.maskAllText to true. */
+    /**
+     * True only when remote config sets sessionRecording.masking.mobile.maskAllText to true. A later
+     * `sessionRecording: false` or mobile quota limit keeps it until the next sessionRecording config or app launch.
+     */
     public fun isSessionRecordingMaskAllTextEnabled(): Boolean = sessionRecordingMaskAllText
 
-    /** True only when remote config sets sessionRecording.masking.mobile.maskAllImages to true. */
+    /**
+     * True only when remote config sets sessionRecording.masking.mobile.maskAllImages to true. A later
+     * `sessionRecording: false` or mobile quota limit keeps it until the next sessionRecording config or app launch.
+     */
     public fun isSessionRecordingMaskAllImagesEnabled(): Boolean = sessionRecordingMaskAllImages
 
     /**

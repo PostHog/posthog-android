@@ -2400,6 +2400,67 @@ internal class PostHogReplayIntegrationTest {
     }
 
     @Test
+    fun `runtime local maskAllTextInputs toggle from true to false while buffering drops on stricter remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `runtime local maskAllImages toggle from true to false while buffering drops on stricter remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllImages = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `runtime local text toggle while buffering keeps the buffer when remote config turns on only image masking`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
     fun `first remote config where server masking is already in the cache keeps the buffer`() {
         val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
         fx.config.sessionReplayConfig.maskAllImages = false
@@ -2535,6 +2596,54 @@ internal class PostHogReplayIntegrationTest {
             assertEquals(0, fx.replayQueue.bufferDepth)
         } finally {
             release.countDown()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `in-flight migrate that passed the pending check does not persist frames a masking drop discards`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        val hookEntered = CountDownLatch(1)
+        val hookRelease = CountDownLatch(1)
+        val releaseQueue = CountDownLatch(1)
+        try {
+            bufferTwoSnapshots(fx)
+            val queueExecutor = ReflectionHelpers.getField<ExecutorService>(fx.replayQueue, "executor")
+            val integrationExecutor = ReflectionHelpers.getField<ExecutorService>(fx.sut, "injectedExecutor")
+            PostHogReplayBufferQueue.testHook = {
+                hookEntered.countDown()
+                hookRelease.await(5, TimeUnit.SECONDS)
+            }
+            val migrator = Thread { fx.replayQueue.migrateBufferToQueue() }
+            migrator.start()
+            assertTrue(hookEntered.await(2, TimeUnit.SECONDS))
+            val queueBusy = CountDownLatch(1)
+            queueExecutor.execute {
+                queueBusy.countDown()
+                releaseQueue.await(5, TimeUnit.SECONDS)
+            }
+            assertTrue(queueBusy.await(2, TimeUnit.SECONDS))
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            integrationExecutor.submit {}.get(2, TimeUnit.SECONDS)
+            assertTrue(fx.replayQueue.isBufferClearPending)
+
+            hookRelease.countDown()
+            migrator.join(5000)
+            releaseQueue.countDown()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth, "old-mask frames reached the persisted queue")
+        } finally {
+            PostHogReplayBufferQueue.testHook = null
+            hookRelease.countDown()
+            releaseQueue.countDown()
             fx.sut.uninstall()
         }
     }

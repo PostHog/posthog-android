@@ -316,6 +316,10 @@ public class PostHogReplayIntegration(
                 this@PostHogReplayIntegration.onReplayBufferSnapshot(replayQueue)
             }
 
+            override fun willBufferSnapshot() {
+                lowerArmedMaskingForBufferedSnapshot()
+            }
+
             override fun currentCaptureMaskingGeneration(): Int? = captureMaskingGeneration.get()
 
             override fun isMaskingGenerationStale(generation: Int): Boolean = generation != maskingGeneration.get()
@@ -1483,12 +1487,16 @@ public class PostHogReplayIntegration(
     }
 
     /**
-     * The masking flag in effect now: the local value OR the project value from remote config.
-     * For first-party wrapper SDKs only.
+     * The text masking flag in effect now: the local maskAllTextInputs OR the project's
+     * maskAllText from remote config. For first-party wrapper SDKs only.
      */
     @PostHogInternalReplayApi
     public fun resolvedMaskAllTextInputs(): Boolean = maskAllTextInputsInEffect
 
+    /**
+     * The image masking flag in effect now: the local maskAllImages OR the project's
+     * maskAllImages from remote config. For first-party wrapper SDKs only.
+     */
     @PostHogInternalReplayApi
     public fun resolvedMaskAllImages(): Boolean = maskAllImagesInEffect
 
@@ -3623,6 +3631,27 @@ public class PostHogReplayIntegration(
         armedMaskAllText = maskAllText
         armedMaskAllImages = maskAllImages
         return stricter
+    }
+
+    // Runs before the snapshot reaches the buffer: a later remote config that turns on masking this
+    // snapshot lacked must see it as stricter, even when local masking was turned off at runtime.
+    private fun lowerArmedMaskingForBufferedSnapshot() {
+        val maskAllText = maskAllTextInputsInEffect
+        val maskAllImages = maskAllImagesInEffect
+        if (maskAllText && maskAllImages) {
+            return
+        }
+        synchronized(bufferingLock) {
+            if (!bufferingSnapshot().buffering) {
+                return
+            }
+            if (!maskAllText) {
+                armedMaskAllText = false
+            }
+            if (!maskAllImages) {
+                armedMaskAllImages = false
+            }
+        }
     }
 
     /**

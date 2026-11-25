@@ -79,6 +79,7 @@ internal class PostHogReplayQueue internal constructor(
             return
         }
 
+        bufferDelegate?.willBufferSnapshot()
         executor.executeSafely {
             if (bufferDelegate?.isBuffering == true) {
                 // Checked on the executor: a masking drop bumps the generation before scheduling
@@ -147,7 +148,7 @@ internal class PostHogReplayQueue internal constructor(
             return
         }
 
-        val migrated = bufferQueue.migrateAllTo(innerQueue)
+        val migrated = bufferQueue.migrateAllTo(innerQueue) { isBufferClearPending }
         config.logger.log(
             "Migrated $migrated/$bufferedCount buffered replay events to replay queue.",
         )

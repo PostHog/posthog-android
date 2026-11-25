@@ -775,4 +775,36 @@ internal class PostHogReplayQueueTest {
 
         assertEquals(listOf("current", "unstamped"), innerQueue.events.map { it.event })
     }
+
+    @Test
+    fun `willBufferSnapshot runs on the add caller before the snapshot reaches the buffer and only while buffering`() {
+        val executor = createPausedExecutor()
+        val innerQueue = createFakeQueue()
+        val queue = createReplayQueue(innerQueue, executor = executor)
+        executor.runNext()
+        val bufferDepthsAtNotice = mutableListOf<Int>()
+        val delegate =
+            object : PostHogReplayBufferDelegate {
+                override var isBuffering: Boolean = true
+                override val isActive: Boolean = true
+
+                override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {}
+
+                override fun willBufferSnapshot() {
+                    bufferDepthsAtNotice.add(queue.bufferDepth)
+                }
+            }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("buffered"))
+        assertEquals(listOf(0), bufferDepthsAtNotice)
+        executor.runNext()
+        assertEquals(1, queue.bufferDepth)
+
+        delegate.isBuffering = false
+        queue.add(createTestEvent("direct"))
+
+        assertEquals(listOf(0), bufferDepthsAtNotice)
+        assertEquals(listOf("direct"), innerQueue.events.map { it.event })
+    }
 }

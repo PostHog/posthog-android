@@ -29,6 +29,12 @@ internal interface PostHogReplayBufferDelegate {
     fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue)
 
     /**
+     * Called on the `add()` caller's thread before a snapshot is routed to the buffer, so the
+     * delegate can record the masking that snapshot was captured under.
+     */
+    fun willBufferSnapshot() {}
+
+    /**
      * The masking generation the snapshot being added on the current thread was collected under,
      * or null when it carries none (e.g. a snapshot a wrapper SDK built). Read on the `add()` caller's thread.
      */
