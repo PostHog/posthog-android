@@ -3,7 +3,9 @@ package com.posthog.surveys
 /**
  * Represents the appearance configuration for a survey.
  *
- * @property fontFamily Optional font family to use throughout the survey
+ * @property fontFamily Optional CSS font family to use throughout the survey (e.g. "Times New Roman").
+ * Android can't load CSS fonts directly, so custom survey UIs need to map it to an available font. The
+ * Compose survey UI uses the closest system font; see `PostHogSurveysComposeDelegate` for the mapping.
  * @property backgroundColor Optional background color as web color (e.g. "#FFFFFF" or "white")
  * @property borderColor Optional border color as web color
  * @property submitButtonColor Optional background color for the submit button as web color

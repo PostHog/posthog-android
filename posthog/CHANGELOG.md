@@ -1,5 +1,23 @@
 ## Next
 
+## 7.0.3
+
+### Patch Changes
+
+- 70737ad: Local flag evaluation in `posthog-server` checks condition groups in the order they are stored, like `/flags` and the other server SDKs, instead of moving groups with a variant override to the front, and applies `early_exit`: a group whose filters all match but whose rollout excludes the user returns `false` without evaluating later groups. For a flag with a variant override on a group other than the first, or with `early_exit` on, some users can now get a different (matching `/flags`) value
+
+## 7.0.2
+
+### Patch Changes
+
+- 9884270: Stop sending `$sdk_debug_replay_*` and `$sdk_debug_session_start` on events while session replay is intentionally off (disabled in config, stopped by the app, or turned off remotely). `$recording_status` is still sent as `disabled`. Sampled-out and trigger-pending sessions are unchanged.
+
+## 7.0.1
+
+### Patch Changes
+
+- b41e72d: Only attach `$sdk_debug_pending_queue_size` once the event queue reaches `flushAt`, so healthy queues no longer add it to every event
+
 ## 7.0.0
 
 ### Major Changes

@@ -18,7 +18,10 @@ import com.posthog.surveys.SurveyType
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.util.Date
 import kotlin.test.Test
@@ -113,6 +116,34 @@ internal class PostHogSurveysSelectionTest {
         }
         assertEligible(survey(conditions()), true)
         assertEligible(survey(conditions()), true, event = "unrelated")
+    }
+
+    @Test
+    fun `linked flag is evaluated only after the survey activation event`() {
+        val event = "checkout_completed"
+        val flag = "beta-program"
+        val survey = survey(conditions(eventNames = listOf(event))).copy(linkedFlagKey = flag)
+        val config =
+            PostHogConfig("selection-test").apply {
+                cachePreferences = PostHogMemoryPreferences()
+                surveys = true
+                surveysConfig.surveysDelegate = mock<PostHogSurveysDelegate>()
+            }
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.isFeatureEnabled(flag, sendFeatureFlagEvent = null)).thenReturn(true)
+        val integration = PostHogSurveysIntegration(ApplicationProvider.getApplicationContext<Context>(), config)
+        integration.install(postHog)
+        try {
+            integration.onSurveysLoaded(listOf(survey))
+            assertEquals(emptyList(), integration.getActiveMatchingSurveys())
+            verify(postHog, never()).isFeatureEnabled(any(), any(), anyOrNull())
+
+            integration.onEvent(event, null)
+            assertEquals(listOf(survey.id), integration.getActiveMatchingSurveys().map { it.id })
+            verify(postHog, atLeastOnce()).isFeatureEnabled(flag, sendFeatureFlagEvent = null)
+        } finally {
+            integration.uninstall()
+        }
     }
 
     @Test

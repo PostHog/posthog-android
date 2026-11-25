@@ -1042,11 +1042,12 @@ public class PostHog private constructor(
         if (timestamp != null && managerStart > 0 && timestamp.time < managerStart) {
             return props
         }
-        val claimed = claimReplayDebugBundle()
+        val replayOff = isSessionReplayIntentionallyOff()
+        val claimed = !replayOff && claimReplayDebugBundle()
         // Guarded separately from the session and queue keys below: those come from the session
         // manager and the queue, not from replay, so a handler that throws must not suppress them.
         try {
-            val replayProps = readReplayDebugProperties()
+            val replayProps = if (replayOff) mapOf("\$recording_status" to "disabled") else readReplayDebugProperties()
             if (claimed) {
                 props.putAll(replayProps)
             } else {
@@ -1059,7 +1060,7 @@ public class PostHog private constructor(
             if (claimed) {
                 sessionStart(sessionId, managerStart)?.let { props["\$sdk_debug_session_start"] = it }
             }
-            queue?.size?.let { props["\$sdk_debug_pending_queue_size"] = it }
+            queue?.backedUpSize?.let { props["\$sdk_debug_pending_queue_size"] = it }
         } catch (e: Throwable) {
             props["\$sdk_debug_error_capturing_properties"] = e.toString().take(MAX_DEBUG_ERROR_LENGTH)
         }
@@ -3308,6 +3309,15 @@ public class PostHog private constructor(
 
     private fun isSessionReplayConfigEnabled(): Boolean {
         return config?.sessionReplay == true
+    }
+
+    // Not off while sampled out, awaiting remote config, or waiting on a trigger: those keys explain
+    // why replay isn't recording. A running recorder is never off: a flags reload can restart it after
+    // an explicit stop, and a remote off stops it only after the app's flags callback has run.
+    private fun isSessionReplayIntentionallyOff(): Boolean {
+        val handler = sessionReplayHandler ?: return true
+        return !handler.isActive() &&
+            (!sessionReplayWanted || remoteConfig?.isSessionRecordingRemotelyDisabled() == true)
     }
 
     // this is used in cases where we know the session is already active

@@ -2,6 +2,7 @@
   "PostHog.addExceptionStep": "exception-steps",
   "PostHog.alias": "alias",
   "PostHog.capture": "capture",
+  "PostHog.captureAi": "capture-ai",
   "PostHog.captureException": "capture-exception",
   "PostHog.captureLog": "logs",
   "PostHog.close": "shutdown",
@@ -13,7 +14,6 @@
   "PostHog.getAnonymousId": "get-anonymous-id",
   "PostHog.getDeviceId": "device-id-generator",
   "PostHog.getFeatureFlag": "get-feature-flag",
-  "PostHog.getFeatureFlagPayload": "get-feature-flag-payload",
   "PostHog.getFeatureFlagResult": "get-feature-flag-result",
   "PostHog.getSessionId": "get-session-id",
   "PostHog.group": "group",
@@ -22,6 +22,7 @@
   "PostHog.isOptOut": "is-opt-out",
   "PostHog.isSessionReplayActive": "is-session-replay-active",
   "PostHog.logger": "logs",
+  "PostHog.onFeatureFlags": "on-feature-flags",
   "PostHog.optIn": "opt-in",
   "PostHog.optOut": "opt-in",
   "PostHog.register": "register",
@@ -39,10 +40,6 @@
   "PostHog.unregister": "unregister",
   "PostHogAndroid.setup": "setup",
   "PostHogAndroid.with": "setup",
-  "next": {
-    "PostHog.captureAi": "capture-ai",
-    "PostHog.onFeatureFlags": "on-feature-flags"
-  },
   "utils": [
     "PostHog.captureFeatureInteraction",
     "PostHog.captureFeatureView",
