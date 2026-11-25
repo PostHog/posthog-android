@@ -744,7 +744,7 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
-    fun `a null key from a Java caller returns the unavailable result without evaluating or sending a request`() {
+    fun `a null key or group type from a Java caller returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),
             createMultipleFlagsResponse("profile-incomplete" to true),
@@ -766,6 +766,15 @@ internal class PostHogKnownAbsentPropertyKeysTest {
                     PostHogEvaluateFlagsOptions.builder().groupPropertyKeysKnownAbsent("organization", groupWithNull).build(),
                 )
             assertTrue(groupSnapshot.keys.isEmpty())
+
+            @Suppress("UNCHECKED_CAST")
+            val nullGroupType =
+                java.util.HashMap(
+                    java.util.Collections.singletonMap(null, mutableListOf("tier")),
+                ) as MutableMap<String, MutableList<String>>
+            val nullGroupTypeBuilder = PostHogEvaluateFlagsOptions.builder()
+            nullGroupTypeBuilder.groupPropertyKeysKnownAbsent = nullGroupType
+            assertTrue(postHog.evaluateFlags("user-1", nullGroupTypeBuilder.build()).keys.isEmpty())
 
             val flagOptions =
                 PostHogFeatureFlagOptions.builder()

@@ -33,7 +33,7 @@ package com.posthog.server
  * @property groupPropertyKeysKnownAbsent Group property keys the caller knows are absent for this
  *   evaluation, keyed by group type. A key applies only to filters of type `group` in flags
  *   aggregated on its own group type and wins over any value in [groupProperties] for that type. Otherwise this follows [personPropertyKeysKnownAbsent],
- *   with the limit of 1000 keys applying to each group type.
+ *   with the limit of 1000 keys applying to each group type. A null group type is rejected like a null key.
  *
  * Known-absent keys are not available on [PostHogCaptureOptions]; evaluate a snapshot with these
  * options and pass it to `capture` instead.

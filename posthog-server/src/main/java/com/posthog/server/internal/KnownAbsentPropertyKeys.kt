@@ -18,8 +18,8 @@ internal data class KnownAbsentPropertyKeys(
         internal const val MAX_KEYS: Int = 1000
 
         /**
-         * Returns a message naming the field when a list holds more than [MAX_KEYS] strings or a
-         * null element (possible from Java callers), or null when the input is valid.
+         * Returns a message naming the field when a list holds more than [MAX_KEYS] strings, a
+         * null element or a null group type (possible from Java callers), or null when the input is valid.
          */
         fun inputError(
             person: List<String>?,
@@ -34,6 +34,9 @@ internal data class KnownAbsentPropertyKeys(
                 }
             }
             groups?.forEach { (groupType, keys) ->
+                if ((groupType as String?) == null) {
+                    return "group_property_keys_known_absent must not contain a null group type"
+                }
                 if (keys.size > MAX_KEYS) {
                     return "group_property_keys_known_absent allows at most $MAX_KEYS keys per group type, " +
                         "got ${keys.size} for group type '$groupType'"
