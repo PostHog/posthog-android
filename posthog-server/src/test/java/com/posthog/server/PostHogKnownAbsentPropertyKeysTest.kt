@@ -19,6 +19,7 @@ internal class PostHogKnownAbsentPropertyKeysTest {
         private val flagsResponse: String,
     ) : Dispatcher() {
         val flagsBodies: MutableList<Map<String, Any?>> = CopyOnWriteArrayList()
+        val featureFlagCalledEvents: MutableList<Map<String, Any?>> = CopyOnWriteArrayList()
 
         override fun dispatch(request: RecordedRequest): MockResponse {
             val path = request.path.orEmpty()
@@ -29,6 +30,17 @@ internal class PostHogKnownAbsentPropertyKeysTest {
                     flagsBodies.add(Gson().fromJson(request.body.unGzip(), Map::class.java) as Map<String, Any?>)
                     jsonResponse(flagsResponse)
                 }
+                path.contains("/batch") -> {
+                    request.parseBatch().batch
+                        .filter { it.get("event")?.asString == "\$feature_flag_called" }
+                        .forEach {
+                            @Suppress("UNCHECKED_CAST")
+                            featureFlagCalledEvents.add(
+                                Gson().fromJson(it.getAsJsonObject("properties"), Map::class.java) as Map<String, Any?>,
+                            )
+                        }
+                    MockResponse().setResponseCode(200)
+                }
                 else -> MockResponse().setResponseCode(200)
             }
         }
@@ -37,6 +49,7 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     private fun withPostHog(
         definitions: String,
         flagsResponse: String = createEmptyFlagsResponse(),
+        sendFeatureFlagEvent: Boolean = false,
         block: (PostHogInterface, FlagsBodyDispatcher) -> Unit,
     ) {
         val dispatcher = FlagsBodyDispatcher(definitions, flagsResponse)
@@ -48,7 +61,8 @@ internal class PostHogKnownAbsentPropertyKeysTest {
                 PostHogConfig.builder(TEST_PROJECT_TOKEN)
                     .host(mockServer.url("/").toString())
                     .personalApiKey("phx_test_personal_api_key")
-                    .sendFeatureFlagEvent(false)
+                    .sendFeatureFlagEvent(sendFeatureFlagEvent)
+                    .flushAt(1)
                     .build(),
             )
         try {
@@ -185,6 +199,62 @@ internal class PostHogKnownAbsentPropertyKeysTest {
             assertEquals(2, dispatcher.flagsBodies.size, "the listing is part of the cache key")
             assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"])
             assertFalse(dispatcher.flagsBodies[1].containsKey("person_property_keys_known_absent"))
+        }
+    }
+
+    @Test
+    fun `flag getters with listed keys send feature_flag_called from the known-absent cache entry`() {
+        val remote =
+            """
+            {"flags": {
+              "gated": {"key": "gated", "enabled": true, "variant": null,
+                "metadata": {"id": 7, "version": 3, "payload": "pay"},
+                "reason": {"code": "condition_match", "description": "Matched", "condition_index": 0}},
+              "quiet": {"key": "quiet", "enabled": true, "variant": null, "metadata": {"id": 8, "version": 1, "payload": null}},
+              "broken": {"key": "broken", "enabled": false, "failed": true, "metadata": {"id": 9, "version": 1, "payload": null}}
+             },
+             "requestId": "req-known-absent"}
+            """.trimIndent()
+        val definitions =
+            createLocalEvaluationResponseFrom(
+                emailGatedFlagDefinition("gated"),
+                emailGatedFlagDefinition("quiet"),
+                emailGatedFlagDefinition("broken"),
+            )
+        withPostHog(definitions, remote, sendFeatureFlagEvent = true) { postHog, dispatcher ->
+            val flagOptions =
+                PostHogFeatureFlagOptions.builder()
+                    .defaultValue("fallback")
+                    .personPropertyKeysKnownAbsent(listOf("plan"))
+                    .build()
+            assertEquals("pay", postHog.getFeatureFlagPayload("user-1", "gated", flagOptions))
+            val quiet =
+                PostHogFeatureFlagResultOptions.builder()
+                    .personPropertyKeysKnownAbsent(listOf("plan"))
+                    .sendFeatureFlagEvent(false)
+                    .build()
+            assertEquals(true, postHog.getFeatureFlagResult("user-1", "quiet", quiet)?.value)
+            assertEquals(true, postHog.getFeatureFlag("user-1", "gated", flagOptions))
+            assertEquals("fallback", postHog.getFeatureFlag("user-1", "broken", flagOptions))
+            postHog.flush()
+
+            val deadline = System.currentTimeMillis() + 5_000
+            while (dispatcher.featureFlagCalledEvents.size < 2 && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20)
+            }
+            val events = dispatcher.featureFlagCalledEvents.associateBy { it["\$feature_flag"] }
+            assertEquals(setOf<Any?>("gated", "broken"), events.keys)
+            val gated = events.getValue("gated")
+            assertEquals(true, gated["\$feature_flag_response"])
+            assertEquals("req-known-absent", gated["\$feature_flag_request_id"])
+            assertEquals(7.0, gated["\$feature_flag_id"])
+            assertEquals(3.0, gated["\$feature_flag_version"])
+            assertEquals("Matched", gated["\$feature_flag_reason"])
+            val broken = events.getValue("broken")
+            assertEquals("", broken["\$feature_flag_response"])
+            assertEquals(9.0, broken["\$feature_flag_id"])
+            assertEquals(1, dispatcher.flagsBodies.size)
+            assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"])
         }
     }
 
