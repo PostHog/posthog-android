@@ -11,7 +11,7 @@ import java.util.Map;
 final class PostHogCli {
     static final String DEFAULT_EXECUTABLE = "posthog-cli";
 
-    private static final String CMD_UNSAFE_CHARACTERS = "&|<>^%!\"()\r\n";
+    private static final String CMD_UNSAFE_CHARACTERS = "&|<>^%!\"\r\n";
 
     private PostHogCli() {}
 
@@ -92,7 +92,9 @@ final class PostHogCli {
     /**
      * The first of {@code values} that cmd would not pass through unchanged, or null when all are
      * safe. Java quotes an argument with spaces, but cmd still reads operators such as {@code &}
-     * and {@code |}, expands {@code %VAR%}, and ends the command at a line break.
+     * and {@code |}, expands {@code %VAR%}, and ends the command at a line break. Parentheses are
+     * allowed, because they start no command, and versions such as {@code 1.0(5)} hold them. The
+     * Gradle plugin uses the same characters.
      */
     static String firstUnsafeForCmd(List<String> values) {
         for (String value : values) {

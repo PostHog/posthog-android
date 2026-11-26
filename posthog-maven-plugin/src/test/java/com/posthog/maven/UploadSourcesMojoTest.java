@@ -401,7 +401,6 @@ public class UploadSourcesMojoTest {
                         "!x!",
                         "say \"hi\"",
                         "a^b",
-                        "(a)",
                         "a\nb")) {
             assertEquals(unsafe, PostHogCli.firstUnsafeForCmd(Arrays.asList("--source", unsafe)));
         }
@@ -413,7 +412,8 @@ public class UploadSourcesMojoTest {
                                 "--source",
                                 "C:\\My Projects\\app-1\\src\\main\\java",
                                 "--release-version",
-                                "1.2.3+build.4")));
+                                "1.2.3+build.4",
+                                "1.0(5)")));
     }
 
     @Test
