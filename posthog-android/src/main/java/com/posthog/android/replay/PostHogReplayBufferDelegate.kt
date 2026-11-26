@@ -14,6 +14,12 @@ internal interface PostHogReplayBufferDelegate {
     val isBuffering: Boolean
 
     /**
+     * Decides where `queue.add()` routes a snapshot: true buffers it, false persists it directly.
+     * A direct write counts as the session passing its minimum duration.
+     */
+    fun shouldBufferSnapshot(): Boolean = isBuffering
+
+    /**
      * Whether session recording is currently active. The queue drops snapshots routed to the
      * persisted queue while this is false, so a snapshot captured just before recording stopped
      * (e.g. a fresh remote config rejecting the cached flag) cannot leak to the network.

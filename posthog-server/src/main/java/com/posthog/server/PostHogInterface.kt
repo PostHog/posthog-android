@@ -321,7 +321,7 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
-     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @param options the lookup options; see [PostHogFeatureFlagOptions] for every field, including known-absent property keys
      * @return Whether the feature flag is enabled.
      */
     @Deprecated(
@@ -396,7 +396,7 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
-     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @param options the lookup options; see [PostHogFeatureFlagOptions] for every field, including known-absent property keys
      * @return The feature flag value, or the options default value if not found.
      */
     @Deprecated(
@@ -500,7 +500,7 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
-     * @param options the feature flag options containing defaultValue, groups, personProperties, and groupProperties
+     * @param options the lookup options; see [PostHogFeatureFlagOptions] for every field, including known-absent property keys
      * @return The feature flag payload, or the options default value if not found.
      */
     @Deprecated(
@@ -605,7 +605,7 @@ public sealed interface PostHogInterface {
      * Docs https://posthog.com/docs/feature-flags and https://posthog.com/docs/experiments
      * @param distinctId the distinctId
      * @param key the Key
-     * @param options the feature flag result options containing groups, personProperties, groupProperties, and sendFeatureFlagEvent
+     * @param options the lookup options; see [PostHogFeatureFlagResultOptions] for every field, including known-absent property keys
      * @return FeatureFlagResult if the flag exists, null otherwise
      */
     @Deprecated(
@@ -696,6 +696,8 @@ public sealed interface PostHogInterface {
      *   could not be resolved locally are absent
      * @param disableGeoip when true, send `geoip_disable=true` to the server
      * @return A feature flag evaluation snapshot for the resolved distinct ID.
+     *
+     * To pass known-absent property keys, use the overload that takes [PostHogEvaluateFlagsOptions].
      */
     @JvmSynthetic
     public fun evaluateFlags(
@@ -714,7 +716,7 @@ public sealed interface PostHogInterface {
      *
      * @param distinctId the distinctId. When null or blank, the current [PostHogRequestContext]
      *   distinct ID is used; if none exists, an empty snapshot is returned.
-     * @param options Evaluation options.
+     * @param options Evaluation options; see [PostHogEvaluateFlagsOptions] for every field, including known-absent property keys.
      * @return A feature flag evaluation snapshot for the resolved distinct ID.
      */
     public fun evaluateFlags(
@@ -736,7 +738,7 @@ public sealed interface PostHogInterface {
      * Evaluate every feature flag using the current [PostHogRequestContext] distinct ID and the
      * supplied options object. Returns an empty snapshot when no request context identity is active.
      *
-     * @param options Evaluation options.
+     * @param options Evaluation options; see [PostHogEvaluateFlagsOptions] for every field, including known-absent property keys.
      * @return A feature flag evaluation snapshot, or an empty snapshot when no identity is active.
      */
     public fun evaluateFlags(options: PostHogEvaluateFlagsOptions): PostHogFeatureFlagEvaluations {

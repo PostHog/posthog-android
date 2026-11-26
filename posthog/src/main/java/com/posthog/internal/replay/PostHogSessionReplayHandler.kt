@@ -6,6 +6,16 @@ import com.posthog.PostHogInternal
 public interface PostHogSessionReplayHandler {
     public fun start(resumeCurrent: Boolean)
 
+    /**
+     * Called when the app explicitly asks to start recording, before any gate can refuse it.
+     */
+    public fun onStartRequested() {}
+
+    /**
+     * Called when the app explicitly asks to stop recording.
+     */
+    public fun onStopRequested() {}
+
     public fun stop()
 
     public fun isActive(): Boolean
@@ -31,4 +41,10 @@ public interface PostHogSessionReplayHandler {
      * Used to stop recording if event triggers are configured and the new session hasn't been activated.
      */
     public fun onSessionIdChanged()
+
+    /**
+     * Called when feature flags are loaded, before any automatic start.
+     * Flags can activate or deactivate session recording trigger groups.
+     */
+    public fun onFeatureFlagsLoaded() {}
 }

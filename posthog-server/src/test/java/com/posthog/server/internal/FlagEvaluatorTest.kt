@@ -3926,4 +3926,244 @@ internal class FlagEvaluatorTest {
             )
         }
     }
+
+    private fun knownAbsentProperty(
+        operator: String,
+        valueJson: String?,
+        negation: Boolean = false,
+    ): FlagProperty =
+        config.serializer.gson.fromJson(
+            """{"key":"plan","type":"person","operator":"$operator","negation":$negation""" +
+                (valueJson?.let { ""","value":$it""" } ?: "") + "}",
+            FlagProperty::class.java,
+        )
+
+    @Test
+    internal fun testKnownAbsentKeyResolvesEveryOperatorWithoutFallback() {
+        val expected =
+            linkedMapOf(
+                "is_not_set" to (null to true),
+                "is_set" to (null to false),
+                "exact" to ("\"pro\"" to false),
+                "is_not" to ("\"pro\"" to true),
+                "icontains" to ("\"pro\"" to false),
+                "not_icontains" to ("\"pro\"" to true),
+                "starts_with" to ("\"pro\"" to false),
+                "not_starts_with" to ("\"pro\"" to true),
+                "ends_with" to ("\"pro\"" to false),
+                "not_ends_with" to ("\"pro\"" to true),
+                "regex" to ("\"^pro\"" to false),
+                "not_regex" to ("\"^pro\"" to true),
+                "gt" to ("\"10\"" to false),
+                "gte" to ("\"10\"" to false),
+                "lt" to ("\"10\"" to false),
+                "lte" to ("\"10\"" to false),
+                "is_date_before" to ("\"2025-01-01T10:00:00Z\"" to false),
+                "is_date_after" to ("\"2025-01-01T10:00:00Z\"" to false),
+                "semver_eq" to ("\"1.2.3\"" to false),
+                "semver_neq" to ("\"1.2.3\"" to false),
+                "semver_gt" to ("\"1.2.3\"" to false),
+                "semver_tilde" to ("\"1.2.3\"" to false),
+                "semver_caret" to ("\"1.2.3\"" to false),
+                "semver_wildcard" to ("\"1.2.*\"" to false),
+            )
+        for ((operator, case) in expected) {
+            val property = knownAbsentProperty(operator, case.first)
+            for (supplied in listOf(emptyMap(), mapOf("plan" to "pro"), mapOf<String, Any?>("plan" to null))) {
+                assertEquals(
+                    "$operator with $supplied",
+                    case.second,
+                    evaluator.matchProperty(property, supplied, knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan"))),
+                )
+            }
+        }
+    }
+
+    @Test
+    internal fun testUnlistedOmittedKeyStaysInconclusive() {
+        for (operator in listOf("is_not_set", "is_not", "not_icontains")) {
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException> {
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, "\"pro\""),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("region")),
+                    )
+                }
+            assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, error.reason)
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentKeyKeepsUnsupportedOperatorsAndOmittedValuesInconclusive() {
+        for ((operator, value) in listOf(
+            "icontains_multi" to "[\"pro\"]",
+            "not_icontains_multi" to "[\"pro\"]",
+            "not_between" to "[1, 2]",
+        )) {
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>(operator) {
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, value),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    )
+                }
+            assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
+        }
+        for (value in listOf(null, "null")) {
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("is_not with $value") {
+                    evaluator.matchProperty(
+                        knownAbsentProperty("is_not", value),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    )
+                }
+            assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentKeyDoesNotParseAPresentConditionValue() {
+        for ((operator, value, expected) in listOf(
+            Triple("gt", "\"9px\"", false),
+            Triple("is_date_before", "\"not-a-date\"", false),
+            Triple("semver_neq", "\"x.y\"", false),
+            Triple("regex", "\"[\"", false),
+            Triple("not_regex", "\"[\"", true),
+            Triple("not_regex", "\"\\\\p{L}\"", true),
+        )) {
+            for (negation in listOf(false, true)) {
+                assertEquals(
+                    "$operator with $value, negation=$negation",
+                    expected,
+                    evaluator.matchProperty(
+                        knownAbsentProperty(operator, value, negation),
+                        emptyMap(),
+                        knownAbsentKeys = KnownAbsentKeyScope.person(setOf("plan")),
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentCohortLeafAppliesTheTableBeforeNegation() {
+        val cohort =
+            config.serializer.gson.fromJson(
+                """{"type":"AND","values":[{"key":"plan","value":"pro","operator":"exact","type":"person","negation":true}]}""",
+                PropertyGroup::class.java,
+            )
+        val cohortFilter = FlagProperty("id", 1, PropertyOperator.IN, PropertyType.COHORT, false, null)
+        assertTrue(
+            evaluator.matchCohort(
+                cohortFilter,
+                mapOf("plan" to "pro"),
+                mapOf("1" to cohort),
+                null,
+                null,
+                null,
+                KnownAbsentKeyScope.person(setOf("plan")),
+            ),
+        )
+        assertFalse(
+            evaluator.matchCohort(cohortFilter, mapOf("plan" to "pro"), mapOf("1" to cohort), null, null, null),
+        )
+        kotlin.test.assertFailsWith<InconclusiveMatchException> {
+            evaluator.matchCohort(cohortFilter, emptyMap(), mapOf("1" to cohort), null, null, null)
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentCohortLeafChecksOperatorSupportBeforeTheTable() {
+        val cohortFilter = FlagProperty("id", 1, PropertyOperator.IN, PropertyType.COHORT, false, null)
+        for (negation in listOf(false, true)) {
+            val cohort =
+                config.serializer.gson.fromJson(
+                    """{"type":"AND","values":[""" +
+                        """{"key":"plan","value":[1,2],"operator":"not_between","type":"person","negation":$negation}]}""",
+                    PropertyGroup::class.java,
+                )
+            val error =
+                kotlin.test.assertFailsWith<InconclusiveMatchException>("negation=$negation") {
+                    evaluator.matchCohort(
+                        cohortFilter,
+                        emptyMap(),
+                        mapOf("1" to cohort),
+                        null,
+                        null,
+                        null,
+                        KnownAbsentKeyScope.person(setOf("plan")),
+                    )
+                }
+            assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
+        }
+    }
+
+    @Test
+    internal fun testFlagDependencyReadsTheKnownAbsentKeysOfTheTopLevelContext() {
+        val dependency =
+            config.serializer.gson.fromJson(
+                """
+                {"id":1,"name":"dep","key":"dep","active":true,"version":1,"filters":{"groups":[
+                  {"properties":[{"key":"plan","type":"person","operator":"is_not_set"}],"rollout_percentage":100}
+                ]}}
+                """.trimIndent(),
+                FlagDefinition::class.java,
+            )
+        val parent =
+            config.serializer.gson.fromJson(
+                """
+                {"id":2,"name":"parent","key":"parent","active":true,"version":1,"filters":{"groups":[
+                  {"properties":[{"key":"dep","type":"flag","operator":"flag_evaluates_to","value":true,"dependency_chain":["dep"]}],
+                   "rollout_percentage":100}
+                ]}}
+                """.trimIndent(),
+                FlagDefinition::class.java,
+            )
+        val flagsByKey = mapOf("dep" to dependency, "parent" to parent)
+
+        fun context(knownAbsent: KnownAbsentPropertyKeys?) =
+            FlagEvaluationContext("user-1", null, mapOf("distinct_id" to "user-1"), null, knownAbsent, null)
+        assertEquals(
+            true,
+            evaluator.computeFlag(
+                parent,
+                context(KnownAbsentPropertyKeys.of(listOf("plan"), null)),
+                emptyMap(),
+                flagsByKey,
+                mutableMapOf(),
+            ),
+        )
+        kotlin.test.assertFailsWith<InconclusiveMatchException> {
+            evaluator.computeFlag(parent, context(null), emptyMap(), flagsByKey, mutableMapOf())
+        }
+    }
+
+    @Test
+    internal fun testKnownAbsentPropertyKeysKeepPersonMetadataKeysAndDropEmptyLists() {
+        val keys =
+            KnownAbsentPropertyKeys.of(
+                listOf("plan", "plan", "__posthog_person_metadata__created_at"),
+                mapOf("organization" to listOf("tier"), "project" to emptyList()),
+            )
+        assertEquals(setOf("plan", "__posthog_person_metadata__created_at"), keys?.person)
+        assertEquals(mapOf("organization" to setOf("tier")), keys?.groups)
+        assertEquals(setOf("tier"), keys?.forGroupType("organization"))
+        assertEquals(emptySet<String>(), keys?.forGroupType("project"))
+        assertEquals(
+            setOf("__posthog_person_metadata__created_at"),
+            KnownAbsentPropertyKeys.of(listOf("__posthog_person_metadata__created_at"), mapOf("project" to emptyList()))?.person,
+        )
+        assertEquals(null, KnownAbsentPropertyKeys.of(emptyList(), mapOf("project" to emptyList())))
+        assertEquals(null, KnownAbsentPropertyKeys.of(null, null))
+    }
+
+    @Test
+    internal fun testKnownAbsentPropertyKeysLimitCountsDuplicatesPerList() {
+        assertEquals(null, KnownAbsentPropertyKeys.inputError(List(1000) { "plan" }, mapOf("organization" to List(1000) { "tier" })))
+        assertNotNull(KnownAbsentPropertyKeys.inputError(List(1001) { "plan" }, null))
+        assertNotNull(KnownAbsentPropertyKeys.inputError(null, mapOf("organization" to List(1001) { "tier" })))
+    }
 }

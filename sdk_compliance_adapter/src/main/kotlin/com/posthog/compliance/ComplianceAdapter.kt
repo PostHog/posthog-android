@@ -455,7 +455,9 @@ fun main() {
                 val beforeCount = AdapterContext.capturedEvents.size
 
                 // Capture event with distinct_id parameter (don't call identify separately)
-                val properties = req.properties?.toMutableMap() ?: mutableMapOf()
+                val properties =
+                    (req.pad_properties_to_bytes?.let { padProperties(req.properties, it, req.marker) } ?: req.properties)
+                        ?.toMutableMap() ?: mutableMapOf()
                 ph.capture(
                     event = req.event,
                     distinctId = req.distinct_id,

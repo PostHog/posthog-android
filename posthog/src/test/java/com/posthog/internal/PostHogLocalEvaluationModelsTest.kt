@@ -382,11 +382,64 @@ public class PostHogLocalEvaluationModelsTest {
     }
 
     @Test
+    public fun testFlagHoldoutReadsTheExclusionPercentageAndTreatsAMalformedHoldoutAsNone() {
+        val serializer = PostHogSerializer(com.posthog.PostHogConfig("test"))
+
+        fun holdout(value: String): FlagHoldout? {
+            val json =
+                """{"flags": [{"id": 1, "name": "f", "key": "f", "active": true, "version": 1,
+                  "filters": {"groups": [], "holdout": $value}}]}"""
+            return serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(json)).flags!!.single().filters.holdout
+        }
+
+        assertEquals(50.0, holdout("""{"id": 7, "exclusion_percentage": 50}""")!!.exclusionPercentage, 0.0)
+        assertNull(holdout("null"))
+        assertNull(holdout("\"bad\""))
+        assertNull(holdout("[]"))
+        assertNull(holdout("""{"id": 7}"""))
+        assertNull(holdout("""{"id": 7, "exclusion_percentage": "50"}"""))
+    }
+
+    @Test
+    public fun testFlagPropertyRawTypeAndGroupTypeIndexSurviveASerializerRoundTrip() {
+        val serializer = PostHogSerializer(com.posthog.PostHogConfig("test"))
+        val json =
+            """
+            {"flags": [{"id": 1, "name": "f", "key": "f", "active": true, "version": 1, "filters": {"groups": [{"properties": [
+              {"key": "created_at", "type": "person_metadata", "operator": "is_not_set"},
+              {"key": "tier", "type": "group", "group_type_index": 0, "operator": "is_not_set"}
+            ]}]}}],
+             "group_type_mapping": {},
+             "cohorts": {"1": {"type": "AND", "values": [{"key": "created_at", "type": "person_metadata", "operator": "is_not_set"}]}}}
+            """.trimIndent()
+
+        fun rawTypes(response: LocalEvaluationResponse): List<String?> =
+            response.flags!!.single().filters.groups!!.single().properties!!.map { it.rawType } +
+                (response.cohorts!!["1"]!!.values as PropertyValue.FlagProperties).values.map { it.rawType }
+
+        val parsed = serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(json))
+        assertEquals(listOf("person_metadata", "group", "person_metadata"), rawTypes(parsed))
+        assertEquals(PropertyType.UNSUPPORTED, parsed.flags!!.single().filters.groups!!.single().properties!!.first().type)
+
+        val writer = java.io.StringWriter()
+        serializer.serialize(parsed, writer)
+        val reparsed = serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(writer.toString()))
+        assertEquals(listOf("person_metadata", "group", "person_metadata"), rawTypes(reparsed))
+        assertEquals(
+            listOf(null, 0),
+            reparsed.flags!!.single().filters.groups!!.single().properties!!.map { it.groupTypeIndex },
+        )
+    }
+
+    @Test
     public fun testPropertyTypeFromString() {
         assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("person"))
         assertEquals(PropertyType.COHORT, PropertyType.fromStringOrNull("cohort"))
         assertEquals(PropertyType.FLAG, PropertyType.fromStringOrNull("flag"))
-        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("group"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("person_metadata"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull(""))
         assertNull(PropertyType.fromStringOrNull(null))
     }
 

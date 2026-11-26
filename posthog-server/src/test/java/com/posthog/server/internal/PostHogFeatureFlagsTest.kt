@@ -4458,6 +4458,7 @@ internal class PostHogFeatureFlagsTest {
         version: Int = 1,
         rolloutPercentage: Int = 100,
         runtimeJson: String? = null,
+        holdoutJson: String? = null,
     ): String =
         """
         {
@@ -4467,7 +4468,7 @@ internal class PostHogFeatureFlagsTest {
             "active": $active,
             "ensure_experience_continuity": $continuity,
             ${runtimeJson?.let { "\"evaluation_runtime\": $it," } ?: ""}
-            "filters": {"groups": [{"properties": $properties, "rollout_percentage": $rolloutPercentage}]},
+            "filters": {${holdoutJson?.let { "\"holdout\": $it," } ?: ""}"groups": [{"properties": $properties, "rollout_percentage": $rolloutPercentage}]},
             "version": $version
         }
         """.trimIndent()
@@ -5021,6 +5022,8 @@ internal class PostHogFeatureFlagsTest {
                 unresolvedTestFlag("continuity", continuity = true),
                 unresolvedTestFlag("needs-context", "[$planIsPro]"),
                 unresolvedTestFlag("needs-dependency", "[${dependsOn("continuity")}]"),
+                unresolvedTestFlag("holdout", holdoutJson = """{"id": 1, "exclusion_percentage": 50}"""),
+                unresolvedTestFlag("zero-holdout", holdoutJson = """{"id": 2, "exclusion_percentage": 0}"""),
                 unresolvedTestFlag("disabled", "[$staticCohort]", active = false),
                 unresolvedTestFlag("resolvable"),
             )
@@ -5033,7 +5036,7 @@ internal class PostHogFeatureFlagsTest {
         val unsupported = "(reason: ${PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION.value}): "
         val warning = logger.warnings.single { it.contains(unsupported) }
         assertEquals(
-            setOf("static-cohort", "unknown-operator", "malformed-value", "missing-dependency", "circular-dependency"),
+            setOf("static-cohort", "unknown-operator", "malformed-value", "missing-dependency", "circular-dependency", "holdout"),
             warning.substringAfter(unsupported).substringBefore(". ").split(", ").toSet(),
         )
         assertEquals(1, logger.unresolvableWarnings("continuity", PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY))

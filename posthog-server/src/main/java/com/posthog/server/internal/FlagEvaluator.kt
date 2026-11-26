@@ -37,6 +37,15 @@ internal class FlagEvaluator(
         private const val MAX_LOCAL_REGEX_REPEAT_BOUND = 1000
         private val NONE_VALUES_ALLOWED_OPERATORS = setOf(PropertyOperator.EXACT, PropertyOperator.IS_NOT)
         private val NUMERIC_OPERATORS = setOf(PropertyOperator.GT, PropertyOperator.GTE, PropertyOperator.LT, PropertyOperator.LTE)
+        private val KNOWN_ABSENT_MATCHING_OPERATORS =
+            setOf(
+                PropertyOperator.IS_NOT_SET,
+                PropertyOperator.IS_NOT,
+                PropertyOperator.NOT_ICONTAINS,
+                PropertyOperator.NOT_STARTS_WITH,
+                PropertyOperator.NOT_ENDS_WITH,
+                PropertyOperator.NOT_REGEX,
+            )
         private val REGEX_DECIMAL = Regex("""[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?""")
         private val JSON = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
         private val REGEX_RELATIVE_DATE = "^-?([0-9]+)([hdwmy])$".toRegex()
@@ -143,15 +152,22 @@ internal class FlagEvaluator(
     fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
-    ): Boolean = matchProperty(property, propertyValues, inCohort = false)
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
+    ): Boolean = matchProperty(property, propertyValues, inCohort = false, knownAbsentKeys)
 
     private fun matchProperty(
         property: FlagProperty,
         propertyValues: Map<String, Any?>,
         inCohort: Boolean,
+        knownAbsentKeys: KnownAbsentKeyScope,
     ): Boolean =
         try {
-            matchPropertyValue(property, propertyValues, inCohort)
+            assertPropertyTypeSupported(property)
+            if (knownAbsentKeys.isKnownAbsent(property)) {
+                matchKnownAbsentProperty(property)
+            } else {
+                matchPropertyValue(property, propertyValues, inCohort)
+            }
         } catch (e: InconclusiveMatchException) {
             // An unusable filter outranks missing context, so check the filter before blaming the call.
             if (e.reason == PostHogUnresolvedFlagReason.MISSING_CONTEXT) {
@@ -277,14 +293,57 @@ internal class FlagEvaluator(
     }
 
     /**
+     * Matches a filter whose key the caller listed as known absent, which wins over any supplied
+     * value. Like the flags service, it does not parse a present filter value. Unsupported
+     * operators and an omitted or null filter value stay inconclusive.
+     */
+    private fun matchKnownAbsentProperty(property: FlagProperty): Boolean {
+        val propertyOperator = property.propertyOperator ?: PropertyOperator.EXACT
+        if (propertyOperator == PropertyOperator.UNKNOWN ||
+            propertyOperator == PropertyOperator.IN ||
+            propertyOperator == PropertyOperator.FLAG_EVALUATES_TO
+        ) {
+            throw InconclusiveMatchException(
+                "Unknown operator: ${property.propertyOperator}",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+        if (propertyOperator == PropertyOperator.IS_SET || propertyOperator == PropertyOperator.IS_NOT_SET) {
+            return propertyOperator == PropertyOperator.IS_NOT_SET
+        }
+        if (property.propertyValue == null) {
+            throw InconclusiveMatchException(
+                "Filter on known-absent property '${property.key}' has no value",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+        return propertyOperator in KNOWN_ABSENT_MATCHING_OPERATORS
+    }
+
+    /**
+     * Only person (and group) filters are matched against the properties the caller passes.
+     * Any other filter type, such as `person_metadata`, could disagree with `/flags` if it were
+     * matched against a caller property with the same key, so it can't be evaluated locally.
+     */
+    private fun assertPropertyTypeSupported(property: FlagProperty) {
+        if (property.type == PropertyType.UNSUPPORTED) {
+            throw InconclusiveMatchException(
+                "Can't evaluate the filter on '${property.key}' locally: its type is not a person or group property",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+    }
+
+    /**
      * Throws an [PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION] error when local evaluation
-     * cannot use the filter, whatever the call supplies: an unknown operator, or a filter value
-     * that the operator cannot parse.
+     * cannot use the filter, whatever the call supplies: an unsupported filter type, an unknown
+     * operator, or a filter value that the operator cannot parse.
      */
     private fun assertFilterSupported(
         property: FlagProperty,
         inCohort: Boolean,
     ) {
+        assertPropertyTypeSupported(property)
         val value = property.propertyValue
         when (property.propertyOperator ?: PropertyOperator.EXACT) {
             PropertyOperator.EXACT, PropertyOperator.IS_NOT -> (value as? List<*> ?: listOf(value)).forEach { valueToString(it) }
@@ -390,8 +449,15 @@ internal class FlagEvaluator(
         if (flag.ensureExperienceContinuity) {
             return PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
         }
+        // Enrollment decides the flag before its group aggregation and release conditions are read.
+        if (flag.filters.featureEnrollment) {
+            return null
+        }
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
         if (aggregationGroupIndex != null && groupTypeMapping[aggregationGroupIndex.toString()] == null) {
+            return PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
+        }
+        if (hasHoldout(flag)) {
             return PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
         }
         val visitedCohortIds = mutableSetOf<String>()
@@ -1263,6 +1329,8 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
+        context: FlagEvaluationContext? = null,
     ): Boolean {
         val cohortId =
             property.propertyValue?.toString()
@@ -1286,6 +1354,8 @@ internal class FlagEvaluator(
             flagsByKey,
             evaluationCache,
             distinctId,
+            knownAbsentKeys,
+            context,
         )
     }
 
@@ -1299,6 +1369,8 @@ internal class FlagEvaluator(
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
         distinctId: String?,
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
+        context: FlagEvaluationContext? = null,
     ): Boolean {
         val groupType = propertyGroup.type
         val properties = propertyGroup.values
@@ -1321,6 +1393,8 @@ internal class FlagEvaluator(
                                 flagsByKey,
                                 evaluationCache,
                                 distinctId,
+                                knownAbsentKeys,
+                                context,
                             )
 
                         if (groupType == LogicalOperator.AND) {
@@ -1357,6 +1431,8 @@ internal class FlagEvaluator(
                                         flagsByKey,
                                         evaluationCache,
                                         distinctId,
+                                        knownAbsentKeys,
+                                        context,
                                     )
 
                                 PropertyType.FLAG ->
@@ -1379,9 +1455,10 @@ internal class FlagEvaluator(
                                             ),
                                         propertyValues,
                                         cohortProperties,
+                                        context,
                                     )
 
-                                else -> matchProperty(property, propertyValues, inCohort = true)
+                                else -> matchProperty(property, propertyValues, inCohort = true, knownAbsentKeys)
                             }
 
                         val negation = property.negation ?: false
@@ -1412,9 +1489,20 @@ internal class FlagEvaluator(
     }
 
     /**
-     * Check if a condition matches for a given distinct ID
+     * Outcome of one condition group: its filters and rollout matched, a filter did not
+     * match, or every filter matched (or it has none) but the rollout excluded the user.
+     * Only the last one can stop evaluation, when `early_exit` is on.
      */
-    fun isConditionMatch(
+    internal enum class ConditionMatch {
+        MATCH,
+        NO_MATCH,
+        OUT_OF_ROLLOUT,
+    }
+
+    /**
+     * Evaluate a condition for a given distinct ID
+     */
+    internal fun evaluateCondition(
         featureFlag: FlagDefinition,
         distinctId: String,
         condition: FlagConditionGroup,
@@ -1422,7 +1510,9 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup>,
         flagsByKey: Map<String, FlagDefinition>?,
         evaluationCache: MutableMap<String, Any?>?,
-    ): Boolean {
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
+        context: FlagEvaluationContext? = null,
+    ): ConditionMatch {
         val rolloutPercentage = condition.rolloutPercentage
         val conditionProperties = condition.properties ?: emptyList()
 
@@ -1443,6 +1533,8 @@ internal class FlagEvaluator(
                                     flagsByKey,
                                     evaluationCache,
                                     distinctId,
+                                    knownAbsentKeys,
+                                    context,
                                 )
 
                             PropertyType.FLAG ->
@@ -1461,10 +1553,11 @@ internal class FlagEvaluator(
                                     distinctId,
                                     properties,
                                     cohortProperties,
+                                    context,
                                 )
 
                             else -> {
-                                if (!properties.containsKey(prop.key)) {
+                                if (!knownAbsentKeys.isKnownAbsent(prop) && !properties.containsKey(prop.key)) {
                                     // Same result as matchProperty for an absent key. Filters that passed the
                                     // load-time check skip it, since it can compile a regex or parse a date.
                                     if (featureFlag.key !in flagsWithSupportedFilters) {
@@ -1474,7 +1567,7 @@ internal class FlagEvaluator(
                                         pickUnresolvedReason(inconclusiveReason, PostHogUnresolvedFlagReason.MISSING_CONTEXT)
                                     continue
                                 }
-                                matchProperty(prop, properties)
+                                matchProperty(prop, properties, knownAbsentKeys)
                             }
                         }
                     } catch (e: InconclusiveMatchException) {
@@ -1489,7 +1582,7 @@ internal class FlagEvaluator(
                     }
 
                 if (!matches) {
-                    return false
+                    return ConditionMatch.NO_MATCH
                 }
             }
 
@@ -1499,7 +1592,7 @@ internal class FlagEvaluator(
 
             // All properties matched, check rollout
             if (rolloutPercentage == null) {
-                return true
+                return ConditionMatch.MATCH
             }
         }
 
@@ -1509,15 +1602,114 @@ internal class FlagEvaluator(
                 distinctId,
             ) > (rolloutPercentage / 100.0)
         ) {
+            return ConditionMatch.OUT_OF_ROLLOUT
+        }
+
+        return ConditionMatch.MATCH
+    }
+
+    /**
+     * Evaluates [flag] from the top-level [context]: a group-aggregated flag reads its group's key,
+     * properties and known-absent keys, and is false when that group is not supplied. Any other
+     * flag reads the person's.
+     */
+    fun computeFlag(
+        flag: FlagDefinition,
+        context: FlagEvaluationContext,
+        cohortProperties: Map<String, PropertyGroup>,
+        flagsByKey: Map<String, FlagDefinition>,
+        evaluationCache: MutableMap<String, Any?>,
+    ): Any? {
+        if (!flag.active) {
             return false
         }
 
-        return true
+        // Experience continuity outranks every other reason, as in the load-time warning.
+        if (flag.ensureExperienceContinuity) {
+            throw InconclusiveMatchException(
+                "Flag \"${flag.key}\" has experience continuity enabled",
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+            )
+        }
+
+        // Enrollment is a person property, so a group-aggregated flag reads it from the person
+        // properties, before any group is resolved.
+        if (flag.filters.featureEnrollment && !isEnrollmentKnownAbsent(flag, context)) {
+            return matchFeatureEnrollment(flag, context.personProperties)
+        }
+
+        val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
+        val knownAbsent = context.knownAbsent
+        if (aggregationGroupIndex == null) {
+            assertNoHoldout(flag)
+            return matchFeatureFlagProperties(
+                flag,
+                context.distinctId,
+                context.personProperties,
+                cohortProperties,
+                flagsByKey,
+                evaluationCache,
+                KnownAbsentKeyScope.person(knownAbsent?.person.orEmpty()),
+                context,
+            )
+        }
+
+        val groupTypeName = context.groupTypeMapping?.get(aggregationGroupIndex.toString())
+        if (groupTypeName == null) {
+            config.logger.log("Unknown group type index $aggregationGroupIndex for flag '${flag.key}'")
+            throw InconclusiveMatchException(
+                "Flag has unknown group type index",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+
+        val groupKey = context.groups?.get(groupTypeName)
+        if (groupKey.isNullOrEmpty() && hasHoldout(flag)) {
+            // The flags service buckets the holdout on the missing key, which can't be reproduced locally.
+            throw InconclusiveMatchException(
+                "Can't compute the holdout of group flag '${flag.key}' without group '$groupTypeName'",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        }
+        if (groupKey.isNullOrEmpty()) {
+            // Group not provided, or an empty key the flags service treats as none - flag is off, don't failover to API
+            config.logger.log("Can't compute group flag '${flag.key}' without group '$groupTypeName'")
+            return false
+        }
+        assertNoHoldout(flag)
+
+        return matchFeatureFlagProperties(
+            flag,
+            groupKey,
+            context.groupProperties?.get(groupTypeName).orEmpty(),
+            cohortProperties,
+            flagsByKey,
+            evaluationCache,
+            KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty(), aggregationGroupIndex),
+            context,
+        )
+    }
+
+    // A holdout above 0% excludes part of the aggregation before the conditions. A missing or
+    // malformed holdout is read as none.
+    private fun hasHoldout(flag: FlagDefinition): Boolean = (flag.filters.holdout?.exclusionPercentage ?: 0.0) > 0.0
+
+    // Local evaluation doesn't evaluate holdouts, so the flags service decides a flag with one.
+    private fun assertNoHoldout(flag: FlagDefinition) {
+        if (hasHoldout(flag)) {
+            throw InconclusiveMatchException(
+                "Flag '${flag.key}' has a holdout, which local evaluation doesn't support",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
     }
 
     /**
      * Main evaluation function to match feature flag properties
      * Returns the flag value (true, false, or variant key)
+     *
+     * [properties] are the aggregation's: a group's for a group flag. The person's properties,
+     * for the enrollment of an early-access flag, come from [context], else from [properties].
      */
     fun matchFeatureFlagProperties(
         flag: FlagDefinition,
@@ -1526,12 +1718,18 @@ internal class FlagEvaluator(
         cohortProperties: Map<String, PropertyGroup> = emptyMap(),
         flagsByKey: Map<String, FlagDefinition>? = null,
         evaluationCache: MutableMap<String, Any?>? = null,
+        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
+        context: FlagEvaluationContext? = null,
     ): Any? {
         if (flag.ensureExperienceContinuity) {
             throw InconclusiveMatchException(
                 "Flag \"${flag.key}\" has experience continuity enabled",
                 PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
             )
+        }
+
+        if (flag.filters.featureEnrollment && !isEnrollmentKnownAbsent(flag, context)) {
+            return matchFeatureEnrollment(flag, context?.personProperties ?: properties)
         }
 
         val flagConditions = flag.filters.groups ?: emptyList()
@@ -1541,17 +1739,12 @@ internal class FlagEvaluator(
         val flagVariants = flag.filters.multivariate?.variants ?: emptyList()
         val validVariantKeys = flagVariants.map { it.key }.toSet()
 
-        // Sort conditions with variant overrides to the top
-        // This ensures that if overrides are present, they are evaluated first
-        val sortedFlagConditions =
-            flagConditions.sortedBy {
-                if (it.variant != null) 0 else 1
-            }
-
-        for (condition in sortedFlagConditions) {
-            try {
-                // If any one condition resolves to True, we can short-circuit and return the matching variant
-                if (isConditionMatch(
+        // Condition groups are ordered alternatives, evaluated in the order they are stored, as
+        // /flags does: a group with a variant override is not moved ahead of earlier groups.
+        for (condition in flagConditions) {
+            val outcome =
+                try {
+                    evaluateCondition(
                         flag,
                         distinctId,
                         condition,
@@ -1559,8 +1752,15 @@ internal class FlagEvaluator(
                         cohortProperties,
                         flagsByKey,
                         evaluationCache,
+                        knownAbsentKeys,
+                        context,
                     )
-                ) {
+                } catch (e: InconclusiveMatchException) {
+                    inconclusiveReason = pickUnresolvedReason(inconclusiveReason, e.reason)
+                    continue
+                }
+            when (outcome) {
+                ConditionMatch.MATCH -> {
                     val variantOverride = condition.variant
                     val variant =
                         if (variantOverride != null && variantOverride in validVariantKeys) {
@@ -1570,8 +1770,11 @@ internal class FlagEvaluator(
                         }
                     return variant ?: true
                 }
-            } catch (e: InconclusiveMatchException) {
-                inconclusiveReason = pickUnresolvedReason(inconclusiveReason, e.reason)
+                // With early_exit, a group whose filters all match but whose rollout excludes the
+                // user decides the flag: later groups are not evaluated. An earlier inconclusive
+                // group still wins below, so the flag falls back instead of returning false.
+                ConditionMatch.OUT_OF_ROLLOUT -> if (flag.filters.earlyExit) break
+                ConditionMatch.NO_MATCH -> {}
             }
         }
 
@@ -1583,8 +1786,40 @@ internal class FlagEvaluator(
         return false
     }
 
+    // A listed enrollment key means not enrolled, even over a supplied value, so the flag goes
+    // through holdouts and release conditions like for any person without the enrollment.
+    private fun isEnrollmentKnownAbsent(
+        flag: FlagDefinition,
+        context: FlagEvaluationContext?,
+    ): Boolean = context?.knownAbsent?.person?.contains(enrollmentKey(flag)) == true
+
+    private fun enrollmentKey(flag: FlagDefinition): String = "\$feature_enrollment/${flag.key}"
+
     /**
-     * Evaluate a flag dependency property
+     * An early-access feature flag returns the person's enrollment at once: `true` or `"true"`
+     * means enrolled, and any other value that was passed, `null` included, means opted out.
+     * Without the enrollment property the flag can't be resolved locally.
+     */
+    fun matchFeatureEnrollment(
+        flag: FlagDefinition,
+        personProperties: Map<String, Any?>,
+    ): Boolean {
+        val enrollmentKey = enrollmentKey(flag)
+        if (!personProperties.containsKey(enrollmentKey)) {
+            throw InconclusiveMatchException(
+                "Flag has feature enrollment and '$enrollmentKey' was not passed",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        }
+        val enrollment = personProperties[enrollmentKey]
+        return enrollment == true || enrollment == "true"
+    }
+
+    /**
+     * Evaluate a flag dependency property. Each flag in the chain is evaluated from the top-level
+     * [context] like a standalone flag, with its own aggregation, bucketing identifier and
+     * properties. Without a context, the dependency sees only [distinctId] and [properties] as
+     * person inputs.
      */
     fun evaluateFlagDependency(
         property: FlagProperty,
@@ -1593,7 +1828,18 @@ internal class FlagEvaluator(
         distinctId: String,
         properties: Map<String, Any?>,
         cohortProperties: Map<String, PropertyGroup>,
+        context: FlagEvaluationContext? = null,
     ): Boolean {
+        val dependencyContext =
+            context
+                ?: FlagEvaluationContext(
+                    distinctId = distinctId,
+                    groups = null,
+                    personProperties = properties,
+                    groupProperties = null,
+                    knownAbsent = null,
+                    groupTypeMapping = null,
+                )
         // A definition problem outranks whatever the chain evaluates to, so check it first.
         assertDependencySupported(property)
         val dependencyChain = property.dependencyChain.orEmpty()
@@ -1621,31 +1867,18 @@ internal class FlagEvaluator(
                         PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
                     )
                 } else {
-                    // Check if the flag is active
-                    if (!depFlag.active) {
-                        evaluationCache[depFlagKey] = false
-                    } else {
-                        // Recursively evaluate the dependency
-                        try {
-                            val depResult =
-                                matchFeatureFlagProperties(
-                                    depFlag,
-                                    distinctId,
-                                    properties,
-                                    cohortProperties,
-                                    flagsByKey,
-                                    evaluationCache,
-                                )
-                            evaluationCache[depFlagKey] = depResult
-                        } catch (e: InconclusiveMatchException) {
-                            // If we can't evaluate a dependency, store null and propagate the error
-                            evaluationCache[depFlagKey] = null
-                            throw InconclusiveMatchException(
-                                "Cannot evaluate flag dependency '$depFlagKey': ${e.message}",
-                                unresolvedChainReason(),
-                                e,
-                            )
-                        }
+                    // Recursively evaluate the dependency as if it were evaluated directly
+                    try {
+                        evaluationCache[depFlagKey] =
+                            computeFlag(depFlag, dependencyContext, cohortProperties, flagsByKey, evaluationCache)
+                    } catch (e: InconclusiveMatchException) {
+                        // If we can't evaluate a dependency, store null and propagate the error
+                        evaluationCache[depFlagKey] = null
+                        throw InconclusiveMatchException(
+                            "Cannot evaluate flag dependency '$depFlagKey': ${e.message}",
+                            unresolvedChainReason(),
+                            e,
+                        )
                     }
                 }
             }

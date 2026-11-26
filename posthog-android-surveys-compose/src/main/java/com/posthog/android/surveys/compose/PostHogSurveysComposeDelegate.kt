@@ -13,23 +13,20 @@ import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
 /**
  * Default Compose-based UI for PostHog surveys on Android.
  *
- * > ⚠️ **Pre-1.0 (`0.x`).** This module's public surface may change between
- * > minor versions until `1.0.0`, and it is excluded from binary-compatibility
- * > validation. Surveys are also disabled by default
- * > (`PostHogConfig.surveys = false`) and require enabling in your PostHog
- * > project settings.
+ * > Surveys must also be enabled in your PostHog project settings.
  *
- * ### Recommended: zero-wiring opt-in
+ * ### Recommended: zero-wiring setup
  *
- * Add this module to your dependencies and enable surveys — the core SDK
- * auto-discovers this delegate from the classpath, so you do **not** need to
- * set `surveysConfig.surveysDelegate` yourself:
+ * Add this module to your dependencies. Surveys are enabled by default
+ * (`PostHogConfig.surveys = true`) and the core SDK auto-discovers this
+ * delegate from the classpath, so you do **not** need to set
+ * `surveysConfig.surveysDelegate` yourself:
  * ```
  * // build.gradle.kts
  * implementation("com.posthog:posthog-android-surveys-compose:<version>")
  *
  * // app init
- * val config = PostHogAndroidConfig(projectToken).apply { surveys = true }
+ * val config = PostHogAndroidConfig(projectToken)
  * PostHogAndroid.setup(applicationContext, config)
  * ```
  *
@@ -54,6 +51,30 @@ import com.posthog.surveys.PostHogSurveysResumeAwareDelegate
  * - Theming from `PostHogDisplaySurveyAppearance` — customer appearance config
  *   from the PostHog UI applies directly, with sensible defaults for anything
  *   left unset
+ *
+ * ### Font family
+ *
+ * The survey's `fontFamily` is a CSS font name, which Android can't load
+ * directly. The sheet maps it to a font installed on the device instead, so
+ * the result is the closest system font, not an exact match:
+ *
+ * - Only the first family of a CSS list is used, case-insensitively
+ *   (`"Times New Roman", serif` is read as `times new roman`).
+ * - `inherit`, `system-ui` or no value use the device's default system font.
+ *   The sheet renders in its own dialog outside the host app's theme, so a
+ *   custom app font isn't inherited.
+ * - Web fonts are matched through Android's system font aliases. On stock
+ *   Android, `Times New Roman` and `Georgia` render as the system serif font,
+ *   `Courier New` as the system monospace font, and `Arial`, `Helvetica`,
+ *   `Verdana` and `Tahoma` as the default sans-serif font, so they look the
+ *   same as the system default.
+ * - Fonts the device doesn't know (e.g. `Trebuchet MS`) fall back to the
+ *   default font.
+ * - Bold text (question titles, selected choices) and medium-weight button
+ *   labels use the matched font's face for that weight when it has one.
+ *
+ * Aliases come from the device's system font config, so results can differ
+ * between Android versions and manufacturers.
  *
  * ### Known gaps (tracked follow-ups)
  *

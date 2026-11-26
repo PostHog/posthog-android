@@ -1,5 +1,40 @@
 ## Next
 
+## 7.1.1
+
+### Patch Changes
+
+- bb13408: Local evaluation of a group flag with a holdout above 0% and no usable group key is now inconclusive with `missing_context`, so it falls back to `/flags` (or stays unresolved with `onlyEvaluateLocally`). Previously it resolved to `false`, but `/flags` buckets the holdout on the missing key and can return the holdout variant. A group flag without a holdout and without a usable key stays `false`.
+- bb13408: Local evaluation now treats a flag with a holdout above 0% as inconclusive with `unsupported_definition`, for person and group flags alike, so it falls back to `/flags` (or stays unresolved with `onlyEvaluateLocally`) and a flag that depends on it is inconclusive too. The SDK doesn't evaluate holdouts, so it could resolve such a flag locally while `/flags` returned the holdout variant. These flags are also listed in the load-time `unsupported_definition` warning. A group flag with a holdout and no usable group key keeps `missing_context`, and a 0% or malformed holdout counts as no holdout.
+- bb13408: Add `personPropertyKeysKnownAbsent` and `groupPropertyKeysKnownAbsent` to `PostHogEvaluateFlagsOptions`, `PostHogFeatureFlagOptions` and `PostHogFeatureFlagResultOptions`. Local evaluation treats a listed key as absent, even when a value is supplied: `is_not_set` and the negated operators match, and other operators do not, with no `/flags` fallback. When evaluation falls back to `/flags`, the keys are sent as `person_property_keys_known_absent` and `group_property_keys_known_absent`. A list longer than 1000 keys logs a warning and returns the unavailable result without evaluating or sending a request.
+- a1edb2b: Local flag evaluation in `posthog-server` matches a filter with an empty `type` as a person filter, like an omitted or `null` type, instead of treating it as unsupported
+
+## 7.1.0
+
+### Minor Changes
+
+- ae859cb: Support session replay v2 trigger groups from remote config
+  
+  Session replay sampling now handles negative hashes like posthog-js, so a session gets the same sampling decision on mobile and web
+  
+  Session replay event triggers now match the event after the `beforeSend` hooks, like posthog-ios and posthog-js: an event a hook drops no longer starts recording, and a renamed event matches under its new name
+
+### Patch Changes
+
+- 2a17048: Local flag evaluation in `posthog-server` treats a filter type it cannot evaluate, such as a cohort's `person_metadata` filter on first seen, as unsupported and falls back to `/flags`, instead of matching it as a person property with the same key
+
+## 7.0.4
+
+### Patch Changes
+
+- 2df862f: Local flag evaluation in `posthog-server` supports early-access feature enrollment. For a flag with `feature_enrollment`, the person property `$feature_enrollment/<flag key>` decides the flag before its release conditions: `true` or `"true"` is enrolled, any other value is opted out, and without it the flag falls back to `/flags`. Group-aggregated flags read the person's enrollment too
+
+## 7.0.3
+
+### Patch Changes
+
+- 70737ad: Local flag evaluation in `posthog-server` checks condition groups in the order they are stored, like `/flags` and the other server SDKs, instead of moving groups with a variant override to the front, and applies `early_exit`: a group whose filters all match but whose rollout excludes the user returns `false` without evaluating later groups. For a flag with a variant override on a group other than the first, or with `early_exit` on, some users can now get a different (matching `/flags`) value
+
 ## 7.0.2
 
 ### Patch Changes

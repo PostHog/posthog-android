@@ -47,6 +47,32 @@ public class FlagFilters(
     public val payloads: Map<String, Any?>?,
     @SerializedName("aggregation_group_type_index")
     public val aggregationGroupTypeIndex: Int?,
+    /**
+     * When true, evaluation stops with `false` at the first condition group whose
+     * property filters all match (or that has none) but whose rollout excludes the user.
+     */
+    @SerializedName("early_exit")
+    public val earlyExit: Boolean = false,
+    /**
+     * Marks an early-access feature flag: the person property `$feature_enrollment/<flag key>`
+     * decides the flag before its holdouts and release conditions.
+     */
+    @SerializedName("feature_enrollment")
+    public val featureEnrollment: Boolean = false,
+    /**
+     * The flag's holdout. Only its exclusion percentage is read: local evaluation doesn't evaluate
+     * holdouts, so a flag with one above 0% is left to the flags service.
+     */
+    public val holdout: FlagHoldout? = null,
+)
+
+/**
+ * A holdout excluding [exclusionPercentage] percent of a flag's aggregation before its conditions
+ */
+@PostHogInternal
+public class FlagHoldout(
+    @SerializedName("exclusion_percentage")
+    public val exclusionPercentage: Double,
 )
 
 /**
@@ -74,7 +100,23 @@ public data class FlagProperty(
     val negation: Boolean?,
     @SerializedName("dependency_chain")
     val dependencyChain: List<String>?,
-)
+) {
+    /**
+     * The filter's `type` as sent by the server, such as `group` or `person_metadata`, which
+     * [type] does not keep apart. Null when the property was not parsed from JSON.
+     */
+    @Transient
+    public var rawType: String? = null
+        internal set
+
+    /**
+     * The filter's `group_type_index`, naming the group type a `group` filter reads. Null when the
+     * filter omits it, so it reads the group type of the flag's aggregation.
+     */
+    @Transient
+    public var groupTypeIndex: Int? = null
+        internal set
+}
 
 /**
  * Multivariate configuration for A/B testing
@@ -203,6 +245,12 @@ public enum class PropertyType {
     COHORT,
     FLAG,
     PERSON,
+
+    /**
+     * A filter type local evaluation can't evaluate, such as `person_metadata`: a value `/flags`
+     * reads from the persons table rather than from the properties the caller passes.
+     */
+    UNSUPPORTED,
     ;
 
     public companion object {
@@ -210,8 +258,10 @@ public enum class PropertyType {
             return when (value) {
                 "cohort" -> COHORT
                 "flag" -> FLAG
-                "person" -> PERSON
-                else -> PERSON
+                // Group filters are matched against the group's properties like person filters.
+                // Older definitions leave the type empty for person filters.
+                "person", "group", "" -> PERSON
+                else -> UNSUPPORTED
             }
         }
 
