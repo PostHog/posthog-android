@@ -1,5 +1,19 @@
 ## Next
 
+## 2.28.0
+
+### Minor Changes
+
+- bb13408: Add `personPropertyKeysKnownAbsent` and `groupPropertyKeysKnownAbsent` to `PostHogEvaluateFlagsOptions`, `PostHogFeatureFlagOptions` and `PostHogFeatureFlagResultOptions`. Local evaluation treats a listed key as absent, even when a value is supplied: `is_not_set` and the negated operators match, and other operators do not, with no `/flags` fallback. When evaluation falls back to `/flags`, the keys are sent as `person_property_keys_known_absent` and `group_property_keys_known_absent`. A list longer than 1000 keys logs a warning and returns the unavailable result without evaluating or sending a request.
+
+### Patch Changes
+
+- bb13408: Local evaluation now treats an empty group key like a missing group, as `/flags` does: a condition aggregated on that group type does not match, and a flag whose conditions all depend on it is `false` with no `/flags` fallback, whether evaluated directly or as a dependency. Previously an empty key was used as the bucketing identifier.
+- bb13408: Local evaluation now evaluates a flag dependency like a standalone flag, with its own aggregation, properties, known-absent keys and bucketing identifier. A group-aggregated dependency reads its group's key and properties and is `false` when that group isn't passed, matching `/flags`. This also fixes local results for flag dependencies across aggregations without known-absent keys.
+- bb13408: Local evaluation of a group flag with a holdout above 0% and no usable group key is now inconclusive with `missing_context`, so it falls back to `/flags` (or stays unresolved with `onlyEvaluateLocally`). Previously it resolved to `false`, but `/flags` buckets the holdout on the missing key and can return the holdout variant. A group flag without a holdout and without a usable key stays `false`.
+- bb13408: Local evaluation now treats a flag with a holdout above 0% as inconclusive with `unsupported_definition`, for person and group flags alike, so it falls back to `/flags` (or stays unresolved with `onlyEvaluateLocally`) and a flag that depends on it is inconclusive too. The SDK doesn't evaluate holdouts, so it could resolve such a flag locally while `/flags` returned the holdout variant. These flags are also listed in the load-time `unsupported_definition` warning. A group flag with a holdout and no usable group key keeps `missing_context`, and a 0% or malformed holdout counts as no holdout.
+- a1edb2b: Local flag evaluation in `posthog-server` matches a filter with an empty `type` as a person filter, like an omitted or `null` type, instead of treating it as unsupported
+
 ## 2.27.1
 
 ### Patch Changes
