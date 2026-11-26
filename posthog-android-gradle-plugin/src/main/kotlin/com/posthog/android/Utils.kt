@@ -154,6 +154,7 @@ internal fun resolvePostHogCliExecutable(
     isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
     cliInstallLocations: List<File>? = null,
     nodeInstallLocations: List<File>? = null,
+    warnWhenMissing: Boolean = true,
 ): String {
     if (configured != POSTHOG_CLI_DEFAULT_EXECUTABLE) {
         return configured
@@ -214,12 +215,34 @@ internal fun resolvePostHogCliExecutable(
         return localLauncher.absolutePath
     }
 
-    logger.warn(
-        "posthog-cli not found in the project, on PATH, or in known install locations; " +
-            "install it (npm install --save-dev @posthog/cli or npm install -g @posthog/cli) " +
-            "or set postHogExecutable on the task.",
-    )
+    if (warnWhenMissing) {
+        logger.warn(
+            "posthog-cli not found in the project, on PATH, or in known install locations; " +
+                "install it (npm install --save-dev @posthog/cli or npm install -g @posthog/cli) " +
+                "or set postHogExecutable on the task.",
+        )
+    }
     return configured
+}
+
+/**
+ * Whether [executable], as [resolvePostHogCliExecutable] returned it, can run. A path must point
+ * at a file. A bare name must be on PATH: the resolver returns the bare name when it finds nothing,
+ * except on Windows, where cmd also runs the npm `.cmd` shim by its bare name.
+ */
+internal fun isPostHogCliInstalled(
+    executable: String,
+    environment: Map<String, String>,
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+): Boolean {
+    if (executable.contains('/') || executable.contains('\\')) {
+        return File(executable).isRunnableFile(isWindows)
+    }
+    val names = if (isWindows) listOf("$executable.exe", "$executable.cmd") else listOf(executable)
+    return pathValue(environment)
+        ?.split(File.pathSeparator)
+        ?.any { dir -> dir.isNotEmpty() && names.any { File(dir, it).isRunnableFile(isWindows) } }
+        ?: false
 }
 
 internal fun resolveNodeExecutable(

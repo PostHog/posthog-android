@@ -7,7 +7,7 @@
 | posthog (core)  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog)                 | Java 8         |
 | posthog-server  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server)                 | Java 8         |
 | posthog-server-openfeature  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-server-openfeature)                 | Java 11 · `0.x.x` |
-| posthog-android-gradle-plugin  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin)                 | Java 8         |
+| posthog-android-gradle-plugin (`com.posthog.android`, `com.posthog.jvm`)  | [![Maven Central](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin/badge.svg)](https://maven-badges.herokuapp.com/sonatype-central/com.posthog/posthog-android-gradle-plugin)                 | Java 8         |
 
 # PostHog Android and JVM SDKs
 

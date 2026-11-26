@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class PostHogCliResolverTest {
@@ -169,10 +170,22 @@ internal class PostHogCliResolverTest {
     fun `keeps the bare name on Windows without a native exe on PATH`() {
         val pathDirectory = temporaryFolder.newFolder("npm-bin")
         createExecutable(File(pathDirectory, "posthog-cli.cmd"))
+        val environment = mapOf("Path" to pathDirectory.absolutePath)
 
-        val resolved = resolveOnWindows(mapOf("Path" to pathDirectory.absolutePath))
+        val resolved = resolveOnWindows(environment)
 
         assertEquals(POSTHOG_CLI_DEFAULT_EXECUTABLE, resolved)
+        // cmd runs the npm shim by the bare name.
+        assertTrue(isPostHogCliInstalled(resolved, environment, isWindows = true))
+    }
+
+    @Test
+    fun `a bare name on Windows with no CLI on PATH is not installed`() {
+        val environment = mapOf("Path" to temporaryFolder.newFolder("empty-bin").absolutePath)
+
+        val resolved = resolveOnWindows(environment)
+
+        assertFalse(isPostHogCliInstalled(resolved, environment, isWindows = true))
     }
 
     private fun resolveOnWindows(environment: Map<String, String>): String =
