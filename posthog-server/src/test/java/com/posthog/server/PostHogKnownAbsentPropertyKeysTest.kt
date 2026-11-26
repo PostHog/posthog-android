@@ -836,6 +836,58 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `a listed enrollment key means not enrolled and keeps ordinary targeting`() {
+        val enrollmentKey = "\$feature_enrollment/beta-feature"
+
+        fun betaFeature(rollout: Int): String =
+            """
+            {"id": 1, "key": "beta-feature", "name": "beta-feature", "active": true, "version": 1,
+             "filters": {"feature_enrollment": true, "groups": [{"properties": [], "rollout_percentage": $rollout}]}}
+            """.trimIndent()
+
+        fun options(
+            enrollment: Boolean?,
+            listed: Boolean,
+        ): PostHogEvaluateFlagsOptions {
+            val builder = PostHogEvaluateFlagsOptions.builder().onlyEvaluateLocally(true)
+            if (enrollment != null) builder.personProperty(enrollmentKey, enrollment)
+            if (listed) builder.personPropertyKeysKnownAbsent(listOf(enrollmentKey))
+            return builder.build()
+        }
+
+        // The listing wins over a supplied enrollment, so a 0% rollout leaves the person out.
+        withPostHog(createLocalEvaluationResponseFrom(betaFeature(rollout = 0))) { postHog, dispatcher ->
+            val snapshot = postHog.evaluateFlags("user-1", options(enrollment = true, listed = true))
+            assertFalse(snapshot.isEnabled("beta-feature"))
+            assertTrue(snapshot.unresolvedFlags.isEmpty())
+            val flagOptions =
+                PostHogFeatureFlagOptions.builder()
+                    .personProperty(enrollmentKey, true)
+                    .personPropertyKeysKnownAbsent(listOf(enrollmentKey))
+                    .build()
+            assertEquals(false, postHog.getFeatureFlag("user-1", "beta-feature", flagOptions))
+
+            // Supplied and not listed: enrolled, as before.
+            assertTrue(postHog.evaluateFlags("user-1", options(enrollment = true, listed = false)).isEnabled("beta-feature"))
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+
+        // Listed only: the release conditions decide, without missing_context.
+        withPostHog(createLocalEvaluationResponseFrom(betaFeature(rollout = 100))) { postHog, dispatcher ->
+            val snapshot = postHog.evaluateFlags("user-1", options(enrollment = null, listed = true))
+            assertTrue(snapshot.isEnabled("beta-feature"))
+            assertTrue(snapshot.unresolvedFlags.isEmpty())
+            val flagOptions = PostHogFeatureFlagOptions.builder().personPropertyKeysKnownAbsent(listOf(enrollmentKey)).build()
+            assertEquals(true, postHog.getFeatureFlag("user-1", "beta-feature", flagOptions))
+
+            // Neither supplied nor listed: still missing context.
+            val unlisted = postHog.evaluateFlags("user-1", options(enrollment = null, listed = false))
+            assertEquals(mapOf("beta-feature" to PostHogUnresolvedFlagReason.MISSING_CONTEXT), unlisted.unresolvedFlags)
+            assertEquals(0, dispatcher.flagsBodies.size)
+        }
+    }
+
+    @Test
     fun `a null key or group type from a Java caller returns the unavailable result without evaluating or sending a request`() {
         withPostHog(
             createLocalEvaluationResponseFrom(personFlag("profile-incomplete", "is_not_set")),

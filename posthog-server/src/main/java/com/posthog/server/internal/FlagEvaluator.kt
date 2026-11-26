@@ -1634,7 +1634,7 @@ internal class FlagEvaluator(
 
         // Enrollment is a person property, so a group-aggregated flag reads it from the person
         // properties, before any group is resolved.
-        if (flag.filters.featureEnrollment) {
+        if (flag.filters.featureEnrollment && !isEnrollmentKnownAbsent(flag, context)) {
             return matchFeatureEnrollment(flag, context.personProperties)
         }
 
@@ -1728,7 +1728,7 @@ internal class FlagEvaluator(
             )
         }
 
-        if (flag.filters.featureEnrollment) {
+        if (flag.filters.featureEnrollment && !isEnrollmentKnownAbsent(flag, context)) {
             return matchFeatureEnrollment(flag, context?.personProperties ?: properties)
         }
 
@@ -1786,6 +1786,15 @@ internal class FlagEvaluator(
         return false
     }
 
+    // A listed enrollment key means not enrolled, even over a supplied value, so the flag goes
+    // through holdouts and release conditions like for any person without the enrollment.
+    private fun isEnrollmentKnownAbsent(
+        flag: FlagDefinition,
+        context: FlagEvaluationContext?,
+    ): Boolean = context?.knownAbsent?.person?.contains(enrollmentKey(flag)) == true
+
+    private fun enrollmentKey(flag: FlagDefinition): String = "\$feature_enrollment/${flag.key}"
+
     /**
      * An early-access feature flag returns the person's enrollment at once: `true` or `"true"`
      * means enrolled, and any other value that was passed, `null` included, means opted out.
@@ -1795,7 +1804,7 @@ internal class FlagEvaluator(
         flag: FlagDefinition,
         personProperties: Map<String, Any?>,
     ): Boolean {
-        val enrollmentKey = "\$feature_enrollment/${flag.key}"
+        val enrollmentKey = enrollmentKey(flag)
         if (!personProperties.containsKey(enrollmentKey)) {
             throw InconclusiveMatchException(
                 "Flag has feature enrollment and '$enrollmentKey' was not passed",
