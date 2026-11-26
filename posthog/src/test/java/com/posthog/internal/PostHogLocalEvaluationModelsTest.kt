@@ -439,7 +439,7 @@ public class PostHogLocalEvaluationModelsTest {
         assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("group"))
         assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("person_metadata"))
         assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("invalid_type"))
-        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull(""))
+        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull(""))
         assertNull(PropertyType.fromStringOrNull(null))
     }
 

@@ -44,6 +44,8 @@ internal class PersonMetadataFilterTest {
         assertEquals(PropertyType.COHORT, PropertyType.fromString("cohort"))
         assertEquals(PropertyType.FLAG, PropertyType.fromString("flag"))
         assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromString("person_metadata"))
+        // Older definitions don't set a type, so an empty one is a person filter.
+        assertEquals(PropertyType.PERSON, PropertyType.fromString(""))
     }
 
     @Test
@@ -55,10 +57,45 @@ internal class PersonMetadataFilterTest {
         assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, error.reason)
     }
 
+    private val personFilterTypes = listOf(""""type": "person", """, "", """"type": null, """, """"type": "", """)
+
+    private fun createdAtFilter(type: String): String = """{$type"key": "created_at", "operator": "is_date_after", "value": "2025-01-01"}"""
+
     @Test
     fun `a person filter on created_at is still evaluated locally`() {
-        val personFilter = firstSeen.replace("person_metadata", "person")
-        assertEquals(true, evaluator.matchFeatureFlagProperties(parse(flag(personFilter)), "user-123", createdIn2026))
+        for (type in personFilterTypes) {
+            assertEquals(
+                true,
+                evaluator.matchFeatureFlagProperties(parse(flag(createdAtFilter(type))), "user-123", createdIn2026),
+                "type: $type",
+            )
+        }
+    }
+
+    @Test
+    fun `a cohort leaf with an empty type matches as a person filter`() {
+        val definition = parse(flag("""{"key": "id", "type": "cohort", "value": 7}"""))
+        val cohort =
+            config.serializer.gson.fromJson(
+                """{"type": "AND", "values": [${createdAtFilter(""""type": "", """)}]}""",
+                PropertyGroup::class.java,
+            )
+        assertEquals(
+            true,
+            evaluator.matchFeatureFlagProperties(definition, "user-123", createdIn2026, mapOf("7" to cohort)),
+        )
+    }
+
+    @Test
+    fun `the definition check accepts person filters with an omitted, null or empty type`() {
+        for (type in personFilterTypes) {
+            val definition = parse(flag(createdAtFilter(type)))
+            assertEquals(
+                null,
+                evaluator.definitionUnresolvedReason(definition, mapOf("first-seen-flag" to definition), emptyMap(), emptyMap()),
+                "type: $type",
+            )
+        }
     }
 
     @Test
