@@ -382,6 +382,25 @@ public class PostHogLocalEvaluationModelsTest {
     }
 
     @Test
+    public fun testFlagHoldoutReadsTheExclusionPercentageAndTreatsAMalformedHoldoutAsNone() {
+        val serializer = PostHogSerializer(com.posthog.PostHogConfig("test"))
+
+        fun holdout(value: String): FlagHoldout? {
+            val json =
+                """{"flags": [{"id": 1, "name": "f", "key": "f", "active": true, "version": 1,
+                  "filters": {"groups": [], "holdout": $value}}]}"""
+            return serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(json)).flags!!.single().filters.holdout
+        }
+
+        assertEquals(50.0, holdout("""{"id": 7, "exclusion_percentage": 50}""")!!.exclusionPercentage, 0.0)
+        assertNull(holdout("null"))
+        assertNull(holdout("\"bad\""))
+        assertNull(holdout("[]"))
+        assertNull(holdout("""{"id": 7}"""))
+        assertNull(holdout("""{"id": 7, "exclusion_percentage": "50"}"""))
+    }
+
+    @Test
     public fun testFlagPropertyRawTypeAndGroupTypeIndexSurviveASerializerRoundTrip() {
         val serializer = PostHogSerializer(com.posthog.PostHogConfig("test"))
         val json =

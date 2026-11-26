@@ -55,7 +55,7 @@ internal class PostHogUnusableGroupKeyTest {
             RecordingDispatcher(
                 definitions,
                 // Only the flag that is inconclusive with a usable key may come from /flags.
-                createMultipleFlagsResponse("org-region" to true),
+                createMultipleFlagsResponse("org-region" to true, "org-holdout" to true),
             )
         val mockServer = MockWebServer()
         mockServer.dispatcher = dispatcher
@@ -97,6 +97,20 @@ internal class PostHogUnusableGroupKeyTest {
              {"properties": [{"key": "plan", "type": "person", "operator": "exact", "value": ["pro"]}], "rollout_percentage": 100}
            ]}}${if (includeOrgRegion) "," else ""}
           ${if (includeOrgRegion) ORG_REGION_FLAG else ""}
+         ],
+         "group_type_mapping": {"0": "organization"},
+         "cohorts": {}}
+        """.trimIndent()
+
+    private fun holdoutDefinitions(): String =
+        """
+        {"flags": [
+          {"id": 5, "key": "org-holdout", "name": "org-holdout", "active": true, "version": 1,
+           "filters": {"aggregation_group_type_index": 0, "holdout": {"id": 7, "exclusion_percentage": 50},
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}},
+          {"id": 6, "key": "org-holdout-zero", "name": "org-holdout-zero", "active": true, "version": 1,
+           "filters": {"aggregation_group_type_index": 0, "holdout": {"id": 8, "exclusion_percentage": 0},
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}}
          ],
          "group_type_mapping": {"0": "organization"},
          "cohorts": {}}
@@ -220,6 +234,36 @@ internal class PostHogUnusableGroupKeyTest {
                 assertEquals(false, properties["\$feature/person-child"], kind)
                 assertEquals(false, properties["\$feature/mixed"], kind)
             }
+            assertEquals(0, dispatcher.flagsRequests.size)
+        }
+    }
+
+    @Test
+    fun `a group flag with a holdout and an unusable group key is missing context`() {
+        withPostHog(holdoutDefinitions()) { postHog, dispatcher ->
+            for ((kind, groups) in unusableGroups()) {
+                val local = postHog.evaluateFlags("user-1", localOnly(groups))
+                assertFalse(local.keys.contains("org-holdout"), kind)
+                assertEquals(PostHogUnresolvedFlagReason.MISSING_CONTEXT, local.unresolvedFlags["org-holdout"], kind)
+                assertEquals(0, dispatcher.flagsRequests.size, kind)
+
+                assertEquals(true, postHog.getFeatureFlag("user-1", "org-holdout", groups = groups), kind)
+                assertEquals(1, dispatcher.flagsRequests.size, kind)
+                dispatcher.flagsRequests.clear()
+            }
+        }
+    }
+
+    @Test
+    fun `a zero holdout or a usable group key leaves the holdout ignored`() {
+        withPostHog(holdoutDefinitions()) { postHog, dispatcher ->
+            for ((kind, groups) in unusableGroups()) {
+                assertEquals(false, postHog.evaluateFlags("user-1", localOnly(groups)).getFlag("org-holdout-zero"), kind)
+                assertEquals(false, postHog.getFeatureFlag("user-1", "org-holdout-zero", groups = groups), kind)
+            }
+            val usable = postHog.evaluateFlags("user-1", localOnly(mapOf("organization" to "org-1")))
+            assertEquals(true, usable.getFlag("org-holdout"))
+            assertEquals(true, usable.getFlag("org-holdout-zero"))
             assertEquals(0, dispatcher.flagsRequests.size)
         }
     }

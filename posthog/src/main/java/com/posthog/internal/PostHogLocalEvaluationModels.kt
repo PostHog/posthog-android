@@ -59,6 +59,20 @@ public class FlagFilters(
      */
     @SerializedName("feature_enrollment")
     public val featureEnrollment: Boolean = false,
+    /**
+     * The flag's holdout. Only its exclusion percentage is read, to detect a holdout that a group
+     * flag without a group key cannot bucket.
+     */
+    public val holdout: FlagHoldout? = null,
+)
+
+/**
+ * A holdout excluding [exclusionPercentage] percent of a flag's aggregation before its conditions
+ */
+@PostHogInternal
+public class FlagHoldout(
+    @SerializedName("exclusion_percentage")
+    public val exclusionPercentage: Double,
 )
 
 /**

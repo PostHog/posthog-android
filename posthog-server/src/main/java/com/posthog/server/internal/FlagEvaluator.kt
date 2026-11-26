@@ -1660,6 +1660,13 @@ internal class FlagEvaluator(
         }
 
         val groupKey = context.groups?.get(groupTypeName)
+        if (groupKey.isNullOrEmpty() && (flag.filters.holdout?.exclusionPercentage ?: 0.0) > 0.0) {
+            // The flags service buckets the holdout on the missing key, which can't be reproduced locally.
+            throw InconclusiveMatchException(
+                "Can't compute the holdout of group flag '${flag.key}' without group '$groupTypeName'",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        }
         if (groupKey.isNullOrEmpty()) {
             // Group not provided, or an empty key the flags service treats as none - flag is off, don't failover to API
             config.logger.log("Can't compute group flag '${flag.key}' without group '$groupTypeName'")
