@@ -1,5 +1,11 @@
 ## Next
 
+## 2.27.1
+
+### Patch Changes
+
+- 2a17048: Local flag evaluation in `posthog-server` treats a filter type it cannot evaluate, such as a cohort's `person_metadata` filter on first seen, as unsupported and falls back to `/flags`, instead of matching it as a person property with the same key
+
 ## 2.27.0
 
 ### Minor Changes
