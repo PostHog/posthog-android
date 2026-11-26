@@ -457,6 +457,9 @@ internal class FlagEvaluator(
         if (aggregationGroupIndex != null && groupTypeMapping[aggregationGroupIndex.toString()] == null) {
             return PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
         }
+        if (hasHoldout(flag)) {
+            return PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
+        }
         val visitedCohortIds = mutableSetOf<String>()
         val usesUnsupportedFilter =
             flag.filters.groups.orEmpty().any { condition ->
@@ -1638,6 +1641,7 @@ internal class FlagEvaluator(
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
         val knownAbsent = context.knownAbsent
         if (aggregationGroupIndex == null) {
+            assertNoHoldout(flag)
             return matchFeatureFlagProperties(
                 flag,
                 context.distinctId,
@@ -1660,7 +1664,7 @@ internal class FlagEvaluator(
         }
 
         val groupKey = context.groups?.get(groupTypeName)
-        if (groupKey.isNullOrEmpty() && (flag.filters.holdout?.exclusionPercentage ?: 0.0) > 0.0) {
+        if (groupKey.isNullOrEmpty() && hasHoldout(flag)) {
             // The flags service buckets the holdout on the missing key, which can't be reproduced locally.
             throw InconclusiveMatchException(
                 "Can't compute the holdout of group flag '${flag.key}' without group '$groupTypeName'",
@@ -1672,6 +1676,7 @@ internal class FlagEvaluator(
             config.logger.log("Can't compute group flag '${flag.key}' without group '$groupTypeName'")
             return false
         }
+        assertNoHoldout(flag)
 
         return matchFeatureFlagProperties(
             flag,
@@ -1683,6 +1688,20 @@ internal class FlagEvaluator(
             KnownAbsentKeyScope.group(knownAbsent?.forGroupType(groupTypeName).orEmpty(), aggregationGroupIndex),
             context,
         )
+    }
+
+    // A holdout above 0% excludes part of the aggregation before the conditions. A missing or
+    // malformed holdout is read as none.
+    private fun hasHoldout(flag: FlagDefinition): Boolean = (flag.filters.holdout?.exclusionPercentage ?: 0.0) > 0.0
+
+    // Local evaluation doesn't evaluate holdouts, so the flags service decides a flag with one.
+    private fun assertNoHoldout(flag: FlagDefinition) {
+        if (hasHoldout(flag)) {
+            throw InconclusiveMatchException(
+                "Flag '${flag.key}' has a holdout, which local evaluation doesn't support",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
     }
 
     /**

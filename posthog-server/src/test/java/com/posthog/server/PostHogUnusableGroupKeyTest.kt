@@ -55,7 +55,12 @@ internal class PostHogUnusableGroupKeyTest {
             RecordingDispatcher(
                 definitions,
                 // Only the flag that is inconclusive with a usable key may come from /flags.
-                createMultipleFlagsResponse("org-region" to true, "org-holdout" to true),
+                createMultipleFlagsResponse(
+                    "org-region" to true,
+                    "org-holdout" to true,
+                    "person-holdout" to true,
+                    "holdout-child" to true,
+                ),
             )
         val mockServer = MockWebServer()
         mockServer.dispatcher = dispatcher
@@ -110,7 +115,20 @@ internal class PostHogUnusableGroupKeyTest {
                        "groups": [{"properties": [], "rollout_percentage": 100}]}},
           {"id": 6, "key": "org-holdout-zero", "name": "org-holdout-zero", "active": true, "version": 1,
            "filters": {"aggregation_group_type_index": 0, "holdout": {"id": 8, "exclusion_percentage": 0},
-                       "groups": [{"properties": [], "rollout_percentage": 100}]}}
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}},
+          {"id": 7, "key": "person-holdout", "name": "person-holdout", "active": true, "version": 1,
+           "filters": {"holdout": {"id": 9, "exclusion_percentage": 50},
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}},
+          {"id": 8, "key": "person-holdout-zero", "name": "person-holdout-zero", "active": true, "version": 1,
+           "filters": {"holdout": {"id": 10, "exclusion_percentage": 0},
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}},
+          {"id": 9, "key": "person-holdout-malformed", "name": "person-holdout-malformed", "active": true, "version": 1,
+           "filters": {"holdout": {"id": 11, "exclusion_percentage": "50"},
+                       "groups": [{"properties": [], "rollout_percentage": 100}]}},
+          {"id": 10, "key": "holdout-child", "name": "holdout-child", "active": true, "version": 1,
+           "filters": {"groups": [{"properties": [
+             {"key": "person-holdout", "type": "flag", "operator": "flag_evaluates_to", "value": true, "dependency_chain": ["person-holdout"]}
+           ], "rollout_percentage": 100}]}}
          ],
          "group_type_mapping": {"0": "organization"},
          "cohorts": {}}
@@ -255,16 +273,42 @@ internal class PostHogUnusableGroupKeyTest {
     }
 
     @Test
-    fun `a zero holdout or a usable group key leaves the holdout ignored`() {
+    fun `a zero or malformed holdout is no holdout`() {
         withPostHog(holdoutDefinitions()) { postHog, dispatcher ->
             for ((kind, groups) in unusableGroups()) {
                 assertEquals(false, postHog.evaluateFlags("user-1", localOnly(groups)).getFlag("org-holdout-zero"), kind)
                 assertEquals(false, postHog.getFeatureFlag("user-1", "org-holdout-zero", groups = groups), kind)
             }
             val usable = postHog.evaluateFlags("user-1", localOnly(mapOf("organization" to "org-1")))
-            assertEquals(true, usable.getFlag("org-holdout"))
             assertEquals(true, usable.getFlag("org-holdout-zero"))
+            assertEquals(true, usable.getFlag("person-holdout-zero"))
+            assertEquals(true, usable.getFlag("person-holdout-malformed"))
+            assertEquals(true, postHog.getFeatureFlag("user-1", "person-holdout-zero"))
+            assertEquals(true, postHog.getFeatureFlag("user-1", "person-holdout-malformed"))
             assertEquals(0, dispatcher.flagsRequests.size)
+        }
+    }
+
+    @Test
+    fun `a flag with a holdout is unsupported locally and falls back to flags`() {
+        withPostHog(holdoutDefinitions()) { postHog, dispatcher ->
+            val groups = mapOf("organization" to "org-1")
+            val local = postHog.evaluateFlags("user-1", localOnly(groups))
+            for (key in listOf("org-holdout", "person-holdout")) {
+                assertFalse(local.keys.contains(key), key)
+                assertEquals(PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION, local.unresolvedFlags[key], key)
+            }
+            assertFalse(local.keys.contains("holdout-child"))
+            assertEquals(PostHogUnresolvedFlagReason.UNRESOLVED_DEPENDENCY, local.unresolvedFlags["holdout-child"])
+            assertEquals(0, dispatcher.flagsRequests.size)
+
+            assertEquals(true, postHog.getFeatureFlag("user-1", "org-holdout", groups = groups))
+            assertEquals(1, dispatcher.flagsRequests.size)
+            assertEquals(true, postHog.getFeatureFlag("user-1", "person-holdout"))
+            assertEquals(2, dispatcher.flagsRequests.size)
+            // Another distinct ID, so the person-holdout response isn't reused from the cache.
+            assertEquals(true, postHog.getFeatureFlag("user-2", "holdout-child"))
+            assertEquals(3, dispatcher.flagsRequests.size)
         }
     }
 

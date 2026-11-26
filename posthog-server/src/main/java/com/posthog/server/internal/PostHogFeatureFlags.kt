@@ -881,8 +881,8 @@ internal class PostHogFeatureFlags(
         unresolvable[PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION]?.let { keys ->
             config.logger.logWarning(
                 "PostHog: You are using local evaluation but ${keys.size} flag(s) use something local evaluation " +
-                    "does not support, such as a static cohort, an unknown operator, a malformed value, or a missing " +
-                    "or circular flag dependency " +
+                    "does not support, such as a holdout, a static cohort, an unknown operator, a malformed value, " +
+                    "or a missing or circular flag dependency " +
                     "(reason: ${PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION.value}): ${keys.joinToString(", ")}. " +
                     "Evaluating these flags makes a /flags request when evaluation reaches that part, or leaves them " +
                     "unresolved with local-only evaluation. To evaluate them locally, change these flags in PostHog " +
