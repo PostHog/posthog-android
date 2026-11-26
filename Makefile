@@ -38,6 +38,9 @@ dryReleaseServer:
 dryReleaseServerOpenFeature:
 	./gradlew :posthog-server-openfeature:publishToMavenLocal
 
+dryReleaseMavenPlugin:
+	./gradlew :posthog-maven-plugin:publishToMavenLocal
+
 dryReleaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToMavenLocal
 
@@ -58,6 +61,9 @@ releaseServer:
 
 releaseServerOpenFeature:
 	./gradlew :posthog-server-openfeature:publishToSonatype closeAndReleaseSonatypeStagingRepository
+
+releaseMavenPlugin:
+	./gradlew :posthog-maven-plugin:publishToSonatype closeAndReleaseSonatypeStagingRepository
 
 releaseAndroidPlugin:
 	./gradlew :posthog-android-gradle-plugin:publishToSonatype :posthog-android-gradle-plugin:closeAndReleaseSonatypeStagingRepository

@@ -20,6 +20,8 @@ importers:
 
   posthog-android-surveys-compose: {}
 
+  posthog-maven-plugin: {}
+
   posthog-server: {}
 
   posthog-server-openfeature: {}

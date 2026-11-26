@@ -127,6 +127,7 @@ jobs:
                   SURVEYS_COMPOSE_VERSION=$(node -p "require('./posthog-android-surveys-compose/package.json').version")
                   SERVER_VERSION=$(node -p "require('./posthog-server/package.json').version")
                   SERVER_OPENFEATURE_VERSION=$(node -p "require('./posthog-server-openfeature/package.json').version")
+                  MAVEN_PLUGIN_VERSION=$(node -p "require('./posthog-maven-plugin/package.json').version")
                   PLUGIN_VERSION=$(node -p "require('./posthog-android-gradle-plugin/package.json').version")
 
                   sed -i "s/^coreVersion=.*/coreVersion=$CORE_VERSION/" gradle.properties
@@ -134,6 +135,7 @@ jobs:
                   sed -i "s/^surveysComposeVersion=.*/surveysComposeVersion=$SURVEYS_COMPOSE_VERSION/" gradle.properties
                   sed -i "s/^serverVersion=.*/serverVersion=$SERVER_VERSION/" gradle.properties
                   sed -i "s/^serverOpenFeatureVersion=.*/serverOpenFeatureVersion=$SERVER_OPENFEATURE_VERSION/" gradle.properties
+                  sed -i "s/^mavenPluginVersion=.*/mavenPluginVersion=$MAVEN_PLUGIN_VERSION/" gradle.properties
                   sed -i "s/^androidPluginVersion=.*/androidPluginVersion=$PLUGIN_VERSION/" posthog-android-gradle-plugin/gradle.properties
 
             - name: 'Set up Java 17'
@@ -192,7 +194,7 @@ jobs:
                   package_name=""
                   package_version=""
                   separator=""
-                  for package_json in posthog/package.json posthog-android/package.json posthog-android-surveys-compose/package.json posthog-server/package.json posthog-server-openfeature/package.json posthog-android-gradle-plugin/package.json; do
+                  for package_json in posthog/package.json posthog-android/package.json posthog-android-surveys-compose/package.json posthog-server/package.json posthog-server-openfeature/package.json posthog-maven-plugin/package.json posthog-android-gradle-plugin/package.json; do
                     if [ -f "$package_json" ]; then
                       package_name_part=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("name", ""))' "$package_json")
                       version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("version", ""))' "$package_json")
@@ -314,6 +316,11 @@ jobs:
                       make_dry_target: dryReleaseServerOpenFeature
                       make_release_target: releaseServerOpenFeature
                       changelog: posthog-server-openfeature/CHANGELOG.md
+                    - name: posthog-maven-plugin
+                      tag_prefix: mavenPlugin
+                      make_dry_target: dryReleaseMavenPlugin
+                      make_release_target: releaseMavenPlugin
+                      changelog: posthog-maven-plugin/CHANGELOG.md
                     - name: posthog-android-gradle-plugin
                       tag_prefix: androidPlugin
                       make_dry_target: dryReleaseAndroidPlugin
