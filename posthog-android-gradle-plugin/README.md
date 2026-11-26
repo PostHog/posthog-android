@@ -45,7 +45,11 @@ plugins {
 }
 ```
 
-The upload task runs before `processResources`, so `build`, `jar`, `bootJar`, `test` and `run` all upload when the sources changed.
+The upload task runs after `compileJava` and before `processResources`, so `build`, `jar`, `bootJar`, `test` and `run` all upload when the sources changed.
+
+The upload includes the `main` source set and the sources that annotation processors such as MapStruct generate. When `compileJava` reads Java sources in an encoding other than UTF-8 (`options.encoding`), the plugin uploads UTF-8 copies, so non-ASCII characters show correctly. Line numbers stay the same.
+
+On Windows, the plugin runs `posthog-cli.exe`, also when `npm` installed only a `posthog-cli.cmd` launcher. If it can only run the launcher, which goes through `cmd`, it refuses arguments that `cmd` would change, such as a path or release version with `&` or `%` in it, and asks you to install `posthog-cli.exe` or point `cliExecutable` at it.
 
 ### Releases
 

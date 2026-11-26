@@ -8,6 +8,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.compile.JavaCompile
 import java.io.File
 
 /**
@@ -40,14 +41,23 @@ internal abstract class PostHogJvmGradlePlugin : Plugin<Project> {
                 project.extensions.getByType(SourceSetContainer::class.java)
                     .getByName(SourceSet.MAIN_SOURCE_SET_NAME)
             val projectDir = project.projectDir
+            val compileJava = project.tasks.named(main.compileJavaTaskName, JavaCompile::class.java)
             val upload =
                 project.tasks.register(UPLOAD_TASK_NAME, PostHogUploadJvmSourcesTask::class.java) {
                     // allJava also holds the Kotlin, Groovy and Scala directories of the source
-                    // set. Resources stay out: they hold this task's own output.
-                    sourceDirectories.from(main.allJava.sourceDirectories, extension.additionalSourceDirs)
+                    // set. Resources stay out: they hold this task's own output. compileJava
+                    // writes the sources that annotation processors generate, such as MapStruct
+                    // mappers, into a directory of its own, so the upload runs after it.
+                    sourceDirectories.from(
+                        main.allJava.sourceDirectories,
+                        compileJava.flatMap { it.options.generatedSourceOutputDirectory },
+                        extension.additionalSourceDirs,
+                    )
                     // The property is internal, so Gradle does not infer the tasks that generate
                     // any of the directories.
-                    dependsOn(sourceDirectories)
+                    dependsOn(sourceDirectories, compileJava)
+                    sourceEncoding.set(compileJava.map { it.options.encoding.orEmpty() })
+                    buildDirectory.set(project.layout.buildDirectory)
                     outputDirectory.set(project.layout.buildDirectory.dir("generated/posthog/main"))
                     releaseName.set(extension.releaseName)
                     releaseVersion.set(extension.releaseVersion)

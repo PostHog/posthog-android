@@ -160,14 +160,25 @@ internal fun resolvePostHogCliExecutable(
         return configured
     }
     if (isWindows) {
-        // A native posthog-cli.exe on PATH runs directly, so its arguments never pass through
-        // cmd. Otherwise keep the bare name, which cmd resolves (e.g. to the npm .cmd shim).
-        val exeName = "$configured.exe"
-        return pathValue(environment)
-            ?.split(File.pathSeparator)
-            ?.map { File(it, exeName) }
-            ?.firstOrNull { it.isRunnableFile(isWindows = true) }
-            ?.absolutePath ?: configured
+        // A native posthog-cli.exe runs directly, so its arguments never pass through cmd.
+        val pathDirectories = pathValue(environment)?.split(File.pathSeparator).orEmpty().filter { it.isNotEmpty() }
+        pathDirectories
+            .map { File(it, "$configured.exe") }
+            .firstOrNull { it.isRunnableFile(isWindows = true) }
+            ?.let { return it.absolutePath }
+        // The npm .cmd shim only starts the native binary that the package installed, and cmd
+        // would run a `&` in a path or a release version as a second command.
+        val shims =
+            pathDirectories.map { File(it, "$configured.cmd") } +
+                listOfNotNull(workingDirectory, workingDirectory?.parentFile)
+                    .distinct()
+                    .map { File(it, "node_modules/.bin/$configured.cmd") }
+        shims
+            .filter { it.isFile }
+            .firstNotNullOfOrNull { npmInstalledExe(it) }
+            ?.let { return it.absolutePath }
+        // cmd resolves the bare name, for example to an npm shim without its binary.
+        return configured
     }
 
     val launcherName = configured
@@ -244,6 +255,33 @@ internal fun isPostHogCliInstalled(
         ?.any { dir -> dir.isNotEmpty() && names.any { File(dir, it).isRunnableFile(isWindows) } }
         ?: false
 }
+
+/**
+ * The native binary that the npm package of posthog-cli installs and that its `.cmd` shim starts.
+ * A global install puts the shim in the npm prefix, next to `node_modules`. A project install puts
+ * it in `node_modules/.bin`.
+ */
+internal fun npmInstalledExe(shim: File): File? {
+    val shimDirectory = shim.absoluteFile.parentFile ?: return null
+    val binary = "@posthog/cli/node_modules/.bin_real/$POSTHOG_CLI_DEFAULT_EXECUTABLE.exe"
+    return listOfNotNull(
+        File(shimDirectory, "node_modules/$binary"),
+        shimDirectory.parentFile?.let { File(it, binary) },
+    ).firstOrNull { it.isFile }
+}
+
+internal fun runsThroughCmd(
+    executable: String,
+    isWindows: Boolean = Os.isFamily(Os.FAMILY_WINDOWS),
+): Boolean = isWindows && !executable.endsWith(".exe", ignoreCase = true)
+
+// ProcessBuilder quotes an argument that holds a space, and cmd reads & | < > ^ literally inside
+// quotes. Outside quotes it runs them as operators, and it expands %VAR% and !VAR! in both places.
+// A quote in the value ends the quoting, and a line break ends the command.
+private const val CMD_UNSAFE_CHARACTERS = "&|<>^%!\"\r\n"
+
+/** The first of [values] that cmd would not pass on unchanged, or null when all are safe. */
+internal fun firstUnsafeForCmd(values: List<String>): String? = values.firstOrNull { value -> value.any { it in CMD_UNSAFE_CHARACTERS } }
 
 internal fun resolveNodeExecutable(
     environment: Map<String, String> = System.getenv(),

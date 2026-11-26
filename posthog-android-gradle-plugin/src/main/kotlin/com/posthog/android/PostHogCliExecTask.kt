@@ -5,6 +5,7 @@
 package com.posthog.android
 
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.api.GradleException
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -120,6 +121,10 @@ public abstract class PostHogCliExecTask : Exec() {
         return prependExecutableDirectoriesToPath(executables, taskEnvironment)
     }
 
+    /** The first argument that cmd would not pass on unchanged when [resolved] runs through it. */
+    protected fun argumentUnsafeForCmd(resolved: String): String? =
+        if (runsThroughCmd(resolved)) firstUnsafeForCmd(computeCommandLineArgs()) else null
+
     protected abstract fun getArguments(args: MutableList<String>)
 
     /** Computes the full list of arguments for the task */
@@ -137,8 +142,18 @@ internal fun postHogCliCommandLine(
 ): List<String> {
     // On Windows a bare name may be the npm posthog-cli.cmd shim, which only cmd can find and
     // run. An .exe runs directly, which also keeps cmd from mangling a quoted path with spaces.
-    if (isWindows && !executable.endsWith(".exe", ignoreCase = true)) {
+    if (runsThroughCmd(executable, isWindows)) {
+        firstUnsafeForCmd(args)?.let {
+            throw GradleException(
+                "[PostHog] posthog-cli runs through cmd here, and cmd would not pass on \"$it\" " +
+                    "unchanged. $CMD_UNSAFE_HINT",
+            )
+        }
         return listOf("cmd", "/c", executable) + args
     }
     return listOf(executable) + args
 }
+
+internal const val CMD_UNSAFE_HINT: String =
+    "Install posthog-cli with npm (npm install -g @posthog/cli) or the PostHog installer, so that " +
+        "posthog-cli.exe runs directly, or set the posthog-cli path to posthog-cli.exe."

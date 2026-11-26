@@ -1,5 +1,6 @@
 package com.posthog.jvm
 
+import com.posthog.android.CMD_UNSAFE_HINT
 import com.posthog.android.PostHogCliExecTask
 import com.posthog.android.isPostHogCliInstalled
 import org.gradle.api.file.ConfigurableFileCollection
@@ -10,6 +11,8 @@ import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.work.DisableCachingByDefault
+import java.io.File
+import java.nio.charset.Charset
 
 /**
  * Uploads the application's sources with `posthog-cli jvm upload`, and writes the id they were
@@ -41,6 +44,19 @@ public abstract class PostHogUploadJvmSourcesTask : PostHogCliExecTask() {
     @get:Optional
     public abstract val releaseVersion: Property<String>
 
+    /**
+     * The encoding of the Java sources, as `compileJava` reads them. When it is not UTF-8, the task
+     * uploads UTF-8 copies, because posthog-cli reads every file as UTF-8 and skips one it cannot
+     * decode.
+     */
+    @get:Input
+    @get:Optional
+    public abstract val sourceEncoding: Property<String>
+
+    /** Skipped when a source directory holds it, as the project directory does. */
+    @get:Internal
+    public abstract val buildDirectory: DirectoryProperty
+
     @get:Input
     public abstract val requireUpload: Property<Boolean>
 
@@ -57,6 +73,8 @@ public abstract class PostHogUploadJvmSourcesTask : PostHogCliExecTask() {
         // sends no source files when they are already there, so a run of unchanged code is cheap.
         outputs.upToDateWhen { false }
     }
+
+    private var uploadRoots: List<File> = emptyList()
 
     override fun exec() {
         val metaProperties = outputDirectory.file(POSTHOG_META_PROPERTIES_FILE).get().asFile
@@ -88,6 +106,12 @@ public abstract class PostHogUploadJvmSourcesTask : PostHogCliExecTask() {
             return
         }
 
+        uploadRoots = sourceRootsToUpload()
+        argumentUnsafeForCmd(executable)?.let {
+            skipOrFail("[PostHog] posthog-cli runs through cmd here, and cmd would not pass on \"$it\" unchanged. $CMD_UNSAFE_HINT")
+            return
+        }
+
         runPostHogCli(executable)
 
         if (!metaProperties.isFile) {
@@ -102,7 +126,7 @@ public abstract class PostHogUploadJvmSourcesTask : PostHogCliExecTask() {
     override fun getArguments(args: MutableList<String>) {
         args.add("jvm")
         args.add("upload")
-        existingSourceDirectories().forEach {
+        uploadRoots.forEach {
             args.add("--source")
             args.add(it.absolutePath)
         }
@@ -129,6 +153,16 @@ public abstract class PostHogUploadJvmSourcesTask : PostHogCliExecTask() {
     }
 
     private fun existingSourceDirectories() = sourceDirectories.files.filter { it.isDirectory }
+
+    private fun sourceRootsToUpload(): List<File> {
+        val roots = existingSourceDirectories()
+        val encoding = sourceEncoding.orNull?.takeIf { it.isNotBlank() }?.let { Charset.forName(it.trim()) }
+        if (encoding == null || Utf8Sources.isUtf8(encoding)) {
+            return roots
+        }
+        logger.info("[PostHog] Uploading UTF-8 copies of the $encoding Java sources")
+        return Utf8Sources.copy(roots, encoding, File(temporaryDir, "utf8-sources"), buildDirectory.get().asFile)
+    }
 
     internal companion object {
         const val POSTHOG_META_PROPERTIES_FILE: String = "posthog-meta.properties"
