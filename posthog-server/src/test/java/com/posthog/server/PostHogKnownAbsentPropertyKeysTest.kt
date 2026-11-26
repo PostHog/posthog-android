@@ -339,6 +339,121 @@ internal class PostHogKnownAbsentPropertyKeysTest {
     }
 
     @Test
+    fun `an omitted or null condition value on a listed key stays inconclusive whether or not the key is supplied`() {
+        for (operator in listOf("exact", "is_not", "icontains", "gt", "is_date_before")) {
+            for (valueField in listOf("", ", \"value\": null")) {
+                for (supplied in listOf(false, true)) {
+                    val label = "$operator with '$valueField', supplied=$supplied"
+                    withPostHog(
+                        createLocalEvaluationResponseFrom(personFlag("no-value", operator, valueField = valueField)),
+                        createMultipleFlagsResponse("no-value" to true),
+                    ) { postHog, dispatcher ->
+                        val localOnly = PostHogEvaluateFlagsOptions.builder().onlyEvaluateLocally(true)
+                        if (supplied) localOnly.personProperty("plan", "pro")
+                        val snapshot = postHog.evaluateFlags("user-1", localOnly.personPropertyKeysKnownAbsent(listOf("plan")).build())
+                        assertEquals(
+                            mapOf("no-value" to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION),
+                            snapshot.unresolvedFlags,
+                            label,
+                        )
+                        assertEquals(0, dispatcher.flagsBodies.size, label)
+
+                        val flagOptions = PostHogFeatureFlagOptions.builder()
+                        if (supplied) flagOptions.personProperty("plan", "pro")
+                        val options = flagOptions.personPropertyKeysKnownAbsent(listOf("plan")).build()
+                        assertEquals(true, postHog.getFeatureFlag("user-1", "no-value", options), label)
+                        assertEquals(1, dispatcher.flagsBodies.size, label)
+                        assertEquals(listOf("plan"), dispatcher.flagsBodies[0]["person_property_keys_known_absent"], label)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `is_set and is_not_set with an omitted or null condition value on a listed key resolve locally`() {
+        for (valueField in listOf("", ", \"value\": null")) {
+            for (supplied in listOf(false, true)) {
+                val label = "'$valueField', supplied=$supplied"
+                val definitions =
+                    createLocalEvaluationResponseFrom(
+                        personFlag("not-set", "is_not_set", valueField = valueField),
+                        personFlag("set", "is_set", valueField = valueField).replace("\"id\": 1", "\"id\": 2"),
+                    )
+                withPostHog(definitions) { postHog, dispatcher ->
+                    val builder = PostHogEvaluateFlagsOptions.builder()
+                    if (supplied) builder.personProperty("plan", "pro")
+                    val snapshot = postHog.evaluateFlags("user-1", builder.personPropertyKeysKnownAbsent(listOf("plan")).build())
+                    assertTrue(snapshot.isEnabled("not-set"), label)
+                    assertFalse(snapshot.isEnabled("set"), label)
+                    assertTrue(snapshot.unresolvedFlags.isEmpty(), label)
+                    assertEquals(0, dispatcher.flagsBodies.size, label)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a present condition value on a listed key resolves locally whether or not the key is supplied`() {
+        val cases =
+            listOf(
+                Triple("exact", "\"pro\"", false),
+                Triple("is_not", "\"pro\"", true),
+                Triple("icontains", "\"pro\"", false),
+                Triple("gt", "5", false),
+                Triple("is_date_before", "\"2020-01-01\"", false),
+            )
+        for ((operator, value, expected) in cases) {
+            for (supplied in listOf(false, true)) {
+                val label = "$operator, supplied=$supplied"
+                withPostHog(
+                    createLocalEvaluationResponseFrom(personFlag("valued", operator, valueField = ", \"value\": $value")),
+                    createMultipleFlagsResponse("valued" to !expected),
+                ) { postHog, dispatcher ->
+                    val builder = PostHogEvaluateFlagsOptions.builder()
+                    if (supplied) builder.personProperty("plan", if (operator == "gt") 10 else "pro")
+                    val snapshot = postHog.evaluateFlags("user-1", builder.personPropertyKeysKnownAbsent(listOf("plan")).build())
+                    assertTrue(snapshot.unresolvedFlags.isEmpty(), label)
+                    assertEquals(expected, snapshot.isEnabled("valued"), label)
+                    assertEquals(0, dispatcher.flagsBodies.size, label)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `an omitted or null condition value on a supplied key that is not listed keeps its existing result`() {
+        val unsupported = mapOf("no-value" to PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION)
+        val cases =
+            listOf(
+                Triple("exact", false, emptyMap()),
+                Triple("is_not", true, emptyMap()),
+                Triple("icontains", false, emptyMap()),
+                Triple("gt", false, unsupported),
+                Triple("is_date_before", false, unsupported),
+            )
+        for ((operator, expected, expectedUnresolved) in cases) {
+            for (valueField in listOf("", ", \"value\": null")) {
+                val label = "$operator with '$valueField'"
+                withPostHog(
+                    createLocalEvaluationResponseFrom(personFlag("no-value", operator, valueField = valueField)),
+                    createMultipleFlagsResponse("no-value" to true),
+                ) { postHog, dispatcher ->
+                    val options =
+                        PostHogEvaluateFlagsOptions.builder()
+                            .personProperty("plan", "pro")
+                            .onlyEvaluateLocally(true)
+                            .build()
+                    val snapshot = postHog.evaluateFlags("user-1", options)
+                    assertEquals(expected, snapshot.isEnabled("no-value"), label)
+                    assertEquals<Map<String, PostHogUnresolvedFlagReason>>(expectedUnresolved, snapshot.unresolvedFlags, label)
+                    assertEquals(0, dispatcher.flagsBodies.size, label)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `a listed key resolves without reading a present condition value`() {
         val cases =
             listOf(
