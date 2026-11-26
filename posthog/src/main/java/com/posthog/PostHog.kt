@@ -274,7 +274,9 @@ public class PostHog private constructor(
         // under setupLock so a concurrent optOut can't uninstall replay between the check and the start
         synchronized(setupLock) {
             sessionReplayHandler?.let {
-                if (isSessionReplayConfigEnabled()) {
+                it.onFeatureFlagsLoaded()
+                // an explicit stopSessionReplay holds until the app asks to start again
+                if (isSessionReplayConfigEnabled() && sessionReplayWanted) {
                     // start will bail if session replay is already active anyway
                     startSessionReplayInternal(resumeCurrent = true)
                 }
@@ -1319,7 +1321,7 @@ public class PostHog private constructor(
      * An event enriched for capture, before the `beforeSend` chain runs.
      *
      * @property mergedProperties the enriched properties before the `$feature_flag_called`
-     *   minimization, which the surveys and replay handlers read.
+     *   minimization, which the surveys handler reads.
      */
     private class PreparedEvent(
         val event: PostHogEvent,
@@ -1424,7 +1426,7 @@ public class PostHog private constructor(
                 properties
             }
 
-        val mergedProperties =
+        val buildMergedProperties = {
             buildProperties(
                 newDistinctId,
                 properties = effectiveProperties,
@@ -1440,6 +1442,15 @@ public class PostHog private constructor(
                 claimReplayDebugBundle = { isReplayDebugEvent(event) && claimReplayDebugBundle() },
                 readReplayDebugProperties = readReplayDebugProperties,
             )
+        }
+        // buildProperties can rotate the session, and the session listener runs before the replay
+        // handler sees this event.
+        val mergedProperties =
+            if (event == PostHogEventName.SCREEN.event) {
+                PostHogSessionManager.withScreenCaptureInFlight(buildMergedProperties)
+            } else {
+                buildMergedProperties()
+            }
 
         val eventProperties = minimizeIfFeatureFlagCalled(event, mergedProperties)
 
@@ -1468,8 +1479,9 @@ public class PostHog private constructor(
     }
 
     /**
-     * Queues [postHogEvent], already through `beforeSend`, on its lane and notifies the surveys and
-     * replay handlers with [event] and [mergedProperties] from before the hook. Returns the event's
+     * Queues [postHogEvent], already through `beforeSend`, on its lane and notifies the surveys
+     * handler with [event] and [mergedProperties] from before the hook, and the replay handler with
+     * [postHogEvent] as queued. Returns the event's
      * uuid when it's queued. [onQueued] runs right after the event is added to the analytics or AI
      * queue.
      */
@@ -1498,7 +1510,8 @@ public class PostHog private constructor(
         val targetQueue = if (aiLane) aiQueue ?: return null else queue
         var queued = false
         // beforeSend may have opted out
-        if (isOptedOut()) {
+        val optedOut = isOptedOut()
+        if (optedOut) {
             config?.logger?.log("PostHog is in OptOut state.")
         } else if (targetQueue != null) {
             // AI events are measured and admitted here rather than in the queue, so captureAi returns null
@@ -1520,11 +1533,14 @@ public class PostHog private constructor(
         } catch (e: Throwable) {
             config?.logger?.log("Surveys onEvent failed: $e.")
         }
-        // Notify session replay handler about the event for event triggers
-        try {
-            sessionReplayHandler?.onEvent(event, mergedProperties)
-        } catch (e: Throwable) {
-            config?.logger?.log("Session replay onEvent failed: $e.")
+        // Replay trigger groups match property filters, so like posthog-js they see the event as queued:
+        // after the beforeSend hooks changed it, and not at all if a hook dropped it.
+        if (!optedOut) {
+            try {
+                sessionReplayHandler?.onEvent(postHogEvent.event, postHogEvent.properties)
+            } catch (e: Throwable) {
+                config?.logger?.log("Session replay onEvent failed: $e.")
+            }
         }
         return if (queued) postHogEvent.uuid else null
     }
@@ -2004,6 +2020,12 @@ public class PostHog private constructor(
                     PostHogSessionManager.startSession()
                 }
                 installIntegrations(resumeSessionReplay = false, startSessionReplay = sessionReplayWanted, surveys = surveys)
+                // the uninstall on optOut dropped the stop hold with the rest of the handler's state; put it
+                // back before the remote config below, or any later automatic start, can restart replay the
+                // app had stopped
+                if (!sessionReplayWanted) {
+                    sessionReplayHandler?.onStopRequested()
+                }
                 // install re-arms each integration from local config; re-apply the cached remote
                 // config (e.g. exception autocapture turned off remotely) instead of waiting for a reload
                 if (remoteConfig?.hasRemoteConfigFetched() == true) {
@@ -3355,6 +3377,9 @@ public class PostHog private constructor(
             // a start asked for while opted out is ignored, so it doesn't change the intent either
             if (!isOptedOut()) {
                 sessionReplayWanted = true
+                // an explicit request must lift the stop hold even if the gates below refuse it,
+                // but not while opted out
+                sessionReplayHandler?.onStartRequested()
             }
             startSessionReplayInternal(resumeCurrent)
         }
@@ -3414,6 +3439,7 @@ public class PostHog private constructor(
             // also reached from optOut's uninstall, by which point consent is already opted out
             if (!isOptedOut()) {
                 sessionReplayWanted = false
+                sessionReplayHandler?.onStopRequested()
             }
             sessionReplayHandler?.stop() ?: run {
                 config?.logger?.log("Session replay isn't installed.")
