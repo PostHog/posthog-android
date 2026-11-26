@@ -7,6 +7,7 @@ import com.posthog.android.PostHogAndroidConfig
 import com.posthog.internal.EndpointSpec
 import com.posthog.internal.PostHogApi
 import com.posthog.internal.PostHogApiEndpoint
+import com.posthog.internal.PostHogLogger
 import com.posthog.internal.PostHogQueue
 import com.posthog.internal.PostHogQueueInterface
 import org.junit.Rule
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -538,6 +540,82 @@ internal class PostHogReplayQueueTest {
     }
 
     @Test
+    fun `migrateBufferToQueue is a no-op while a buffer clear is pending and works after it ran`() {
+        val fixture = createRealReplayQueue()
+        val queue = fixture.queue
+        queue.bufferDelegate = MockReplayBufferDelegate().apply { isBuffering = true }
+        queue.add(createTestEvent("snapshot_1"))
+        queue.add(createTestEvent("snapshot_2"))
+        awaitReplayExecutors()
+        val executor = executors.single()
+        val release = CountDownLatch(1)
+        val busy = CountDownLatch(1)
+        executor.execute {
+            busy.countDown()
+            release.await(2, TimeUnit.SECONDS)
+        }
+        assertTrue(busy.await(2, TimeUnit.SECONDS))
+
+        try {
+            queue.clearBuffer()
+            assertTrue(queue.isBufferClearPending)
+
+            queue.migrateBufferToQueue()
+
+            assertEquals(2, queue.bufferDepth)
+            assertEquals(0, queue.depth)
+        } finally {
+            release.countDown()
+        }
+        awaitReplayExecutors()
+        assertFalse(queue.isBufferClearPending)
+        assertEquals(0, queue.bufferDepth)
+
+        queue.add(createTestEvent("snapshot_3"))
+        awaitReplayExecutors()
+        queue.migrateBufferToQueue()
+
+        assertEquals(0, queue.bufferDepth)
+        assertEquals(listOf("snapshot_3"), eventNamesInDirectory(fixture.config, fixture.targetDir))
+    }
+
+    @Test
+    fun `pending buffer clear count returns to zero when the clear task throws`() {
+        val config =
+            PostHogConfig(PROJECT_TOKEN, "http://localhost:9001").apply {
+                logger =
+                    object : PostHogLogger {
+                        override fun log(message: String) {
+                            if (message == "Replay buffer cleared") throw IllegalStateException("boom")
+                        }
+
+                        override fun isEnabled(): Boolean = true
+                    }
+            }
+        val executor = createPausedExecutor()
+        val queue = PostHogReplayQueue(config, createFakeQueue(), tmpDir.newFolder().absolutePath, executor)
+        executor.runNext()
+
+        queue.clearBuffer()
+        assertTrue(queue.isBufferClearPending)
+
+        assertFailsWith<IllegalStateException> { executor.runNext() }
+        assertFalse(queue.isBufferClearPending)
+    }
+
+    @Test
+    fun `pending buffer clear count returns to zero when the clear cannot be scheduled`() {
+        val executor = createReplayExecutor()
+        val queue = createReplayQueue(createFakeQueue(), executor = executor)
+        awaitReplayExecutors()
+        executor.shutdown()
+
+        queue.clearBuffer()
+
+        assertFalse(queue.isBufferClearPending)
+    }
+
+    @Test
     fun `clearBuffer does not affect inner queue events`() {
         val fakeInnerQueue = createFakeQueue()
         val queue = createReplayQueue(fakeInnerQueue)
@@ -696,5 +774,92 @@ internal class PostHogReplayQueueTest {
         assertEquals(2, queue.bufferDepth)
         assertEquals(1, innerQueue.events.size)
         assertEquals("direct_after_disable", innerQueue.events.first().event)
+    }
+
+    private class MaskingDelegate(override var isBuffering: Boolean) : PostHogReplayBufferDelegate {
+        override val isActive: Boolean = true
+        var captureGeneration: Int? = null
+        var generation: Int = 0
+
+        override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {}
+
+        override fun currentCaptureMaskingGeneration(): Int? = captureGeneration
+
+        override fun isMaskingGenerationStale(generation: Int): Boolean = generation != this.generation
+    }
+
+    @Test
+    fun `buffered add discards a frame whose masking generation went stale before its task ran`() {
+        val executor = createPausedExecutor()
+        val queue = createReplayQueue(createFakeQueue(), executor = executor)
+        executor.runNext()
+        val delegate = MaskingDelegate(isBuffering = true)
+        queue.bufferDelegate = delegate
+
+        delegate.captureGeneration = 0
+        queue.add(createTestEvent("stale"))
+        delegate.captureGeneration = null
+        delegate.generation = 1
+        executor.runNext()
+
+        delegate.captureGeneration = 1
+        queue.add(createTestEvent("current"))
+        delegate.captureGeneration = null
+        queue.add(createTestEvent("unstamped"))
+        executor.runNext()
+        executor.runNext()
+
+        assertEquals(2, queue.bufferDepth)
+    }
+
+    @Test
+    fun `direct add discards a frame with a stale masking generation`() {
+        val innerQueue = createFakeQueue()
+        val queue = createReplayQueue(innerQueue)
+        val delegate = MaskingDelegate(isBuffering = false)
+        queue.bufferDelegate = delegate
+        delegate.generation = 1
+
+        delegate.captureGeneration = 0
+        queue.add(createTestEvent("stale"))
+        delegate.captureGeneration = 1
+        queue.add(createTestEvent("current"))
+        delegate.captureGeneration = null
+        queue.add(createTestEvent("unstamped"))
+        awaitReplayExecutors()
+
+        assertEquals(listOf("current", "unstamped"), innerQueue.events.map { it.event })
+    }
+
+    @Test
+    fun `willBufferSnapshot runs on the add caller before the snapshot reaches the buffer and only while buffering`() {
+        val executor = createPausedExecutor()
+        val innerQueue = createFakeQueue()
+        val queue = createReplayQueue(innerQueue, executor = executor)
+        executor.runNext()
+        val bufferDepthsAtNotice = mutableListOf<Int>()
+        val delegate =
+            object : PostHogReplayBufferDelegate {
+                override var isBuffering: Boolean = true
+                override val isActive: Boolean = true
+
+                override fun onReplayBufferSnapshot(replayQueue: PostHogReplayQueue) {}
+
+                override fun willBufferSnapshot() {
+                    bufferDepthsAtNotice.add(queue.bufferDepth)
+                }
+            }
+        queue.bufferDelegate = delegate
+
+        queue.add(createTestEvent("buffered"))
+        assertEquals(listOf(0), bufferDepthsAtNotice)
+        executor.runNext()
+        assertEquals(1, queue.bufferDepth)
+
+        delegate.isBuffering = false
+        queue.add(createTestEvent("direct"))
+
+        assertEquals(listOf(0), bufferDepthsAtNotice)
+        assertEquals(listOf("direct"), innerQueue.events.map { it.event })
     }
 }

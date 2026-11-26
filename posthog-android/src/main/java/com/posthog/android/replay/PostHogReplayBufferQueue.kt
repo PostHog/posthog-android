@@ -21,6 +21,9 @@ internal class PostHogReplayBufferQueue(
     private val items = mutableListOf<String>()
     private val itemsLock = Any()
 
+    // Makes a migrate's pending-clear check and its file moves atomic with respect to clear().
+    private val bufferIoLock = Any()
+
     val depth: Int
         get() = synchronized(itemsLock) { items.size }
 
@@ -84,9 +87,15 @@ internal class PostHogReplayBufferQueue(
      * Migration is supported for [PostHogQueue] targets by moving files on disk
      * and reloading the target queue from disk.
      *
+     * [shouldAbort] is checked under the same lock as [clear], so a clear requested before the
+     * move starts discards the items instead of racing the move.
+     *
      * Returns the number of events successfully migrated.
      */
-    fun migrateAllTo(targetQueue: PostHogQueueInterface<PostHogEvent>): Int {
+    fun migrateAllTo(
+        targetQueue: PostHogQueueInterface<PostHogEvent>,
+        shouldAbort: () -> Boolean = { false },
+    ): Int {
         if (targetQueue !is PostHogQueue<*>) {
             config.logger.log("Replay buffer migration skipped: target queue is not PostHogQueue")
             return 0
@@ -98,6 +107,22 @@ internal class PostHogReplayBufferQueue(
             return 0
         }
 
+        testHook?.invoke()
+        val migratedCount =
+            synchronized(bufferIoLock) {
+                if (shouldAbort()) {
+                    config.logger.log("Replay buffer migration aborted: a buffer clear is pending")
+                    return 0
+                }
+                moveBufferedItems(targetDir)
+            }
+
+        // Outside bufferIoLock: the reload waits on the target's executor, which may be running clear().
+        targetQueue.reloadFromDisk()
+        return migratedCount
+    }
+
+    private fun moveBufferedItems(targetDir: File): Int {
         val itemsToMigrate: List<String> =
             synchronized(itemsLock) {
                 val copy = items.toList()
@@ -133,8 +158,6 @@ internal class PostHogReplayBufferQueue(
                 config.logger.log("Failed to migrate replay buffer item $item: $e")
             }
         }
-
-        targetQueue.reloadFromDisk()
         return migratedCount
     }
 
@@ -142,10 +165,15 @@ internal class PostHogReplayBufferQueue(
      * Removes all buffered items from disk and memory.
      */
     fun clear() {
-        setup()
+        synchronized(bufferIoLock) {
+            setup()
+        }
     }
 
     companion object {
+        @Volatile
+        internal var testHook: (() -> Unit)? = null
+
         /**
          * Extracts the millisecond epoch timestamp from a UUID v7 filename.
          *

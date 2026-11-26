@@ -6,6 +6,7 @@ import com.posthog.internal.PostHogQueueInterface
 import com.posthog.internal.executeSafely
 import java.io.File
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A replay queue that wraps an inner queue (for actual API sends) and a
@@ -55,6 +56,11 @@ internal class PostHogReplayQueue internal constructor(
     internal val bufferDepth: Int
         get() = bufferQueue.depth
 
+    private val pendingBufferClears = AtomicInteger(0)
+
+    internal val isBufferClearPending: Boolean
+        get() = pendingBufferClears.get() > 0
+
     /**
      * Approximate number of events currently in the inner replay queue directory.
      */
@@ -65,22 +71,38 @@ internal class PostHogReplayQueue internal constructor(
         get() = innerQueue.size
 
     override fun add(record: PostHogEvent) {
+        val maskingGeneration = bufferDelegate?.currentCaptureMaskingGeneration()
         if (bufferDelegate?.shouldBufferSnapshot() != true) {
-            if (shouldPersist()) {
+            if (shouldPersist() && !isMaskingStale(record, maskingGeneration)) {
                 innerQueue.add(record)
             }
             return
         }
 
+        bufferDelegate?.willBufferSnapshot()
         executor.executeSafely {
             if (bufferDelegate?.shouldBufferSnapshot() == true) {
+                // Checked on the executor: a masking drop bumps the generation before scheduling
+                // its clear here, so a stale frame lands before the clear or is discarded now.
+                if (isMaskingStale(record, maskingGeneration)) return@executeSafely
                 bufferQueue.add(record)
                 config.logger.log("Buffered replay event '${record.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
-            } else if (shouldPersist()) {
+            } else if (shouldPersist() && !isMaskingStale(record, maskingGeneration)) {
                 innerQueue.add(record)
             }
         }
+    }
+
+    private fun isMaskingStale(
+        record: PostHogEvent,
+        maskingGeneration: Int?,
+    ): Boolean {
+        if (maskingGeneration == null || bufferDelegate?.isMaskingGenerationStale(maskingGeneration) != true) {
+            return false
+        }
+        config.logger.log("Dropped replay event '${record.event}' captured before stricter masking applied.")
+        return true
     }
 
     // A delegate that reports recording inactive means a snapshot slipped through after recording
@@ -116,13 +138,17 @@ internal class PostHogReplayQueue internal constructor(
      * It should be scheduled off the caller/UI thread because migration does disk IO.
      */
     internal fun migrateBufferToQueue() {
+        if (isBufferClearPending) {
+            config.logger.log("Replay buffer migration skipped: a buffer clear is pending")
+            return
+        }
         val bufferedCount = bufferQueue.depth
         if (bufferedCount == 0) {
             config.logger.log("No buffered replay events to migrate")
             return
         }
 
-        val migrated = bufferQueue.migrateAllTo(innerQueue)
+        val migrated = bufferQueue.migrateAllTo(innerQueue) { isBufferClearPending }
         config.logger.log(
             "Migrated $migrated/$bufferedCount buffered replay events to replay queue.",
         )
@@ -138,9 +164,21 @@ internal class PostHogReplayQueue internal constructor(
      * still runs before any subsequently-scheduled add()/migrate; only the caller's wait is dropped.
      */
     internal fun clearBuffer() {
-        executor.executeSafely {
-            bufferQueue.clear()
-            config.logger.log("Replay buffer cleared")
+        // Counted before scheduling: a migrate running on another executor must not persist
+        // frames this clear is about to discard.
+        pendingBufferClears.incrementAndGet()
+        try {
+            executor.execute {
+                try {
+                    bufferQueue.clear()
+                    config.logger.log("Replay buffer cleared")
+                } finally {
+                    pendingBufferClears.decrementAndGet()
+                }
+            }
+        } catch (e: Throwable) {
+            pendingBufferClears.decrementAndGet()
+            config.logger.log("Replay buffer clear could not be scheduled: $e.")
         }
     }
 

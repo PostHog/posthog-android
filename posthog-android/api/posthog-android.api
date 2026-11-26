@@ -85,6 +85,8 @@ public final class com/posthog/android/replay/PostHogReplayIntegration : com/pos
 	public fun onSessionIdChanged ()V
 	public fun onStartRequested ()V
 	public fun onStopRequested ()V
+	public final fun resolvedMaskAllImages ()Z
+	public final fun resolvedMaskAllTextInputs ()Z
 	public final fun setSessionReplayMinimumDuration (Ljava/lang/Long;)V
 	public fun start (Z)V
 	public fun stop ()V

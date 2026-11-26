@@ -3793,6 +3793,449 @@ internal class PostHogReplayIntegrationTest {
         }
     }
 
+    @OptIn(PostHogInternalReplayApi::class)
+    @Test
+    fun `resolved masking flags are local OR server`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        for (local in listOf(true, false)) {
+            for (server in listOf(true, false)) {
+                fx.config.sessionReplayConfig.maskAllTextInputs = local
+                fx.config.sessionReplayConfig.maskAllImages = local
+                whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(server)
+                whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(server)
+
+                assertEquals(local || server, fx.sut.resolvedMaskAllTextInputs(), "text local=$local server=$server")
+                assertEquals(local || server, fx.sut.resolvedMaskAllImages(), "images local=$local server=$server")
+            }
+        }
+    }
+
+    private class MessagesLogger : PostHogLogger {
+        val messages = java.util.concurrent.CopyOnWriteArrayList<String>()
+
+        override fun log(message: String) {
+            messages.add(message)
+        }
+
+        override fun isEnabled(): Boolean = true
+    }
+
+    @OptIn(PostHogInternalReplayApi::class)
+    @Test
+    fun `server masking is logged once per flag when local is off`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val logger = MessagesLogger()
+        fx.config.logger = logger
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        fx.config.sessionReplayConfig.maskAllImages = false
+        whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+        whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+
+        repeat(3) {
+            fx.sut.resolvedMaskAllTextInputs()
+            fx.sut.resolvedMaskAllImages()
+        }
+
+        val notices = logger.messages.filter { it.startsWith("[Session Replay] The project setting turns on") }
+        assertEquals(
+            listOf(
+                "[Session Replay] The project setting turns on maskAllTextInputs, which is off in the app config. Masking stays on.",
+                "[Session Replay] The project setting turns on maskAllImages, which is off in the app config. Masking stays on.",
+            ),
+            notices,
+        )
+    }
+
+    @OptIn(PostHogInternalReplayApi::class)
+    @Test
+    fun `server masking is not logged when local is on`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true)
+        val logger = MessagesLogger()
+        fx.config.logger = logger
+        whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+        whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+
+        assertTrue(fx.sut.resolvedMaskAllTextInputs())
+        assertTrue(fx.sut.resolvedMaskAllImages())
+
+        assertTrue(logger.messages.none { it.startsWith("[Session Replay] The project setting turns on") })
+    }
+
+    private fun bufferTwoSnapshots(fx: RealQueueFixture) {
+        fx.replayQueue.add(createTestEvent("snapshot_1"))
+        Thread.sleep(5)
+        fx.replayQueue.add(createTestEvent("snapshot_2"))
+        awaitReplayExecutors()
+        assertEquals(2, fx.replayQueue.bufferDepth)
+    }
+
+    @Test
+    fun `first remote config that turns masking on drops the buffered frames`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `runtime local maskAllTextInputs toggle from true to false while buffering drops on stricter remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `runtime local maskAllImages toggle from true to false while buffering drops on stricter remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllImages = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `runtime local text toggle while buffering keeps the buffer when remote config turns on only image masking`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            fx.config.sessionReplayConfig.maskAllTextInputs = false
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config where server masking is already in the cache keeps the buffer`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `first remote config with local masking off and no server masking migrates the buffer`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig()
+
+            awaitCondition { fx.replayQueue.bufferDepth == 0 && fx.replayQueue.depth == 2 }
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `later remote config that turns masking on drops the minimum duration buffer`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000L)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, fx.replayQueue.bufferDepth)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+            assertTrue(fx.sut.isActive())
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `failed remote config fetch with unchanged masking keeps the buffer`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000L)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig(loaded = false)
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `failed first remote config that applied stricter masking drops the buffer`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        try {
+            bufferTwoSnapshots(fx)
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig(loaded = false)
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `masking drop on the first remote config is not undone by a migrate while the queue executor is busy`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        val release = CountDownLatch(1)
+        try {
+            bufferTwoSnapshots(fx)
+            val queueExecutor = ReflectionHelpers.getField<ExecutorService>(fx.replayQueue, "executor")
+            val integrationExecutor = ReflectionHelpers.getField<ExecutorService>(fx.sut, "injectedExecutor")
+            val queueBusy = CountDownLatch(1)
+            queueExecutor.execute {
+                queueBusy.countDown()
+                release.await(2, TimeUnit.SECONDS)
+            }
+            assertTrue(queueBusy.await(2, TimeUnit.SECONDS))
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            integrationExecutor.submit {}.get(2, TimeUnit.SECONDS)
+            release.countDown()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+            assertEquals(0, fx.replayQueue.bufferDepth)
+        } finally {
+            release.countDown()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `in-flight migrate that passed the pending check does not persist frames a masking drop discards`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        val hookEntered = CountDownLatch(1)
+        val hookRelease = CountDownLatch(1)
+        val releaseQueue = CountDownLatch(1)
+        try {
+            bufferTwoSnapshots(fx)
+            val queueExecutor = ReflectionHelpers.getField<ExecutorService>(fx.replayQueue, "executor")
+            val integrationExecutor = ReflectionHelpers.getField<ExecutorService>(fx.sut, "injectedExecutor")
+            PostHogReplayBufferQueue.testHook = {
+                hookEntered.countDown()
+                hookRelease.await(5, TimeUnit.SECONDS)
+            }
+            val migrator = Thread { fx.replayQueue.migrateBufferToQueue() }
+            migrator.start()
+            assertTrue(hookEntered.await(2, TimeUnit.SECONDS))
+            val queueBusy = CountDownLatch(1)
+            queueExecutor.execute {
+                queueBusy.countDown()
+                releaseQueue.await(5, TimeUnit.SECONDS)
+            }
+            assertTrue(queueBusy.await(2, TimeUnit.SECONDS))
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            integrationExecutor.submit {}.get(2, TimeUnit.SECONDS)
+            assertTrue(fx.replayQueue.isBufferClearPending)
+
+            hookRelease.countDown()
+            migrator.join(5000)
+            releaseQueue.countDown()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.bufferDepth)
+            assertEquals(0, fx.replayQueue.depth, "old-mask frames reached the persisted queue")
+        } finally {
+            PostHogReplayBufferQueue.testHook = null
+            hookRelease.countDown()
+            releaseQueue.countDown()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `masking drop is not undone by a buffered add queued ahead of the clear`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = false, minimumDurationMs = 1L)
+        fx.config.sessionReplayConfig.maskAllTextInputs = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        val releaseFirst = CountDownLatch(1)
+        val releaseSecond = CountDownLatch(1)
+        try {
+            bufferTwoSnapshots(fx)
+            val queueExecutor = ReflectionHelpers.getField<ExecutorService>(fx.replayQueue, "executor")
+            val integrationExecutor = ReflectionHelpers.getField<ExecutorService>(fx.sut, "injectedExecutor")
+            val queueBusy = CountDownLatch(1)
+            queueExecutor.execute {
+                queueBusy.countDown()
+                releaseFirst.await(2, TimeUnit.SECONDS)
+            }
+            assertTrue(queueBusy.await(2, TimeUnit.SECONDS))
+            fx.replayQueue.add(createTestEvent("snapshot_3"))
+            val bufferedAddRan = CountDownLatch(1)
+            queueExecutor.execute {
+                bufferedAddRan.countDown()
+                releaseSecond.await(2, TimeUnit.SECONDS)
+            }
+
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            assertTrue(fx.sut.isActive())
+            releaseFirst.countDown()
+            assertTrue(bufferedAddRan.await(2, TimeUnit.SECONDS))
+            // A migrate that reaches the inner queue blocks on the queue executor, so wait for
+            // either it moving frames or the integration executor draining.
+            val integrationDrained = integrationExecutor.submit {}
+            awaitCondition { integrationDrained.isDone || fx.replayQueue.depth > 0 }
+            releaseSecond.countDown()
+            awaitReplayExecutors()
+
+            assertEquals(0, fx.replayQueue.depth)
+            assertEquals(0, fx.replayQueue.bufferDepth)
+        } finally {
+            releaseFirst.countDown()
+            releaseSecond.countDown()
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a later remote config with masking still on keeps newly buffered frames`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000L)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig()
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
+    @Test
+    fun `a session rotation that re-arms with masking on is not dropped by the next remote config`() {
+        val fx = createIntegrationWithRealQueue(flagActive = true, hasFetched = true, minimumDurationMs = 60_000L)
+        fx.config.sessionReplayConfig.maskAllImages = false
+        val postHog = mock<PostHogInterface>()
+        whenever(postHog.getSessionId()).thenReturn(UUID.randomUUID())
+        fx.sut.install(postHog)
+        fx.sut.start(resumeCurrent = true)
+        try {
+            whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            PostHogSessionManager.startSession()
+            fx.sut.onSessionIdChanged()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+            bufferTwoSnapshots(fx)
+
+            fx.sut.onRemoteConfig()
+            shadowOf(Looper.getMainLooper()).idle()
+            awaitReplayExecutors()
+
+            assertEquals(2, fx.replayQueue.bufferDepth)
+        } finally {
+            fx.sut.uninstall()
+        }
+    }
+
     @Test
     fun `first remote config flag on with min duration already met migrates immediately`() {
         val fx =
@@ -4449,11 +4892,14 @@ internal class PostHogReplayIntegrationTest {
     private fun screenshotFixture(
         enableMaskAlignmentVerification: Boolean = true,
         captureTouches: Boolean = true,
+        minimumDurationMs: Long? = null,
+        onCapture: ((Map<String, Any>?) -> Unit)? = null,
     ): Pair<RealQueueFixture, PostHogFake> {
         val fx =
             createIntegrationWithRealQueue(
                 flagActive = true,
                 hasFetched = true,
+                minimumDurationMs = minimumDurationMs,
                 integrationContext = ApplicationProvider.getApplicationContext(),
                 // These fixtures invoke capture explicitly. Automatic scheduling is covered
                 // separately using real root/layout/draw notifications and a queued executor.
@@ -4466,6 +4912,20 @@ internal class PostHogReplayIntegrationTest {
         fx.sut.install(
             object : PostHogInterface by fake {
                 override fun getSessionId(): UUID? = PostHogSessionManager.getActiveSessionId()
+
+                override fun capture(
+                    event: String,
+                    distinctId: String?,
+                    properties: Map<String, Any>?,
+                    userProperties: Map<String, Any>?,
+                    userPropertiesSetOnce: Map<String, Any>?,
+                    groups: Map<String, String>?,
+                    timestamp: Date?,
+                    options: Map<String, Any?>?,
+                ) {
+                    fake.capture(event, distinctId, properties, userProperties, userPropertiesSetOnce, groups, timestamp, options)
+                    onCapture?.invoke(properties)
+                }
             },
         )
         fx.sut.start(resumeCurrent = true)
@@ -6614,6 +7074,31 @@ internal class PostHogReplayIntegrationTest {
             }
 
         @Test
+        fun `remote masking turning on during capture discards the scene and allows retry`() =
+            withDialog { h, fx, fake, status ->
+                fx.config.sessionReplayConfig.maskAllTextInputs = false
+                val remoteMaskAllText = AtomicBoolean(false)
+                whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenAnswer { remoteMaskAllText.get() }
+                RecordingShadowPixelCopy.onRequest = {
+                    it.eraseColor(Color.RED)
+                    remoteMaskAllText.set(true)
+                }
+                assertFalse(capture(h, fx, status))
+                assertEquals(0, fake.captures)
+                assertNull(ReflectionHelpers.getField<Any?>(fx.sut, "lastScene"))
+                assertTrue(capture(h, fx, status))
+                assertEquals(1, fake.captures)
+            }
+
+        @Test
+        fun `enabling remote text masking invalidates cached scene layers`() =
+            assertMaskingSettingInvalidatesCache(maskImages = false, remote = true)
+
+        @Test
+        fun `enabling remote image masking invalidates cached scene layers`() =
+            assertMaskingSettingInvalidatesCache(maskImages = true, remote = true)
+
+        @Test
         fun `enabling text masking invalidates cached scene layers`() = assertMaskingSettingInvalidatesCache(maskImages = false)
 
         @Test
@@ -6699,6 +7184,7 @@ internal class PostHogReplayIntegrationTest {
         private fun assertMaskingSettingInvalidatesCache(
             maskImages: Boolean,
             marker: Boolean = false,
+            remote: Boolean = false,
         ) = withDialog { h, fx, fake, status ->
             val source = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
 
@@ -6778,6 +7264,10 @@ internal class PostHogReplayIntegrationTest {
                         activityView.tag = "ph-no-capture"
                         dialogView.tag = "ph-no-capture"
                     }
+                } else if (remote && maskImages) {
+                    whenever(fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+                } else if (remote) {
+                    whenever(fx.remoteConfig.isSessionRecordingMaskAllTextEnabled()).thenReturn(true)
                 } else if (maskImages) {
                     fx.config.sessionReplayConfig.maskAllImages = true
                 } else {
@@ -6937,8 +7427,17 @@ internal class PostHogReplayIntegrationTest {
     )
 
     // A capturable window with a masked child, so the walks produce a rect to compare.
-    private fun screenshotCaptureHarness(enableMaskAlignmentVerification: Boolean = true): ScreenshotCaptureHarness {
-        val (fx, fake) = screenshotFixture(enableMaskAlignmentVerification)
+    private fun screenshotCaptureHarness(
+        enableMaskAlignmentVerification: Boolean = true,
+        minimumDurationMs: Long? = null,
+        onCapture: ((Map<String, Any>?) -> Unit)? = null,
+    ): ScreenshotCaptureHarness {
+        val (fx, fake) =
+            screenshotFixture(
+                enableMaskAlignmentVerification,
+                minimumDurationMs = minimumDurationMs,
+                onCapture = onCapture,
+            )
         val activity = createActivity()
         shadowOf(Looper.getMainLooper()).idle()
         val child = TextView(activity).apply { tag = "ph-no-capture" }
@@ -6952,6 +7451,101 @@ internal class PostHogReplayIntegrationTest {
         val status = ViewTreeSnapshotStatus(mock<NextDrawListener>())
         fx.sut.decorViews[hookLayout] = status
         return ScreenshotCaptureHarness(fx, fake, hookLayout, status, child, activity.window)
+    }
+
+    // Arms local image masking off, so a server flag that turns it on is stricter.
+    private fun armImageMaskingOff(h: ScreenshotCaptureHarness) {
+        h.fx.config.sessionReplayConfig.maskAllImages = false
+        h.fx.sut.onRemoteConfig()
+        awaitReplayExecutors()
+    }
+
+    private fun turnOnServerImageMasking(h: ScreenshotCaptureHarness) {
+        whenever(h.fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+        h.fx.sut.onRemoteConfig()
+    }
+
+    private fun snapshotEvent(properties: Map<String, Any>?): PostHogEvent =
+        PostHogEvent(event = "\$snapshot", distinctId = "test-user", properties = properties?.toMutableMap(), uuid = UUID.randomUUID())
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `a frame collected before a masking drop and enqueued after it is discarded`() {
+        for (minimumDurationMs in listOf(60_000L, null)) {
+            var dropDuringCapture = false
+            lateinit var h: ScreenshotCaptureHarness
+            h =
+                screenshotCaptureHarness(minimumDurationMs = minimumDurationMs) { properties ->
+                    // Same thread as PostHog.capture handing the frame to the replay queue.
+                    if (dropDuringCapture) {
+                        dropDuringCapture = false
+                        turnOnServerImageMasking(h)
+                    }
+                    h.fx.replayQueue.add(snapshotEvent(properties))
+                }
+            RecordingShadowPixelCopy.reset()
+            try {
+                armImageMaskingOff(h)
+                dropDuringCapture = true
+
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                awaitReplayExecutors()
+
+                assertEquals(0, h.fx.replayQueue.bufferDepth, "buffered, minimumDurationMs=$minimumDurationMs")
+                assertEquals(0, h.fx.replayQueue.depth, "direct, minimumDurationMs=$minimumDurationMs")
+
+                assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+                awaitReplayExecutors()
+
+                val kept = if (minimumDurationMs != null) h.fx.replayQueue.bufferDepth else h.fx.replayQueue.depth
+                assertEquals(1, kept, "frame stamped after the drop, minimumDurationMs=$minimumDurationMs")
+            } finally {
+                h.fx.sut.uninstall()
+                RecordingShadowPixelCopy.reset()
+            }
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `the first capture after a masking drop emits meta and full snapshot`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            armImageMaskingOff(h)
+            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertTrue(h.status.sentFullSnapshot)
+
+            turnOnServerImageMasking(h)
+            awaitReplayExecutors()
+
+            assertTrue(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            val events = h.fake.properties!!["\$snapshot_data"] as List<*>
+            assertTrue(events[0] is RRMetaEvent)
+            assertTrue(events[1] is RRFullSnapshotEvent)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
+    }
+
+    @Test
+    @Config(sdk = [26], shadows = [RecordingShadowPixelCopy::class])
+    fun `masking turning on during a bridge screenshot discards the frame`() {
+        val h = screenshotCaptureHarness()
+        RecordingShadowPixelCopy.reset()
+        try {
+            armImageMaskingOff(h)
+            RecordingShadowPixelCopy.onRequest = {
+                whenever(h.fx.remoteConfig.isSessionRecordingMaskAllImagesEnabled()).thenReturn(true)
+            }
+
+            assertFalse(h.fx.sut.generateSnapshot(WeakReference(h.hookLayout), WeakReference(h.window)))
+            assertEquals(0, h.fake.captures)
+        } finally {
+            h.fx.sut.uninstall()
+            RecordingShadowPixelCopy.reset()
+        }
     }
 
     private fun captureDialog(h: ScreenshotCaptureHarness): RRWireframe? =
