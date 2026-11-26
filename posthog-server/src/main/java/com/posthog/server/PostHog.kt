@@ -5,6 +5,7 @@ import com.posthog.PostHogStateless
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
+import com.posthog.server.internal.KnownAbsentPropertyKeys
 import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogUncaughtExceptionCapture
 import com.posthog.server.internal.withActiveTraceContext
@@ -271,6 +272,233 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         )
     }
 
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).isEnabled(key). Will be removed in the next major.",
+    )
+    override fun isFeatureEnabled(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Boolean {
+        val value =
+            getFeatureFlagWithKnownAbsent(distinctId, key, options, options.defaultValue as? Boolean ?: false)
+                ?: return super<PostHogInterface>.isFeatureEnabled(distinctId, key, options)
+        return when (val flagValue = value.value) {
+            is Boolean -> flagValue
+            is String -> flagValue.isNotEmpty()
+            else -> false
+        }
+    }
+
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlag(key). Will be removed in the next major.",
+    )
+    override fun getFeatureFlag(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Any? {
+        val lookupValue =
+            getFeatureFlagWithKnownAbsent(distinctId, key, options, options.defaultValue)
+                ?: return super<PostHogInterface>.getFeatureFlag(distinctId, key, options)
+        return lookupValue.value
+    }
+
+    @Deprecated(
+        message = "Prefer evaluateFlags(distinctId).getFlagPayload(key). Will be removed in the next major.",
+    )
+    override fun getFeatureFlagPayload(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+    ): Any? {
+        val lookup =
+            resolveKnownAbsentLookup(
+                options.personPropertyKeysKnownAbsent,
+                options.groupPropertyKeysKnownAbsent,
+            ) ?: return super<PostHogInterface>.getFeatureFlagPayload(distinctId, key, options)
+        val knownAbsent = lookup.knownAbsent ?: return options.defaultValue
+        if (!isEnabled()) return options.defaultValue
+        return getFeatureFlagResultWithKnownAbsent(
+            distinctId,
+            key,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+            knownAbsent,
+            sendFeatureFlagEvent = false,
+        )?.payload ?: options.defaultValue
+    }
+
+    @Deprecated(
+        message =
+            "Prefer evaluateFlags(distinctId) and read flag values + payload from the snapshot. " +
+                "Will be removed in the next major.",
+    )
+    override fun getFeatureFlagResult(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagResultOptions,
+    ): FeatureFlagResult? {
+        val lookup =
+            resolveKnownAbsentLookup(
+                options.personPropertyKeysKnownAbsent,
+                options.groupPropertyKeysKnownAbsent,
+            ) ?: return super<PostHogInterface>.getFeatureFlagResult(distinctId, key, options)
+        val knownAbsent = lookup.knownAbsent ?: return null
+        if (!isEnabled()) return null
+        return getFeatureFlagResultWithKnownAbsent(
+            distinctId,
+            key,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+            knownAbsent,
+            options.sendFeatureFlagEvent,
+        )
+    }
+
+    /**
+     * A known-absent listing for one evaluation. [knownAbsent] is null when a list is over the
+     * `/flags` limit or holds a null key, in which case the caller returns its unavailable result.
+     */
+    private class KnownAbsentLookup(val knownAbsent: KnownAbsentPropertyKeys?)
+
+    /**
+     * Returns null when nothing is listed, so the call keeps the existing path unchanged.
+     * Over the limit or with a null key this logs a warning and nothing is evaluated or sent; lists
+     * are never truncated or filtered.
+     */
+    private fun resolveKnownAbsentLookup(
+        personPropertyKeysKnownAbsent: List<String>?,
+        groupPropertyKeysKnownAbsent: Map<String, List<String>>?,
+    ): KnownAbsentLookup? {
+        val error = KnownAbsentPropertyKeys.inputError(personPropertyKeysKnownAbsent, groupPropertyKeysKnownAbsent)
+        if (error != null) {
+            getConfig<com.posthog.PostHogConfig>()?.logger?.logWarning(
+                "PostHog: $error. No feature flags were evaluated and no request was sent.",
+            )
+            return KnownAbsentLookup(null)
+        }
+        val knownAbsent =
+            KnownAbsentPropertyKeys.of(personPropertyKeysKnownAbsent, groupPropertyKeysKnownAbsent) ?: return null
+        return KnownAbsentLookup(knownAbsent)
+    }
+
+    /**
+     * Mirrors the core flag getter for a lookup with known-absent keys. Returns null when nothing
+     * is listed; otherwise wraps the value, which is [defaultValue] when the flag is unavailable.
+     */
+    private fun getFeatureFlagWithKnownAbsent(
+        distinctId: String,
+        key: String,
+        options: PostHogFeatureFlagOptions,
+        defaultValue: Any?,
+    ): FeatureFlagLookupValue? {
+        val lookup =
+            resolveKnownAbsentLookup(
+                options.personPropertyKeysKnownAbsent,
+                options.groupPropertyKeysKnownAbsent,
+            ) ?: return null
+        val knownAbsent = lookup.knownAbsent ?: return FeatureFlagLookupValue(defaultValue)
+        if (!isEnabled()) return FeatureFlagLookupValue(defaultValue)
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
+        val featureFlagsImpl = featureFlags as? PostHogFeatureFlags ?: return FeatureFlagLookupValue(defaultValue)
+        val result =
+            featureFlagsImpl.getFeatureFlagResult(
+                key,
+                resolvedDistinctId,
+                options.groups,
+                options.personProperties,
+                options.groupProperties,
+                knownAbsent,
+            )
+        val flagValue = result?.value ?: defaultValue
+        val failed =
+            result == null &&
+                featureFlagsImpl.getCacheEntry(
+                    resolvedDistinctId,
+                    options.groups,
+                    options.personProperties,
+                    options.groupProperties,
+                    knownAbsent,
+                )?.flags?.get(key)?.failed == true
+        sendFeatureFlagCalledWithKnownAbsent(
+            resolvedDistinctId,
+            key,
+            if (failed) null else flagValue,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+            knownAbsent,
+            sendFeatureFlagEvent = null,
+        )
+        return FeatureFlagLookupValue(flagValue)
+    }
+
+    private class FeatureFlagLookupValue(val value: Any?)
+
+    private fun getFeatureFlagResultWithKnownAbsent(
+        distinctId: String,
+        key: String,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys,
+        sendFeatureFlagEvent: Boolean?,
+    ): FeatureFlagResult? {
+        val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId) ?: distinctId
+        val featureFlagsImpl = featureFlags as? PostHogFeatureFlags ?: return null
+        val result =
+            featureFlagsImpl.getFeatureFlagResult(
+                key,
+                resolvedDistinctId,
+                groups,
+                personProperties,
+                groupProperties,
+                knownAbsent,
+            )
+        sendFeatureFlagCalledWithKnownAbsent(
+            resolvedDistinctId,
+            key,
+            result?.value,
+            groups,
+            personProperties,
+            groupProperties,
+            knownAbsent,
+            sendFeatureFlagEvent,
+        )
+        return result
+    }
+
+    // Same properties as the core `$feature_flag_called` path, read from the known-absent cache entry.
+    private fun sendFeatureFlagCalledWithKnownAbsent(
+        distinctId: String,
+        key: String,
+        value: Any?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        knownAbsent: KnownAbsentPropertyKeys,
+        sendFeatureFlagEvent: Boolean?,
+    ) {
+        if (!(sendFeatureFlagEvent ?: getConfig<com.posthog.PostHogConfig>()?.sendFeatureFlagEvent ?: true)) return
+        val featureFlagsImpl = featureFlags as? PostHogFeatureFlags ?: return
+        val entry = featureFlagsImpl.getCacheEntry(distinctId, groups, personProperties, groupProperties, knownAbsent)
+        val props = mutableMapOf<String, Any>()
+        entry?.requestId?.let { props["\$feature_flag_request_id"] = it }
+        entry?.evaluatedAt?.let { props["\$feature_flag_evaluated_at"] = it }
+        featureFlagsImpl.getFeatureFlagError(key, distinctId, groups, personProperties, groupProperties, knownAbsent)
+            ?.let { props["\$feature_flag_error"] = it }
+        entry?.flags?.get(key)?.let { details ->
+            props["\$feature_flag_id"] = details.metadata.id
+            props["\$feature_flag_version"] = details.metadata.version
+            details.reason?.description?.let { props["\$feature_flag_reason"] = it }
+            details.metadata.hasExperiment?.let { props["\$feature_flag_has_experiment"] = it }
+        }
+        captureFeatureFlagCalledEvent(distinctId, key, value, props, groups)
+    }
+
     override fun group(
         distinctId: String,
         type: String,
@@ -427,6 +655,40 @@ public class PostHog : PostHogStateless(), PostHogInterface {
         flagKeys: List<String>?,
         onlyEvaluateLocally: Boolean,
         disableGeoip: Boolean,
+    ): PostHogFeatureFlagEvaluations =
+        evaluateFlags(distinctId, groups, personProperties, groupProperties, flagKeys, onlyEvaluateLocally, disableGeoip, null)
+
+    override fun evaluateFlags(
+        distinctId: String?,
+        options: PostHogEvaluateFlagsOptions,
+    ): PostHogFeatureFlagEvaluations {
+        val lookup =
+            resolveKnownAbsentLookup(
+                options.personPropertyKeysKnownAbsent,
+                options.groupPropertyKeysKnownAbsent,
+            ) ?: return super<PostHogInterface>.evaluateFlags(distinctId, options)
+        val knownAbsent = lookup.knownAbsent ?: return PostHogFeatureFlagEvaluations.empty(evaluationsHost)
+        return evaluateFlags(
+            distinctId,
+            options.groups,
+            options.personProperties,
+            options.groupProperties,
+            options.flagKeys,
+            options.onlyEvaluateLocally,
+            options.disableGeoip,
+            knownAbsent,
+        )
+    }
+
+    private fun evaluateFlags(
+        distinctId: String?,
+        groups: Map<String, String>?,
+        personProperties: Map<String, Any?>?,
+        groupProperties: Map<String, Map<String, Any?>>?,
+        flagKeys: List<String>?,
+        onlyEvaluateLocally: Boolean,
+        disableGeoip: Boolean,
+        knownAbsent: KnownAbsentPropertyKeys?,
     ): PostHogFeatureFlagEvaluations {
         val resolvedDistinctId = PostHogRequestContext.resolveDistinctId(distinctId)
         if (resolvedDistinctId.isNullOrBlank()) {
@@ -446,6 +708,7 @@ public class PostHog : PostHogStateless(), PostHogInterface {
                 flagKeys = flagKeys,
                 onlyEvaluateLocally = onlyEvaluateLocally,
                 disableGeoip = disableGeoip,
+                knownAbsent = knownAbsent,
             )
 
         return PostHogFeatureFlagEvaluations(

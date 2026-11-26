@@ -9,6 +9,10 @@ package com.posthog.server
  * @property groups Groups for group-based flags, keyed by group type.
  * @property personProperties Person properties to use for flag evaluation.
  * @property groupProperties Group properties to use for flag evaluation, keyed by group type.
+ * @property personPropertyKeysKnownAbsent Person property keys known to be absent for this
+ *   evaluation. See [PostHogEvaluateFlagsOptions.personPropertyKeysKnownAbsent].
+ * @property groupPropertyKeysKnownAbsent Group property keys known to be absent for this
+ *   evaluation, keyed by group type. See [PostHogEvaluateFlagsOptions.groupPropertyKeysKnownAbsent].
  * @property sendFeatureFlagEvent Whether to send `$feature_flag_called`, or null to use the SDK config default.
  */
 public class PostHogFeatureFlagResultOptions private constructor(
@@ -16,6 +20,8 @@ public class PostHogFeatureFlagResultOptions private constructor(
     public val personProperties: Map<String, Any?>?,
     public val groupProperties: Map<String, Map<String, Any?>>?,
     public val sendFeatureFlagEvent: Boolean?,
+    public val personPropertyKeysKnownAbsent: List<String>?,
+    public val groupPropertyKeysKnownAbsent: Map<String, List<String>>?,
 ) {
     /**
      * Mutable builder for [PostHogFeatureFlagResultOptions].
@@ -32,6 +38,12 @@ public class PostHogFeatureFlagResultOptions private constructor(
 
         /** Whether to send `$feature_flag_called`, or null to use the SDK config default. */
         public var sendFeatureFlagEvent: Boolean? = null
+
+        /** Person property keys known to be absent for this evaluation. */
+        public var personPropertyKeysKnownAbsent: MutableList<String>? = null
+
+        /** Group property keys known to be absent for this evaluation, keyed by group type. */
+        public var groupPropertyKeysKnownAbsent: MutableMap<String, MutableList<String>>? = null
 
         /**
          * Sets whether to send the `$feature_flag_called` event when the flag is evaluated.
@@ -129,6 +141,44 @@ public class PostHogFeatureFlagResultOptions private constructor(
         }
 
         /**
+         * Appends person property keys known to be absent for this evaluation. A listed key is
+         * treated as absent even when [personProperties] holds a value for it.
+         *
+         * @param keys Person property keys. Duplicates count toward the limit of 1000.
+         * @return This builder.
+         */
+        public fun personPropertyKeysKnownAbsent(keys: Collection<String>): Builder {
+            this.personPropertyKeysKnownAbsent = this.personPropertyKeysKnownAbsent.addBuilderValues(keys)
+            return this
+        }
+
+        /**
+         * Appends group property keys known to be absent for one group type in this evaluation.
+         *
+         * @param groupType Group type, for example `company`.
+         * @param keys Group property keys. Duplicates count toward the limit of 1000 per group type.
+         * @return This builder.
+         */
+        public fun groupPropertyKeysKnownAbsent(
+            groupType: String,
+            keys: Collection<String>,
+        ): Builder {
+            this.groupPropertyKeysKnownAbsent = this.groupPropertyKeysKnownAbsent.addBuilderGroupKeys(groupType, keys)
+            return this
+        }
+
+        /**
+         * Appends group property keys known to be absent for this evaluation, keyed by group type.
+         *
+         * @param keys Group property keys to merge, keyed by group type.
+         * @return This builder.
+         */
+        public fun groupPropertyKeysKnownAbsent(keys: Map<String, Collection<String>>): Builder {
+            keys.forEach { (groupType, groupKeys) -> groupPropertyKeysKnownAbsent(groupType, groupKeys) }
+            return this
+        }
+
+        /**
          * Builds an immutable [PostHogFeatureFlagResultOptions] instance.
          *
          * @return Feature-flag result lookup options containing the accumulated values.
@@ -139,6 +189,8 @@ public class PostHogFeatureFlagResultOptions private constructor(
                 personProperties = personProperties.toBuilderMapSnapshot(),
                 groupProperties = groupProperties.toBuilderGroupPropertiesSnapshot(),
                 sendFeatureFlagEvent = sendFeatureFlagEvent,
+                personPropertyKeysKnownAbsent = personPropertyKeysKnownAbsent.toBuilderListSnapshot(),
+                groupPropertyKeysKnownAbsent = groupPropertyKeysKnownAbsent.toBuilderGroupKeysSnapshot(),
             )
     }
 

@@ -8,7 +8,10 @@ internal fun <K, V> MutableMap<K, V>?.putBuilderValue(
 internal fun <K, V> MutableMap<K, V>?.putBuilderValues(values: Map<K, V>): MutableMap<K, V> =
     (this ?: mutableMapOf()).apply { putAll(values) }
 
-internal fun <T> MutableList<T>?.addBuilderValues(values: List<T>): MutableList<T> = (this ?: mutableListOf()).apply { addAll(values) }
+internal fun <T> MutableList<T>?.addBuilderValues(values: Collection<T>): MutableList<T> =
+    (this ?: mutableListOf()).apply {
+        addAll(values)
+    }
 
 internal fun <K, V> Map<K, V>?.toBuilderMapSnapshot(): Map<K, V>? = this?.toMap()
 
@@ -43,3 +46,14 @@ internal fun MutableMap<String, Map<String, Any?>>?.mergeBuilderGroupProperties(
             put(group, get(group).orEmpty() + properties)
         }
     }
+
+internal fun MutableMap<String, MutableList<String>>?.addBuilderGroupKeys(
+    groupType: String,
+    keys: Collection<String>,
+): MutableMap<String, MutableList<String>> =
+    (this ?: mutableMapOf()).apply {
+        getOrPut(groupType) { mutableListOf() }.addAll(keys)
+    }
+
+internal fun Map<String, List<String>>?.toBuilderGroupKeysSnapshot(): Map<String, List<String>>? =
+    this?.mapValues { (_, keys) -> keys.toList() }
