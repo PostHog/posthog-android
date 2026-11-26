@@ -19,6 +19,7 @@ A build of unchanged code in the same release reuses the existing upload and sen
 - `posthog-server` with `posthog-meta.properties` support, and no `releaseIdentifier` set in code (an explicit value wins over the file).
 - A personal API key with error tracking write access, for the upload.
 - Gradle 8.12 or newer, with the `java` plugin or a plugin that applies it, such as `org.jetbrains.kotlin.jvm` or `org.springframework.boot`.
+- Gradle running on Java 17 or newer. The application can still compile for an older Java version, for example with a toolchain or `options.release`.
 
 ### Usage
 
