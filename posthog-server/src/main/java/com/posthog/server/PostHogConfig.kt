@@ -201,11 +201,13 @@ public open class PostHogConfig constructor(
     public var flagDefinitionCacheProvider: PostHogFlagDefinitionCacheProvider? = null
 
     /**
-     * Identifier attached as `map_id` to exception stack frames so PostHog can symbolicate
-     * them against an uploaded ProGuard/R8 mapping. It must match the map-id used when
-     * uploading the mapping, e.g. via
+     * Identifier attached as `map_id` to exception stack frames so PostHog can find the symbols
+     * uploaded for this build: a ProGuard/R8 mapping, or the source bundle that adds source code
+     * to the frames. It must match the id the symbols were uploaded under, e.g. via
      * `posthog-cli proguard upload --path "mapping.txt" --map-id "<releaseIdentifier>"`.
-     * Defaults to null (no `map_id` attached).
+     * When null, the SDK reads `io.posthog.proguard.mapid` from `posthog-meta.properties` on the
+     * classpath, which the posthog-maven-plugin and `posthog-cli jvm upload --meta-out` write.
+     * Defaults to null (no `map_id` attached when that file is absent too).
      */
     public var releaseIdentifier: String? = null
 
@@ -693,7 +695,8 @@ public open class PostHogConfig constructor(
         /**
          * Sets the identifier attached as `map_id` to exception stack frames for symbolication.
          *
-         * @param releaseIdentifier The map-id used when uploading the ProGuard/R8 mapping, or null.
+         * @param releaseIdentifier The map-id the build's symbols were uploaded under, or null to
+         * read it from `posthog-meta.properties` on the classpath.
          * @return This builder.
          */
         public fun releaseIdentifier(releaseIdentifier: String?): Builder = apply { this.releaseIdentifier = releaseIdentifier }

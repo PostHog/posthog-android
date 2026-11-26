@@ -7,6 +7,7 @@ import com.posthog.internal.FeatureFlag
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogUncaughtExceptionCapture
+import com.posthog.server.internal.loadMapIdFromClasspath
 import com.posthog.server.internal.withActiveTraceContext
 
 @Suppress("DEPRECATION")
@@ -50,6 +51,14 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             super.setup(config.asCoreConfig())
             if (alreadySetUp || !isEnabled()) {
                 return
+            }
+
+            // Fall back to the map id the build wrote, after super.setup so the debug logger is in
+            // place. An explicitly configured releaseIdentifier always wins.
+            getConfig<com.posthog.PostHogConfig>()?.let { coreConfig ->
+                if (coreConfig.releaseIdentifier.isNullOrEmpty()) {
+                    coreConfig.releaseIdentifier = loadMapIdFromClasspath(coreConfig.logger)
+                }
             }
 
             // Core setup never installs integrations for the stateless base, so wire the uncaught

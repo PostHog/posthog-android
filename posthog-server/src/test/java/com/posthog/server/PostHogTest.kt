@@ -434,6 +434,65 @@ internal class PostHogTest {
     }
 
     @Test
+    fun `captureException stamps frames with the map id from posthog-meta properties`() {
+        assertEquals(listOf("built-map-id"), captureFrameMapIds(releaseIdentifier = null, metaMapId = "built-map-id"))
+    }
+
+    @Test
+    fun `explicit releaseIdentifier wins over posthog-meta properties`() {
+        assertEquals(listOf("release-123"), captureFrameMapIds(releaseIdentifier = "release-123", metaMapId = "built-map-id"))
+    }
+
+    /**
+     * Captures one exception with a context class loader that serves a posthog-meta.properties
+     * holding [metaMapId], and returns the distinct map_id values on its frames.
+     */
+    private fun captureFrameMapIds(
+        releaseIdentifier: String?,
+        metaMapId: String,
+    ): List<Any?> {
+        val metaDir = java.nio.file.Files.createTempDirectory("posthog-meta").toFile()
+        java.io.File(metaDir, "posthog-meta.properties").writeText("io.posthog.proguard.mapid=$metaMapId\n")
+        // Parented by the test loader so libraries that load classes through the context loader
+        // during setup still work. The test classpath has no posthog-meta.properties of its own.
+        val metaLoader = java.net.URLClassLoader(arrayOf(metaDir.toURI().toURL()), PostHogTest::class.java.classLoader)
+
+        val mockServer = MockWebServer()
+        mockServer.enqueue(MockResponse().setResponseCode(200))
+        mockServer.start()
+
+        val thread = Thread.currentThread()
+        val previousLoader = thread.contextClassLoader
+        thread.contextClassLoader = metaLoader
+        try {
+            val postHog =
+                PostHog.with(
+                    PostHogConfig.builder(TEST_PROJECT_TOKEN)
+                        .host(mockServer.url("/").toString())
+                        .flushAt(1)
+                        .releaseIdentifier(releaseIdentifier)
+                        .build(),
+                )
+            postHog.captureException(RuntimeException("boom"), "user123")
+
+            val request = mockServer.takeRequest(5, TimeUnit.SECONDS)
+            assertNotNull(request, "Expected /batch request within 5 seconds")
+            postHog.close()
+
+            val props = request.parseBatch().firstEventProperties()
+            val exceptionList = props["\$exception_list"] as List<*>
+            val stacktrace = (exceptionList.first() as Map<*, *>)["stacktrace"] as Map<*, *>
+            val frames = stacktrace["frames"] as List<*>
+            assertTrue(frames.isNotEmpty())
+            return frames.map { (it as Map<*, *>)["map_id"] }.distinct()
+        } finally {
+            thread.contextClassLoader = previousLoader
+            mockServer.shutdown()
+            metaDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `close flushes pending events before tearing down`() {
         val mockServer = MockWebServer()
         mockServer.enqueue(MockResponse().setResponseCode(200))
