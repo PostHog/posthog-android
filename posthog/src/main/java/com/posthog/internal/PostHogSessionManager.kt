@@ -61,6 +61,24 @@ public object PostHogSessionManager {
     /** Read-only snapshot of the app foreground/background state. */
     internal fun isAppInBackgroundSnapshot(): Boolean = isAppInBackground
 
+    private val screenCaptureInFlight = ThreadLocal<Boolean>()
+
+    /**
+     * Runs [block], the part of a `$screen` capture that can change the session. The listener runs on
+     * this thread before the replay handler sees the event, and reads [isScreenCaptureInFlight].
+     */
+    public fun <T> withScreenCaptureInFlight(block: () -> T): T {
+        screenCaptureInFlight.set(true)
+        try {
+            return block()
+        } finally {
+            screenCaptureInFlight.remove()
+        }
+    }
+
+    /** True on a thread that captures a `$screen` event, so that event follows a session change. */
+    public fun isScreenCaptureInFlight(): Boolean = screenCaptureInFlight.get() == true
+
     /**
      * Registered by PostHog.setup; invoked after getActiveSessionId rotates the session
      * silently, so the session replay handler can react to the change.

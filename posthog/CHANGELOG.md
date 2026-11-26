@@ -1,5 +1,25 @@
 ## Next
 
+## 7.1.0
+
+### Minor Changes
+
+- ae859cb: Support session replay v2 trigger groups from remote config
+  
+  Session replay sampling now handles negative hashes like posthog-js, so a session gets the same sampling decision on mobile and web
+  
+  Session replay event triggers now match the event after the `beforeSend` hooks, like posthog-ios and posthog-js: an event a hook drops no longer starts recording, and a renamed event matches under its new name
+
+### Patch Changes
+
+- 2a17048: Local flag evaluation in `posthog-server` treats a filter type it cannot evaluate, such as a cohort's `person_metadata` filter on first seen, as unsupported and falls back to `/flags`, instead of matching it as a person property with the same key
+
+## 7.0.4
+
+### Patch Changes
+
+- 2df862f: Local flag evaluation in `posthog-server` supports early-access feature enrollment. For a flag with `feature_enrollment`, the person property `$feature_enrollment/<flag key>` decides the flag before its release conditions: `true` or `"true"` is enrolled, any other value is opted out, and without it the flag falls back to `/flags`. Group-aggregated flags read the person's enrollment too
+
 ## 7.0.3
 
 ### Patch Changes

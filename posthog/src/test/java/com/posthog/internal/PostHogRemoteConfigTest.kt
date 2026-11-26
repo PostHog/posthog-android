@@ -1962,6 +1962,23 @@ internal class PostHogRemoteConfigTest {
     }
 
     @Test
+    fun `simpleHash matches the web helper, including negative hashes`() {
+        // java "abc".hashCode() == 96354
+        assertEquals(96354L, simpleHash("abc"))
+        // java "posthog".hashCode() == -391202912; js Math.abs of the int32 yields 391202912
+        assertEquals(391202912L, simpleHash("posthog"))
+    }
+
+    @Test
+    fun `sampling uses the hash bucket like the web helper`() {
+        // java "session-1group-1".hashCode() == 365459561; 365459561 % 100 == 61
+        assertFalse(sampleOnProperty("session-1group-1", 0.61))
+        assertTrue(sampleOnProperty("session-1group-1", 0.62))
+        assertTrue(sampleOnProperty("session-1group-1", 1.0))
+        assertFalse(sampleOnProperty("session-1group-1", 0.0))
+    }
+
+    @Test
     fun `simpleHash produces different values for different inputs`() {
         val hash1 = simpleHash("session-1")
         val hash2 = simpleHash("session-2")
@@ -3431,6 +3448,635 @@ internal class PostHogRemoteConfigTest {
         assertTrue(userCallbackRan.await(5, TimeUnit.SECONDS), "the caller's callback was suppressed by the internal one")
 
         sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups replace the v1 gates once loaded from remote config`() {
+        val response = File("src/test/resources/json/remote-config-v2-trigger-groups.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        assertFalse(sut.hasSessionRecordingTriggerGroups())
+        assertNull(sut.getEventTriggers())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+
+        // the v1 event-trigger gate stands down even though the config also carries eventTriggers
+        assertNull(sut.getEventTriggers())
+        // per-group sampling replaces the global gate: group-a records every session
+        assertTrue(sut.makeSamplingDecision("any-session"))
+
+        // group-a has empty conditions and is fully sampled, group-b waits for a purchase
+        // group-a already records, so recording does not wait on the pending group-b
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertEquals(30000L, sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 50)))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertEquals(5000L, sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+
+        val debugProps = sut.sessionRecordingTriggerGroupsDebugProperties("session-1")
+        assertEquals("v2_trigger_groups", debugProps["\$sdk_debug_replay_remote_trigger_matching_config"])
+        assertEquals(2, debugProps["\$sdk_debug_replay_trigger_groups_count"])
+        assertEquals(
+            listOf(
+                mapOf("id" to "group-a", "name" to "Always on", "matched" to true, "sampled" to true),
+                mapOf("id" to "group-b", "name" to "Big purchases", "matched" to true, "sampled" to true),
+            ),
+            debugProps["\$sdk_debug_replay_matched_recording_trigger_groups"],
+        )
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups wait while no group records and some group is pending`() {
+        val response =
+            File("src/test/resources/json/remote-config-v2-trigger-groups.json").readText()
+                .replaceFirst("\"sampleRate\": 1.0", "\"sampleRate\": 0.0")
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val sut = getSut(host = http.url("/").toString())
+
+        sut.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        // a pending group defers the start in the integration instead of refusing it
+        assertTrue(sut.makeSamplingDecision("session-1"))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups are preloaded from the cache`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 0.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        // activated immediately, but sampled out by its rate
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        // an explicit start goes through the sampling decision, so it must honour the group rate
+        assertFalse(sut.makeSamplingDecision("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `v2 with no usable trigger group records nothing and ignores the v1 fields`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to listOf(mapOf("id" to "", "sampleRate" to 0)),
+                "sampleRate" to "1.0",
+                "eventTriggers" to listOf("purchase"),
+                "minimumDurationMilliseconds" to 0,
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        assertNull(sut.getEventTriggers())
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+        assertFalse(sut.makeSamplingDecision("session-1"))
+        assertNull(sut.getSessionRecordingTriggerGroupsMinimumDurationMs("session-1"))
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "purchase", null))
+        assertEquals(0, sut.sessionRecordingTriggerGroupsDebugProperties("session-1")["\$sdk_debug_replay_trigger_groups_count"])
+
+        sut.clear()
+    }
+
+    @Test
+    fun `v2 with an empty trigger group list uses the v1 fields`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf("version" to 2, "triggerGroups" to emptyList<Any>(), "eventTriggers" to listOf("purchase")),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertFalse(sut.hasSessionRecordingTriggerGroups())
+        assertEquals(setOf("purchase"), sut.getEventTriggers())
+        assertTrue(sut.makeSamplingDecision("session-1"))
+
+        sut.clear()
+    }
+
+    private fun cachedScreenGroupForProPlan() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "g1",
+                            "sampleRate" to 1.0,
+                            "conditions" to
+                                mapOf(
+                                    "urls" to listOf(mapOf("url" to "checkout", "matching" to "regex")),
+                                    "properties" to listOf(mapOf("key" to "plan", "type" to "person", "value" to "pro")),
+                                ),
+                        ),
+                    ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a flags reload does not make the trigger groups check the screen again`() {
+        cachedScreenGroupForProPlan()
+        val http = mockHttp(response = MockResponse().setBody(responseFlagsApi))
+        val sut = getSut(host = http.url("/").toString())
+        assertFalse(sut.onSessionRecordingTriggerEvent("session-1", "\$screen", mapOf("\$screen_name" to "/checkout")))
+        sut.setPersonPropertiesForFlags(mapOf("plan" to "pro"))
+
+        sut.loadFeatureFlags("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertFalse(sut.checkSessionRecordingScreenOnNewSession("session-1", includeUnevaluatedScreen = true))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `v2 trigger groups ignore a leftover linkedFlag`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "linkedFlag" to "replay-flag",
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 1.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        // per-group flag conditions replace the v1 linkedFlag gate, so an unmatched linkedFlag
+        // must not disable recording for a v2 config
+        assertTrue(sut.isSessionReplayFlagActive())
+        assertFalse(sut.sessionReplayLinkedFlagSnapshot().configured)
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    private fun cacheFlagGroupConfig(flag: Any = "replay-flag") {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "flag-group",
+                            "name" to "Flagged",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("matchType" to "all", "flag" to flag),
+                        ),
+                    ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a cached flag group reads the cached flags before any flag getter runs`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to true))
+        // offline: the first request fails, so only the cache can decide
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `a cached flag group stays pending when the cached flag is off`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to false))
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `bootstrapped flags still win over cached flags for a flag group`() {
+        // bootstrap only keeps enabled flags, so a differing variant is what can show precedence
+        cacheFlagGroupConfig(flag = mapOf("flag" to "replay-flag", "variant" to "test"))
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to "test"))
+        val sut =
+            getSut(
+                host = "http://localhost:1/",
+                bootstrap = PostHogBootstrapConfig(featureFlags = mapOf("replay-flag" to "control")),
+            )
+
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    // Stands in for the disk during the race: the cached FEATURE_FLAGS read (which
+    // loadFeatureFlagsFromCache does before taking featureFlagsLock) parks, then serves a stale
+    // snapshot — as if the flags block was read before a /flags response landed — while every
+    // other key and all writes go to the live store.
+    private class ParkingFlagsPreferences(
+        private val live: PostHogPreferences,
+        private val staleFlags: Map<String, Any>,
+    ) : PostHogPreferences {
+        // Armed only after construction, so the init-block preloads completed without parking.
+        @Volatile
+        var armed = false
+        val enteredRead = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? {
+            if (armed && key == FEATURE_FLAGS) {
+                enteredRead.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                return staleFlags
+            }
+            return live.getValue(key, defaultValue)
+        }
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) = live.setValue(key, value)
+
+        override fun clear(except: List<String>) = live.clear(except)
+
+        override fun remove(key: String) = live.remove(key)
+
+        override fun getAll(): Map<String, Any> = live.getAll()
+    }
+
+    @Test
+    fun `a flags response that lands during a cache load keeps its values`() {
+        cacheFlagGroupConfig(flag = "4535-funnel-bar-viz")
+        // the disk (staleFlags below) still has the flag off; the /flags response says it is on
+
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val parking = ParkingFlagsPreferences(preferences, mapOf("4535-funnel-bar-viz" to false))
+        val sut = getSut(host = http.url("/").toString(), cachePreferences = parking)
+        parking.armed = true
+
+        // Park the cache load between the unlocked isFeatureFlagsLoaded check and the lock,
+        // with the stale cached flags already read.
+        val cacheLoader =
+            Thread {
+                sut.isSessionRecordingPermittedByTriggerGroups("session-1")
+            }.apply { isDaemon = true }
+        cacheLoader.start()
+        assertTrue(parking.enteredRead.await(5, TimeUnit.SECONDS), "cache load should reach the cached flags read")
+
+        // The /flags response lands inside that window and writes fresh flags.
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
+        )
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+
+        // The parked cache load resumes: it must bail instead of overwriting the fresh flags.
+        parking.release.countDown()
+        cacheLoader.join(5_000)
+
+        assertEquals(true, sut.getFeatureFlagResult("4535-funnel-bar-viz")?.enabled)
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    // Parks the /flags response's FEATURE_FLAGS write: it runs after featureFlagsLock is released, so a cache
+    // load that starts meanwhile must already see the flags as loaded. Reads serve a stale disk snapshot.
+    private class ParkingFlagsWritePreferences(
+        private val live: PostHogPreferences,
+        private val staleFlags: Map<String, Any>,
+    ) : PostHogPreferences {
+        @Volatile
+        var armed = false
+        val enteredWrite = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        override fun getValue(
+            key: String,
+            defaultValue: Any?,
+        ): Any? = if (armed && key == FEATURE_FLAGS) staleFlags else live.getValue(key, defaultValue)
+
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) {
+            if (armed && key == FEATURE_FLAGS) {
+                enteredWrite.countDown()
+                release.await(5, TimeUnit.SECONDS)
+            }
+            live.setValue(key, value)
+        }
+
+        override fun clear(except: List<String>) = live.clear(except)
+
+        override fun remove(key: String) = live.remove(key)
+
+        override fun getAll(): Map<String, Any> = live.getAll()
+    }
+
+    @Test
+    fun `a cache load while a flags response is still persisting keeps the fresh values`() {
+        cacheFlagGroupConfig(flag = "4535-funnel-bar-viz")
+
+        val response = File("src/test/resources/json/flags-v1/basic-flags-no-errors.json").readText()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val parking = ParkingFlagsWritePreferences(preferences, mapOf("4535-funnel-bar-viz" to false))
+        val sut = getSut(host = http.url("/").toString(), cachePreferences = parking)
+        parking.armed = true
+
+        // The /flags response has written the fresh flags in memory and is now persisting them to disk.
+        val latch = CountDownLatch(1)
+        sut.loadFeatureFlags(
+            "my_identify",
+            anonymousId = "anonId",
+            emptyMap(),
+            onFeatureFlags = PostHogFeatureFlagsCallback { latch.countDown() },
+        )
+        assertTrue(parking.enteredWrite.await(5, TimeUnit.SECONDS), "flags load should reach the disk write")
+
+        // A cache load in that window must not replace the fresh in-memory flags with the stale disk copy.
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        parking.release.countDown()
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "flags load should complete")
+        assertEquals(true, sut.getFeatureFlagResult("4535-funnel-bar-viz")?.enabled)
+
+        sut.clear()
+        http.shutdown()
+    }
+
+    @Test
+    fun `a cached flag group is eligible from the cache before flags answers`() {
+        cacheFlagGroupConfig()
+        preferences.setValue(FEATURE_FLAGS, mapOf("replay-flag" to true))
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.makeSamplingDecision("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `an event-leg group does not care whether the flags are loaded`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "event-group",
+                            "name" to "Event",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("matchType" to "any", "events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        // pending until the event fires, whatever the flags state
+        assertFalse(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertTrue(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", mapOf("amount" to 150)))
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `the local sample rate still caps recording under v2 trigger groups`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Always on",
+                            "sampleRate" to 1.0,
+                            "conditions" to emptyMap<String, Any?>(),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        assertTrue(sut.makeSamplingDecision("session-1"))
+        // an app that turns recording off locally stays off, whatever the groups allow
+        config!!.sampleRateProvider = { 0.0 }
+        assertFalse(sut.makeSamplingDecision("session-1"))
+        config!!.sampleRateProvider = { 1.0 }
+        assertTrue(sut.makeSamplingDecision("session-1"))
+        config!!.sampleRateProvider = null
+
+        sut.clear()
+    }
+
+    @Test
+    fun `v2 trigger groups are left to the JS layer under react native`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                // the v1 rate is still sent next to the groups for older SDKs
+                "sampleRate" to 0.0,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Purchase",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("matchType" to "any", "events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        // JS captures the events and decides when to start, so native must not wait or refuse.
+        PostHogSessionManager.isReactNative = true
+        assertFalse(sut.hasSessionRecordingTriggerGroups())
+        // JS samples the groups, so the leftover v1 rate must not gate the start either
+        assertTrue(sut.makeSamplingDecision("session-1"))
+        // an app's own local rate still applies, like on iOS
+        config!!.sampleRateProvider = { 0.0 }
+        assertFalse(sut.makeSamplingDecision("session-1"))
+        config!!.sampleRateProvider = null
+
+        PostHogSessionManager.isReactNative = false
+        assertTrue(sut.hasSessionRecordingTriggerGroups())
+        assertTrue(sut.hasPendingSessionRecordingTriggerGroups("session-1"))
+
+        sut.clear()
+    }
+
+    @Test
+    fun `trigger group debug properties list the pending group conditions`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf(
+                            "id" to "group-a",
+                            "name" to "Purchases",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertEquals(
+            listOf("trigger group \"Purchases\": event condition not matched"),
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1")["\$sdk_debug_replay_pending_trigger_conditions"],
+        )
+
+        assertTrue(sut.onSessionRecordingTriggerEvent("session-1", "purchase", null))
+        assertFalse(
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1").containsKey("\$sdk_debug_replay_pending_trigger_conditions"),
+        )
+
+        sut.clear()
+    }
+
+    @Test
+    fun `trigger group debug properties omit pending conditions while another group records`() {
+        preferences.setValue(
+            SESSION_REPLAY,
+            mapOf(
+                "version" to 2,
+                "triggerGroups" to
+                    listOf(
+                        mapOf("id" to "group-a", "name" to "Always on", "sampleRate" to 1.0, "conditions" to emptyMap<String, Any?>()),
+                        mapOf(
+                            "id" to "group-b",
+                            "name" to "Purchases",
+                            "sampleRate" to 1.0,
+                            "conditions" to mapOf("events" to listOf(mapOf("name" to "purchase"))),
+                        ),
+                    ),
+            ),
+        )
+        val sut = getSut(host = "http://localhost:1/")
+
+        assertTrue(sut.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(
+            sut.sessionRecordingTriggerGroupsDebugProperties("session-1").containsKey("\$sdk_debug_replay_pending_trigger_conditions"),
+        )
+
+        sut.clear()
+    }
+
+    // Stores values the way the on-device cache does: through the SDK's Gson serializer, which drops null
+    // map entries. PostHogMemoryPreferences keeps them, so it can't show a difference between the two paths.
+    private class SerializingPreferences(
+        private val serializer: PostHogSerializer,
+        private val delegate: PostHogPreferences = PostHogMemoryPreferences(),
+    ) : PostHogPreferences by delegate {
+        override fun setValue(
+            key: String,
+            value: Any,
+        ) {
+            val json = serializer.serializeObject(value) ?: return
+            delegate.setValue(key, serializer.deserializeString(json) ?: return)
+        }
+    }
+
+    @Test
+    fun `a null rate trigger group samples the same from config and from the cache`() {
+        val response =
+            """
+            {
+              "hasFeatureFlags": false,
+              "sessionRecording": {
+                "endpoint": "/s/",
+                "version": 2,
+                "triggerGroups": [{"id": "group-a", "name": "Null rate", "sampleRate": null, "conditions": {}}]
+              }
+            }
+            """.trimIndent()
+        val http = mockHttp(response = MockResponse().setBody(response))
+        val cache = SerializingPreferences(PostHogSerializer(PostHogConfig(PROJECT_TOKEN)))
+
+        val fromConfig = getSut(host = http.url("/").toString(), cachePreferences = cache)
+        fromConfig.loadRemoteConfig("my_identify", anonymousId = "anonId", emptyMap())
+        executor.shutdownAndAwaitTermination()
+
+        assertTrue(fromConfig.hasSessionRecordingTriggerGroups())
+        assertFalse(fromConfig.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(fromConfig.makeSamplingDecision("session-1"))
+
+        val fromCache = getSut(host = "http://localhost:1/", cachePreferences = cache)
+        assertTrue(fromCache.hasSessionRecordingTriggerGroups())
+        assertFalse(fromCache.isSessionRecordingPermittedByTriggerGroups("session-1"))
+        assertFalse(fromCache.makeSamplingDecision("session-1"))
+
+        fromConfig.clear()
+        fromCache.clear()
         http.shutdown()
     }
 

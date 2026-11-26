@@ -1,5 +1,17 @@
 ## Next
 
+## 2.27.1
+
+### Patch Changes
+
+- 2a17048: Local flag evaluation in `posthog-server` treats a filter type it cannot evaluate, such as a cohort's `person_metadata` filter on first seen, as unsupported and falls back to `/flags`, instead of matching it as a person property with the same key
+
+## 2.27.0
+
+### Minor Changes
+
+- 2df862f: Local flag evaluation in `posthog-server` supports early-access feature enrollment. For a flag with `feature_enrollment`, the person property `$feature_enrollment/<flag key>` decides the flag before its release conditions: `true` or `"true"` is enrolled, any other value is opted out, and without it the flag falls back to `/flags`. Group-aggregated flags read the person's enrollment too
+
 ## 2.26.1
 
 ### Patch Changes

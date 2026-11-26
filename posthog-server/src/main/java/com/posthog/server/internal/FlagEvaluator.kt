@@ -162,6 +162,7 @@ internal class FlagEvaluator(
         knownAbsentKeys: KnownAbsentKeyScope,
     ): Boolean =
         try {
+            assertPropertyTypeSupported(property)
             if (knownAbsentKeys.isKnownAbsent(property)) {
                 matchKnownAbsentProperty(property)
             } else {
@@ -320,14 +321,29 @@ internal class FlagEvaluator(
     }
 
     /**
+     * Only person (and group) filters are matched against the properties the caller passes.
+     * Any other filter type, such as `person_metadata`, could disagree with `/flags` if it were
+     * matched against a caller property with the same key, so it can't be evaluated locally.
+     */
+    private fun assertPropertyTypeSupported(property: FlagProperty) {
+        if (property.type == PropertyType.UNSUPPORTED) {
+            throw InconclusiveMatchException(
+                "Can't evaluate the filter on '${property.key}' locally: its type is not a person or group property",
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
+            )
+        }
+    }
+
+    /**
      * Throws an [PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION] error when local evaluation
-     * cannot use the filter, whatever the call supplies: an unknown operator, or a filter value
-     * that the operator cannot parse.
+     * cannot use the filter, whatever the call supplies: an unsupported filter type, an unknown
+     * operator, or a filter value that the operator cannot parse.
      */
     private fun assertFilterSupported(
         property: FlagProperty,
         inCohort: Boolean,
     ) {
+        assertPropertyTypeSupported(property)
         val value = property.propertyValue
         when (property.propertyOperator ?: PropertyOperator.EXACT) {
             PropertyOperator.EXACT, PropertyOperator.IS_NOT -> (value as? List<*> ?: listOf(value)).forEach { valueToString(it) }
@@ -432,6 +448,10 @@ internal class FlagEvaluator(
         }
         if (flag.ensureExperienceContinuity) {
             return PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
+        }
+        // Enrollment decides the flag before its group aggregation and release conditions are read.
+        if (flag.filters.featureEnrollment) {
+            return null
         }
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
         if (aggregationGroupIndex != null && groupTypeMapping[aggregationGroupIndex.toString()] == null) {
@@ -1477,31 +1497,8 @@ internal class FlagEvaluator(
     }
 
     /**
-     * Check if a condition matches for a given distinct ID
+     * Evaluate a condition for a given distinct ID
      */
-    fun isConditionMatch(
-        featureFlag: FlagDefinition,
-        distinctId: String,
-        condition: FlagConditionGroup,
-        properties: Map<String, Any?>,
-        cohortProperties: Map<String, PropertyGroup>,
-        flagsByKey: Map<String, FlagDefinition>?,
-        evaluationCache: MutableMap<String, Any?>?,
-        knownAbsentKeys: KnownAbsentKeyScope = KnownAbsentKeyScope.NONE,
-        context: FlagEvaluationContext? = null,
-    ): Boolean =
-        evaluateCondition(
-            featureFlag,
-            distinctId,
-            condition,
-            properties,
-            cohortProperties,
-            flagsByKey,
-            evaluationCache,
-            knownAbsentKeys,
-            context,
-        ) == ConditionMatch.MATCH
-
     internal fun evaluateCondition(
         featureFlag: FlagDefinition,
         distinctId: String,
@@ -1624,6 +1621,20 @@ internal class FlagEvaluator(
             return false
         }
 
+        // Experience continuity outranks every other reason, as in the load-time warning.
+        if (flag.ensureExperienceContinuity) {
+            throw InconclusiveMatchException(
+                "Flag \"${flag.key}\" has experience continuity enabled",
+                PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
+            )
+        }
+
+        // Enrollment is a person property, so a group-aggregated flag reads it from the person
+        // properties, before any group is resolved.
+        if (flag.filters.featureEnrollment) {
+            return matchFeatureEnrollment(flag, context.personProperties)
+        }
+
         val aggregationGroupIndex = flag.filters.aggregationGroupTypeIndex
         val knownAbsent = context.knownAbsent
         if (aggregationGroupIndex == null) {
@@ -1644,12 +1655,7 @@ internal class FlagEvaluator(
             config.logger.log("Unknown group type index $aggregationGroupIndex for flag '${flag.key}'")
             throw InconclusiveMatchException(
                 "Flag has unknown group type index",
-                // Experience continuity outranks every other reason, as in the load-time warning.
-                if (flag.ensureExperienceContinuity) {
-                    PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY
-                } else {
-                    PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION
-                },
+                PostHogUnresolvedFlagReason.UNSUPPORTED_DEFINITION,
             )
         }
 
@@ -1675,6 +1681,9 @@ internal class FlagEvaluator(
     /**
      * Main evaluation function to match feature flag properties
      * Returns the flag value (true, false, or variant key)
+     *
+     * [properties] are the aggregation's: a group's for a group flag. The person's properties,
+     * for the enrollment of an early-access flag, come from [context], else from [properties].
      */
     fun matchFeatureFlagProperties(
         flag: FlagDefinition,
@@ -1691,6 +1700,10 @@ internal class FlagEvaluator(
                 "Flag \"${flag.key}\" has experience continuity enabled",
                 PostHogUnresolvedFlagReason.EXPERIENCE_CONTINUITY,
             )
+        }
+
+        if (flag.filters.featureEnrollment) {
+            return matchFeatureEnrollment(flag, context?.personProperties ?: properties)
         }
 
         val flagConditions = flag.filters.groups ?: emptyList()
@@ -1745,6 +1758,26 @@ internal class FlagEvaluator(
 
         // We can only return False when either all conditions are False, or no condition was inconclusive
         return false
+    }
+
+    /**
+     * An early-access feature flag returns the person's enrollment at once: `true` or `"true"`
+     * means enrolled, and any other value that was passed, `null` included, means opted out.
+     * Without the enrollment property the flag can't be resolved locally.
+     */
+    fun matchFeatureEnrollment(
+        flag: FlagDefinition,
+        personProperties: Map<String, Any?>,
+    ): Boolean {
+        val enrollmentKey = "\$feature_enrollment/${flag.key}"
+        if (!personProperties.containsKey(enrollmentKey)) {
+            throw InconclusiveMatchException(
+                "Flag has feature enrollment and '$enrollmentKey' was not passed",
+                PostHogUnresolvedFlagReason.MISSING_CONTEXT,
+            )
+        }
+        val enrollment = personProperties[enrollmentKey]
+        return enrollment == true || enrollment == "true"
     }
 
     /**

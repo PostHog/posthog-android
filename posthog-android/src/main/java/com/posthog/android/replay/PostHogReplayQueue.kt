@@ -65,7 +65,7 @@ internal class PostHogReplayQueue internal constructor(
         get() = innerQueue.size
 
     override fun add(record: PostHogEvent) {
-        if (bufferDelegate?.isBuffering != true) {
+        if (bufferDelegate?.shouldBufferSnapshot() != true) {
             if (shouldPersist()) {
                 innerQueue.add(record)
             }
@@ -73,7 +73,7 @@ internal class PostHogReplayQueue internal constructor(
         }
 
         executor.executeSafely {
-            if (bufferDelegate?.isBuffering == true) {
+            if (bufferDelegate?.shouldBufferSnapshot() == true) {
                 bufferQueue.add(record)
                 config.logger.log("Buffered replay event '${record.event}'. Buffer depth: ${bufferQueue.depth}")
                 bufferDelegate?.onReplayBufferSnapshot(this)
@@ -141,6 +141,22 @@ internal class PostHogReplayQueue internal constructor(
         executor.executeSafely {
             bufferQueue.clear()
             config.logger.log("Replay buffer cleared")
+        }
+    }
+
+    /**
+     * Notifies the buffer delegate about snapshots that are already buffered, as a buffered write would.
+     *
+     * A buffered write is otherwise the only thing that makes the delegate reconsider the buffer, and
+     * none arrives once [PostHogReplayBufferDelegate.isBuffering] turns false. Scheduled on the same
+     * FIFO executor as [clearBuffer], so a session rotation's pending clear runs first and the
+     * delegate is never offered the previous session's window.
+     */
+    internal fun recheckBuffer() {
+        executor.executeSafely {
+            if (bufferQueue.depth > 0) {
+                bufferDelegate?.onReplayBufferSnapshot(this)
+            }
         }
     }
 }

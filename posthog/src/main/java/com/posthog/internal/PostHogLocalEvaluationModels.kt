@@ -53,6 +53,12 @@ public class FlagFilters(
      */
     @SerializedName("early_exit")
     public val earlyExit: Boolean = false,
+    /**
+     * Marks an early-access feature flag: the person property `$feature_enrollment/<flag key>`
+     * decides the flag before its holdouts and release conditions.
+     */
+    @SerializedName("feature_enrollment")
+    public val featureEnrollment: Boolean = false,
 )
 
 /**
@@ -83,7 +89,7 @@ public data class FlagProperty(
 ) {
     /**
      * The filter's `type` as sent by the server, such as `group` or `person_metadata`, which
-     * [type] maps to [PropertyType.PERSON]. Null when the property was not parsed from JSON.
+     * [type] does not keep apart. Null when the property was not parsed from JSON.
      */
     @Transient
     public var rawType: String? = null
@@ -225,6 +231,12 @@ public enum class PropertyType {
     COHORT,
     FLAG,
     PERSON,
+
+    /**
+     * A filter type local evaluation can't evaluate, such as `person_metadata`: a value `/flags`
+     * reads from the persons table rather than from the properties the caller passes.
+     */
+    UNSUPPORTED,
     ;
 
     public companion object {
@@ -232,8 +244,9 @@ public enum class PropertyType {
             return when (value) {
                 "cohort" -> COHORT
                 "flag" -> FLAG
-                "person" -> PERSON
-                else -> PERSON
+                // Group filters are matched against the group's properties like person filters.
+                "person", "group" -> PERSON
+                else -> UNSUPPORTED
             }
         }
 

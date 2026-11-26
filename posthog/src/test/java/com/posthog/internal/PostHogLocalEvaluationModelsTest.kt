@@ -400,7 +400,7 @@ public class PostHogLocalEvaluationModelsTest {
 
         val parsed = serializer.deserialize<LocalEvaluationResponse>(java.io.StringReader(json))
         assertEquals(listOf("person_metadata", "group", "person_metadata"), rawTypes(parsed))
-        assertEquals(PropertyType.PERSON, parsed.flags!!.single().filters.groups!!.single().properties!!.first().type)
+        assertEquals(PropertyType.UNSUPPORTED, parsed.flags!!.single().filters.groups!!.single().properties!!.first().type)
 
         val writer = java.io.StringWriter()
         serializer.serialize(parsed, writer)
@@ -417,7 +417,10 @@ public class PostHogLocalEvaluationModelsTest {
         assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("person"))
         assertEquals(PropertyType.COHORT, PropertyType.fromStringOrNull("cohort"))
         assertEquals(PropertyType.FLAG, PropertyType.fromStringOrNull("flag"))
-        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.PERSON, PropertyType.fromStringOrNull("group"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("person_metadata"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull("invalid_type"))
+        assertEquals(PropertyType.UNSUPPORTED, PropertyType.fromStringOrNull(""))
         assertNull(PropertyType.fromStringOrNull(null))
     }
 
