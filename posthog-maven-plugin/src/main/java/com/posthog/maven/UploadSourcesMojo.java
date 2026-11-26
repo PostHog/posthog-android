@@ -4,15 +4,16 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
-import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -27,14 +28,16 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
  * posthog-meta.properties}. The PostHog server SDK reads that file at startup and sends the id on
  * every exception frame.
  *
- * <p>Runs {@code posthog-cli jvm upload}. The file goes into a generated resources directory, never
- * into {@code src}, so every build carries the id of the sources it compiled.
+ * <p>Runs {@code posthog-cli jvm upload} after compilation, so the upload includes the sources that
+ * annotation processors generate. The file goes into the classes directory, never into {@code
+ * src}, so every build carries the id of the sources it compiled.
  */
-@Mojo(name = "upload-sources", defaultPhase = LifecyclePhase.GENERATE_RESOURCES, threadSafe = true)
+@Mojo(name = "upload-sources", defaultPhase = LifecyclePhase.PROCESS_CLASSES, threadSafe = true)
 public class UploadSourcesMojo extends AbstractMojo {
     static final String META_PROPERTIES_FILE = "posthog-meta.properties";
 
     private static final String KOTLIN_MAVEN_PLUGIN = "org.jetbrains.kotlin:kotlin-maven-plugin";
+    private static final String COMPILER_PLUGIN = "org.apache.maven.plugins:maven-compiler-plugin";
 
     private static final String INSTALL_HINT =
             ". Install it (npm install -g @posthog/cli) or set posthog.cliExecutable.";
@@ -87,13 +90,6 @@ public class UploadSourcesMojo extends AbstractMojo {
     @Parameter(property = "posthog.releaseVersion")
     String releaseVersion;
 
-    /** Where posthog-cli writes {@code posthog-meta.properties}. Added as a resource directory. */
-    @Parameter(
-            property = "posthog.outputDirectory",
-            defaultValue = "${project.build.directory}/generated-resources/posthog",
-            required = true)
-    File outputDirectory;
-
     /**
      * The source directories to upload. Defaults to the project's compile source roots and the
      * {@code <sourceDirs>} that kotlin-maven-plugin compiles.
@@ -130,6 +126,25 @@ public class UploadSourcesMojo extends AbstractMojo {
             return;
         }
 
+        roots = utf8Roots(roots);
+        List<String> args = cliArguments(roots);
+        if (PostHogCli.runsThroughCmd(executable, isWindows)) {
+            List<String> values = new ArrayList<>(args);
+            values.add(0, executable);
+            String unsafe = PostHogCli.firstUnsafeForCmd(values);
+            if (unsafe != null) {
+                skipOrFail(
+                        "posthog-cli ("
+                                + executable
+                                + ") runs through cmd, which would not pass this value unchanged: "
+                                + unsafe
+                                + ". Set posthog.cliExecutable to posthog-cli.exe, which runs"
+                                + " directly.",
+                        null);
+                return;
+            }
+        }
+
         Process process;
         try {
             // A posthog-cli from before `jvm upload` exits with an error on the unknown
@@ -143,14 +158,14 @@ public class UploadSourcesMojo extends AbstractMojo {
                         null);
                 return;
             }
-            process = start(PostHogCli.commandLine(executable, cliArguments(roots), isWindows));
+            process = start(executable, args, isWindows);
         } catch (IOException e) {
             skipOrFail("Could not run posthog-cli (" + executable + ")" + INSTALL_HINT, e);
             return;
         }
         waitFor(process);
 
-        File written = new File(outputDirectory, META_PROPERTIES_FILE);
+        File written = new File(classesDirectory(), META_PROPERTIES_FILE);
         if (!written.isFile()) {
             if (requireUpload) {
                 throw new MojoExecutionException(
@@ -160,9 +175,7 @@ public class UploadSourcesMojo extends AbstractMojo {
             getLog().warn(
                     "The PostHog source upload was skipped, so exceptions from this build show no"
                             + " source code. Set posthog.requireUpload to fail the build instead.");
-            return;
         }
-        registerResourceDirectory();
     }
 
     List<String> cliArguments(List<File> roots) {
@@ -178,8 +191,10 @@ public class UploadSourcesMojo extends AbstractMojo {
             args.add("--source");
             args.add(root.getAbsolutePath());
         }
+        // process-resources has already copied the resources, so the file goes straight into the
+        // classes directory that the jar, war and Spring Boot archive are built from.
         args.add("--meta-out");
-        args.add(outputDirectory.getAbsolutePath());
+        args.add(classesDirectory().getAbsolutePath());
         if (!requireUpload) {
             args.add("--skip-without-credentials");
         }
@@ -236,6 +251,64 @@ public class UploadSourcesMojo extends AbstractMojo {
         return dirs;
     }
 
+    /**
+     * Copies of the roots with UTF-8 text when the compiler reads the sources in another encoding,
+     * otherwise the roots themselves.
+     */
+    private List<File> utf8Roots(List<File> roots) throws MojoExecutionException {
+        Charset encoding = sourceEncoding();
+        if (encoding == null || Utf8Sources.isUtf8(encoding)) {
+            return roots;
+        }
+        File buildDirectory = new File(project.getBuild().getDirectory());
+        try {
+            return Utf8Sources.copy(
+                    roots, encoding, new File(buildDirectory, "posthog/utf8-sources"), buildDirectory);
+        } catch (IOException e) {
+            throw new MojoExecutionException("Could not copy the sources as UTF-8", e);
+        }
+    }
+
+    /**
+     * The encoding maven-compiler-plugin reads the sources in: its {@code encoding} parameter,
+     * else {@code project.build.sourceEncoding}. Null when neither is set, so the platform default
+     * applies, which is UTF-8 from Java 18 on.
+     */
+    private Charset sourceEncoding() {
+        String encoding = null;
+        Plugin compiler = project.getPlugin(COMPILER_PLUGIN);
+        if (compiler != null) {
+            for (PluginExecution execution : compiler.getExecutions()) {
+                if (encoding == null && execution.getGoals().contains("compile")) {
+                    encoding = childValue(execution.getConfiguration(), "encoding");
+                }
+            }
+            if (encoding == null) {
+                encoding = childValue(compiler.getConfiguration(), "encoding");
+            }
+        }
+        if (encoding == null) {
+            encoding = project.getProperties().getProperty("project.build.sourceEncoding");
+        }
+        if (!isNotBlank(encoding)) {
+            return null;
+        }
+        try {
+            return Charset.forName(encoding.trim());
+        } catch (IllegalArgumentException e) {
+            getLog().warn("Unknown source encoding " + encoding + ", uploading the sources as is");
+            return null;
+        }
+    }
+
+    private static String childValue(Object configuration, String name) {
+        if (!(configuration instanceof Xpp3Dom)) {
+            return null;
+        }
+        Xpp3Dom child = ((Xpp3Dom) configuration).getChild(name);
+        return child != null && isNotBlank(child.getValue()) ? child.getValue().trim() : null;
+    }
+
     private void addSourceDirs(Object configuration, List<File> dirs) {
         if (!(configuration instanceof Xpp3Dom)) {
             return;
@@ -255,19 +328,14 @@ public class UploadSourcesMojo extends AbstractMojo {
     }
 
     private void deleteStaleMetaProperties() throws MojoExecutionException {
-        List<File> stale = new ArrayList<>();
-        stale.add(new File(outputDirectory, META_PROPERTIES_FILE));
-        // process-resources copies a resource only when the copy is missing or older, so the copy
-        // in the classes directory has to go too. A posthog-meta.properties the project keeps in
-        // its own resources is copied back right after this.
-        if (project.getBuild() != null && project.getBuild().getOutputDirectory() != null) {
-            stale.add(new File(project.getBuild().getOutputDirectory(), META_PROPERTIES_FILE));
+        File stale = new File(classesDirectory(), META_PROPERTIES_FILE);
+        if (stale.exists() && !stale.delete()) {
+            throw new MojoExecutionException("Could not delete the stale " + stale);
         }
-        for (File file : stale) {
-            if (file.exists() && !file.delete()) {
-                throw new MojoExecutionException("Could not delete the stale " + file);
-            }
-        }
+    }
+
+    private File classesDirectory() {
+        return new File(project.getBuild().getOutputDirectory());
     }
 
     private void skipOrFail(String message, Exception cause) throws MojoExecutionException {
@@ -286,10 +354,7 @@ public class UploadSourcesMojo extends AbstractMojo {
      */
     private boolean supportsJvmUpload(String executable, boolean isWindows)
             throws IOException, MojoExecutionException {
-        Process process =
-                start(
-                        PostHogCli.commandLine(
-                                executable, Arrays.asList("jvm", "upload", "--help"), isWindows));
+        Process process = start(executable, Arrays.asList("jvm", "upload", "--help"), isWindows);
         StringBuilder help = new StringBuilder();
         try (BufferedReader reader =
                 new BufferedReader(
@@ -306,13 +371,26 @@ public class UploadSourcesMojo extends AbstractMojo {
         }
     }
 
-    private Process start(List<String> command) throws IOException {
+    private Process start(String executable, List<String> args, boolean isWindows)
+            throws IOException {
+        List<String> command = PostHogCli.commandLine(executable, args, isWindows);
         getLog().debug("Running " + String.join(" ", command));
 
         ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
         if (project.getBasedir() != null) {
             // posthog-cli reads the release's git details from its working directory.
             builder.directory(project.getBasedir());
+        }
+        Map<String, String> environment = builder.environment();
+        String path =
+                PostHogCli.launcherPath(
+                        executable,
+                        environment,
+                        new File(System.getProperty("user.home")),
+                        isWindows,
+                        null);
+        if (path != null) {
+            environment.put(PostHogCli.pathKey(environment, isWindows), path);
         }
         return builder.start();
     }
@@ -337,21 +415,6 @@ public class UploadSourcesMojo extends AbstractMojo {
             Thread.currentThread().interrupt();
             throw new MojoExecutionException("Interrupted while waiting for posthog-cli", e);
         }
-    }
-
-    private void registerResourceDirectory() {
-        String directory = outputDirectory.getAbsolutePath();
-        for (Resource resource : project.getResources()) {
-            if (resource.getDirectory() != null
-                    && new File(resource.getDirectory()).getAbsolutePath().equals(directory)) {
-                return;
-            }
-        }
-
-        Resource resource = new Resource();
-        resource.setDirectory(directory);
-        resource.addInclude(META_PROPERTIES_FILE);
-        project.addResource(resource);
     }
 
     private static boolean isNotBlank(String value) {

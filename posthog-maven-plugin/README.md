@@ -2,7 +2,7 @@
 
 Uploads your application's Java and Kotlin sources to PostHog, so error tracking shows the source code around each frame of the exceptions your app captures.
 
-On every build, the `upload-sources` goal runs [`posthog-cli`](https://github.com/PostHog/posthog/tree/master/cli) `jvm upload`. The CLI bundles the sources, uploads them under an id derived from their content and the release, and writes that id into `posthog-meta.properties` in a generated resources directory. The file is packaged with your classes. At startup, [`posthog-server`](../posthog-server) reads it and sends the id on every exception frame, and PostHog looks up the uploaded sources by that id.
+On every build, the `upload-sources` goal runs [`posthog-cli`](https://github.com/PostHog/posthog/tree/master/cli) `jvm upload`. The CLI bundles the sources, uploads them under an id derived from their content and the release, and writes that id into `posthog-meta.properties` in the classes directory, so it is packaged with your classes. At startup, [`posthog-server`](../posthog-server) reads it and sends the id on every exception frame, and PostHog looks up the uploaded sources by that id.
 
 A build of unchanged code in the same release reuses the existing upload and sends no source files. Changed code, or a new release, gets a new id and a new upload, so exceptions are attributed to the release that threw them. Because the file is written on every build, it always matches the code that was compiled.
 
@@ -33,7 +33,9 @@ A build of unchanged code in the same release reuses the existing upload and sen
 </build>
 ```
 
-The goal binds to the `generate-resources` phase, so `mvn package` uploads before it packages.
+The goal binds to the `process-classes` phase. It runs after compilation, so the upload includes the sources that annotation processors such as MapStruct generate, and `mvn package` uploads before it packages. A command that stops before that phase uploads nothing: run `mvn package jib:build` or `mvn process-classes jib:build`, not `mvn compile jib:build`.
+
+`posthog-cli` reads sources as UTF-8. When `project.build.sourceEncoding` or the compiler's `encoding` names another encoding, the plugin uploads UTF-8 copies of the Java sources from `target/posthog/utf8-sources`.
 
 ### Releases
 
@@ -63,11 +65,10 @@ A developer who has run `posthog-cli login` uploads from local builds too. Pass 
 |---|---|---|---|
 | `skip` | `posthog.skip` | `false` | Skip the upload. |
 | `requireUpload` | `posthog.requireUpload` | `false` | Fail the build when `posthog-cli` is missing or too old, or the credentials are missing, instead of skipping the upload. |
-| `cliExecutable` | `posthog.cliExecutable` | found automatically | Path to `posthog-cli`. Without it, the plugin checks `~/.posthog/posthog-cli`, then `PATH`, then Homebrew, `~/.cargo/bin` and `~/.local/bin`. |
+| `cliExecutable` | `posthog.cliExecutable` | found automatically | Path to `posthog-cli`. Without it, the plugin checks `~/.posthog/posthog-cli`, then `PATH`, then Homebrew, `~/.cargo/bin` and `~/.local/bin`. On Windows, it runs `posthog-cli.exe` from `PATH`, or the binary of the npm package behind `posthog-cli.cmd`. |
 | `dotenvFile` | `posthog.dotenvFile` | none | A dotenv file `posthog-cli` reads credentials from. |
 | `releaseName` | `posthog.releaseName` | `${project.artifactId}` | The release the upload is associated with. |
 | `releaseVersion` | `posthog.releaseVersion` | the git commit | The version of that release. Set it to `${project.version}` if you bump the project version on every release. |
-| `outputDirectory` | `posthog.outputDirectory` | `${project.build.directory}/generated-resources/posthog` | Where `posthog-meta.properties` is written. The plugin adds it as a resource directory. |
 | `sourceRoots` | none | the project's compile source roots, plus the `<sourceDirs>` of `kotlin-maven-plugin` | The directories to upload. Setting it replaces the default. |
 
 ## What it doesn't cover yet

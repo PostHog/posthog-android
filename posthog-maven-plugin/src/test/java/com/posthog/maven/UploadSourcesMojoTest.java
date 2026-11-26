@@ -1,5 +1,6 @@
 package com.posthog.maven;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -17,7 +18,6 @@ import java.util.Map;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
-import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
@@ -32,6 +32,7 @@ public class UploadSourcesMojoTest {
 
     private File basedir;
     private File argsFile;
+    private File classes;
     private UploadSourcesMojo mojo;
 
     @Before
@@ -50,11 +51,11 @@ public class UploadSourcesMojoTest {
         mojo.project = project;
         mojo.releaseName = "demo-app";
         mojo.releaseVersion = "1.2.3";
-        mojo.outputDirectory = new File(basedir, "target/generated-resources/posthog");
+        classes = new File(basedir, "target/classes");
     }
 
     @Test
-    public void uploadsExistingSourceRootsAndRegistersTheResourceDirectory() throws Exception {
+    public void uploadsExistingSourceRootsAndWritesTheIdIntoTheClasses() throws Exception {
         assumeUnix();
         File java = sourceRoot("src/main/java");
         File kotlin = sourceRoot("src/main/kotlin");
@@ -77,20 +78,14 @@ public class UploadSourcesMojoTest {
                         "--source",
                         kotlin.getAbsolutePath(),
                         "--meta-out",
-                        mojo.outputDirectory.getAbsolutePath(),
+                        classes.getAbsolutePath(),
                         "--skip-without-credentials",
                         "--release-name",
                         "demo-app",
                         "--release-version",
                         "1.2.3"),
                 recordedArgs());
-
-        List<Resource> resources = mojo.project.getResources();
-        assertEquals(1, resources.size());
-        assertEquals(mojo.outputDirectory.getAbsolutePath(), resources.get(0).getDirectory());
-        assertEquals(
-                Collections.singletonList("posthog-meta.properties"),
-                resources.get(0).getIncludes());
+        assertTrue(metaProperties().isFile());
     }
 
     @Test
@@ -146,21 +141,71 @@ public class UploadSourcesMojoTest {
                         "--source",
                         custom.getAbsolutePath(),
                         "--meta-out",
-                        mojo.outputDirectory.getAbsolutePath(),
+                        classes.getAbsolutePath(),
                         "--skip-without-credentials"),
                 recordedArgs());
     }
 
     @Test
-    public void registersTheResourceDirectoryOnce() throws Exception {
+    public void javaSourcesInAnotherEncodingAreUploadedAsUtf8() throws Exception {
         assumeUnix();
-        mojo.project.addCompileSourceRoot(sourceRoot("src/main/java").getAbsolutePath());
+        File java = sourceRoot("src/main/java");
+        File javaFile = new File(java, "com/acme/Price.java");
+        assertTrue(javaFile.getParentFile().mkdirs());
+        // 0x80 is the euro sign in windows-1252 and a control character in ISO-8859-1.
+        byte[] cp1252 = "package com.acme;\n// 5 \u20ac\nclass Price {}\n".getBytes("windows-1252");
+        Files.write(javaFile.toPath(), cp1252);
+        File kotlinFile = new File(java, "com/acme/Tax.kt");
+        byte[] kotlin = "package com.acme\n// 5 \u20ac\n".getBytes(StandardCharsets.UTF_8);
+        Files.write(kotlinFile.toPath(), kotlin);
+        mojo.project.addCompileSourceRoot(java.getAbsolutePath());
+        // The compiler's own encoding wins over the project property.
+        mojo.project.getProperties().setProperty("project.build.sourceEncoding", "ISO-8859-1");
+        Xpp3Dom encoding = new Xpp3Dom("encoding");
+        encoding.setValue("windows-1252");
+        Xpp3Dom configuration = new Xpp3Dom("configuration");
+        configuration.addChild(encoding);
+        Plugin compiler = new Plugin();
+        compiler.setGroupId("org.apache.maven.plugins");
+        compiler.setArtifactId("maven-compiler-plugin");
+        compiler.setConfiguration(configuration);
+        mojo.project.getBuild().addPlugin(compiler);
         mojo.cliExecutable = fakeCli(0, true).getAbsolutePath();
 
         mojo.execute();
+
+        File copy = new File(basedir, "target/posthog/utf8-sources/0");
+        assertEquals(Arrays.asList("--source", copy.getAbsolutePath()), recordedArgs().subList(2, 4));
+        assertEquals(
+                "package com.acme;\n// 5 \u20ac\nclass Price {}\n",
+                new String(
+                        Files.readAllBytes(new File(copy, "com/acme/Price.java").toPath()),
+                        StandardCharsets.UTF_8));
+        assertArrayEquals(kotlin, Files.readAllBytes(new File(copy, "com/acme/Tax.kt").toPath()));
+        assertArrayEquals(cp1252, Files.readAllBytes(javaFile.toPath()));
+    }
+
+    @Test
+    public void anNpmLauncherRunsWhenNeitherItNorNodeIsOnPath() throws Exception {
+        assumeUnix();
+        mojo.project.addCompileSourceRoot(sourceRoot("src/main/java").getAbsolutePath());
+        // npm links posthog-cli to a `#!/usr/bin/env node` script next to node, in a directory
+        // such as /opt/homebrew/bin that a build started from an IDE may not have on PATH.
+        File npmBin = temp.newFolder("npm-bin");
+        File node = new File(npmBin, "node");
+        Files.write(node.toPath(), "#!/bin/sh\nexec /bin/sh \"$@\"\n".getBytes(StandardCharsets.UTF_8));
+        assertTrue(node.setExecutable(true));
+        File launcher = new File(npmBin, "posthog-cli");
+        String script = new String(Files.readAllBytes(fakeCli(0, true).toPath()), StandardCharsets.UTF_8);
+        Files.write(
+                launcher.toPath(),
+                script.replace("#!/bin/sh", "#!/usr/bin/env node").getBytes(StandardCharsets.UTF_8));
+        assertTrue(launcher.setExecutable(true));
+        mojo.cliExecutable = launcher.getAbsolutePath();
+
         mojo.execute();
 
-        assertEquals(1, mojo.project.getResources().size());
+        assertTrue(metaProperties().isFile());
     }
 
     @Test
@@ -175,7 +220,7 @@ public class UploadSourcesMojoTest {
         } catch (MojoExecutionException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("exited with code 3"));
         }
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
     }
 
     @Test
@@ -186,7 +231,7 @@ public class UploadSourcesMojoTest {
 
         mojo.execute();
 
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
     }
 
     @Test
@@ -203,19 +248,19 @@ public class UploadSourcesMojoTest {
             assertTrue(e.getMessage(), e.getMessage().contains("did not write"));
         }
         assertFalse(recordedArgs().contains("--skip-without-credentials"));
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
     }
 
     @Test
     public void skipsWhenTheCliIsMissing() throws Exception {
         mojo.project.addCompileSourceRoot(sourceRoot("src/main/java").getAbsolutePath());
         mojo.cliExecutable = new File(temp.getRoot(), "no-such-posthog-cli").getAbsolutePath();
-        File stale = staleMetaProperties(mojo.outputDirectory);
+        File stale = staleMetaProperties(classes);
 
         mojo.execute();
 
         assertFalse(stale.exists());
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
     }
 
     @Test
@@ -226,7 +271,7 @@ public class UploadSourcesMojoTest {
 
         mojo.execute();
 
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
 
         mojo.requireUpload = true;
         try {
@@ -255,16 +300,13 @@ public class UploadSourcesMojoTest {
     public void skipRunsNothingAndRemovesAStaleId() throws Exception {
         mojo.project.addCompileSourceRoot(sourceRoot("src/main/java").getAbsolutePath());
         mojo.cliExecutable = fakeCli(0, true).getAbsolutePath();
-        File staleGenerated = staleMetaProperties(mojo.outputDirectory);
-        File staleClasses = staleMetaProperties(new File(basedir, "target/classes"));
+        File stale = staleMetaProperties(classes);
         mojo.skip = true;
 
         mojo.execute();
 
         assertFalse(argsFile.exists());
-        assertFalse(staleGenerated.exists());
-        assertFalse(staleClasses.exists());
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(stale.exists());
     }
 
     @Test
@@ -275,7 +317,7 @@ public class UploadSourcesMojoTest {
         mojo.execute();
 
         assertFalse(argsFile.exists());
-        assertTrue(mojo.project.getResources().isEmpty());
+        assertFalse(metaProperties().exists());
     }
 
     @Test
@@ -328,6 +370,72 @@ public class UploadSourcesMojoTest {
                 "posthog-cli",
                 PostHogCli.resolve(null, env(shimDir.getAbsolutePath()), home, true));
         assertEquals(null, PostHogCli.resolve(null, env(""), home, true));
+
+        // The shim starts the binary the npm package installed, so that binary runs instead,
+        // without cmd: from a global install, and from a project's node_modules/.bin.
+        String binary = "@posthog/cli/node_modules/.bin_real/posthog-cli.exe";
+        File globalPrefix = temp.newFolder("npm-global");
+        executable(new File(globalPrefix, "posthog-cli.cmd"));
+        File globalExe = executable(new File(globalPrefix, "node_modules/" + binary));
+        File projectBin = temp.newFolder("project-npm", "node_modules", ".bin");
+        executable(new File(projectBin, "posthog-cli.cmd"));
+        File projectExe = executable(new File(projectBin.getParentFile(), binary));
+
+        assertEquals(
+                globalExe.getAbsolutePath(),
+                PostHogCli.resolve(null, env(globalPrefix.getAbsolutePath()), home, true));
+        assertEquals(
+                projectExe.getAbsolutePath(),
+                PostHogCli.resolve(null, env(projectBin.getAbsolutePath()), home, true));
+    }
+
+    @Test
+    public void cmdUnsafeValuesAreFound() {
+        for (String unsafe :
+                Arrays.asList(
+                        "v1&whoami",
+                        "C:\\work\\R&D\\src",
+                        "a|b",
+                        "a>b",
+                        "%PATH%",
+                        "!x!",
+                        "say \"hi\"",
+                        "a^b",
+                        "(a)",
+                        "a\nb")) {
+            assertEquals(unsafe, PostHogCli.firstUnsafeForCmd(Arrays.asList("--source", unsafe)));
+        }
+        assertEquals(
+                null,
+                PostHogCli.firstUnsafeForCmd(
+                        Arrays.asList(
+                                "posthog-cli",
+                                "--source",
+                                "C:\\My Projects\\app-1\\src\\main\\java",
+                                "--release-version",
+                                "1.2.3+build.4")));
+    }
+
+    @Test
+    public void launcherPathPrependsOnlyTheDirectoriesPathLacks() throws Exception {
+        assumeUnix();
+        File cliDir = temp.newFolder("cli-bin");
+        File nodeDir = temp.newFolder("node-bin");
+        File node = executable(new File(nodeDir, "node"));
+        List<File> nodeLocations = Collections.singletonList(node);
+        String cli = new File(cliDir, "posthog-cli").getAbsolutePath();
+        String otherDir = temp.newFolder("other-bin").getAbsolutePath();
+
+        assertEquals(
+                cliDir.getAbsolutePath()
+                        + File.pathSeparator
+                        + nodeDir.getAbsolutePath()
+                        + File.pathSeparator
+                        + otherDir,
+                PostHogCli.launcherPath(cli, env(otherDir), temp.getRoot(), false, nodeLocations));
+        String both = cliDir.getAbsolutePath() + File.pathSeparator + nodeDir.getAbsolutePath();
+        assertEquals(
+                null, PostHogCli.launcherPath(cli, env(both), temp.getRoot(), false, nodeLocations));
     }
 
     @Test
@@ -349,6 +457,10 @@ public class UploadSourcesMojoTest {
         File dir = new File(basedir, relative);
         assertTrue(dir.mkdirs());
         return dir;
+    }
+
+    private File metaProperties() {
+        return new File(classes, "posthog-meta.properties");
     }
 
     private File staleMetaProperties(File dir) throws IOException {
