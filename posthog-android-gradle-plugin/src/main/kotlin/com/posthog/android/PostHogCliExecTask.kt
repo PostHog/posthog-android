@@ -5,6 +5,7 @@
 package com.posthog.android
 
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.api.GradleException
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -37,26 +38,28 @@ public abstract class PostHogCliExecTask : Exec() {
     }
 
     override fun exec() {
-        val configured = postHogExecutable.get()
-        // Probe against the task's environment (defaults to the process env but
-        // respects a PATH configured on the task) so discovery and execution agree.
-        val taskEnvironment = environment.mapValues { it.value.toString() }
-        val resolved =
-            resolvePostHogCliExecutable(
-                configured = configured,
-                logger = logger,
-                environment = taskEnvironment,
-                // Upload task registrations set workingDir(project.rootDir), which is android/
-                // in a standard React Native project. The resolver also checks its parent.
-                workingDirectory = workingDir,
-            )
-        if (resolved != configured) {
-            // npm installs posthog-cli as a node shim; prepend the discovered
-            // bin dir so the shim's `env node` resolves alongside it.
-            val executables = listOfNotNull(resolved, resolveNodeExecutable(taskEnvironment))
-            val (pathKey, pathValue) = prependExecutableDirectoriesToPath(executables, taskEnvironment)
-            environment(pathKey, pathValue)
-        }
+        runPostHogCli(resolvePostHogCli())
+    }
+
+    // Probe against the task's environment (defaults to the process env but
+    // respects a PATH configured on the task) so discovery and execution agree.
+    protected fun taskEnvironment(): Map<String, String> = environment.mapValues { it.value.toString() }
+
+    /** Finds the posthog-cli to run. [isPostHogCliInstalled] tells whether the result can run. */
+    protected fun resolvePostHogCli(warnWhenMissing: Boolean = true): String =
+        resolvePostHogCliExecutable(
+            configured = postHogExecutable.get(),
+            logger = logger,
+            environment = taskEnvironment(),
+            // Upload task registrations set workingDir(project.rootDir), which is android/
+            // in a standard React Native project. The resolver also checks its parent.
+            workingDirectory = workingDir,
+            warnWhenMissing = warnWhenMissing,
+        )
+
+    /** Runs [resolved] with the arguments from [getArguments] and the credentials of this task. */
+    protected fun runPostHogCli(resolved: String) {
+        shimPath(resolved, taskEnvironment())?.let { (pathKey, pathValue) -> environment(pathKey, pathValue) }
 
         val commandLine =
             postHogCliCommandLine(resolved, computeCommandLineArgs()).also {
@@ -82,6 +85,46 @@ public abstract class PostHogCliExecTask : Exec() {
         super.exec()
     }
 
+    /**
+     * Runs [resolved] with [args] in the environment [runPostHogCli] uses, and returns its output,
+     * or null when it exits with an error. For questions to the CLI, such as `--help`, that need no
+     * credentials and send nothing to PostHog.
+     */
+    protected fun queryPostHogCli(
+        resolved: String,
+        args: List<String>,
+    ): String? {
+        val environment = taskEnvironment().toMutableMap()
+        shimPath(resolved, environment)?.let { (pathKey, pathValue) -> environment[pathKey] = pathValue }
+        val process =
+            ProcessBuilder(postHogCliCommandLine(resolved, args))
+                .directory(workingDir)
+                .redirectErrorStream(true)
+                .apply {
+                    environment().clear()
+                    environment().putAll(environment)
+                }.start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        return output.takeIf { process.waitFor() == 0 }
+    }
+
+    // npm installs posthog-cli as a node shim, so the PATH gets the discovered bin dir prepended,
+    // and the shim's `env node` resolves alongside it.
+    private fun shimPath(
+        resolved: String,
+        taskEnvironment: Map<String, String>,
+    ): Pair<String, String>? {
+        if (resolved == postHogExecutable.get()) {
+            return null
+        }
+        val executables = listOfNotNull(resolved, resolveNodeExecutable(taskEnvironment))
+        return prependExecutableDirectoriesToPath(executables, taskEnvironment)
+    }
+
+    /** The first argument that cmd would not pass on unchanged when [resolved] runs through it. */
+    protected fun argumentUnsafeForCmd(resolved: String): String? =
+        if (runsThroughCmd(resolved)) firstUnsafeForCmd(computeCommandLineArgs()) else null
+
     protected abstract fun getArguments(args: MutableList<String>)
 
     /** Computes the full list of arguments for the task */
@@ -99,8 +142,18 @@ internal fun postHogCliCommandLine(
 ): List<String> {
     // On Windows a bare name may be the npm posthog-cli.cmd shim, which only cmd can find and
     // run. An .exe runs directly, which also keeps cmd from mangling a quoted path with spaces.
-    if (isWindows && !executable.endsWith(".exe", ignoreCase = true)) {
+    if (runsThroughCmd(executable, isWindows)) {
+        firstUnsafeForCmd(args)?.let {
+            throw GradleException(
+                "[PostHog] posthog-cli runs through cmd here, and cmd would not pass on \"$it\" " +
+                    "unchanged. $CMD_UNSAFE_HINT",
+            )
+        }
         return listOf("cmd", "/c", executable) + args
     }
     return listOf(executable) + args
 }
+
+internal const val CMD_UNSAFE_HINT: String =
+    "Install posthog-cli with npm (npm install -g @posthog/cli) or the PostHog installer, so that " +
+        "posthog-cli.exe runs directly, or set the posthog-cli path to posthog-cli.exe."

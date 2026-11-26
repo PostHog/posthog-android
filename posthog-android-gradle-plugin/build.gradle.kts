@@ -126,6 +126,11 @@ gradlePlugin {
             implementationClass = "com.posthog.android.PostHogAndroidGradlePlugin"
             displayName = "PostHog Android Gradle Plugin"
         }
+        create("postHogJvmPlugin") {
+            id = "com.posthog.jvm"
+            implementationClass = "com.posthog.jvm.PostHogJvmGradlePlugin"
+            displayName = "PostHog JVM Gradle Plugin"
+        }
     }
 }
 
@@ -173,6 +178,15 @@ publishing {
                 configurePom(
                     "PostHog Android Gradle Plugin (Gradle Plugin)",
                     "Gradle plugin marker for PostHog Android Gradle Plugin",
+                )
+            }
+        }
+
+        publications.named<MavenPublication>("postHogJvmPluginPluginMarkerMaven") {
+            pom {
+                configurePom(
+                    "PostHog JVM Gradle Plugin (Gradle Plugin)",
+                    "Gradle plugin marker for PostHog JVM Gradle Plugin",
                 )
             }
         }
@@ -249,6 +263,8 @@ val functionalTestTask =
         testClassesDirs = functionalTest.output.classesDirs
         classpath = functionalTest.runtimeClasspath
         useJUnit()
+        // The JVM plugin tests apply the Kotlin JVM plugin at the version the SDKs build with.
+        systemProperty("kotlinVersion", versions["kotlinVersion"] as String)
     }
 
 tasks.named("check") {

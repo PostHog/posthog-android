@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal class PostHogCliResolverTest {
@@ -169,10 +170,52 @@ internal class PostHogCliResolverTest {
     fun `keeps the bare name on Windows without a native exe on PATH`() {
         val pathDirectory = temporaryFolder.newFolder("npm-bin")
         createExecutable(File(pathDirectory, "posthog-cli.cmd"))
+        val environment = mapOf("Path" to pathDirectory.absolutePath)
 
-        val resolved = resolveOnWindows(mapOf("Path" to pathDirectory.absolutePath))
+        val resolved = resolveOnWindows(environment)
 
         assertEquals(POSTHOG_CLI_DEFAULT_EXECUTABLE, resolved)
+        // cmd runs the npm shim by the bare name.
+        assertTrue(isPostHogCliInstalled(resolved, environment, isWindows = true))
+    }
+
+    @Test
+    fun `resolves the npm shim on the Windows PATH to the binary it starts`() {
+        val npmPrefix = temporaryFolder.newFolder("npm")
+        createExecutable(File(npmPrefix, "posthog-cli.cmd"))
+        val exe = createExecutable(File(npmPrefix, "node_modules/@posthog/cli/node_modules/.bin_real/posthog-cli.exe"))
+
+        val resolved = resolveOnWindows(mapOf("Path" to npmPrefix.absolutePath))
+
+        assertEquals(exe.absolutePath, resolved)
+    }
+
+    @Test
+    fun `resolves a project-local npm shim on Windows to the binary it starts`() {
+        val workingDirectory = temporaryFolder.newFolder("app")
+        createExecutable(File(workingDirectory, "node_modules/.bin/posthog-cli.cmd"))
+        val exe = createExecutable(File(workingDirectory, "node_modules/@posthog/cli/node_modules/.bin_real/posthog-cli.exe"))
+
+        val resolved =
+            resolvePostHogCliExecutable(
+                configured = POSTHOG_CLI_DEFAULT_EXECUTABLE,
+                logger = logger,
+                environment = mapOf("Path" to temporaryFolder.newFolder("empty-path").absolutePath),
+                home = temporaryFolder.newFolder("home"),
+                workingDirectory = workingDirectory,
+                isWindows = true,
+            )
+
+        assertEquals(exe.absolutePath, resolved)
+    }
+
+    @Test
+    fun `a bare name on Windows with no CLI on PATH is not installed`() {
+        val environment = mapOf("Path" to temporaryFolder.newFolder("empty-bin").absolutePath)
+
+        val resolved = resolveOnWindows(environment)
+
+        assertFalse(isPostHogCliInstalled(resolved, environment, isWindows = true))
     }
 
     private fun resolveOnWindows(environment: Map<String, String>): String =
