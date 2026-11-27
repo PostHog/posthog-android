@@ -4,10 +4,12 @@ import com.posthog.FeatureFlagResult
 import com.posthog.PostHogStateless
 import com.posthog.errortracking.PostHogErrorTrackingAutoCaptureIntegration
 import com.posthog.internal.FeatureFlag
+import com.posthog.internal.PostHogLogger
 import com.posthog.server.internal.EvaluationsHost
 import com.posthog.server.internal.KnownAbsentPropertyKeys
 import com.posthog.server.internal.PostHogFeatureFlags
 import com.posthog.server.internal.PostHogUncaughtExceptionCapture
+import com.posthog.server.internal.loadMapIdFromClasspath
 import com.posthog.server.internal.withActiveTraceContext
 
 @Suppress("DEPRECATION")
@@ -48,10 +50,20 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             // config), so only wire anything on top when THIS call is the one that enabled the client —
             // otherwise a second setup() could install a handler bound to a config the base discarded.
             val alreadySetUp = isEnabled()
-            super.setup(config.asCoreConfig())
+            val coreConfig = config.asCoreConfig()
+            // Fall back to the map id the build wrote. An explicitly configured releaseIdentifier
+            // always wins. The id goes on the config before super.setup publishes it, because a
+            // thread that captures an exception reads the config without setupLock. The debug
+            // logger only exists after super.setup, so the lookup's messages wait until then.
+            val mapIdMessages = mutableListOf<String>()
+            if (!alreadySetUp && coreConfig.releaseIdentifier.isNullOrEmpty()) {
+                coreConfig.releaseIdentifier = loadMapIdFromClasspath(MessageCollector(mapIdMessages))
+            }
+            super.setup(coreConfig)
             if (alreadySetUp || !isEnabled()) {
                 return
             }
+            mapIdMessages.forEach { coreConfig.logger.log(it) }
 
             // Core setup never installs integrations for the stateless base, so wire the uncaught
             // handler explicitly (all mechanics live in PostHogUncaughtExceptionCapture).
@@ -739,4 +751,12 @@ public class PostHog : PostHogStateless(), PostHogInterface {
             return instance
         }
     }
+}
+
+private class MessageCollector(private val messages: MutableList<String>) : PostHogLogger {
+    override fun log(message: String) {
+        messages.add(message)
+    }
+
+    override fun isEnabled(): Boolean = true
 }
