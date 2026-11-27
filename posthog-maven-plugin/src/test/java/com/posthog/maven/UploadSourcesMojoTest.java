@@ -366,9 +366,7 @@ public class UploadSourcesMojoTest {
         String both = exeDir.getAbsolutePath() + File.pathSeparator + shimDir.getAbsolutePath();
 
         assertEquals(exe.getAbsolutePath(), PostHogCli.resolve(null, env(both), home, true));
-        assertEquals(
-                "posthog-cli",
-                PostHogCli.resolve(null, env(shimDir.getAbsolutePath()), home, true));
+        assertEquals(null, PostHogCli.resolve(null, env(shimDir.getAbsolutePath()), home, true));
         assertEquals(null, PostHogCli.resolve(null, env(""), home, true));
 
         // The shim starts the binary the npm package installed, so that binary runs instead,

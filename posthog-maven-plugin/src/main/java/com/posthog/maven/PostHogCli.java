@@ -17,7 +17,7 @@ final class PostHogCli {
 
     /**
      * Returns the posthog-cli to run, or null when none is installed. A configured path is used
-     * verbatim. Otherwise this checks {@code ~/.posthog/posthog-cli} first, the override location
+     * verbatim. On Windows, an npm shim counts only when the native binary it starts is found. Otherwise this checks {@code ~/.posthog/posthog-cli} first, the override location
      * PostHog's Xcode build script also checks first, then PATH, then the common install
      * locations (Homebrew, the installer script's {@code ~/.cargo/bin}) that a build launched from
      * an IDE may not have on PATH.
@@ -39,10 +39,11 @@ final class PostHogCli {
             }
             // The npm shim only starts the native binary that the package installed. Running that
             // binary directly keeps the arguments away from cmd, which would run a `&` in a path
-            // or a release version as a second command.
+            // or a release version as a second command. Without the binary there is nothing to
+            // run: cmd would look up a bare name in the project directory before PATH, and could
+            // run a posthog-cli there instead of the installed one.
             File npmExe = npmInstalledExe(shim);
-            // Without it, cmd finds the shim by its bare name.
-            return npmExe != null ? npmExe.getAbsolutePath() : DEFAULT_EXECUTABLE;
+            return npmExe != null ? npmExe.getAbsolutePath() : null;
         }
 
         File installed = new File(home, ".posthog/" + DEFAULT_EXECUTABLE);
